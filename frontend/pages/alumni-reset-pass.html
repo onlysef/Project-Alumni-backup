@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alumni Portal — Reset Password</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/reset-style.css">
+</head>
+<body>
+
+<div class="page">
+  <div class="card">
+
+    <!-- Left -->
+    <div class="left-panel">
+      <p class="welcome-heading">Reset<br><span class="name">Password</span></p>
+      <p class="welcome-sub" id="left-sub">
+        No worries — it happens.<br>
+        Enter your email and we'll send<br>
+        a verification code to get you<br>
+        back into your account.
+      </p>
+    </div>
+
+    <!-- Right -->
+    <div class="right-panel">
+
+      <!-- Step indicators -->
+      <div class="steps">
+        <div class="step active" id="s1">
+          <div class="step-circle">1</div>
+          <div class="step-label">Email</div>
+        </div>
+        <div class="step-line" id="line1"></div>
+        <div class="step" id="s2">
+          <div class="step-circle">2</div>
+          <div class="step-label">Verify</div>
+        </div>
+        <div class="step-line" id="line2"></div>
+        <div class="step" id="s3">
+          <div class="step-circle">3</div>
+          <div class="step-label">New Password</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Email -->
+      <div class="step-panel active" id="panel1">
+        <h1 class="login-title">Forgot Password?</h1>
+        <div class="title-underline"></div>
+        <p class="form-hint">Enter your registered email address and<br>we'll send you a 6-digit verification code.</p>
+
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <div class="input-wrap">
+            <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
+            </svg>
+            <input type="email" id="email" placeholder="ex. jl.delacruz@student.tsu.edu.ph" autocomplete="email">
+          </div>
+        </div>
+
+        <button class="btn-signin" type="button" onclick="goStep(2)">
+          Send Code
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+
+        <div class="back-link-row">
+          Remembered it? <a href="alumni-login.html">Sign In</a>
+        </div>
+        <div class="links-row">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+      <!-- Step 2: OTP -->
+      <div class="step-panel" id="panel2">
+        <h1 class="login-title">Enter Code</h1>
+        <div class="title-underline"></div>
+        <p class="form-hint">We sent a 6-digit code to your email.<br>Enter it below to continue.</p>
+
+        <div class="otp-row">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)">
+        </div>
+
+        <div class="otp-resend">Didn't receive it? <a href="#" onclick="return false;">Resend Code</a></div>
+
+        <button class="btn-signin" type="button" onclick="goStep(3)">
+          Verify Code
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+
+        <div class="back-link-row">
+          <a href="#" onclick="goStep(1); return false;">← Back</a>
+        </div>
+        <div class="links-row">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+      <!-- Step 3: New Password -->
+      <div class="step-panel" id="panel3">
+        <h1 class="login-title">New Password</h1>
+        <div class="title-underline"></div>
+        <p class="form-hint">Create a strong new password<br>for your Alumni Portal account.</p>
+
+        <div class="form-group">
+          <label for="newpass">New Password</label>
+          <div class="input-wrap">
+            <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            <input type="password" id="newpass" placeholder="Create a strong password" autocomplete="new-password" oninput="updateStrength(this.value)">
+          </div>
+          <div class="password-strength">
+            <div class="strength-bar" id="bar1"></div>
+            <div class="strength-bar" id="bar2"></div>
+            <div class="strength-bar" id="bar3"></div>
+            <div class="strength-bar" id="bar4"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmpass">Confirm Password</label>
+          <div class="input-wrap">
+            <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+            <input type="password" id="confirmpass" placeholder="Re-enter your password" autocomplete="new-password">
+          </div>
+        </div>
+
+        <button class="btn-signin" type="button" onclick="goStep(4)">
+          Reset Password
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+
+        <div class="back-link-row">
+          <a href="#" onclick="goStep(2); return false;">← Back</a>
+        </div>
+        <div class="links-row">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+      <!-- Step 4: Success -->
+      <div class="step-panel" id="panel4">
+        <div class="success-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <p class="success-title">Password Reset!</p>
+        <p class="success-msg">Your password has been successfully updated.<br>You can now sign in with your new password.</p>
+
+        <button class="btn-signin" type="button" onclick="window.location.href='alumni-login.html'">
+          Go to Login
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+        <div class="links-row" style="margin-top:18px;">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<footer>© 2026 Alumni Portal &nbsp;·&nbsp; Tarlac State University</footer>
+
+<script>
+  const leftSubs = [
+    "No worries — it happens.<br>Enter your email and we'll send<br>a verification code to get you<br>back into your account.",
+    "Check your inbox.<br>We've sent a 6-digit code to<br>your registered email address.<br>It expires in 10 minutes.",
+    "Almost there!<br>Create a strong new password<br>to secure your Alumni Portal<br>account.",
+    "You're all set!<br>Your password has been reset.<br>Sign in and reconnect with<br>your fellow TSU alumni."
+  ];
+
+  function goStep(n) {
+    // Update panels
+    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+    const target = document.getElementById('panel' + n);
+    if (target) target.classList.add('active');
+
+    // Update step circles
+    const steps = [document.getElementById('s1'), document.getElementById('s2'), document.getElementById('s3')];
+    const lines = [document.getElementById('line1'), document.getElementById('line2')];
+
+    steps.forEach((s, i) => {
+      s.classList.remove('active', 'done');
+      if (i + 1 < n) s.classList.add('done');
+      else if (i + 1 === n && n <= 3) s.classList.add('active');
+    });
+
+    lines.forEach((l, i) => {
+      l.classList.toggle('done', n > i + 2);
+    });
+
+    // Update left subtitle
+    document.getElementById('left-sub').innerHTML = leftSubs[Math.min(n, 4) - 1];
+
+    // Hide steps on success
+    if (n === 4) {
+      document.querySelector('.steps').style.display = 'none';
+    } else {
+      document.querySelector('.steps').style.display = 'flex';
+    }
+  }
+
+  function otpNext(el, idx) {
+    el.value = el.value.replace(/[^0-9]/g, '');
+    const inputs = document.querySelectorAll('.otp-input');
+    if (el.value && idx < 5) inputs[idx + 1].focus();
+  }
+
+  // Backspace handling for OTP
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Backspace') {
+      const inputs = document.querySelectorAll('.otp-input');
+      inputs.forEach((inp, idx) => {
+        if (document.activeElement === inp && !inp.value && idx > 0) {
+          inputs[idx - 1].focus();
+        }
+      });
+    }
+  });
+
+  function updateStrength(val) {
+    let score = 0;
+    if (val.length >= 8) score++;
+    if (/[A-Z]/.test(val)) score++;
+    if (/[0-9]/.test(val)) score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+    const colors = ['#e53e3e', '#dd6b20', '#d69e2e', '#38a169'];
+    for (let i = 1; i <= 4; i++) {
+      const bar = document.getElementById('bar' + i);
+      if (bar) bar.style.background = i <= score ? colors[score - 1] : 'var(--border)';
+    }
+  }
+</script>
+
+</body>
+</html>
