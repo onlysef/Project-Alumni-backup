@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Alumni Portal — Sign Up</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/css/signup-style.css">
+<link rel="stylesheet" href="../assets/css/signup-style.css">
 </head>
 <body>
 
@@ -123,7 +123,9 @@
         </div>
       </div>
 
-      <button class="btn-signin" type="button">
+      <div id="msg-box" style="display:none;padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;text-align:center;"></div>
+
+      <button class="btn-signin" id="signup-btn" type="button" onclick="doSignUp()">
         Create Account
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
@@ -131,7 +133,7 @@
       </button>
 
       <div class="login-link-row">
-        Already have an account?  <a href="alumni-login.html"> Login</a>
+        Already have an account? <a href="alumni-login.html"> Login</a>
       </div>
 
       <div class="links-row">
@@ -145,6 +147,75 @@
 
 <footer>© 2026 Alumni Portal &nbsp;·&nbsp; Tarlac State University</footer>
 
+<script>
+  const API = 'http://localhost:5000/api';
+
+  function showMsg(text, isError = true) {
+    const box = document.getElementById('msg-box');
+    box.textContent = text;
+    box.style.display = 'block';
+    box.style.background = isError ? '#fff5f5' : '#f0fff4';
+    box.style.color = isError ? '#c53030' : '#276749';
+    box.style.border = `1px solid ${isError ? '#fc8181' : '#68d391'}`;
+  }
+
+  function updateStrength(val) {
+    let score = 0;
+    if (val.length >= 8) score++;
+    if (/[A-Z]/.test(val)) score++;
+    if (/[0-9]/.test(val)) score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+    const colors = ['#e53e3e', '#dd6b20', '#d69e2e', '#38a169'];
+    for (let i = 1; i <= 4; i++) {
+      const bar = document.getElementById('bar' + i);
+      if (bar) bar.style.background = i <= score ? colors[score - 1] : 'var(--border)';
+    }
+  }
+
+  async function doSignUp() {
+    const firstName     = document.getElementById('firstname').value.trim();
+    const lastName      = document.getElementById('lastname').value.trim();
+    const email         = document.getElementById('email').value.trim();
+    const course        = document.getElementById('course').value;
+    const graduationYear = document.getElementById('gradyear').value.trim();
+    const password      = document.getElementById('password').value;
+    const confirm       = document.getElementById('confirmpassword').value;
+
+    if (!firstName || !lastName || !email || !course || !graduationYear || !password || !confirm) {
+      return showMsg('Please fill in all fields.');
+    }
+    if (password !== confirm) return showMsg('Passwords do not match.');
+    if (password.length < 8)  return showMsg('Password must be at least 8 characters.');
+    if (!/^\d{4}$/.test(graduationYear)) return showMsg('Enter a valid 4-digit graduation year.');
+
+    const btn = document.getElementById('signup-btn');
+    btn.disabled = true;
+    btn.firstChild.textContent = 'Creating account… ';
+
+    try {
+      const res = await fetch(`${API}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firstName, lastName, email, password, course, graduationYear }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMsg(data.message || 'Registration failed.');
+        btn.disabled = false;
+        btn.firstChild.textContent = 'Create Account ';
+        return;
+      }
+
+      showMsg('Account created! Redirecting to login…', false);
+      setTimeout(() => window.location.href = 'alumni-login.html', 1800);
+    } catch {
+      showMsg('Could not connect to server. Make sure the backend is running.');
+      btn.disabled = false;
+      btn.firstChild.textContent = 'Create Account ';
+    }
+  }
+</script>
 
 </body>
 </html>

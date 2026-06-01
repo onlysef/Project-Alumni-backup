@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alumni Portal — Two-Factor Authentication</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/reset-style.css">
+</head>
+<body>
+
+<div class="page">
+  <div class="card">
+
+    <!-- Left -->
+    <div class="left-panel">
+      <p class="welcome-heading">Two-Factor<br><span class="name">Verification</span></p>
+      <p class="welcome-sub">
+        A 6-digit code has been sent<br>
+        to your registered email address.<br>
+        Enter it to complete your login.
+      </p>
+    </div>
+
+    <!-- Right -->
+    <div class="right-panel">
+      <h1 class="login-title">Enter Code</h1>
+      <div class="title-underline"></div>
+      <p class="form-hint">We sent a 6-digit code to your email.<br>Enter it below to sign in.</p>
+
+      <div id="msg-box" style="display:none;padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:16px;text-align:center;"></div>
+
+      <div class="otp-row">
+        <input class="otp-input" id="d0" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)">
+        <input class="otp-input" id="d1" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)">
+        <input class="otp-input" id="d2" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)">
+        <input class="otp-input" id="d3" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)">
+        <input class="otp-input" id="d4" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)">
+        <input class="otp-input" id="d5" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)">
+      </div>
+
+      <div class="otp-resend">Didn't receive it? <a href="#" id="resend-link" onclick="resendCode(); return false;">Resend Code</a></div>
+
+      <button class="btn-signin" id="verify-btn" type="button" onclick="verifyCode()">
+        Verify & Sign In
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+        </svg>
+      </button>
+
+      <div class="back-link-row">
+        <a href="alumni-login.html">← Back to Login</a>
+      </div>
+      <div class="links-row">
+        <a href="#">Privacy Policy</a>
+        <a href="#">About us</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<footer>© 2026 Alumni Portal &nbsp;·&nbsp; Tarlac State University</footer>
+
+<script>
+  const API = 'http://localhost:5000/api';
+  const tempToken = sessionStorage.getItem('tfa_temp_token');
+
+  // Redirect back if no token
+  if (!tempToken) window.location.href = 'alumni-login.html';
+
+  function showMsg(text, isError = true) {
+    const box = document.getElementById('msg-box');
+    box.textContent = text;
+    box.style.display = 'block';
+    box.style.background = isError ? '#fff5f5' : '#f0fff4';
+    box.style.color = isError ? '#c53030' : '#276749';
+    box.style.border = `1px solid ${isError ? '#fc8181' : '#68d391'}`;
+  }
+
+  function getOTP() {
+    return ['d0','d1','d2','d3','d4','d5'].map(id => document.getElementById(id).value).join('');
+  }
+
+  function otpNext(el, idx) {
+    el.value = el.value.replace(/[^0-9]/g, '');
+    const inputs = document.querySelectorAll('.otp-input');
+    if (el.value && idx < 5) inputs[idx + 1].focus();
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Backspace') {
+      const inputs = document.querySelectorAll('.otp-input');
+      inputs.forEach((inp, idx) => {
+        if (document.activeElement === inp && !inp.value && idx > 0) {
+          inputs[idx - 1].focus();
+        }
+      });
+    }
+  });
+
+  async function verifyCode() {
+    const otp = getOTP();
+    if (otp.length < 6) return showMsg('Please enter all 6 digits.');
+
+    const btn = document.getElementById('verify-btn');
+    btn.disabled = true;
+    btn.textContent = 'Verifying…';
+
+    try {
+      const res = await fetch(`${API}/auth/verify-2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken, otp }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMsg(data.message || 'Verification failed.');
+        btn.disabled = false;
+        btn.innerHTML = 'Verify &amp; Sign In <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>';
+        return;
+      }
+
+      sessionStorage.removeItem('tfa_temp_token');
+      localStorage.setItem('auth_token', data.token);
+      localStorage.setItem('auth_user', JSON.stringify(data.user));
+      showMsg('Login successful! Redirecting…', false);
+      setTimeout(() => window.location.href = 'alumni-login.html', 1500);
+    } catch {
+      showMsg('Could not connect to server. Make sure the backend is running.');
+      btn.disabled = false;
+      btn.innerHTML = 'Verify &amp; Sign In <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>';
+    }
+  }
+
+  async function resendCode() {
+    const link = document.getElementById('resend-link');
+    link.textContent = 'Sending…';
+    try {
+      const res = await fetch(`${API}/auth/resend-2fa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken }),
+      });
+      const data = await res.json();
+      showMsg(data.message, !res.ok);
+    } catch {
+      showMsg('Could not resend code. Please try again.');
+    } finally {
+      link.textContent = 'Resend Code';
+    }
+  }
+</script>
+
+</body>
+</html>

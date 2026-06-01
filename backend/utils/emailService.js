@@ -1,0 +1,48 @@
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+const generateOTP = () =>
+  Math.floor(100000 + Math.random() * 900000).toString();
+
+const sendOTPEmail = async (to, subject, otp, purpose = 'verification') => {
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="background:linear-gradient(135deg,#7B1A2E 0%,#9B2235 100%);padding:32px;text-align:center;">
+        <h1 style="color:#C49A2A;font-family:Georgia,serif;margin:0;font-size:26px;">TSU Alumni Portal</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Tarlac State University</p>
+      </div>
+      <div style="padding:32px 40px;">
+        <h2 style="color:#2d3748;margin:0 0 10px;font-size:20px;">${subject}</h2>
+        <p style="color:#4a5568;margin:0 0 24px;font-size:15px;line-height:1.6;">
+          Use the 6-digit code below to complete your <strong>${purpose}</strong>.
+          This code expires in <strong>10 minutes</strong>.
+        </p>
+        <div style="background:#f7fafc;border:2px dashed #C49A2A;border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
+          <span style="font-size:38px;font-weight:700;letter-spacing:14px;color:#7B1A2E;font-family:monospace;">${otp}</span>
+        </div>
+        <p style="color:#718096;font-size:13px;margin:0;">
+          If you did not request this, you can safely ignore this email.
+        </p>
+      </div>
+      <div style="background:#f7fafc;padding:16px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+        <p style="color:#a0aec0;font-size:12px;margin:0;">© 2026 TSU Alumni Portal · Tarlac State University</p>
+      </div>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
+    to,
+    subject,
+    html,
+  });
+};
+
+module.exports = { generateOTP, sendOTPEmail };
