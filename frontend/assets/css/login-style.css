@@ -1,233 +1,398 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-  :root {
-    --maroon: #7B1A2E;
-    --gold: #C49A2A;
-    --white: #ffffff;
-    --page-bg: #e8e8e8;
-    --gray-text: #333;
-    --gray-mid: #888;
-    --border: #d0ccc8;
-    --input-bg: #f9f9f9;
-  }
+:root {
+  --maroon: #570013;
+  --maroon-light: #800020;
+  --gold: #7B5800;
+  --white: #ffffff;
+  --frame: #191C1D;
+  --label: #584141;
+  --input-bg: #E7E8E9;
+  --gray-text: #8C7071;
+  --link-muted: rgba(88, 65, 65, 0.6);
+}
 
+/* Lock the whole app to the viewport — no page scroll */
+html, body {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  font-family: 'Manrope', sans-serif;
+  color: var(--label);
+  background: var(--white);
+}
+
+
+/* Page fills remaining viewport height and centers the card */
+.page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--white);
+  padding: clamp(16px, 3vh, 40px) clamp(16px, 4vw, 48px);
+}
+
+/* Card: fluid, never taller than its slice of the viewport */
+.card {
+  position: relative;
+  width: 100%;
+  max-width: 1280px;
+  height: 100%;
+  max-height: 720px;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  align-items: center;
+  gap: clamp(24px, 4vw, 64px);
+  padding: clamp(24px, 4vh, 64px) clamp(28px, 5vw, 96px);
+  background: var(--white);
+  box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* Left panel — Welcome copy + footer pinned to bottom */
+.left-panel {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+.welcome-copy {
+  display: flex;
+  flex-direction: column;
+  max-width: 510px;
+}
+
+.welcome-heading {
+  margin-bottom: clamp(16px, 2.5vh, 32px);
+  color: var(--maroon);
+  font-family: 'Noto Serif', serif;
+  font-size: clamp(30px, 4vw, 48px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -1.2px;
+}
+
+.welcome-heading .name {
+  color: var(--gold);
+}
+
+.welcome-sub {
+  max-width: 448px;
+  color: var(--label);
+  font-family: 'Manrope', sans-serif;
+  font-size: clamp(15px, 1.4vw, 18px);
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Footer identity — pinned to the bottom of the left panel */
+.login-footer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  color: var(--frame);
+  font-family: 'Manrope', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+
+/* Right shell — login panel */
+.right-shell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+}
+
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 460px;
+  padding: clamp(24px, 3vh, 40px) clamp(24px, 3vw, 40px);
+  gap: clamp(14px, 18vh, 14px);
+  background: var(--white);
+  box-shadow: 5px 12px 40px rgba(25, 28, 29, 0.1);
+  border-radius: 8px;
+}
+
+/* Brand anchor */
+.login-title {
+  width: 100%;
+  margin: 0;
+  color: var(--maroon);
+  font-family: 'Noto Serif', serif;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 36px;
+  letter-spacing: -1.5px;
+  text-align: center;
+}
+
+.title-underline {
+  width: 50px;
+  height: 2px;
+  margin: 8px auto 0;
+  border-radius: 12px;
+  background: var(--gold);
+}
+
+/* Form groups */
+.form-group {
+  width: 100%;
+  margin: 0;
+}
+
+label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--label);
+  font-family: 'Manrope', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.password-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.password-row label {
+  margin-bottom: 0;
+}
+
+.forgot-link {
+  color: var(--gold);
+  font-family: 'Manrope', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.forgot-link:hover,
+.links-row a:hover,
+.login-link-row a:hover {
+  text-decoration: underline;
+}
+
+/* Inputs */
+.input-wrap {
+  position: relative;
+}
+
+.input-icon {
+  width: 16.67px;
+  height: 16.67px;
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--gray-text);
+  pointer-events: none;
+}
+
+input[type="email"],
+input[type="password"],
+input[type="text"] {
+  width: 100%;
+  height: 56px;
+  border: 0;
+  border-radius: 8px;
+  padding: 17px 16px 17px 48px;
+  background: var(--input-bg);
+  color: var(--gray-text);
+  font-family: 'Manrope', sans-serif;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 22px;
+  outline: none;
+  transition: background-color 180ms ease, box-shadow 180ms ease;
+}
+
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="text"]:focus {
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(87, 0, 19, 0.16);
+}
+
+input::placeholder {
+  color: var(--gray-text);
+}
+
+/* Footer links */
+.links-row {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  width: 100%;
+  margin: 0;
+}
+
+.links-row a {
+  color: var(--link-muted);
+  font-family: 'Manrope', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  text-decoration: none;
+}
+
+/* Sign in button */
+.btn-signin {
+  width: 100%;
+  height: 60px;
+  border: 0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 24px;
+  background: linear-gradient(99.26deg, #570013 0%, #800020 100%);
+  box-shadow: 0px 8px 20px rgba(87, 0, 19, 0.25);
+  color: var(--white);
+  cursor: pointer;
+  font-family: 'Noto Serif', serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 28px;
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.btn-signin:hover {
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+  box-shadow: 0px 11px 24px rgba(87, 0, 19, 0.32);
+}
+
+.btn-signin:active {
+  transform: translateY(0);
+}
+
+.btn-signin svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Bottom sign-up link */
+.login-link-row {
+  width: 100%;
+  margin-top: 4px;
+  color: var(--gray-text);
+  font-family: 'Manrope', sans-serif;
+  font-size: 12px;
+  text-align: center;
+}
+
+.login-link-row a {
+  color: var(--maroon);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* Narrow screens: allow scroll only here, since two panels can't fit side by side */
+@media (max-width: 880px) {
   html, body {
-    min-height: 100vh;
-    font-family: 'Lato', sans-serif;
-
-    display: flex;
-    flex-direction: column;
+    height: auto;
+    overflow: auto;
   }
 
   .page {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 20px;
+    min-height: 100vh;
   }
 
-  /* Card */
   .card {
-
-    border-radius: 6px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    width: 100%;
-    height: 600px;
-    
+    height: auto;
+    max-height: none;
+    grid-template-columns: 1fr;
+    box-shadow: none;
+    justify-items: center;
+    gap: 28px;
   }
 
-  /* Left panel */
   .left-panel {
-    padding: 52px 44px 44px 150px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  
-  }
-
-  .welcome-heading {
-    font-family: 'Noto Serif', serif;
-    font-size: 60px;
-    font-weight: 700;
-    color: var(--maroon);
-    line-height: 1.25;
-    margin-bottom: 14px;
-  }
-
-  .welcome-heading .name {
-    color: var(--gold);
-    font-style: italic;
-  }
-
-  .welcome-sub {
-    font-size: 15px;
-    font-weight: 400;
-    color: #666;
-    line-height: 1.75;
-    padding-left: 10px ;
-  }
-
-
-
-  /* Right panel */
-  .right-panel {
-    margin-left: 150px;
-    padding: 44px 48px 40px 44px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.50);
-    max-width: 420px;
-  }
-
-  .login-title {
-    font-family: 'Noto Serif', serif;
-    font-size: 28px;
-    font-weight: 400;
-    font-style: bold;
-    color: var(--maroon);
+    height: auto;
     text-align: center;
-    margin-bottom: 4px;
-    letter-spacing: 0.01em;
-  }
-
-  .title-underline {
-    width: 48px;
-    height: 2px;
-    background: var(--maroon);
-    margin: 0 auto 28px;
-    border-radius: 1px;
-  }
-
-  .form-group {
-    margin-bottom: 40px;
-  }
-
-  label {
-    display: block;
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: #555;
-    margin-bottom: 7px;
-  }
-
-  .input-wrap {
-    position: relative;
-  }
-
-  .input-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--maroon);
-    width: 15px;
-    height: 15px;
-    pointer-events: none;
-  }
-
-  input[type="email"],
-  input[type="password"] {
-    width: 100%;
-    padding: 10px 12px 10px 36px;
-    border: 1.5px solid var(--border);
-    border-radius: 4px;
-    font-family: 'Lato', sans-serif;
-    font-size: 13px;
-    color: maroon;
-    background: rgb(196, 193, 193);
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    height: 55px;
-  }
-
-  input[type="email"]:focus,
-  input[type="password"]:focus {
-    border-color: var(--maroon);
-    box-shadow: 0 0 0 3px rgba(123,26,46,0.07);
-    background: #fff;
-  }
-
-  input::placeholder { color:var(--maroon); font-size: 13px; }
-
-  .password-row {
-    display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 7px;
   }
 
-  .password-row label { margin-bottom: 0; }
-
-  .forgot-link {
-    font-size: 13px;
-    color: var(--maroon);
-    text-decoration: none;
-    font-weight: 400;
-    transition: opacity 0.2s;
-    white-space: nowrap;
-    margin-left:220px;
-  }
-  .forgot-link:hover { text-decoration: underline; }
-
-  .links-row {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-top: 18px;
-    margin-bottom: 14px;
-  }
-
-  .links-row a {
-    font-size: 12px;
-    color: #888;
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-  .links-row a:hover { color: var(--maroon); }
-
-  .btn-signin {
-    margin-top: 35px;
-    width: 100%;
-    padding: 13px 14px;
-    background: linear-gradient(to right,rgb(80, 8, 8),rgb(153, 16, 16));
-    color: var(--white);
-    border: none;
-    border-radius: 4px;
-    font-family: 'Lato', sans-serif;
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    cursor: pointer;
-    display: flex;
+  .welcome-copy {
     align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: background 0.2s, box-shadow 0.2s;
-    box-shadow: 0 2px 10px rgba(123,26,46,0.22);
-    height: 55px;
   }
 
-  .btn-signin:hover {
-    background: #6a1526;
-    box-shadow: 0 4px 16px rgba(123,26,46,0.32);
-  }
-
-  .btn-signin svg { width: 16px; height: 16px; flex-shrink: 0; }
-
-  /* Footer */
-  footer {
+  .login-footer {
+    position: static;
+    margin-top: 16px;
     text-align: center;
-    padding: 14px;
-    font-size: 10px;
-    letter-spacing: 0.07em;
-    color: #888;
-    text-transform: uppercase;
-    border-top: 1px solid #ddd;
-    background: #f0f0f0;
   }
+
+  .right-shell {
+    height: auto;
+    width: 100%;
+  }
+}
+
+/* Show/hide password toggle */
+.toggle-password {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gray-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toggle-password:hover {
+  color: var(--maroon);
+}
+
+.toggle-password svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Room for the eye icon on the right of the password field */
+.password-group input[type="email"],
+.password-group input[type="password"],
+.password-group input[type="text"] {
+  padding-right: 44px;
+}

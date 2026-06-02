@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Alumni Portal — Sign Up</title>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../assets/css/signup-style.css">
 </head>
 <body>
@@ -13,15 +13,18 @@
   <div class="card">
 
     <!-- Left -->
-    <div class="left-panel">
-      <p class="welcome-heading">Join<br><span class="name">TSU Alumni Portal</span></p>
-      <p class="welcome-sub">
-        Create your Alumni Portal account.<br>
-        Connect with fellow graduates, explore<br>
-        career opportunities, and stay updated<br>
-        with your alma mater.
-      </p>
-    </div>
+    <section class="left-shell">
+      <div class="left-panel">
+        <p class="welcome-heading">Join<br><span class="name">TSU Alumni Portal</span></p>
+        <p class="welcome-sub">
+          Create your Alumni Portal account.<br>
+          Connect with fellow graduates, explore<br>
+          career opportunities, and stay updated<br>
+          with your alma mater.
+        </p>
+      </div>
+      <footer class="signup-footer">&copy; 2026 Alumni Portal &middot; Tarlac State University | College of Computer Studies</footer>
+    </section>
 
     <!-- Right -->
     <div class="right-panel">
@@ -98,11 +101,20 @@
       <!-- Password -->
       <div class="form-group">
         <label for="password">Password</label>
-        <div class="input-wrap">
+        <div class="input-wrap has-toggle">
           <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
           </svg>
           <input type="password" id="password" placeholder="Create a strong password" autocomplete="new-password" oninput="updateStrength(this.value)">
+              <button type="button" class="toggle-password" aria-label="Show password" data-target="password">
+                <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="display:none">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.4 5.7A9.3 9.3 0 0112 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 01-3 3.6M6.1 6.6A16 16 0 002.5 12S6 18.5 12 18.5a9 9 0 003.4-.65"/>
+                </svg>
+              </button>
         </div>
         <div class="password-strength" id="strength-bars">
           <div class="strength-bar" id="bar1"></div>
@@ -115,15 +127,22 @@
       <!-- Confirm Password -->
       <div class="form-group">
         <label for="confirmpassword">Confirm Password</label>
-        <div class="input-wrap">
+        <div class="input-wrap has-toggle">
           <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
           </svg>
           <input type="password" id="confirmpassword" placeholder="Re-enter your password" autocomplete="new-password">
+              <button type="button" class="toggle-password" aria-label="Show password" data-target="confirmpassword">
+                <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="display:none">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.4 5.7A9.3 9.3 0 0112 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 01-3 3.6M6.1 6.6A16 16 0 002.5 12S6 18.5 12 18.5a9 9 0 003.4-.65"/>
+                </svg>
+              </button>
         </div>
       </div>
-
-      <div id="msg-box" style="display:none;padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:12px;text-align:center;"></div>
 
       <button class="btn-signin" id="signup-btn" type="button" onclick="doSignUp()">
         Create Account
@@ -133,7 +152,7 @@
       </button>
 
       <div class="login-link-row">
-        Already have an account? <a href="alumni-login.html"> Login</a>
+        Already have an account?  <a href="alumni-login.html"> Login</a>
       </div>
 
       <div class="links-row">
@@ -145,13 +164,24 @@
   </div>
 </div>
 
-<footer>© 2026 Alumni Portal &nbsp;·&nbsp; Tarlac State University</footer>
+
+
 
 <script>
   const API = 'http://localhost:5000/api';
 
   function showMsg(text, isError = true) {
-    const box = document.getElementById('msg-box');
+    let box = document.getElementById('msg-box');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'msg-box';
+      box.style.padding = '10px 14px';
+      box.style.borderRadius = '8px';
+      box.style.fontSize = '14px';
+      box.style.marginBottom = '12px';
+      box.style.textAlign = 'center';
+      document.querySelector('.btn-signin').insertAdjacentElement('beforebegin', box);
+    }
     box.textContent = text;
     box.style.display = 'block';
     box.style.background = isError ? '#fff5f5' : '#f0fff4';
@@ -159,38 +189,26 @@
     box.style.border = `1px solid ${isError ? '#fc8181' : '#68d391'}`;
   }
 
-  function updateStrength(val) {
-    let score = 0;
-    if (val.length >= 8) score++;
-    if (/[A-Z]/.test(val)) score++;
-    if (/[0-9]/.test(val)) score++;
-    if (/[^A-Za-z0-9]/.test(val)) score++;
-    const colors = ['#e53e3e', '#dd6b20', '#d69e2e', '#38a169'];
-    for (let i = 1; i <= 4; i++) {
-      const bar = document.getElementById('bar' + i);
-      if (bar) bar.style.background = i <= score ? colors[score - 1] : 'var(--border)';
-    }
-  }
-
   async function doSignUp() {
-    const firstName     = document.getElementById('firstname').value.trim();
-    const lastName      = document.getElementById('lastname').value.trim();
-    const email         = document.getElementById('email').value.trim();
-    const course        = document.getElementById('course').value;
+    const firstName = document.getElementById('firstname').value.trim();
+    const lastName = document.getElementById('lastname').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const course = document.getElementById('course').value;
     const graduationYear = document.getElementById('gradyear').value.trim();
-    const password      = document.getElementById('password').value;
-    const confirm       = document.getElementById('confirmpassword').value;
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirmpassword').value;
 
     if (!firstName || !lastName || !email || !course || !graduationYear || !password || !confirm) {
       return showMsg('Please fill in all fields.');
     }
     if (password !== confirm) return showMsg('Passwords do not match.');
-    if (password.length < 8)  return showMsg('Password must be at least 8 characters.');
+    if (password.length < 8) return showMsg('Password must be at least 8 characters.');
     if (!/^\d{4}$/.test(graduationYear)) return showMsg('Enter a valid 4-digit graduation year.');
 
     const btn = document.getElementById('signup-btn');
     btn.disabled = true;
-    btn.firstChild.textContent = 'Creating account… ';
+    const original = btn.innerHTML;
+    btn.textContent = 'Creating account...';
 
     try {
       const res = await fetch(`${API}/auth/register`, {
@@ -203,19 +221,31 @@
       if (!res.ok) {
         showMsg(data.message || 'Registration failed.');
         btn.disabled = false;
-        btn.firstChild.textContent = 'Create Account ';
+        btn.innerHTML = original;
         return;
       }
 
-      showMsg('Account created! Redirecting to login…', false);
+      showMsg('Account created! Redirecting to login...', false);
       setTimeout(() => window.location.href = 'alumni-login.html', 1800);
     } catch {
       showMsg('Could not connect to server. Make sure the backend is running.');
       btn.disabled = false;
-      btn.firstChild.textContent = 'Create Account ';
+      btn.innerHTML = original;
     }
   }
-</script>
 
+  document.querySelectorAll('.toggle-password').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var input = document.getElementById(btn.dataset.target);
+      var open = btn.querySelector('.eye-open');
+      var closed = btn.querySelector('.eye-closed');
+      var hidden = input.type === 'password';
+      input.type = hidden ? 'text' : 'password';
+      open.style.display = hidden ? 'none' : 'block';
+      closed.style.display = hidden ? 'block' : 'none';
+      btn.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
+    });
+  });
+</script>
 </body>
 </html>
