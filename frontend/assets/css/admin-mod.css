@@ -3178,9 +3178,8 @@
             height: 1em;
             display: inline-block;
             flex: 0 0 auto;
-            background: currentColor;
-            -webkit-mask: var(--icon-url) center / contain no-repeat;
-            mask: var(--icon-url) center / contain no-repeat;
+            color: currentColor;
+            stroke: currentColor;
         }
 
         .nav .admin-svg-icon,

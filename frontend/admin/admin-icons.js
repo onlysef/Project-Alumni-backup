@@ -4,21 +4,44 @@ function getAdminSvgIconUrl(name) {
     return `${adminSvgIconBasePath}/${name}.svg`;
 }
 
-function hydrateAdminSvgIcons(root = document) {
-    root.querySelectorAll("[data-svg-icon]").forEach((placeholder) => {
-        const iconName = placeholder.dataset.svgIcon;
+const adminSvgCache = new Map();
 
-        if (!iconName) {
+async function fetchSvgMarkup(name) {
+    if (adminSvgCache.has(name)) {
+        return adminSvgCache.get(name);
+    }
+    const promise = fetch(getAdminSvgIconUrl(name))
+        .then((res) => (res.ok ? res.text() : Promise.reject(res.status)))
+        .then((text) => text.replace(/^\uFEFF/, "").trim());
+    adminSvgCache.set(name, promise);
+    return promise;
+}
+
+async function hydrateOne(placeholder) {
+    const iconName = placeholder.dataset.svgIcon;
+    if (!iconName) {
+        return;
+    }
+    placeholder.removeAttribute("data-svg-icon");
+    try {
+        const markup = await fetchSvgMarkup(iconName);
+        const wrapper = document.createElement("span");
+        wrapper.innerHTML = markup;
+        const svg = wrapper.querySelector("svg");
+        if (!svg) {
             return;
         }
+        svg.classList.add("admin-svg-icon");
+        svg.setAttribute("aria-hidden", "true");
+        svg.setAttribute("focusable", "false");
+        placeholder.replaceWith(svg);
+    } catch (err) {
+        console.warn(`admin-svg-icon: failed to load "${iconName}"`, err);
+    }
+}
 
-        const icon = document.createElement("span");
-        icon.className = "admin-svg-icon";
-        icon.setAttribute("aria-hidden", "true");
-        icon.style.setProperty("--icon-url", `url("${getAdminSvgIconUrl(iconName)}")`);
-
-        placeholder.replaceWith(icon);
-    });
+function hydrateAdminSvgIcons(root = document) {
+    root.querySelectorAll("[data-svg-icon]").forEach(hydrateOne);
 }
 
 window.AdminSvgIcons = {
@@ -34,12 +57,10 @@ const adminSvgObserver = new MutationObserver((mutations) => {
             if (node.nodeType !== Node.ELEMENT_NODE) {
                 return;
             }
-
             if (node.matches("[data-svg-icon]")) {
-                hydrateAdminSvgIcons(node.parentElement || document);
+                hydrateOne(node);
                 return;
             }
-
             hydrateAdminSvgIcons(node);
         });
     });
