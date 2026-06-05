@@ -4,8 +4,8 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const { generateOTP, sendOTPEmail } = require('../utils/emailService');
 
-const signToken = (userId) =>
-  jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+const signToken = (userId, role) =>
+  jwt.sign({ id: userId, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
@@ -34,7 +34,7 @@ const register = async (req, res) => {
       graduationYear: parseInt(graduationYear),
     });
 
-    const token = signToken(user._id);
+    const token = signToken(user._id, user.role);
     res.status(201).json({
       message: 'Account created successfully.',
       token,
@@ -43,6 +43,7 @@ const register = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
+        role: user.role,
         course: user.course,
         graduationYear: user.graduationYear,
       },
@@ -93,7 +94,7 @@ const login = async (req, res) => {
       });
     }
 
-    const token = signToken(user._id);
+    const token = signToken(user._id, user.role);
     res.json({
       message: 'Login successful.',
       token,
@@ -102,6 +103,7 @@ const login = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
+        role: user.role,
         course: user.course,
         graduationYear: user.graduationYear,
       },
@@ -142,7 +144,7 @@ const verifyTwoFactor = async (req, res) => {
     user.twoFactorTokenExpiry = undefined;
     await user.save();
 
-    const token = signToken(user._id);
+    const token = signToken(user._id, user.role);
     res.json({
       message: 'Login successful.',
       token,
@@ -151,6 +153,7 @@ const verifyTwoFactor = async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
+        role: user.role,
         course: user.course,
         graduationYear: user.graduationYear,
       },
