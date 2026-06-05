@@ -127,6 +127,26 @@
             grid-template-columns: 82px 1fr;
         }
 
+        .alumni-brand {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+         .toptsu-logo {
+            object-fit: contain;
+        }
+
+        .alumni-logo {
+            width: 24px;
+            height: 24px;
+            object-fit: contain;
+        }
+
+        .app.sidebar-collapsed .alumni-brand {
+            display: none;
+        }
+
         .sidebar {
             height: 100vh;
             padding: 24px 0;
@@ -173,9 +193,25 @@
         }
 
         .app.sidebar-collapsed .brand p,
-        .app.sidebar-collapsed .nav span,
-        .app.sidebar-collapsed .sidebar-logout span {
+        .app.sidebar-collapsed .nav a span:last-child,
+        .app.sidebar-collapsed .sidebar-logout span:last-child {
             display: none;
+        }
+
+        .sidebar-logo {
+            display: none;
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            margin: 0 auto;
+        }
+
+        .app.sidebar-collapsed .brand-text {
+            display: none;
+        }
+
+        .app.sidebar-collapsed .sidebar-logo {
+            display: block;
         }
 
         .nav {
@@ -215,6 +251,13 @@
             font-weight: 600;
         }
 
+        .nav a.active .admin-svg-icon {
+            filter: brightness(0) saturate(100%)
+            invert(9%) sepia(95%)
+            saturate(3500%)
+            hue-rotate(330deg);
+        }
+        
         .nav a.active:hover {
             background: #fff;
             color: var(--maroon);
@@ -999,6 +1042,7 @@
         .print {
             width: 24px;
             height: 24px;
+            margin-left: -6px;
             border: 0;
             padding: 2px;
             display: grid;
@@ -2490,6 +2534,18 @@
             border: 1px solid rgba(87, 0, 19, 0.18);
         }
 
+        .notifications-popover .topbar-modal {
+            right: 120px;
+        }
+
+        .settings-popover .topbar-modal {
+            right: 70px;
+        }
+
+        .profile-popover .topbar-modal {
+            right: 20px;
+        }
+
         .topbar-popover .topbar-modal::before {
             content: "";
             width: 14px;
@@ -2676,7 +2732,7 @@
 
         body.dark-mode {
             color: #f3e7ea;
-            background: #16070b;
+            background: #3b0211;
         }
 
         body.dark-mode .app,
@@ -2998,7 +3054,7 @@
             box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
             font-size: 12px;
             font-weight: 800;
-            line-height: 1.35;
+            line-height: 1.00;
             pointer-events: none;
             z-index: 50;
         }
@@ -3008,7 +3064,7 @@
             display: block;
         }
 
-        @media (max-width: 900px) {
+        @media (max-width: 600px) {
             .app {
                 width: 100%;
                 height: 100vh;
@@ -3153,24 +3209,14 @@
             border-color: rgba(250, 200, 83, 0.26) !important;
         }
 
-        body.dark-mode .chart-insights div,
-        body.dark-mode .employment-summary div,
-        body.dark-mode .report-row {
-            background-color: #fff7f8 !important;
-        }
-
-        body.dark-mode .chart-insights div *,
-        body.dark-mode .employment-summary div *,
-        body.dark-mode .report-row span,
-        body.dark-mode .report-row button,
-        body.dark-mode .report-row .print {
-            color: #31000a !important;
-        }
-
         body.dark-mode .panel-head,
         body.dark-mode .panel-head.light,
         body.dark-mode .admin-card-head {
             color: #fff7f8 !important;
+        }
+
+        body.dark-mode .report-row .print img {
+            filter: brightness(0) invert(1) !important;
         }
 
         .admin-svg-icon {
@@ -3181,6 +3227,17 @@
             background: currentColor;
             -webkit-mask: var(--icon-url) center / contain no-repeat;
             mask: var(--icon-url) center / contain no-repeat;
+        }
+
+
+        .icon-11,
+        .icon-12,
+        .icon-13,
+        .icon-8,
+        .icon-9,
+        .icon-10,
+        .icon-16{
+            filter: brightness(0) invert(1);
         }
 
         .nav .admin-svg-icon,
@@ -3231,4 +3288,59 @@
 
         .admin-kpis {
             margin-bottom: 26px;
+        }
+
+        /* ---- Admin welcome hero banner (Dashboard) ---- */
+        .admin-hero {
+            background: linear-gradient(135deg, var(--maroon-deep) 0%, #7a0a24 55%, var(--maroon) 100%);
+            color: #fff;
+            border-radius: 16px;
+            padding: 22px 26px;
+            margin-bottom: 18px;
+            box-shadow: var(--panel-shadow);
+        }
+
+        .admin-hero-title {
+            margin: 0;
+            font-size: 26px;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .admin-hero-subtitle {
+            margin: 8px 0 0;
+            font-size: 14px;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.82);
+            max-width: 720px;
+        }
+
+        .admin-hero-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .hero-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .hero-pill img.admin-svg-icon {
+            width: 15px;
+            height: 15px;
+        }
+
+        .hero-pill-gold {
+            background: var(--gold);
+            color: var(--maroon-deep);
         }

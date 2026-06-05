@@ -1,0 +1,43 @@
+/* Icons are <img> elements with inline data-URI SVGs. An <img> has no
+ * intrinsic size cap, so we must pin width/height or it expands to fill
+ * its cell (the "blob" bug). Mirrors the size rules in admin-mod.css. */
+
+img.admin-svg-icon {
+  background: none !important;
+  -webkit-mask: none !important;
+  mask: none !important;
+  object-fit: contain;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.nav img.admin-svg-icon,
+.sidebar-logout img.admin-svg-icon,
+.table-icon img.admin-svg-icon,
+.maroon-action img.admin-svg-icon,
+.composer-upload img.admin-svg-icon,
+.post-actions img.admin-svg-icon,
+.composer-tool-btn img.admin-svg-icon,
+.icon-btn img.admin-svg-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.stat-card img.admin-svg-icon {
+  width: 64px;
+  height: 64px;
+}
+
+.composer-icon-action img.admin-svg-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.send img.admin-svg-icon {
+  width: 20px;
+  height: 20px;
+}
