@@ -5,8 +5,10 @@ const userSchema = new mongoose.Schema({
   lastName:   { type: String, required: true, trim: true },
   email:      { type: String, required: true, unique: true, lowercase: true, trim: true },
   password:   { type: String, required: true },
-  course:     { type: String, required: true },
-  graduationYear: { type: Number, required: true },
+  role:       { type: String, enum: ['admin', 'alumni', 'coordinator', 'employer'], default: 'alumni' },
+  status:     { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
+  course:     { type: String },
+  graduationYear: { type: Number },
 
   isTwoFactorEnabled: { type: Boolean, default: true },
 

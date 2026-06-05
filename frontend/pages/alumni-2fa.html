@@ -123,10 +123,16 @@
       }
 
       sessionStorage.removeItem('tfa_temp_token');
-      localStorage.setItem('auth_token', data.token);
-      localStorage.setItem('auth_user', JSON.stringify(data.user));
       showMsg('Login successful! Redirecting…', false);
-      setTimeout(() => window.location.href = 'alumni-login.html', 1500);
+      const dashboardMap = {
+        admin: 'http://localhost:5173/admin/dashboard',
+        alumni: 'http://localhost:5173/alumni/dashboard',
+        coordinator: 'http://localhost:5173/coordinator/dashboard',
+        employer: 'http://localhost:5173/employer/dashboard',
+      };
+      const base = dashboardMap[data.user.role] || 'http://localhost:5173/';
+      const payload = encodeURIComponent(JSON.stringify({ token: data.token, user: data.user }));
+      setTimeout(() => window.location.href = `${base}#auth=${payload}`, 1500);
     } catch {
       showMsg('Could not connect to server. Make sure the backend is running.');
       btn.disabled = false;
