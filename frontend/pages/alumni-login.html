@@ -138,7 +138,7 @@
 
         localStorage.setItem('auth_token', data.token);
         localStorage.setItem('auth_user', JSON.stringify(data.user));
-        window.location.href = '../admin/index.html';
+        window.location.href = 'http://localhost:5173/';
       } catch {
         showMsg('Could not connect to server. Make sure the backend is running.');
         btn.disabled = false;
