@@ -24,13 +24,19 @@ app.use(cors({
   },
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 app.use('/api/auth',  authRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Alumni Portal API is running.' });
+});
+
+// Return JSON for all errors (prevents HTML body-parser errors from breaking res.json() on the client)
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ message: err.message || 'Internal server error.' });
 });
 
 const PORT = process.env.PORT || 5000;

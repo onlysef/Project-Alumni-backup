@@ -1800,6 +1800,84 @@
             background: linear-gradient(135deg, #f5eefc, #8766c4);
         }
 
+        .post-art.event {
+            background: linear-gradient(135deg, #e6ecff, #3b5dc9);
+        }
+
+        .post-art.career {
+            background: linear-gradient(135deg, #e6f7ee, #2d8c4e);
+        }
+
+        .post-art.scholarship {
+            background: linear-gradient(135deg, #fff8e6, #c47a1a);
+        }
+
+        .post-art-img {
+            width: 100%;
+            height: 105px;
+            object-fit: cover;
+            border-radius: 6px;
+            display: block;
+        }
+
+        .post-meta {
+            margin: 8px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .post-meta-title {
+            font-weight: 700;
+            font-size: 13px;
+            color: #2d2024;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .post-meta-type {
+            flex-shrink: 0;
+            font-size: 10px;
+            font-weight: 800;
+            text-transform: uppercase;
+            color: var(--maroon);
+            background: #f0dede;
+            padding: 2px 8px;
+            border-radius: 999px;
+        }
+
+        .post-image-preview {
+            position: relative;
+            margin-top: 12px;
+        }
+
+        .post-image-preview img {
+            width: 100%;
+            max-height: 180px;
+            object-fit: cover;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .post-image-remove {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            width: 28px;
+            height: 28px;
+            border: 0;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+        }
+
         .recent-posts p {
             margin: 12px 0 0;
             color: #2d2024;
@@ -2276,6 +2354,97 @@
             width: 24px;
             height: 24px;
             fill: currentColor;
+        }
+
+        .create-post-modal .composer-icon-action svg {
+            stroke: #e8ecef;
+            fill: none;
+            opacity: 0.88;
+        }
+
+        .create-post-modal .composer-icon-action:hover svg {
+            opacity: 1;
+        }
+
+        /* Make maroon-baked icons appear white inside the dark modal */
+        .create-post-modal .composer-icon-action .admin-svg-icon {
+            filter: brightness(0) invert(1);
+            opacity: 0.88;
+        }
+
+        .create-post-modal .composer-icon-action:hover .admin-svg-icon {
+            opacity: 1;
+        }
+
+        .emoji-popover {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            right: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            width: 220px;
+            padding: 10px;
+            border-radius: 10px;
+            background: #2e3133;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+            z-index: 80;
+        }
+
+        .emoji-popover button {
+            width: 32px;
+            height: 32px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            font-size: 20px;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+        }
+
+        .emoji-popover button:hover {
+            background: rgba(255,255,255,0.12);
+        }
+
+        .location-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 20px 4px;
+        }
+
+        .location-row input {
+            flex: 1;
+            min-height: 36px;
+            border: 0;
+            border-bottom: 1px solid rgba(255,255,255,0.25);
+            background: transparent;
+            color: #e8ecef;
+            font: inherit;
+            font-size: 14px;
+            padding: 0 4px;
+        }
+
+        .location-row input::placeholder {
+            color: rgba(255,255,255,0.4);
+        }
+
+        .location-row input:focus {
+            outline: none;
+            border-bottom-color: rgba(255,255,255,0.6);
+        }
+
+        .location-clear {
+            width: 24px;
+            height: 24px;
+            border: 0;
+            background: transparent;
+            color: rgba(255,255,255,0.5);
+            font-size: 18px;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
         }
 
         .composer-icon-action input {
