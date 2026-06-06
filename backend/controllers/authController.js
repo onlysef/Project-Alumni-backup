@@ -9,51 +9,6 @@ const signToken = (userId, role) =>
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
-// POST /api/auth/register
-const register = async (req, res) => {
-  try {
-    const { firstName, lastName, email, password, course, graduationYear } = req.body;
-
-    if (!firstName || !lastName || !email || !password || !course || !graduationYear) {
-      return res.status(400).json({ message: 'All fields are required.' });
-    }
-    if (password.length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
-    }
-
-    const existing = await User.findOne({ email: email.toLowerCase() });
-    if (existing) return res.status(400).json({ message: 'Email is already registered.' });
-
-    const hashed = await bcrypt.hash(password, 12);
-    const user = await User.create({
-      firstName,
-      lastName,
-      email: email.toLowerCase(),
-      password: hashed,
-      course,
-      graduationYear: parseInt(graduationYear),
-    });
-
-    const token = signToken(user._id, user.role);
-    res.status(201).json({
-      message: 'Account created successfully.',
-      token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
-        course: user.course,
-        graduationYear: user.graduationYear,
-      },
-    });
-  } catch (err) {
-    console.error('Register error:', err);
-    res.status(500).json({ message: 'Server error. Please try again.' });
-  }
-};
-
 // POST /api/auth/login
 const login = async (req, res) => {
   try {
@@ -319,7 +274,6 @@ const disableTwoFactor = async (req, res) => {
 };
 
 module.exports = {
-  register,
   login,
   verifyTwoFactor,
   resendTwoFactor,
