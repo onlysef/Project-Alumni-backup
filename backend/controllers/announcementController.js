@@ -1,9 +1,23 @@
 const Announcement = require('../models/Announcement');
+const User = require('../models/User');
 
 // GET /api/admin/announcements
 const getAnnouncements = async (req, res) => {
   try {
-    const announcements = await Announcement.find().sort({ createdAt: -1 });
+    const announcements = await Announcement.aggregate([
+      { $sort: { createdAt: -1 } },
+      { $addFields: {
+        likesCount:    { $cond: [{ $isArray: '$likedBy' },   { $size: '$likedBy' },   0] },
+        commentsCount: { $cond: [{ $isArray: '$comments' },  { $size: '$comments' },  0] },
+        sharesCount:   { $cond: [{ $isArray: '$sharedBy' },  { $size: '$sharedBy' },  0] },
+      }},
+      { $project: {
+        title: 1, description: 1, type: 1, imageUrl: 1,
+        createdAt: 1, updatedAt: 1, createdBy: 1,
+        likedBy: 1, sharedBy: 1,
+        likesCount: 1, commentsCount: 1, sharesCount: 1,
+      }},
+    ]);
     res.json({ announcements });
   } catch (err) {
     console.error('getAnnouncements error:', err);
@@ -65,25 +79,88 @@ const deleteAnnouncement = async (req, res) => {
   }
 };
 
-// POST /api/admin/announcements/:id/bump
-// body: { field: 'likes' | 'comments' | 'shares' }
-const bumpSocial = async (req, res) => {
+// POST /api/admin/announcements/:id/like  — toggles like for the calling user
+const toggleLike = async (req, res) => {
   try {
-    const { field } = req.body;
-    if (!['likes', 'comments', 'shares'].includes(field)) {
-      return res.status(400).json({ message: 'Invalid field.' });
+    const userId = req.user.id;
+    const ann = await Announcement.findById(req.params.id);
+    if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
+
+    const idx = ann.likedBy.findIndex(id => id.toString() === userId);
+    let liked;
+    if (idx === -1) {
+      ann.likedBy.push(userId);
+      liked = true;
+    } else {
+      ann.likedBy.splice(idx, 1);
+      liked = false;
     }
-    const announcement = await Announcement.findByIdAndUpdate(
-      req.params.id,
-      { $inc: { [field]: 1 } },
-      { new: true }
-    );
-    if (!announcement) return res.status(404).json({ message: 'Announcement not found.' });
-    res.json({ announcement });
+    await ann.save();
+
+    res.json({ liked, likesCount: ann.likedBy.length, likedBy: ann.likedBy });
   } catch (err) {
-    console.error('bumpSocial error:', err);
+    console.error('toggleLike error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
 
-module.exports = { getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement, bumpSocial };
+// GET /api/admin/announcements/:id/comments
+const getComments = async (req, res) => {
+  try {
+    const ann = await Announcement.findById(req.params.id).select('comments');
+    if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
+    res.json({ comments: ann.comments });
+  } catch (err) {
+    console.error('getComments error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// POST /api/admin/announcements/:id/comment
+const addComment = async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) return res.status(400).json({ message: 'Comment text is required.' });
+
+    const user = await User.findById(req.user.id).select('firstName lastName');
+    const userName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
+
+    const ann = await Announcement.findByIdAndUpdate(
+      req.params.id,
+      { $push: { comments: { user: req.user.id, userName, text: text.trim() } } },
+      { new: true, select: 'comments' }
+    );
+    if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
+
+    const newComment = ann.comments[ann.comments.length - 1];
+    res.json({ comment: newComment, commentsCount: ann.comments.length });
+  } catch (err) {
+    console.error('addComment error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// POST /api/admin/announcements/:id/share  — records a share once per user
+const trackShare = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const ann = await Announcement.findById(req.params.id);
+    if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
+
+    const alreadyShared = ann.sharedBy.some(id => id.toString() === userId);
+    if (!alreadyShared) {
+      ann.sharedBy.push(userId);
+      await ann.save();
+    }
+
+    res.json({ shared: true, sharesCount: ann.sharedBy.length, sharedBy: ann.sharedBy });
+  } catch (err) {
+    console.error('trackShare error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = {
+  getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
+  toggleLike, getComments, addComment, trackShare,
+};
