@@ -12,7 +12,7 @@ import AnnouncementsView from "./AnnouncementsView.jsx";
 import PartnershipsView from "./PartnershipsView.jsx";
 
 export default function AdminDashboard() {
-  const [view, setView] = useState("dashboard");
+  const [view, setView] = useState(() => localStorage.getItem("adminView") || "dashboard");
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 1180);
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
@@ -56,7 +56,7 @@ export default function AdminDashboard() {
 
   function selectView(v) {
     setView(v);
-    showToast(`${viewRoutes[v]} selected`);
+    localStorage.setItem("adminView", v);
   }
 
   return (
