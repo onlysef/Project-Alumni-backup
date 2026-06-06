@@ -4,14 +4,10 @@ import tsuLogo from "../logo/tsu_logo-removebg.png";
 import alumniLogo from "../logo/alumni-removebg.png";
 import toptsuLogo from "../logo/tsu-top-header.webp";
 import { navItems } from "../data.js";
+import { useAuth } from "../auth/AuthContext.jsx";
 
 export function Sidebar({ view, onSelect }) {
-  function logout() {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("auth_user");
-    // original redirected to a login page that isn't part of this port
-    alert("Logged out (demo).");
-  }
+  const { logout } = useAuth();
   return (
     <aside className="sidebar">
       <div className="brand">
