@@ -57,7 +57,7 @@ export const navItems = [
 ];
 
 export const adminMenuChoices = {
-  "accounts-role": ["All", "Admin", "Staff", "Alumni"],
+  "accounts-role": ["All", "Admin", "Alumni", "Coordinator", "Employer"],
   "accounts-status": ["All", "Active", "Pending", "Suspended"],
   "announcement-date": ["All", "Today", "This Month", "This Year"],
   "announcement-type": ["All", "News", "Event", "Career"],

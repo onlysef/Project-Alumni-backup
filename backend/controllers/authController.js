@@ -69,6 +69,15 @@ const login = async (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ message: 'Invalid email or password.' });
 
+    if (user.status === 'suspended') {
+      return res.status(403).json({ message: 'Your account has been suspended. Please contact the administrator.' });
+    }
+
+    if (user.status === 'pending') {
+      user.status = 'active';
+      await user.save();
+    }
+
     // 2FA branch
     if (user.isTwoFactorEnabled) {
       const otp = generateOTP();

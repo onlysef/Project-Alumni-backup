@@ -32,7 +32,6 @@ export default function AccountsView({ active, showToast }) {
   const [loading, setLoading]         = useState(true);
   const [roleFilter, setRoleFilter]   = useState("Role");
   const [statusFilter, setStatusFilter] = useState("Status");
-  const [activeFilter, setActiveFilter] = useState("All");
   const [entry, setEntry]             = useState(null);
 
   useEffect(() => {
@@ -55,19 +54,21 @@ export default function AccountsView({ active, showToast }) {
   }
 
   function visible(r) {
-    if (activeFilter === "All") return true;
-    return [r.name, r.email, r.role, r.status].join(" ").toLowerCase()
-      .includes(activeFilter.toLowerCase());
+    const roleMatch   = roleFilter === "Role"   || roleFilter === "All"   || r.role === roleFilter;
+    const statusMatch = statusFilter === "Status" || statusFilter === "All" || r.status === statusFilter;
+    return roleMatch && statusMatch;
   }
 
   function applyFilter(choice, which) {
+    const newRole   = which === "role"   ? choice : roleFilter;
+    const newStatus = which === "status" ? choice : statusFilter;
     if (which === "role")   setRoleFilter(choice);
     else                    setStatusFilter(choice);
-    setActiveFilter(choice);
-    const count = rows.filter((r) =>
-      choice === "All" || [r.name, r.email, r.role, r.status].join(" ")
-        .toLowerCase().includes(choice.toLowerCase())
-    ).length;
+    const count = rows.filter((r) => {
+      const roleMatch   = newRole === "Role"   || newRole === "All"   || r.role === newRole;
+      const statusMatch = newStatus === "Status" || newStatus === "All" || r.status === newStatus;
+      return roleMatch && statusMatch;
+    }).length;
     showToast(`${count} item${count === 1 ? "" : "s"} shown.`);
   }
 
@@ -105,14 +106,12 @@ export default function AccountsView({ active, showToast }) {
 
   const activeCount    = rows.filter((r) => r.status === "Active").length;
   const pendingCount   = rows.filter((r) => r.status === "Pending").length;
-  const adminCount     = rows.filter((r) => r.role === "Admin").length;
 
   return (
     <section className={`content admin-view view${active ? " active-view" : ""}`}>
       <div className="admin-kpis">
         <article><strong>{activeCount}</strong><span>Active Accounts</span></article>
-        <article><strong>{pendingCount}</strong><span>Pending Review</span></article>
-        <article><strong>{adminCount}</strong><span>Admin Users</span></article>
+        <article><strong>{pendingCount}</strong><span>Pending Activation</span></article>
       </div>
       <section className="admin-card">
         <div className="admin-card-head">
@@ -179,7 +178,24 @@ export default function AccountsView({ active, showToast }) {
               showToast(`${data.firstName} ${data.lastName} updated.`);
             } catch { showToast("Could not connect to server."); return; }
           } else {
-            showToast("To add accounts, register through the signup page.");
+            try {
+              const res = await fetch(`${API}/admin/users`, {
+                method: "POST",
+                headers: authHeaders(),
+                body: JSON.stringify({
+                  firstName: data.firstName,
+                  lastName:  data.lastName,
+                  email:     data.email,
+                  role:      data.role.toLowerCase(),
+                }),
+              });
+              const text = await res.text();
+              let json;
+              try { json = JSON.parse(text); } catch { showToast("Server error: " + text.slice(0, 80)); return; }
+              if (!res.ok) { showToast(json.message || "Failed to create account."); return; }
+              setRows((prev) => [mapUser(json.user), ...prev]);
+              showToast(`Account created. Login credentials sent to ${data.email}.`);
+            } catch (err) { showToast(err.message || "Could not connect to server."); return; }
           }
           setEntry(null);
         }}
@@ -197,7 +213,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
     <Modal open={!!entry} onClose={onClose}>
       <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
         <div className="modal-head">
-          <h3>{isEdit ? "Edit Account" : "Account Info"}</h3>
+          <h3>{isEdit ? "Edit Account" : "Add Account"}</h3>
           <button type="button" aria-label="Close" onClick={onClose}>×</button>
         </div>
         <form
@@ -210,7 +226,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
               lastName:  f.lastName.value.trim(),
               email:     f.email.value.trim(),
               role:      f.role.value,
-              status:    f.status.value,
+              status:    f.status ? f.status.value : undefined,
             });
           }}
         >
@@ -232,17 +248,19 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
                 <option>Employer</option>
               </select>
             </label>
-            <label>Status
-              <select name="status" defaultValue={row?.status || "Active"}>
-                <option>Active</option>
-                <option>Pending</option>
-                <option>Suspended</option>
-              </select>
-            </label>
+            {isEdit && (
+              <label>Status
+                <select name="status" defaultValue={row?.status || "Active"}>
+                  <option>Active</option>
+                  <option>Pending</option>
+                  <option>Suspended</option>
+                </select>
+              </label>
+            )}
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit">Save</button>
+            <button type="submit">{isEdit ? "Save" : "Create Account"}</button>
           </div>
         </form>
       </section>
