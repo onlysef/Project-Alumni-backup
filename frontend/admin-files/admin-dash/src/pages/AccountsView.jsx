@@ -33,6 +33,7 @@ export default function AccountsView({ active, showToast }) {
   const [roleFilter, setRoleFilter]   = useState("Role");
   const [statusFilter, setStatusFilter] = useState("Status");
   const [entry, setEntry]             = useState(null);
+  const [importOpen, setImportOpen]   = useState(false);
 
   useEffect(() => {
     if (!active) return;
@@ -116,9 +117,10 @@ export default function AccountsView({ active, showToast }) {
       <section className="admin-card">
         <div className="admin-card-head">
           <h3>Manage Accounts</h3>
-          <div>
+          <div className="accounts-controls">
             <AdminMenu menuKey="accounts-role"   label={roleFilter}   onSelect={(c) => applyFilter(c, "role")} />
             <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
+            <button type="button" className="add-button import-button" onClick={() => setImportOpen(true)}>Import</button>
             <button type="button" className="add-button" onClick={() => setEntry({})}>Add Account</button>
           </div>
         </div>
@@ -152,6 +154,13 @@ export default function AccountsView({ active, showToast }) {
           </table>
         )}
       </section>
+
+      <ImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onDone={() => { fetchUsers(); setImportOpen(false); }}
+        showToast={showToast}
+      />
 
       <AdminEntryModal
         entry={entry}
@@ -201,6 +210,135 @@ export default function AccountsView({ active, showToast }) {
         }}
       />
     </section>
+  );
+}
+
+export function ImportModal({ open, onClose, onDone, showToast }) {
+  const [file, setFile]         = useState(null);
+  const [loading, setLoading]   = useState(false);
+  const [result, setResult]     = useState(null);
+  const fileRef                 = React.useRef(null);
+
+  function reset() {
+    setFile(null);
+    setResult(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!file) return;
+    setLoading(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const token = localStorage.getItem("auth_token");
+      const res   = await fetch(`${API}/admin/users/import`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Import failed."); return; }
+      setResult(data);
+    } catch {
+      showToast("Could not connect to server.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <Modal open={open} onClose={() => { reset(); onClose(); }}>
+      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true" style={{ maxWidth: 520 }}>
+        <div className="modal-head">
+          <h3>Import Alumni Accounts</h3>
+          <button type="button" aria-label="Close" onClick={() => { reset(); onClose(); }}>×</button>
+        </div>
+
+        {!result ? (
+          <form className="admin-entry-form" onSubmit={handleSubmit}>
+            <p style={{ color: "var(--text-muted, #666)", fontSize: 13, margin: "0 0 12px" }}>
+              Upload an <strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong> file.
+              Required columns: <code>firstName</code>, <code>lastName</code>, <code>email</code>.
+              Optional: <code>role</code>, <code>course</code>, <code>graduationYear</code>.
+            </p>
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Spreadsheet file
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                style={{ display: "block", marginTop: 6 }}
+                onChange={(e) => setFile(e.target.files[0] || null)}
+                required
+              />
+            </label>
+            <div className="modal-actions">
+              <button type="button" onClick={() => { reset(); onClose(); }}>Cancel</button>
+              <button type="submit" disabled={loading || !file}>
+                {loading ? "Importing…" : "Import"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div style={{ padding: "0 0 8px" }}>
+            <p style={{ margin: "0 0 12px", fontWeight: 600 }}>{result.message}</p>
+
+            {result.created.length > 0 && (
+              <details open>
+                <summary style={{ cursor: "pointer", color: "#276749", fontWeight: 600, marginBottom: 6 }}>
+                  ✓ Created ({result.created.length})
+                </summary>
+                <ul style={{ margin: "4px 0 12px 16px", fontSize: 13, color: "#2d3748" }}>
+                  {result.created.map((r) => (
+                    <li key={r.email}>
+                      {r.name} — {r.email}
+                      {!r.emailSent && <span style={{ color: "#e53e3e" }}> (email not sent)</span>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            {result.skipped.length > 0 && (
+              <details>
+                <summary style={{ cursor: "pointer", color: "#975a16", fontWeight: 600, marginBottom: 6 }}>
+                  ⚠ Skipped ({result.skipped.length})
+                </summary>
+                <ul style={{ margin: "4px 0 12px 16px", fontSize: 13, color: "#2d3748" }}>
+                  {result.skipped.map((r) => (
+                    <li key={r.email}>{r.name || r.email} — {r.reason}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            {result.failed.length > 0 && (
+              <details>
+                <summary style={{ cursor: "pointer", color: "#c53030", fontWeight: 600, marginBottom: 6 }}>
+                  ✗ Failed ({result.failed.length})
+                </summary>
+                <ul style={{ margin: "4px 0 12px 16px", fontSize: 13, color: "#2d3748" }}>
+                  {result.failed.map((r, i) => (
+                    <li key={i}>{r.name || r.email} — {r.reason}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <div className="modal-actions" style={{ marginTop: 12 }}>
+              <button type="button" onClick={() => { reset(); }}>Import Another</button>
+              <button type="button" onClick={() => { onDone(); reset(); }}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+    </Modal>
   );
 }
 

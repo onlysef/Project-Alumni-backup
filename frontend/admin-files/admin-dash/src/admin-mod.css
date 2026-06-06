@@ -2344,6 +2344,19 @@
                 width: 100%;
             }
 
+            .admin-card-head > .accounts-controls {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .admin-card-head > .accounts-controls .admin-choice,
+            .admin-card-head > .accounts-controls .add-button {
+                width: 100%;
+                margin: 0;
+            }
+
             .admin-table {
                 display: block;
                 overflow-x: auto;
@@ -2360,6 +2373,12 @@
             .post-submit {
                 width: 100%;
                 justify-content: center;
+            }
+        }
+
+        @media (max-width: 420px) {
+            .admin-card-head > .accounts-controls {
+                grid-template-columns: 1fr;
             }
         }
 
