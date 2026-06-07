@@ -1,252 +1,178 @@
-import React, { useState } from "react";
-import { nextId } from "../shared.js";
-import Icon from "../Icon.jsx";
-import { Dropdown, Modal } from "../Primitives.jsx";
-import { adminMenuChoices } from "../data.js";
+import React, { useState, useEffect } from "react";
+import { Modal } from "../Primitives.jsx";
 
-const staffSeed = [
-  { name: "Jose Mari Chan", role: "Alumni Staff", status: "Available" },
-  { name: "Jasterine Ibacca", role: "Alumni Coordinator", status: "On Leave" },
-  { name: "Larsen Dignos", role: "Alumni Coordinator", status: "On Leave" },
-  { name: "Andrea Bautista", role: "Secretary", status: "Available" },
-];
+const API = "http://localhost:5000/api";
 
-const appointmentsSeed = [
-  { dt: "April 14 - 1:00 pm", name: "Danica Macapagal", staff: "Andrea Bautista", status: "Pending" },
-  { dt: "April 15 - 8:00 am", name: "Francisco Felicia", staff: "Jasterine Ibacca", status: "Pending" },
-  { dt: "April 16 - 10:00 am", name: "Christy Dungon", staff: "Jose Mari Chan", status: "Pending" },
-  { dt: "April 16 - 2:00 pm", name: "Christy Dungon", staff: "Larsen Dignos", status: "Pending" },
-];
+function authHeaders() {
+  const token = localStorage.getItem("auth_token");
+  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
 
-export default function AppointmentsView({ active, showToast }) {
-  const [days, setDays] = useState({ M: true, T: false, W: true, TH: false, F: true, S: false });
-  const [staff, setStaff] = useState(staffSeed.map((s) => ({ ...s, id: nextId() })));
-  const [staffEditing, setStaffEditing] = useState(false);
-  const [appointments, setAppointments] = useState(appointmentsSeed.map((a) => ({ ...a, id: nextId() })));
-  const [apptEditing, setApptEditing] = useState(false);
-  const [entry, setEntry] = useState(null); // {mode}
+// "HH:MM" (24-h) → "8:00 AM"
+function fmt24to12(t) {
+  if (!t) return "";
+  const [h, m] = t.split(":").map(Number);
+  const ampm = h < 12 ? "AM" : "PM";
+  const h12  = h % 12 || 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+}
 
-  const staffNames = staff.map((s) => s.name);
+// "YYYY-MM-DD" → "Apr 14, 2024"  (avoids UTC-shift by using local Date)
+function fmtDate(d) {
+  if (!d) return "";
+  const [y, mo, day] = d.split("-").map(Number);
+  return new Date(y, mo - 1, day).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+  });
+}
 
-  function toggleDay(d) {
-    setDays((prev) => ({ ...prev, [d]: !prev[d] }));
+function fmtDateTime(date, time) {
+  if (!date) return "—";
+  return `${fmtDate(date)} · ${fmt24to12(time)}`;
+}
+
+// Generate half-hour time slots between start and end (exclusive)
+function generateTimeSlots(start = "08:00", end = "17:00") {
+  const slots = [];
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  const endMin = eh * 60 + em;
+  let cur = sh * 60 + sm;
+  while (cur < endMin) {
+    const h   = Math.floor(cur / 60);
+    const m   = cur % 60;
+    const val = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    slots.push({ value: val, label: fmt24to12(val) });
+    cur += 30;
   }
+  return slots;
+}
 
-  function setApptStatus(id, status) {
-    setAppointments((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, status, decision: status.toLowerCase() } : a))
-    );
-    const a = appointments.find((x) => x.id === id);
-    showToast(`${a.name} appointment ${status.toLowerCase()}.`);
-  }
+const STATUS_COLORS = {
+  Available:  { color: "#276749", background: "#f0fff4" },
+  Busy:       { color: "#975a16", background: "#fffaf0" },
+  "On Leave": { color: "#c53030", background: "#fff5f5" },
+  Inactive:   { color: "#718096", background: "#f7fafc" },
+  Pending:    { color: "#975a16", background: "#fffaf0" },
+  Approved:   { color: "#276749", background: "#f0fff4" },
+  Rejected:   { color: "#c53030", background: "#fff5f5" },
+  Completed:  { color: "#2b6cb0", background: "#ebf8ff" },
+  Cancelled:  { color: "#718096", background: "#f7fafc" },
+};
 
+function statusStyle(s) {
+  const c = STATUS_COLORS[s] || { color: "#2d2024", background: "#f0f0f0" };
+  return {
+    ...c,
+    display:      "inline-block",
+    borderRadius: "99px",
+    padding:      "2px 10px",
+    fontSize:     "11px",
+    fontWeight:   600,
+    fontStyle:    "normal",
+  };
+}
+
+const filterInputStyle = {
+  padding:      "5px 10px",
+  border:       "1px solid #e4cccc",
+  borderRadius: 6,
+  fontSize:     13,
+  background:   "#fff",
+  color:        "#2d2024",
+  minWidth:     130,
+};
+
+const loadingText = {
+  textAlign: "center",
+  color:     "var(--muted, #76656a)",
+  fontSize:  13,
+  padding:   "1.5rem",
+};
+
+const DAYS = ["M", "T", "W", "TH", "F", "S"];
+
+const TIME_OPTIONS = generateTimeSlots("06:00", "21:00");
+
+// ─────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────
+
+function ConfirmDialog({ open, message, confirmLabel = "Confirm", danger = false, onConfirm, onCancel }) {
+  if (!open) return null;
   return (
-    <section className={`content appointments-view view${active ? " active-view" : ""}`}>
-      <div className="appointment-top-grid">
-        <section className="appointment-card">
-          <h3>Office Availability</h3>
-          <div className="office-form">
-            <label><span>Office Status:</span><select><option>Open</option><option>Closed</option></select></label>
-            <label>
-              <span>Office Hours:</span>
-              <select><option>8:00 AM</option><option>9:00 AM</option></select>
-              <select><option>5:00 PM</option><option>6:00 PM</option></select>
-            </label>
-            <label>
-              <span>Days:</span>
-              <div className="day-pills">
-                {["M", "T", "W", "TH", "F", "S"].map((d) => (
-                  <button key={d} type="button" className={days[d] ? "active" : undefined} onClick={() => toggleDay(d)}>
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </label>
-          </div>
-          <div className="office-actions">
-            <button
-              type="button"
-              className="save-office"
-              onClick={() => {
-                const sel = Object.keys(days).filter((d) => days[d]).join(", ");
-                showToast(`Office availability saved for ${sel || "no selected days"}.`);
-              }}
-            >
-              Save
-            </button>
-            <button type="button" className="edit-office" onClick={() => showToast("Office availability is ready to edit.")}>
-              Edit
-            </button>
-          </div>
-        </section>
-
-        <section className="appointment-card">
-          <h3>Staff Management</h3>
-          <div className={`staff-list${staffEditing ? " is-editing" : ""}`}>
-            {staff.map((s) => (
-              <div key={s.id}>
-                <strong>{s.name}</strong>
-                <span>{s.role}</span>
-                <em>{s.status}</em>
-                {staffEditing && (
-                  <button
-                    type="button"
-                    className="delete-staff"
-                    onClick={() => {
-                      setStaff((prev) => prev.filter((x) => x.id !== s.id));
-                      showToast(`${s.name} removed from staff.`);
-                    }}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="staff-actions">
-            <button
-              type="button"
-              className="edit-staff"
-              aria-label="Edit staff"
-              onClick={() => {
-                setStaffEditing((e) => {
-                  showToast(!e ? "Staff edit mode enabled." : "Staff edit mode closed.");
-                  return !e;
-                });
-              }}
-            >
-              ✎
-            </button>
-            <button type="button" className="add-button" onClick={() => setEntry({ mode: "staff" })}>Add</button>
-          </div>
-        </section>
-      </div>
-
-      <section className={`appointments-card${apptEditing ? " is-editing" : ""}`}>
-        <h3>Appointments</h3>
-        <div className="appointments-table-wrap">
-          <table className="appointments-table">
-            <thead>
-              <tr><th>Date &amp; Time</th><th>Name</th><th>Staff</th><th>Status</th><th>Action</th></tr>
-            </thead>
-            <tbody>
-              {appointments.map((a) => (
-                <tr key={a.id} className={a.decision === "approved" ? "is-approved" : a.decision === "rejected" ? "is-rejected" : ""}>
-                  <td contentEditable={apptEditing} suppressContentEditableWarning>{a.dt}</td>
-                  <td contentEditable={apptEditing} suppressContentEditableWarning>{a.name}</td>
-                  <td>
-                    {apptEditing ? (
-                      <select
-                        className="staff-select"
-                        defaultValue={a.staff}
-                        onChange={(e) =>
-                          setAppointments((prev) => prev.map((x) => (x.id === a.id ? { ...x, staff: e.target.value } : x)))
-                        }
-                      >
-                        {staffNames.map((n) => <option key={n}>{n}</option>)}
-                      </select>
-                    ) : (
-                      a.staff
-                    )}
-                  </td>
-                  <td contentEditable={apptEditing} suppressContentEditableWarning>{a.status}</td>
-                  <td>
-                    <button type="button" onClick={() => setApptStatus(a.id, "Approved")}>Approve</button>
-                    <button type="button" onClick={() => setApptStatus(a.id, "Rejected")}>Reject</button>
-                    {apptEditing && (
-                      <button
-                        type="button"
-                        className="delete-appointment"
-                        onClick={() => {
-                          setAppointments((prev) => prev.filter((x) => x.id !== a.id));
-                          showToast(`${a.name} appointment deleted.`);
-                        }}
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <Modal open={open} onClose={onCancel}>
+      <section className="tracer-modal" role="dialog" aria-modal="true" style={{ maxWidth: 380 }}>
+        <div className="modal-head">
+          <h3>Confirm</h3>
+          <button type="button" aria-label="Close" onClick={onCancel}>×</button>
         </div>
-        <div className="appointments-footer">
+        <p style={{ padding: "8px 0 16px", fontSize: 14, lineHeight: 1.6 }}>{message}</p>
+        <div className="modal-actions">
+          <button type="button" onClick={onCancel}>Cancel</button>
           <button
             type="button"
-            className="edit-office"
-            onClick={() => {
-              setApptEditing(true);
-              showToast("Appointment rows are editable.");
-            }}
+            onClick={onConfirm}
+            style={danger ? { background: "#c53030", color: "#fff" } : undefined}
           >
-            Edit
+            {confirmLabel}
           </button>
-          <button
-            type="button"
-            className="save-office"
-            onClick={() => {
-              setApptEditing(false);
-              showToast("Appointments saved.");
-            }}
-          >
-            Save
-          </button>
-          <button type="button" className="add-button" onClick={() => setEntry({ mode: "appointment" })}>Add</button>
         </div>
       </section>
-
-      <QuickEntryModal
-        entry={entry}
-        onClose={() => setEntry(null)}
-        onSubmit={(data) => {
-          if (entry.mode === "staff") {
-            setStaff((prev) => [...prev, { id: nextId(), name: data.name, role: data.detail, status: data.status }]);
-            showToast(`${data.name} added to staff.`);
-          } else {
-            setAppointments((prev) => [
-              ...prev,
-              { id: nextId(), dt: "New Schedule", name: data.name, staff: data.detail, status: data.status },
-            ]);
-            showToast(`${data.name} appointment added.`);
-          }
-          setEntry(null);
-        }}
-      />
-    </section>
+    </Modal>
   );
 }
 
-function QuickEntryModal({ entry, onClose, onSubmit }) {
+function StaffModal({ mode, item, saving, onClose, onSubmit }) {
+  const isEdit = mode === "edit";
   return (
-    <Modal open={!!entry} onClose={onClose}>
-      <section className="tracer-modal" role="dialog" aria-modal="true">
+    <Modal open onClose={onClose}>
+      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
         <div className="modal-head">
-          <h3>{entry?.mode === "appointment" ? "Add Appointment" : "Add Staff"}</h3>
-          <button type="button" aria-label="Close entry form" onClick={onClose}>×</button>
+          <h3>{isEdit ? "Edit Staff Member" : "Add Staff Member"}</h3>
+          <button type="button" aria-label="Close" onClick={onClose}>×</button>
         </div>
         <form
-          className="quick-entry-form"
+          className="admin-entry-form"
           onSubmit={(e) => {
             e.preventDefault();
             const f = e.currentTarget.elements;
-            onSubmit({ name: f.name.value, detail: f.detail.value, status: f.status.value });
+            onSubmit({
+              name:   f.name.value.trim(),
+              role:   f.role.value.trim(),
+              email:  f.email.value.trim(),
+              status: f.status.value,
+            });
           }}
         >
-          <label>Name<input type="text" name="name" required /></label>
-          <label>
-            {entry?.mode === "appointment" ? "Staff" : "Role"}
-            <input type="text" name="detail" required />
-          </label>
-          <label>
-            Status
-            <select name="status">
-              <option>Available</option><option>On Leave</option><option>Pending</option>
-            </select>
-          </label>
+          <div className="admin-entry-fields">
+            <label>
+              Name
+              <input type="text" name="name" defaultValue={item?.name || ""} required />
+            </label>
+            <label>
+              Role
+              <input type="text" name="role" defaultValue={item?.role || ""} required />
+            </label>
+            <label>
+              Email
+              <input type="email" name="email" defaultValue={item?.email || ""} />
+            </label>
+            <label>
+              Status
+              <select name="status" defaultValue={item?.status || "Available"}>
+                <option>Available</option>
+                <option>Busy</option>
+                <option>On Leave</option>
+                <option>Inactive</option>
+              </select>
+            </label>
+          </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit">Save</button>
+            <button type="submit" disabled={saving}>
+              {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Staff"}
+            </button>
           </div>
         </form>
       </section>
@@ -254,4 +180,644 @@ function QuickEntryModal({ entry, onClose, onSubmit }) {
   );
 }
 
+function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
+  const timeSlots = generateTimeSlots(
+    settings?.start_time || "08:00",
+    settings?.end_time   || "17:00"
+  );
+  const slots = timeSlots.length ? timeSlots : TIME_OPTIONS;
 
+  return (
+    <Modal open onClose={onClose}>
+      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
+        <div className="modal-head">
+          <h3>Add Appointment</h3>
+          <button type="button" aria-label="Close" onClick={onClose}>×</button>
+        </div>
+        <form
+          className="admin-entry-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = e.currentTarget.elements;
+            onSubmit({
+              alumni_name:      f.alumni_name.value.trim(),
+              staff_id:         f.staff_id.value,
+              appointment_date: f.appointment_date.value,
+              appointment_time: f.appointment_time.value,
+              purpose:          f.purpose.value.trim(),
+              notes:            f.notes.value.trim(),
+            });
+          }}
+        >
+          <div className="admin-entry-fields">
+            <label>
+              Alumni Name
+              <input type="text" name="alumni_name" required placeholder="Full name" />
+            </label>
+            <label>
+              Staff
+              <select name="staff_id" required>
+                {staffList.length === 0 ? (
+                  <option value="">No active staff available</option>
+                ) : staffList.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.name} — {s.role}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Date
+              <input type="date" name="appointment_date" required />
+            </label>
+            <label>
+              Time
+              <select name="appointment_time" required>
+                {slots.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Purpose
+              <input type="text" name="purpose" placeholder="e.g. Document request" />
+            </label>
+            <label>
+              Notes
+              <textarea name="notes" rows={3} style={{ resize: "vertical" }} />
+            </label>
+          </div>
+
+          {settings && (
+            <p style={{ fontSize: 12, color: "var(--muted, #76656a)", margin: "4px 0 8px" }}>
+              Office hours: {fmt24to12(settings.start_time)} – {fmt24to12(settings.end_time)}
+              &nbsp;·&nbsp;Working days: {settings.working_days.join(", ") || "none"}
+            </p>
+          )}
+
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>Cancel</button>
+            <button type="submit" disabled={saving || !staffList.length}>
+              {saving ? "Saving…" : "Add Appointment"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </Modal>
+  );
+}
+
+// ─────────────────────────────────────────────
+// Main component
+// ─────────────────────────────────────────────
+
+export default function AppointmentsView({ active, showToast }) {
+  // Office settings
+  const [settings,         setSettings]         = useState(null);
+  const [formSettings,     setFormSettings]      = useState(null);
+  const [settingsLoading,  setSettingsLoading]   = useState(true);
+  const [editingSettings,  setEditingSettings]   = useState(false);
+  const [settingsSaving,   setSettingsSaving]    = useState(false);
+
+  // Staff
+  const [staff,            setStaff]             = useState([]);
+  const [staffLoading,     setStaffLoading]      = useState(true);
+  const [staffModal,       setStaffModal]        = useState(null); // null | { mode, item }
+  const [staffSaving,      setStaffSaving]       = useState(false);
+
+  // Appointments
+  const [appointments,     setAppointments]      = useState([]);
+  const [apptLoading,      setApptLoading]       = useState(true);
+  const [apptModal,        setApptModal]         = useState(false);
+  const [apptSaving,       setApptSaving]        = useState(false);
+
+  // Confirm dialog
+  const [confirm,          setConfirm]           = useState(null); // { message, confirmLabel, danger, onConfirm }
+
+  // Filters (client-side)
+  const [search,           setSearch]            = useState("");
+  const [statusFilter,     setStatusFilter]      = useState("All");
+  const [staffFilter,      setStaffFilter]       = useState("All");
+  const [dateFilter,       setDateFilter]        = useState("");
+
+  useEffect(() => {
+    if (!active) return;
+    fetchAll();
+  }, [active]);
+
+  async function fetchAll() {
+    await Promise.all([fetchSettings(), fetchStaff(), fetchAppointments()]);
+  }
+
+  // ── Office settings ──────────────────────────────────────────
+
+  async function fetchSettings() {
+    setSettingsLoading(true);
+    try {
+      const res  = await fetch(`${API}/admin/appointments/settings`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Failed to load office settings."); return; }
+      setSettings(data.settings);
+      setFormSettings(data.settings);
+    } catch { showToast("Could not connect to server."); }
+    finally { setSettingsLoading(false); }
+  }
+
+  async function saveSettings() {
+    setSettingsSaving(true);
+    try {
+      const res  = await fetch(`${API}/admin/appointments/settings`, {
+        method:  "PATCH",
+        headers: authHeaders(),
+        body:    JSON.stringify(formSettings),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Failed to save settings."); return; }
+      setSettings(data.settings);
+      setFormSettings(data.settings);
+      setEditingSettings(false);
+      showToast("Office availability saved.");
+    } catch { showToast("Could not connect to server."); }
+    finally { setSettingsSaving(false); }
+  }
+
+  function toggleDay(d) {
+    if (!editingSettings) return;
+    setFormSettings((prev) => ({
+      ...prev,
+      working_days: prev.working_days.includes(d)
+        ? prev.working_days.filter((x) => x !== d)
+        : [...prev.working_days, d],
+    }));
+  }
+
+  // ── Staff ────────────────────────────────────────────────────
+
+  async function fetchStaff() {
+    setStaffLoading(true);
+    try {
+      const res  = await fetch(`${API}/admin/appointments/staff`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Failed to load staff."); return; }
+      setStaff(data.staff);
+    } catch { showToast("Could not connect to server."); }
+    finally { setStaffLoading(false); }
+  }
+
+  async function handleStaffSubmit(formData) {
+    setStaffSaving(true);
+    const isEdit = staffModal?.mode === "edit";
+    const url    = isEdit
+      ? `${API}/admin/appointments/staff/${staffModal.item._id}`
+      : `${API}/admin/appointments/staff`;
+    try {
+      const res  = await fetch(url, {
+        method:  isEdit ? "PATCH" : "POST",
+        headers: authHeaders(),
+        body:    JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Failed to save staff member."); return; }
+      if (isEdit) {
+        setStaff((prev) => prev.map((s) => s._id === data.staff._id ? data.staff : s));
+        showToast(`${data.staff.name} updated.`);
+      } else {
+        setStaff((prev) => [data.staff, ...prev]);
+        showToast(`${data.staff.name} added to staff.`);
+      }
+      setStaffModal(null);
+    } catch { showToast("Could not connect to server."); }
+    finally { setStaffSaving(false); }
+  }
+
+  function confirmDeleteStaff(s) {
+    setConfirm({
+      message:      `Remove ${s.name} from staff? This will soft-delete the record.`,
+      confirmLabel: "Remove",
+      danger:       true,
+      onConfirm:    async () => {
+        setConfirm(null);
+        try {
+          const res  = await fetch(`${API}/admin/appointments/staff/${s._id}`, {
+            method: "DELETE", headers: authHeaders(),
+          });
+          const data = await res.json();
+          if (!res.ok) { showToast(data.message || "Delete failed."); return; }
+          setStaff((prev) => prev.filter((x) => x._id !== s._id));
+          showToast(data.message);
+        } catch { showToast("Could not connect to server."); }
+      },
+    });
+  }
+
+  // ── Appointments ─────────────────────────────────────────────
+
+  async function fetchAppointments() {
+    setApptLoading(true);
+    try {
+      const res  = await fetch(`${API}/admin/appointments`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Failed to load appointments."); return; }
+      setAppointments(data.appointments);
+    } catch { showToast("Could not connect to server."); }
+    finally { setApptLoading(false); }
+  }
+
+  async function handleAddAppointment(formData) {
+    setApptSaving(true);
+    try {
+      const res  = await fetch(`${API}/admin/appointments`, {
+        method:  "POST",
+        headers: authHeaders(),
+        body:    JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Failed to create appointment."); return; }
+      setAppointments((prev) => [data.appointment, ...prev]);
+      setApptModal(false);
+      showToast("Appointment created.");
+    } catch { showToast("Could not connect to server."); }
+    finally { setApptSaving(false); }
+  }
+
+  function confirmStatusChange(appt, action) {
+    const statusMap = { Approve: "Approved", Reject: "Rejected", Complete: "Completed", Cancel: "Cancelled" };
+    const newStatus = statusMap[action];
+    const isDanger  = action === "Reject" || action === "Cancel";
+    setConfirm({
+      message:      `${action} appointment for ${appt.alumni_name}?`,
+      confirmLabel: action,
+      danger:       isDanger,
+      onConfirm:    async () => {
+        setConfirm(null);
+        try {
+          const res  = await fetch(`${API}/admin/appointments/${appt._id}/status`, {
+            method:  "PATCH",
+            headers: authHeaders(),
+            body:    JSON.stringify({ status: newStatus }),
+          });
+          const data = await res.json();
+          if (!res.ok) { showToast(data.message || "Failed to update status."); return; }
+          setAppointments((prev) => prev.map((a) => a._id === appt._id ? data.appointment : a));
+          showToast(`${appt.alumni_name}'s appointment ${newStatus.toLowerCase()}.`);
+        } catch { showToast("Could not connect to server."); }
+      },
+    });
+  }
+
+  // ── Client-side filtering ────────────────────────────────────
+
+  const activeStaff = staff.filter((s) => s.status !== "Inactive");
+
+  const filtered = appointments.filter((a) => {
+    const nameOk   = !search      || a.alumni_name.toLowerCase().includes(search.toLowerCase());
+    const statusOk = statusFilter === "All" || a.status === statusFilter;
+    const staffOk  = staffFilter  === "All" || (a.staff_id && a.staff_id._id === staffFilter);
+    const dateOk   = !dateFilter  || a.appointment_date === dateFilter;
+    return nameOk && statusOk && staffOk && dateOk;
+  });
+
+  const hasFilters = search || statusFilter !== "All" || staffFilter !== "All" || dateFilter;
+
+  // ── Render ───────────────────────────────────────────────────
+
+  return (
+    <section className={`content appointments-view view${active ? " active-view" : ""}`}>
+
+      {/* ── Top grid ── */}
+      <div className="appointment-top-grid">
+
+        {/* Office Availability */}
+        <section className="appointment-card">
+          <h3>Office Availability</h3>
+
+          {settingsLoading ? (
+            <p style={loadingText}>Loading…</p>
+          ) : formSettings ? (
+            <>
+              <div className="office-form">
+                <label>
+                  <span>Office Status:</span>
+                  <select
+                    value={formSettings.office_status}
+                    disabled={!editingSettings}
+                    onChange={(e) =>
+                      setFormSettings((p) => ({ ...p, office_status: e.target.value }))
+                    }
+                  >
+                    <option>Open</option>
+                    <option>Closed</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Office Hours:</span>
+                  <select
+                    value={formSettings.start_time}
+                    disabled={!editingSettings}
+                    onChange={(e) =>
+                      setFormSettings((p) => ({ ...p, start_time: e.target.value }))
+                    }
+                  >
+                    {TIME_OPTIONS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={formSettings.end_time}
+                    disabled={!editingSettings}
+                    onChange={(e) =>
+                      setFormSettings((p) => ({ ...p, end_time: e.target.value }))
+                    }
+                  >
+                    {TIME_OPTIONS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Days:</span>
+                  <div className="day-pills">
+                    {DAYS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={formSettings.working_days.includes(d) ? "active" : undefined}
+                        disabled={!editingSettings}
+                        onClick={() => toggleDay(d)}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </label>
+              </div>
+
+              <div className="office-actions">
+                <button
+                  type="button"
+                  className="save-office"
+                  disabled={!editingSettings || settingsSaving}
+                  onClick={saveSettings}
+                >
+                  {settingsSaving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  className="edit-office"
+                  onClick={() => {
+                    if (editingSettings) {
+                      setFormSettings(settings);
+                      setEditingSettings(false);
+                    } else {
+                      setEditingSettings(true);
+                      showToast("Office availability is ready to edit.");
+                    }
+                  }}
+                >
+                  {editingSettings ? "Cancel" : "Edit"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <p style={{ color: "var(--muted)" }}>Could not load office settings.</p>
+          )}
+        </section>
+
+        {/* Staff Management */}
+        <section className="appointment-card">
+          <h3>Staff Management</h3>
+
+          {staffLoading ? (
+            <p style={loadingText}>Loading…</p>
+          ) : (
+            <div className="staff-list is-editing">
+              {staff.length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--muted, #76656a)" }}>
+                  No staff members found.
+                </p>
+              ) : staff.map((s) => (
+                <div key={s._id}>
+                  <strong>{s.name}</strong>
+                  <span>{s.role}</span>
+                  <em style={statusStyle(s.status)}>{s.status}</em>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      type="button"
+                      style={{ flex: 1, fontSize: 11, padding: "0 4px" }}
+                      onClick={() => setStaffModal({ mode: "edit", item: s })}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="delete-staff"
+                      style={{ flex: 1 }}
+                      onClick={() => confirmDeleteStaff(s)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="staff-actions">
+            <button
+              type="button"
+              className="add-button"
+              onClick={() => setStaffModal({ mode: "add", item: null })}
+            >
+              Add Staff
+            </button>
+          </div>
+        </section>
+      </div>
+
+      {/* ── Appointments ── */}
+      <section className="appointments-card">
+        <h3>Appointments</h3>
+
+        {/* Filter bar */}
+        <div
+          style={{
+            display:    "flex",
+            flexWrap:   "wrap",
+            gap:        8,
+            padding:    "0 0 14px",
+            alignItems: "center",
+          }}
+        >
+          <input
+            type="search"
+            placeholder="Search alumni…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={filterInputStyle}
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={filterInputStyle}
+          >
+            <option value="All">All Status</option>
+            <option>Pending</option>
+            <option>Approved</option>
+            <option>Rejected</option>
+            <option>Completed</option>
+            <option>Cancelled</option>
+          </select>
+          <select
+            value={staffFilter}
+            onChange={(e) => setStaffFilter(e.target.value)}
+            style={filterInputStyle}
+          >
+            <option value="All">All Staff</option>
+            {staff.map((s) => (
+              <option key={s._id} value={s._id}>{s.name}</option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            style={filterInputStyle}
+          />
+          {hasFilters && (
+            <button
+              type="button"
+              style={{ fontSize: 12, padding: "5px 12px" }}
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("All");
+                setStaffFilter("All");
+                setDateFilter("");
+              }}
+            >
+              Clear Filters
+            </button>
+          )}
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--muted, #76656a)" }}>
+            {filtered.length} appointment{filtered.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        <div className="appointments-table-wrap">
+          {apptLoading ? (
+            <p style={loadingText}>Loading appointments…</p>
+          ) : (
+            <table className="appointments-table">
+              <thead>
+                <tr>
+                  <th>Date &amp; Time</th>
+                  <th>Alumni</th>
+                  <th>Staff</th>
+                  <th>Purpose</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: "center", padding: "1.5rem", display: "block" }}>
+                      {hasFilters ? "No appointments match the current filters." : "No appointments yet."}
+                    </td>
+                  </tr>
+                ) : filtered.map((a) => (
+                  <tr
+                    key={a._id}
+                    className={
+                      a.status === "Approved"  ? "is-approved"  :
+                      a.status === "Rejected"  ? "is-rejected"  : ""
+                    }
+                  >
+                    <td>{fmtDateTime(a.appointment_date, a.appointment_time)}</td>
+                    <td>{a.alumni_name}</td>
+                    <td>{a.staff_id?.name || "—"}</td>
+                    <td
+                      title={a.purpose}
+                      style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                    >
+                      {a.purpose || "—"}
+                    </td>
+                    <td>
+                      <span style={statusStyle(a.status)}>{a.status}</span>
+                    </td>
+                    <td>
+                      {a.status === "Pending" && (
+                        <>
+                          <button type="button" onClick={() => confirmStatusChange(a, "Approve")}>
+                            Approve
+                          </button>
+                          <button type="button" onClick={() => confirmStatusChange(a, "Reject")}>
+                            Reject
+                          </button>
+                        </>
+                      )}
+                      {a.status === "Approved" && (
+                        <>
+                          <button type="button" onClick={() => confirmStatusChange(a, "Complete")}>
+                            Complete
+                          </button>
+                          <button type="button" onClick={() => confirmStatusChange(a, "Cancel")}>
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                      {!["Pending", "Approved"].includes(a.status) && (
+                        <span style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="appointments-footer">
+          <button
+            type="button"
+            className="add-button"
+            onClick={() => setApptModal(true)}
+          >
+            Add Appointment
+          </button>
+        </div>
+      </section>
+
+      {/* ── Modals ── */}
+      {staffModal && (
+        <StaffModal
+          mode={staffModal.mode}
+          item={staffModal.item}
+          saving={staffSaving}
+          onClose={() => setStaffModal(null)}
+          onSubmit={handleStaffSubmit}
+        />
+      )}
+
+      {apptModal && (
+        <AppointmentModal
+          settings={settings}
+          staffList={activeStaff}
+          saving={apptSaving}
+          onClose={() => setApptModal(false)}
+          onSubmit={handleAddAppointment}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!confirm}
+        message={confirm?.message}
+        confirmLabel={confirm?.confirmLabel}
+        danger={confirm?.danger}
+        onConfirm={confirm?.onConfirm}
+        onCancel={() => setConfirm(null)}
+      />
+    </section>
+  );
+}
