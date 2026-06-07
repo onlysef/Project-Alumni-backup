@@ -10,6 +10,12 @@ const {
   getPartnerships, createPartnership, updatePartnership, deletePartnership,
 } = require('../controllers/partnershipController');
 const { getAllJobs } = require('../controllers/jobController');
+const {
+  getOfficeSettings,  updateOfficeSettings,
+  getStaff,          createStaff,    updateStaff,    deleteStaff,
+  getAppointments,   createAppointment,
+  updateAppointmentStatus, deleteAppointment,
+} = require('../controllers/appointmentController');
 
 // All routes below require a valid token AND admin role
 router.use(protect, authorize('admin'));
@@ -35,5 +41,21 @@ router.patch('/partnerships/:id',  updatePartnership);
 router.delete('/partnerships/:id', deletePartnership);
 
 router.get('/jobs', getAllJobs);
+
+// Office settings
+router.get('/appointments/settings',   getOfficeSettings);
+router.patch('/appointments/settings', updateOfficeSettings);
+
+// Staff management
+router.get('/appointments/staff',          getStaff);
+router.post('/appointments/staff',         createStaff);
+router.patch('/appointments/staff/:id',    updateStaff);
+router.delete('/appointments/staff/:id',   deleteStaff);
+
+// Appointments
+router.get('/appointments',                   getAppointments);
+router.post('/appointments',                  createAppointment);
+router.patch('/appointments/:id/status',      updateAppointmentStatus);
+router.delete('/appointments/:id',            deleteAppointment);
 
 module.exports = router;
