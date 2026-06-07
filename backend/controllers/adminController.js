@@ -47,7 +47,7 @@ function generateTempPassword() {
 // POST /api/admin/users
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role } = req.body;
+    const { firstName, lastName, email, role, course, graduationYear } = req.body;
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
     }
@@ -58,14 +58,35 @@ const createUser = async (req, res) => {
     const tempPassword = generateTempPassword();
     const hashed = await bcrypt.hash(tempPassword, 12);
 
-    const user = await User.create({
+    const userData = {
       firstName: firstName.trim(),
       lastName:  lastName.trim(),
       email:     email.toLowerCase().trim(),
       password:  hashed,
       role:      role.toLowerCase(),
       status:    'pending',
-    });
+    };
+    if (course         && role.toLowerCase() === 'alumni') userData.course         = course.trim().toUpperCase();
+    if (graduationYear && role.toLowerCase() === 'alumni') userData.graduationYear = Number(graduationYear);
+
+    const user = await User.create(userData);
+
+    // Auto-create employment record for alumni
+    if (role.toLowerCase() === 'alumni') {
+      AlumniEmployment.create({
+        alumni_id:             user._id,
+        employment_status:     'Not Yet Updated',
+        company_name:          'N/A',
+        job_title:             null,
+        industry:              null,
+        work_location:         null,
+        salary_range:          '',
+        job_related_to_course: null,
+        date_employed:         null,
+        reason_unemployed:     null,
+        last_updated:          new Date(),
+      }).catch(() => {});
+    }
 
     let emailSent = true;
     try {
@@ -102,13 +123,15 @@ const getUsers = async (req, res) => {
 // PATCH /api/admin/users/:id
 const updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, status } = req.body;
+    const { firstName, lastName, email, role, status, course, graduationYear } = req.body;
     const updates = {};
-    if (firstName !== undefined) updates.firstName = firstName.trim();
-    if (lastName  !== undefined) updates.lastName  = lastName.trim();
-    if (email     !== undefined) updates.email     = email.toLowerCase().trim();
-    if (role      !== undefined) updates.role      = role;
-    if (status    !== undefined) updates.status    = status;
+    if (firstName      !== undefined) updates.firstName      = firstName.trim();
+    if (lastName       !== undefined) updates.lastName       = lastName.trim();
+    if (email          !== undefined) updates.email          = email.toLowerCase().trim();
+    if (role           !== undefined) updates.role           = role;
+    if (status         !== undefined) updates.status         = status;
+    if (course         !== undefined) updates.course         = course ? course.trim().toUpperCase() : course;
+    if (graduationYear !== undefined) updates.graduationYear = graduationYear ? Number(graduationYear) : undefined;
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -116,7 +139,21 @@ const updateUser = async (req, res) => {
       { new: true, runValidators: true, select: SAFE_FIELDS }
     );
     if (!user) return res.status(404).json({ message: 'User not found.' });
-    res.json({ message: 'User updated.', user });
+
+    // Auto-remove employment record when role is changed away from alumni
+    let employmentRemoved = false;
+    if (role && role !== 'alumni') {
+      const deleted = await AlumniEmployment.findOneAndDelete({ alumni_id: req.params.id });
+      if (deleted) employmentRemoved = true;
+    }
+
+    res.json({
+      message: employmentRemoved
+        ? 'User updated. Employment record removed (role is no longer Alumni).'
+        : 'User updated.',
+      user,
+      employmentRemoved,
+    });
   } catch (err) {
     console.error('updateUser error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -186,7 +223,7 @@ const importUsers = async (req, res) => {
         const hashed       = await bcrypt.hash(tempPassword, 12);
 
         const userData = { firstName, lastName, email, password: hashed, role, status: 'pending' };
-        if (course)         userData.course         = course;
+        if (course)         userData.course         = course.toUpperCase();
         if (graduationYear) userData.graduationYear = graduationYear;
 
         user = await User.create(userData);

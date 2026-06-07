@@ -400,6 +400,63 @@ const updateEmploymentRecord = async (req, res) => {
   }
 };
 
+// GET /api/admin/employment/stats
+const getEmploymentStats = async (req, res) => {
+  try {
+    const counts = await AlumniEmployment.aggregate([
+      { $group: { _id: '$employment_status', count: { $sum: 1 } } },
+    ]);
+    const stats = { employed: 0, unemployed: 0, selfEmployed: 0, notYetUpdated: 0, total: 0 };
+    for (const c of counts) {
+      stats.total += c.count;
+      if (c._id === 'Employed')        stats.employed      = c.count;
+      else if (c._id === 'Unemployed') stats.unemployed    = c.count;
+      else if (c._id === 'Self-employed') stats.selfEmployed = c.count;
+      else if (c._id === 'Not Yet Updated') stats.notYetUpdated = c.count;
+    }
+    res.json(stats);
+  } catch (err) {
+    console.error('getEmploymentStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// POST /api/admin/employment/backfill
+const backfillEmploymentRecords = async (req, res) => {
+  try {
+    const existingIds = await AlumniEmployment.distinct('alumni_id');
+    const alumni      = await User.find({ role: 'alumni', _id: { $nin: existingIds } })
+      .select('_id firstName lastName');
+
+    let created = 0;
+    for (const a of alumni) {
+      try {
+        await AlumniEmployment.create({
+          alumni_id:             a._id,
+          employment_status:     'Not Yet Updated',
+          company_name:          'N/A',
+          job_title:             null,
+          industry:              null,
+          work_location:         null,
+          salary_range:          '',
+          job_related_to_course: null,
+          date_employed:         null,
+          reason_unemployed:     null,
+          last_updated:          new Date(),
+        });
+        created++;
+      } catch (err) {
+        if (err.code !== 11000) console.error(`backfill skip ${a._id}:`, err.message);
+      }
+    }
+
+    res.json({ created });
+  } catch (err) {
+    console.error('backfillEmploymentRecords error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // POST /api/admin/employment/log-print
 const logPrintActivity = async (req, res) => {
   try {
@@ -521,6 +578,8 @@ const deleteTracerQuestion = async (req, res) => {
 module.exports = {
   getAlumniWithoutRecord,
   createEmploymentRecord,
+  backfillEmploymentRecords,
+  getEmploymentStats,
   getEmploymentRecords,
   getEmploymentRecord,
   updateEmploymentRecord,

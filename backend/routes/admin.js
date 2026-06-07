@@ -11,7 +11,8 @@ const {
 } = require('../controllers/partnershipController');
 const { getAllJobs } = require('../controllers/jobController');
 const {
-  getAlumniWithoutRecord, createEmploymentRecord,
+  getAlumniWithoutRecord, createEmploymentRecord, backfillEmploymentRecords,
+  getEmploymentStats,
   getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
@@ -51,9 +52,11 @@ router.delete('/partnerships/:id', deletePartnership);
 router.get('/jobs', getAllJobs);
 
 // Employment records — static sub-paths before /:id
+router.get('/employment/stats',                      getEmploymentStats);
 router.get('/employment/activity',                   getEmploymentActivity);
 router.get('/employment/export',                     exportEmploymentRecords);
 router.get('/employment/alumni-without-record',      getAlumniWithoutRecord);
+router.post('/employment/backfill',                  backfillEmploymentRecords);
 router.post('/employment/log-print',                 logPrintActivity);
 
 // Tracer form — reorder before /:id

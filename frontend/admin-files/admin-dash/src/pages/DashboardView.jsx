@@ -29,6 +29,7 @@ export default function DashboardView({ active, showToast }) {
   const [careerIndex, setCareerIndex] = useState(0);
   const [employmentIndex, setEmploymentIndex] = useState(0);
   const [totalUsers, setTotalUsers] = useState(null);
+  const [employedCount, setEmployedCount] = useState(null);
   const [postActivities, setPostActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
 
@@ -43,6 +44,17 @@ export default function DashboardView({ active, showToast }) {
         setTotalUsers(data.users?.length ?? 0);
       } catch {
         // silently fail — stat card stays at last known value
+      }
+    }
+
+    async function fetchEmploymentStats() {
+      try {
+        const res = await fetch(`${API}/admin/employment/stats`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setEmployedCount(data.employed ?? 0);
+      } catch {
+        // silently fail
       }
     }
 
@@ -61,10 +73,12 @@ export default function DashboardView({ active, showToast }) {
 
     fetchTotalUsers();
     fetchActivities();
+    fetchEmploymentStats();
 
     const interval = setInterval(() => {
       fetchTotalUsers();
       fetchActivities();
+      fetchEmploymentStats();
     }, 30000);
     return () => clearInterval(interval);
   }, [active]);
@@ -107,7 +121,10 @@ export default function DashboardView({ active, showToast }) {
           <span><Icon name="icon-11" /></span>
         </article>
         <article className="stat-card">
-          <div><p className="stat-value">260</p><p className="stat-label">Employed Alumni</p></div>
+          <div>
+            <p className="stat-value">{employedCount === null ? "—" : employedCount}</p>
+            <p className="stat-label">Employed Alumni</p>
+          </div>
           <span><Icon name="icon-12" /></span>
         </article>
         <article className="stat-card">

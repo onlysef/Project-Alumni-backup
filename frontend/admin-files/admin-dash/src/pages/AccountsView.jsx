@@ -17,15 +17,20 @@ function capitalize(str = "") {
 
 function mapUser(u) {
   return {
-    id:        u._id,
-    firstName: u.firstName,
-    lastName:  u.lastName,
-    name:      `${u.firstName} ${u.lastName}`,
-    email:     u.email,
-    role:      capitalize(u.role),
-    status:    capitalize(u.status),
+    id:             u._id,
+    firstName:      u.firstName,
+    lastName:       u.lastName,
+    name:           `${u.firstName} ${u.lastName}`,
+    email:          u.email,
+    role:           capitalize(u.role),
+    status:         capitalize(u.status),
+    course:         u.course         || "",
+    graduationYear: u.graduationYear || "",
   };
 }
+
+const COURSES = ["BSIT", "BSCS", "BSIS"];
+const BATCH_YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
 
 export default function AccountsView({ active, showToast }) {
   const [rows, setRows]               = useState([]);
@@ -168,35 +173,47 @@ export default function AccountsView({ active, showToast }) {
         onSubmit={async (data) => {
           if (entry.row) {
             try {
+              const payload = {
+                firstName: data.firstName,
+                lastName:  data.lastName,
+                email:     data.email,
+                role:      data.role.toLowerCase(),
+                status:    data.status.toLowerCase(),
+              };
+              if (data.role.toLowerCase() === "alumni") {
+                if (data.course)         payload.course         = data.course;
+                if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
+              }
               const res = await fetch(`${API}/admin/users/${entry.row.id}`, {
                 method: "PATCH",
                 headers: authHeaders(),
-                body: JSON.stringify({
-                  firstName: data.firstName,
-                  lastName:  data.lastName,
-                  email:     data.email,
-                  role:      data.role.toLowerCase(),
-                  status:    data.status.toLowerCase(),
-                }),
+                body: JSON.stringify(payload),
               });
               const json = await res.json();
               if (!res.ok) { showToast(json.message || "Update failed."); return; }
               setRows((prev) => prev.map((r) =>
                 r.id === entry.row.id ? mapUser(json.user) : r
               ));
-              showToast(`${data.firstName} ${data.lastName} updated.`);
+              showToast(json.employmentRemoved
+                ? `${data.firstName} ${data.lastName} updated. Employment record removed.`
+                : `${data.firstName} ${data.lastName} updated.`);
             } catch { showToast("Could not connect to server."); return; }
           } else {
             try {
+              const payload = {
+                firstName: data.firstName,
+                lastName:  data.lastName,
+                email:     data.email,
+                role:      data.role.toLowerCase(),
+              };
+              if (data.role.toLowerCase() === "alumni") {
+                if (data.course)         payload.course         = data.course;
+                if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
+              }
               const res = await fetch(`${API}/admin/users`, {
                 method: "POST",
                 headers: authHeaders(),
-                body: JSON.stringify({
-                  firstName: data.firstName,
-                  lastName:  data.lastName,
-                  email:     data.email,
-                  role:      data.role.toLowerCase(),
-                }),
+                body: JSON.stringify(payload),
               });
               const text = await res.text();
               let json;
@@ -359,6 +376,12 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
 }
 
 export function AdminEntryModal({ entry, onClose, onSubmit }) {
+  const [role, setRole] = React.useState(entry?.row?.role || "Alumni");
+
+  React.useEffect(() => {
+    setRole(entry?.row?.role || "Alumni");
+  }, [entry]);
+
   if (!entry) return null;
   const row    = entry.row;
   const isEdit = !!row;
@@ -376,11 +399,13 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
             e.preventDefault();
             const f = e.currentTarget.elements;
             onSubmit({
-              firstName: f.firstName.value.trim(),
-              lastName:  f.lastName.value.trim(),
-              email:     f.email.value.trim(),
-              role:      f.role.value,
-              status:    f.status ? f.status.value : undefined,
+              firstName:      f.firstName.value.trim(),
+              lastName:       f.lastName.value.trim(),
+              email:          f.email.value.trim(),
+              role:           f.role.value,
+              status:         f.status ? f.status.value : undefined,
+              course:         f.course        ? f.course.value         : undefined,
+              graduationYear: f.graduationYear ? f.graduationYear.value : undefined,
             });
           }}
         >
@@ -395,13 +420,29 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
               <input type="email" name="email" defaultValue={row?.email || ""} required />
             </label>
             <label>Role
-              <select name="role" defaultValue={row?.role || "Alumni"}>
+              <select name="role" value={role} onChange={(e) => setRole(e.target.value)}>
                 <option>Admin</option>
                 <option>Alumni</option>
                 <option>Coordinator</option>
                 <option>Employer</option>
               </select>
             </label>
+            {role === "Alumni" && (
+              <>
+                <label>Course
+                  <select name="course" defaultValue={row?.course || ""}>
+                    <option value="">— Select course —</option>
+                    {COURSES.map((c) => <option key={c}>{c}</option>)}
+                  </select>
+                </label>
+                <label>Graduation Year
+                  <select name="graduationYear" defaultValue={row?.graduationYear || ""}>
+                    <option value="">— Select year —</option>
+                    {BATCH_YEARS.map((y) => <option key={y}>{y}</option>)}
+                  </select>
+                </label>
+              </>
+            )}
             {isEdit && (
               <label>Status
                 <select name="status" defaultValue={row?.status || "Active"}>

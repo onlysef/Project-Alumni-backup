@@ -155,6 +155,15 @@ export default function EmploymentView({ active, showToast }) {
     return () => clearTimeout(searchTimer.current);
   }, [searchInput]);
 
+  // ── backfill missing employment records on mount ────────────────────────────
+  useEffect(() => {
+    if (!active) return;
+    fetch(`${API}/admin/employment/backfill`, { method: "POST", headers: authHeaders() })
+      .then((r) => r.ok && r.json())
+      .then((d) => { if (d?.created > 0) setRefreshKey((k) => k + 1); })
+      .catch(() => {});
+  }, [active]);
+
   // ── fetch records ───────────────────────────────────────────────────────────
   useEffect(() => {
     if (!active) return;
