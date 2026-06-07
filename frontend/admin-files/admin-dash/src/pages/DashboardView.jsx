@@ -4,6 +4,13 @@ import { Dropdown } from "../Primitives.jsx";
 import { CareerChart, EmploymentChart } from "../Charts.jsx";
 import { careerSets, employmentSets, assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
 
+const API = "http://localhost:5000/api";
+
+function authHeaders() {
+  const token = localStorage.getItem("auth_token");
+  return { Authorization: `Bearer ${token}` };
+}
+
 const postActivities = [
   { text: 'John Doe liked "Alumni Job Fair 2026"', time: "1 min ago" },
   { text: 'Maria Santos commented on "Scholarship Program"', time: "4 min ago" },
@@ -21,6 +28,26 @@ const reportNames = [
 export default function DashboardView({ active, showToast }) {
   const [careerIndex, setCareerIndex] = useState(0);
   const [employmentIndex, setEmploymentIndex] = useState(0);
+  const [totalUsers, setTotalUsers] = useState(null);
+
+  useEffect(() => {
+    if (!active) return;
+
+    async function fetchTotalUsers() {
+      try {
+        const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setTotalUsers(data.users?.length ?? 0);
+      } catch {
+        // silently fail — stat card stays at last known value
+      }
+    }
+
+    fetchTotalUsers();
+    const interval = setInterval(fetchTotalUsers, 30000);
+    return () => clearInterval(interval);
+  }, [active]);
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -53,7 +80,10 @@ export default function DashboardView({ active, showToast }) {
 
       <div className="stats" aria-label="Dashboard summary">
         <article className="stat-card">
-          <div><p className="stat-value">400</p><p className="stat-label">Total Users</p></div>
+          <div>
+            <p className="stat-value">{totalUsers === null ? "—" : totalUsers}</p>
+            <p className="stat-label">Total Users</p>
+          </div>
           <span><Icon name="icon-11" /></span>
         </article>
         <article className="stat-card">

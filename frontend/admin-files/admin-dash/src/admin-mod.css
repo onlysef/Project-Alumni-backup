@@ -3715,3 +3715,270 @@
             border-color: rgba(250, 200, 83, 0.22);
             color: #f8eef1;
         }
+
+        /* ── Employer Dashboard ─────────────────────────────────────────── */
+        .employer-dashboard {
+            min-height: 100vh;
+            padding: 28px 32px;
+            background: #fff;
+            font-family: inherit;
+            color: #2d2024;
+        }
+
+        .employer-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .employer-header h1 {
+            margin: 0 0 4px;
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--maroon);
+        }
+
+        .employer-header p {
+            margin: 0;
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        .employer-logout {
+            min-height: 36px;
+            border: 0;
+            border-radius: 6px;
+            padding: 0 16px;
+            background: var(--maroon);
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .employer-kpis {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        .employer-kpi {
+            padding: 20px 22px;
+            border-radius: 10px;
+            background: var(--maroon);
+            color: #fff;
+            box-shadow: var(--panel-shadow);
+        }
+
+        .employer-kpi strong {
+            display: block;
+            font-size: 30px;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .employer-kpi span {
+            font-size: 13px;
+            font-weight: 500;
+            opacity: 0.85;
+        }
+
+        .employer-section {
+            border: 1px solid rgba(87, 0, 19, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .employer-section-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 22px;
+            background: var(--maroon);
+            color: #fff;
+        }
+
+        .employer-section-head h2 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .employer-post-btn {
+            min-height: 34px;
+            border: 0;
+            border-radius: 6px;
+            padding: 0 16px;
+            background: #fff;
+            color: var(--maroon);
+            font: inherit;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .employer-post-form {
+            display: grid;
+            gap: 14px;
+            padding: 20px 22px;
+            border-bottom: 1px solid rgba(87, 0, 19, 0.15);
+            background: #fff8f9;
+        }
+
+        .employer-post-form h3 {
+            margin: 0;
+            font-size: 15px;
+            color: var(--maroon);
+        }
+
+        .employer-post-form label {
+            display: grid;
+            gap: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            color: #2d2024;
+        }
+
+        .employer-post-form input,
+        .employer-post-form select,
+        .employer-post-form textarea {
+            width: 100%;
+            border: 1px solid #cba0a6;
+            border-radius: 6px;
+            padding: 9px 12px;
+            font: inherit;
+            font-size: 13px;
+        }
+
+        .employer-post-form textarea {
+            resize: vertical;
+        }
+
+        .employer-form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .employer-form-actions button {
+            min-height: 34px;
+            border: 0;
+            border-radius: 6px;
+            padding: 0 16px;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .employer-form-actions button[type="button"] {
+            background: #e8dada;
+            color: var(--maroon);
+        }
+
+        .employer-form-actions button[type="submit"] {
+            background: var(--maroon);
+            color: #fff;
+        }
+
+        .employer-empty {
+            padding: 28px 22px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .employer-job-list {
+            display: grid;
+        }
+
+        .employer-job-card {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 16px 22px;
+            border-bottom: 1px solid #e4cccc;
+        }
+
+        .employer-job-card.is-closed {
+            opacity: 0.62;
+        }
+
+        .employer-job-card:last-child {
+            border-bottom: 0;
+        }
+
+        .employer-job-info {
+            display: grid;
+            gap: 4px;
+        }
+
+        .employer-job-info strong {
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        .employer-job-meta {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .employer-job-desc {
+            margin: 4px 0 0;
+            font-size: 13px;
+            color: #51484a;
+        }
+
+        .employer-job-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+
+        .employer-job-actions button {
+            min-height: 30px;
+            border: 0;
+            border-radius: 5px;
+            padding: 0 12px;
+            background: var(--maroon);
+            color: #fff;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .employer-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 800;
+        }
+
+        .badge-open {
+            background: #d4f0dc;
+            color: #1b6b33;
+        }
+
+        .badge-closed {
+            background: #ead7da;
+            color: var(--maroon);
+        }
+
+        .employer-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            background: var(--maroon);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.22);
+            z-index: 9999;
+        }
