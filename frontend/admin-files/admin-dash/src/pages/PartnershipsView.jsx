@@ -1,53 +1,124 @@
-import React, { useState } from "react";
-import { nextId } from "../shared.js";
+import React, { useState, useEffect } from "react";
 import Icon from "../Icon.jsx";
-import { Dropdown } from "../Primitives.jsx";
+import { Modal } from "../Primitives.jsx";
 import AdminMenu from "../components/AdminMenu.jsx";
-import { AdminEntryModal } from "./AccountsView.jsx";
 import { partnerActionList, actionLabels } from "../data.js";
 
-const partnershipsSeed = [
-  { partner: "AGRITECH SOLUTIONS", type: "Industry", contact: "careers@agritech.com", status: "Active" },
-  { partner: "IT SERVICES ASSO.", type: "Industry", contact: "hr@itservices.ph", status: "Active" },
-  { partner: "Scholarship Program", type: "Academe", contact: "partners@scholar.org", status: "Pending" },
-];
+const API = "http://localhost:5000/api";
+
+function authHeaders() {
+  const token = localStorage.getItem("auth_token");
+  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+}
+
+function mapPartnership(p) {
+  return {
+    id:          p._id,
+    partner:     p.name,
+    type:        p.type,
+    contact:     p.contact,
+    status:      p.status,
+    description: p.description ?? "",
+  };
+}
 
 export default function PartnershipsView({ active, showToast }) {
-  const [rows, setRows] = useState(partnershipsSeed.map((r) => ({ ...r, id: nextId() })));
+  const [rows, setRows]             = useState([]);
+  const [stats, setStats]           = useState({ active: 0, pending: 0, jobOpportunities: 0 });
+  const [loading, setLoading]       = useState(true);
   const [typeFilter, setTypeFilter] = useState("Type");
   const [statusFilter, setStatusFilter] = useState("Status");
   const [activeFilter, setActiveFilter] = useState("All");
-  const [entry, setEntry] = useState(null);
+  const [entry, setEntry]           = useState(null);
+
+  useEffect(() => {
+    if (!active) return;
+    fetchPartnerships();
+  }, [active]);
+
+  async function fetchPartnerships() {
+    setLoading(true);
+    try {
+      const res  = await fetch(`${API}/admin/partnerships`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Failed to load partnerships."); return; }
+      setRows(data.partnerships.map(mapPartnership));
+      setStats(data.stats);
+    } catch {
+      showToast("Could not connect to server.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function visible(r) {
-    return activeFilter === "All" || [r.partner, r.type, r.contact, r.status].join(" ").includes(activeFilter);
+    const typeMatch   = typeFilter === "Type"   || typeFilter === "All" || r.type === typeFilter;
+    const statusMatch = statusFilter === "Status" || statusFilter === "All" || r.status === statusFilter;
+    const filterMatch = activeFilter === "All"
+      || [r.partner, r.type, r.contact, r.status].join(" ").includes(activeFilter);
+    return typeMatch && statusMatch && filterMatch;
   }
+
   function applyFilter(choice, which) {
-    if (which === "type") setTypeFilter(choice);
-    else setStatusFilter(choice);
+    if (which === "type")   setTypeFilter(choice);
+    else                    setStatusFilter(choice);
     setActiveFilter(choice);
     const count = rows.filter((r) =>
       choice === "All" || [r.partner, r.type, r.contact, r.status].join(" ").includes(choice)
     ).length;
     showToast(`${count} item${count === 1 ? "" : "s"} shown.`);
   }
-  function handleAction(row, action) {
-    if (action === "view" || action === "edit") return setEntry({ row });
-    if (action === "delete") {
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
-      return showToast(`${row.partner} partnership deleted.`);
+
+  async function handleAction(row, action) {
+    if (action === "view") {
+      setEntry({ row, mode: "view" });
+      return;
     }
-    const status = action === "approve" || action === "activate" ? "Active" : "Archived";
-    setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, status } : r)));
-    showToast(`${row.partner}: ${action} action applied.`);
+    if (action === "edit") {
+      setEntry({ row, mode: "edit" });
+      return;
+    }
+    if (action === "delete") {
+      try {
+        const res = await fetch(`${API}/admin/partnerships/${row.id}`, {
+          method: "DELETE", headers: authHeaders(),
+        });
+        if (!res.ok) { showToast("Failed to delete."); return; }
+        setRows((prev) => prev.filter((r) => r.id !== row.id));
+        showToast(`${row.partner} deleted.`);
+        refreshStats();
+      } catch { showToast("Could not connect to server."); }
+      return;
+    }
+    const newStatus = action === "approve" || action === "activate" ? "Active" : "Archived";
+    try {
+      const res = await fetch(`${API}/admin/partnerships/${row.id}`, {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.message || "Update failed."); return; }
+      setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, status: newStatus } : r));
+      showToast(`${row.partner}: ${actionLabels[action]} applied.`);
+      refreshStats();
+    } catch { showToast("Could not connect to server."); }
+  }
+
+  async function refreshStats() {
+    try {
+      const res  = await fetch(`${API}/admin/partnerships`, { headers: authHeaders() });
+      const data = await res.json();
+      if (res.ok) setStats(data.stats);
+    } catch { /* ignore */ }
   }
 
   return (
     <section className={`content admin-view view${active ? " active-view" : ""}`}>
       <div className="admin-kpis">
-        <article><strong>18</strong><span>Active Partners</span></article>
-        <article><strong>5</strong><span>Pending MOUs</span></article>
-        <article><strong>42</strong><span>Job Opportunities</span></article>
+        <article><strong>{stats.active}</strong><span>Active Partners</span></article>
+        <article><strong>{stats.pending}</strong><span>Pending MOUs</span></article>
+        <article><strong>{stats.jobOpportunities}</strong><span>Job Opportunities</span></article>
       </div>
       <section className="admin-card">
         <div className="admin-card-head">
@@ -58,37 +129,142 @@ export default function PartnershipsView({ active, showToast }) {
             <button type="button" className="add-button" onClick={() => setEntry({})}>Add Partnership</button>
           </div>
         </div>
-        <table className="admin-table partnership-table">
-          <thead><tr><th>Partner</th><th>Type</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className={visible(r) ? "" : "is-hidden"}>
-                <td>{r.partner}</td><td>{r.type}</td><td>{r.contact}</td><td>{r.status}</td>
-                <td>
-                  {partnerActionList(r.status).map((a) => (
-                    <button key={a} type="button" onClick={() => handleAction(r, a)}>{actionLabels[a]}</button>
-                  ))}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {loading ? (
+          <p style={{ padding: "1rem" }}>Loading...</p>
+        ) : (
+          <table className="admin-table partnership-table">
+            <thead><tr><th>Partner</th><th>Type</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className={visible(r) ? "" : "is-hidden"}>
+                  <td>{r.partner}</td><td>{r.type}</td><td>{r.contact}</td><td>{r.status}</td>
+                  <td>
+                    {partnerActionList(r.status).map((a) => (
+                      <button key={a} type="button" onClick={() => handleAction(r, a)}>
+                        {actionLabels[a]}
+                      </button>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </section>
 
-      <AdminEntryModal
-        mode="partnership"
+      <PartnershipModal
         entry={entry}
         onClose={() => setEntry(null)}
-        onSubmit={(data) => {
-          if (entry.row) {
-            setRows((prev) => prev.map((r) => (r.id === entry.row.id ? { ...r, ...data } : r)));
-          } else {
-            setRows((prev) => [{ id: nextId(), ...data }, ...prev]);
-          }
-          showToast(`${data.partner} partnership saved.`);
-          setEntry(null);
+        onSubmit={async (data) => {
+          const isEdit = !!entry?.row;
+          try {
+            const url    = isEdit ? `${API}/admin/partnerships/${entry.row.id}` : `${API}/admin/partnerships`;
+            const method = isEdit ? "PATCH" : "POST";
+            const res    = await fetch(url, {
+              method,
+              headers: authHeaders(),
+              body: JSON.stringify(data),
+            });
+            const json = await res.json();
+            if (!res.ok) { showToast(json.message || "Save failed."); return; }
+            if (isEdit) {
+              setRows((prev) => prev.map((r) => r.id === entry.row.id ? mapPartnership(json.partnership) : r));
+            } else {
+              setRows((prev) => [mapPartnership(json.partnership), ...prev]);
+            }
+            showToast(`${data.name} saved.`);
+            setEntry(null);
+            refreshStats();
+          } catch { showToast("Could not connect to server."); }
         }}
       />
     </section>
+  );
+}
+
+function PartnershipModal({ entry, onClose, onSubmit }) {
+  if (!entry) return null;
+  const row     = entry.row;
+  const mode    = entry.mode || (row ? "edit" : "add");
+  const isView  = mode === "view";
+  const title   = isView ? "View Partnership" : row ? "Edit Partnership" : "Add Partnership";
+
+  if (isView) {
+    return (
+      <Modal open={!!entry} onClose={onClose}>
+        <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
+          <div className="modal-head">
+            <h3>{title}</h3>
+            <button type="button" aria-label="Close" onClick={onClose}>×</button>
+          </div>
+          <div className="record-details">
+            <div><strong>Partner Name</strong><span>{row.partner}</span></div>
+            <div><strong>Type</strong><span>{row.type}</span></div>
+            <div><strong>Contact Email</strong><span>{row.contact}</span></div>
+            <div><strong>Status</strong><span>{row.status}</span></div>
+            <div><strong>Description</strong><span>{row.description || "—"}</span></div>
+          </div>
+          <div className="modal-actions" style={{ padding: "0 20px 20px" }}>
+            <button type="button" onClick={onClose}>Close</button>
+          </div>
+        </section>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal open={!!entry} onClose={onClose}>
+      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
+        <div className="modal-head">
+          <h3>{title}</h3>
+          <button type="button" aria-label="Close" onClick={onClose}>×</button>
+        </div>
+        <form
+          className="admin-entry-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const f = e.currentTarget.elements;
+            onSubmit({
+              name:        f.name.value.trim(),
+              type:        f.type.value,
+              contact:     f.contact.value.trim(),
+              status:      f.status.value,
+              description: f.description.value.trim(),
+            });
+          }}
+        >
+          <div className="admin-entry-fields">
+            <label>Partner Name
+              <input type="text" name="name" defaultValue={row?.partner || ""} required />
+            </label>
+            <label>Type
+              <select name="type" defaultValue={row?.type || "Industry"}>
+                <option>Industry</option>
+                <option>Academe</option>
+                <option>Government</option>
+                <option>NGO</option>
+              </select>
+            </label>
+            <label>Contact Email
+              <input type="email" name="contact" defaultValue={row?.contact || ""} required />
+            </label>
+            <label>Status
+              <select name="status" defaultValue={row?.status || "Pending"}>
+                <option>Active</option>
+                <option>Pending</option>
+                <option>Archived</option>
+              </select>
+            </label>
+            <label>Description
+              <input type="text" name="description" defaultValue={row?.description || ""} />
+            </label>
+          </div>
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>Cancel</button>
+            <button type="submit">{row ? "Save" : "Add Partnership"}</button>
+          </div>
+        </form>
+      </section>
+    </Modal>
   );
 }
