@@ -1,5 +1,15 @@
 const Announcement = require('../models/Announcement');
+const ActivityLog  = require('../models/ActivityLog');
 const User = require('../models/User');
+
+async function resolveUserName(userId) {
+  try {
+    const user = await User.findById(userId).select('firstName lastName');
+    return user ? `${user.firstName} ${user.lastName}` : 'Unknown';
+  } catch {
+    return 'Unknown';
+  }
+}
 
 // GET /api/admin/announcements
 const getAnnouncements = async (req, res) => {
@@ -97,6 +107,17 @@ const toggleLike = async (req, res) => {
     }
     await ann.save();
 
+    if (liked) {
+      const userName = await resolveUserName(userId);
+      ActivityLog.create({
+        user_id:            userId,
+        user_name:          userName,
+        action:             'liked',
+        announcement_id:    ann._id,
+        announcement_title: ann.title,
+      }).catch(() => {});
+    }
+
     res.json({ liked, likesCount: ann.likedBy.length, likedBy: ann.likedBy });
   } catch (err) {
     console.error('toggleLike error:', err);
@@ -128,11 +149,20 @@ const addComment = async (req, res) => {
     const ann = await Announcement.findByIdAndUpdate(
       req.params.id,
       { $push: { comments: { user: req.user.id, userName, text: text.trim() } } },
-      { new: true, select: 'comments' }
+      { new: true, select: 'comments title' }
     );
     if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
 
     const newComment = ann.comments[ann.comments.length - 1];
+
+    ActivityLog.create({
+      user_id:            req.user.id,
+      user_name:          userName,
+      action:             'commented on',
+      announcement_id:    ann._id,
+      announcement_title: ann.title || 'a post',
+    }).catch(() => {});
+
     res.json({ comment: newComment, commentsCount: ann.comments.length });
   } catch (err) {
     console.error('addComment error:', err);
@@ -151,6 +181,15 @@ const trackShare = async (req, res) => {
     if (!alreadyShared) {
       ann.sharedBy.push(userId);
       await ann.save();
+
+      const userName = await resolveUserName(userId);
+      ActivityLog.create({
+        user_id:            userId,
+        user_name:          userName,
+        action:             'shared',
+        announcement_id:    ann._id,
+        announcement_title: ann.title,
+      }).catch(() => {});
     }
 
     res.json({ shared: true, sharesCount: ann.sharedBy.length, sharedBy: ann.sharedBy });
@@ -160,7 +199,22 @@ const trackShare = async (req, res) => {
   }
 };
 
+// GET /api/admin/announcements/activity  — last 20 post interactions
+const getRecentActivity = async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const activities = await ActivityLog.find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .select('user_name action announcement_title createdAt');
+    res.json({ activities });
+  } catch (err) {
+    console.error('getRecentActivity error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
-  toggleLike, getComments, addComment, trackShare,
+  toggleLike, getComments, addComment, trackShare, getRecentActivity,
 };
