@@ -4,12 +4,19 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 const { createUser, getUsers, updateUser, deleteUser, importUsers, upload } = require('../controllers/adminController');
 const {
   getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
-  toggleLike, getComments, addComment, trackShare,
+  toggleLike, getComments, addComment, trackShare, getRecentActivity,
 } = require('../controllers/announcementController');
 const {
   getPartnerships, createPartnership, updatePartnership, deletePartnership,
 } = require('../controllers/partnershipController');
 const { getAllJobs } = require('../controllers/jobController');
+const {
+  getAlumniWithoutRecord, createEmploymentRecord,
+  getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
+  getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
+  getTracerQuestions, createTracerQuestion, updateTracerQuestion,
+  deleteTracerQuestion, reorderTracerQuestions,
+} = require('../controllers/employmentController');
 const {
   getOfficeSettings,  updateOfficeSettings,
   getStaff,          createStaff,    updateStaff,    deleteStaff,
@@ -27,6 +34,7 @@ router.patch('/users/:id',          updateUser);
 router.delete('/users/:id',         deleteUser);
 
 router.get('/announcements',                    getAnnouncements);
+router.get('/announcements/activity',           getRecentActivity);
 router.post('/announcements',                   createAnnouncement);
 router.patch('/announcements/:id',              updateAnnouncement);
 router.delete('/announcements/:id',             deleteAnnouncement);
@@ -41,6 +49,25 @@ router.patch('/partnerships/:id',  updatePartnership);
 router.delete('/partnerships/:id', deletePartnership);
 
 router.get('/jobs', getAllJobs);
+
+// Employment records — static sub-paths before /:id
+router.get('/employment/activity',                   getEmploymentActivity);
+router.get('/employment/export',                     exportEmploymentRecords);
+router.get('/employment/alumni-without-record',      getAlumniWithoutRecord);
+router.post('/employment/log-print',                 logPrintActivity);
+
+// Tracer form — reorder before /:id
+router.get('/employment/tracer-questions',            getTracerQuestions);
+router.post('/employment/tracer-questions',           createTracerQuestion);
+router.patch('/employment/tracer-questions/reorder',  reorderTracerQuestions);
+router.patch('/employment/tracer-questions/:id',      updateTracerQuestion);
+router.delete('/employment/tracer-questions/:id',     deleteTracerQuestion);
+
+// Employment CRUD
+router.get('/employment',       getEmploymentRecords);
+router.post('/employment',      createEmploymentRecord);
+router.get('/employment/:id',   getEmploymentRecord);
+router.patch('/employment/:id', updateEmploymentRecord);
 
 // Office settings
 router.get('/appointments/settings',   getOfficeSettings);

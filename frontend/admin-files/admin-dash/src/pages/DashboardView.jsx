@@ -11,13 +11,13 @@ function authHeaders() {
   return { Authorization: `Bearer ${token}` };
 }
 
-const postActivities = [
-  { text: 'John Doe liked "Alumni Job Fair 2026"', time: "1 min ago" },
-  { text: 'Maria Santos commented on "Scholarship Program"', time: "4 min ago" },
-  { text: 'Nicole Ramos liked "Internship Opportunities"', time: "10 min ago" },
-  { text: 'Carla Dizon commented on "Alumni Meetup"', time: "16 min ago" },
-  { text: 'Mark Villanueva liked "Career Webinar 2026"', time: "30 mins ago" },
-];
+function timeAgo(dateStr) {
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60)   return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
 
 const reportNames = [
   "Employment Status Distribution",
@@ -29,6 +29,8 @@ export default function DashboardView({ active, showToast }) {
   const [careerIndex, setCareerIndex] = useState(0);
   const [employmentIndex, setEmploymentIndex] = useState(0);
   const [totalUsers, setTotalUsers] = useState(null);
+  const [postActivities, setPostActivities] = useState([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
 
   useEffect(() => {
     if (!active) return;
@@ -44,8 +46,26 @@ export default function DashboardView({ active, showToast }) {
       }
     }
 
+    async function fetchActivities() {
+      try {
+        const res = await fetch(`${API}/admin/announcements/activity`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setPostActivities(data.activities || []);
+      } catch {
+        // silently fail
+      } finally {
+        setActivitiesLoading(false);
+      }
+    }
+
     fetchTotalUsers();
-    const interval = setInterval(fetchTotalUsers, 30000);
+    fetchActivities();
+
+    const interval = setInterval(() => {
+      fetchTotalUsers();
+      fetchActivities();
+    }, 30000);
     return () => clearInterval(interval);
   }, [active]);
 
@@ -149,10 +169,22 @@ export default function DashboardView({ active, showToast }) {
           <section className="panel">
             <div className="panel-head light">Recent Post Activities</div>
             <div className="activity-list">
-              {postActivities.map((a, i) => (
-                <div className="activity" key={i}>
-                  <p>{a.text}</p>
-                  <time>{a.time}</time>
+              {activitiesLoading ? (
+                <div className="activity" style={{ justifyContent: "center", color: "var(--muted, #76656a)", fontSize: 13 }}>
+                  Loading…
+                </div>
+              ) : postActivities.length === 0 ? (
+                <div className="activity" style={{ justifyContent: "center", color: "var(--muted, #76656a)", fontSize: 13 }}>
+                  No recent activity yet.
+                </div>
+              ) : postActivities.map((a) => (
+                <div className="activity" key={a._id}>
+                  <p>
+                    <strong>{a.user_name}</strong>{" "}
+                    {a.action}{" "}
+                    <em style={{ fontStyle: "normal" }}>&ldquo;{a.announcement_title}&rdquo;</em>
+                  </p>
+                  <time dateTime={a.createdAt}>{timeAgo(a.createdAt)}</time>
                 </div>
               ))}
             </div>
