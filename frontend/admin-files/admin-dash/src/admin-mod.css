@@ -4095,9 +4095,10 @@
             letter-spacing: 0.3px;
         }
 
-        .status-badge.employed    { background: #e6f7ee; color: #257a4e; }
-        .status-badge.unemployed  { background: #f7eeee; color: #8a1f2f; }
-        .status-badge.self-employed { background: #fff8e6; color: #895a00; }
+        .status-badge.employed       { background: #e6f7ee; color: #257a4e; }
+        .status-badge.unemployed     { background: #f7eeee; color: #8a1f2f; }
+        .status-badge.self-employed  { background: #fff8e6; color: #895a00; }
+        .status-badge.not-yet-updated { background: #f0f0f0; color: #666; }
 
         .tracer-q-list {
             display: grid;

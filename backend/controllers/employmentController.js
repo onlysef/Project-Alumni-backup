@@ -126,8 +126,11 @@ const createEmploymentRecord = async (req, res) => {
       date_employed, reason_unemployed,
     } = req.body;
 
-    if (!alumni_id)          return res.status(400).json({ message: 'Alumni is required.' });
-    if (!employment_status)  return res.status(400).json({ message: 'Employment status is required.' });
+    if (!alumni_id) return res.status(400).json({ message: 'Alumni is required.' });
+    const MANUAL_STATUSES = ['Employed', 'Unemployed', 'Self-employed'];
+    if (!employment_status || !MANUAL_STATUSES.includes(employment_status)) {
+      return res.status(400).json({ message: 'Employment status must be Employed, Unemployed, or Self-employed.' });
+    }
 
     if (employment_status === 'Employed') {
       if (!company_name?.trim())  return res.status(400).json({ message: 'Company name is required.' });
@@ -347,7 +350,8 @@ const updateEmploymentRecord = async (req, res) => {
       date_employed, reason_unemployed,
     } = req.body;
 
-    if (!employment_status) {
+    const VALID_STATUSES = ['Not Yet Updated', 'Employed', 'Unemployed', 'Self-employed'];
+    if (!employment_status || !VALID_STATUSES.includes(employment_status)) {
       return res.status(400).json({ message: 'Employment status is required.' });
     }
     if (employment_status === 'Employed') {

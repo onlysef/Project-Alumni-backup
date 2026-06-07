@@ -287,6 +287,21 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
           <div style={{ padding: "0 0 8px" }}>
             <p style={{ margin: "0 0 12px", fontWeight: 600 }}>{result.message}</p>
 
+            {(result.employmentCreated > 0 || result.employmentSkipped > 0) && (
+              <div style={{ background: "#f0f7ff", border: "1px solid #bee3f8", borderRadius: 6, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
+                {result.employmentCreated > 0 && (
+                  <div style={{ color: "#2b6cb0" }}>
+                    📋 {result.employmentCreated} employment record{result.employmentCreated !== 1 ? "s" : ""} auto-created in Alumni Employment Details.
+                  </div>
+                )}
+                {result.employmentSkipped > 0 && (
+                  <div style={{ color: "#975a16", marginTop: result.employmentCreated > 0 ? 4 : 0 }}>
+                    ⚠ {result.employmentSkipped} employment record{result.employmentSkipped !== 1 ? "s" : ""} skipped (already existed).
+                  </div>
+                )}
+              </div>
+            )}
+
             {result.created.length > 0 && (
               <details open>
                 <summary style={{ cursor: "pointer", color: "#276749", fontWeight: 600, marginBottom: 6 }}>
@@ -296,6 +311,7 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
                   {result.created.map((r) => (
                     <li key={r.email}>
                       {r.name} — {r.email}
+                      {r.role === "alumni" && <span style={{ color: "#2b6cb0" }}> (employment record created)</span>}
                       {!r.emailSent && <span style={{ color: "#e53e3e" }}> (email not sent)</span>}
                     </li>
                   ))}

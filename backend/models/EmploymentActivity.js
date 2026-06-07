@@ -12,6 +12,7 @@ const employmentActivitySchema = new mongoose.Schema({
       'exported employment list',
       'printed employment record',
       'edited tracer form',
+      'added to employment details',
     ],
     required: true,
   },

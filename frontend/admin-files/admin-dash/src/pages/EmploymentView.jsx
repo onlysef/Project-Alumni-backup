@@ -39,7 +39,8 @@ function groupActivities(acts) {
 }
 
 const COURSES    = ["BSIT", "BSCS", "BSIS"];
-const STATUSES   = ["Employed", "Unemployed", "Self-employed"];
+const STATUSES   = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
+const ADD_STATUSES = ["Employed", "Unemployed", "Self-employed"];
 const LIMITS     = [10, 25, 50, 100];
 const INDUSTRIES = [
   "Information Technology", "Business Process Outsourcing", "Healthcare",
@@ -54,8 +55,13 @@ const EMPTY_FILTERS   = { status: "", course: "", batch_year: "", date_updated: 
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
 
 function StatusBadge({ status }) {
-  const cls = { Employed: "employed", Unemployed: "unemployed", "Self-employed": "self-employed" }[status] || "unemployed";
-  return <span className={`status-badge ${cls}`}>{status || "—"}</span>;
+  const cls = {
+    Employed:          "employed",
+    Unemployed:        "unemployed",
+    "Self-employed":   "self-employed",
+    "Not Yet Updated": "not-yet-updated",
+  }[status] || "not-yet-updated";
+  return <span className={`status-badge ${cls}`}>{status || "Not Yet Updated"}</span>;
 }
 
 function ConfirmDialog({ open, message, onConfirm, onCancel }) {
@@ -288,6 +294,7 @@ export default function EmploymentView({ active, showToast }) {
     } else if (f.employment_status === "Self-employed") {
       if (!f.industry?.trim()) e.industry = "Industry or business type is required.";
     }
+    // "Not Yet Updated" requires no additional fields
     return e;
   }
 
@@ -556,10 +563,6 @@ export default function EmploymentView({ active, showToast }) {
               <button type="button" onClick={() => handleExport("excel")}>Export as Excel</button>
             </div>
           </div>
-          <button type="button" className="maroon-action" onClick={() => { setAddForm(EMPTY_ADD_FORM); setAddErrors({}); setAddOpen(true); }}>
-            <span><Icon name="icon-28" /></span>
-            <span>Add Record</span>
-          </button>
           <button type="button" className="maroon-action" onClick={() => setTracerOpen(true)}>
             <span><Icon name="icon-18" /></span>
             <span>Edit Tracer Form</span>
@@ -626,7 +629,7 @@ export default function EmploymentView({ active, showToast }) {
                 <tr key={r._id}>
                   <td>{r.name}</td>
                   <td>{r.course || "—"}</td>
-                  <td>{r.employment_status === "Unemployed" && !r.company_name ? "N/A" : (r.company_name || "—")}</td>
+                  <td>{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") && !r.company_name ? "N/A" : (r.company_name || "N/A")}</td>
                   <td><StatusBadge status={r.employment_status} /></td>
                   <td>{fmtDate(r.last_updated)}</td>
                   <td>
@@ -649,15 +652,6 @@ export default function EmploymentView({ active, showToast }) {
                       onClick={() => setViewRecord(r)}
                     >
                       <span><Icon name="icon-20" /></span>
-                    </button>
-                    <button
-                      type="button"
-                      className="table-icon"
-                      aria-label="Edit record"
-                      style={{ color: "var(--maroon)", fontSize: "15px" }}
-                      onClick={() => openEdit(r)}
-                    >
-                      ✎
                     </button>
                   </td>
                 </tr>
@@ -790,7 +784,7 @@ export default function EmploymentView({ active, showToast }) {
                 <div><strong>Course</strong><span>{viewRecord.course || "—"}</span></div>
                 <div><strong>Batch Year</strong><span>{viewRecord.graduation_year || "—"}</span></div>
                 <div><strong>Status</strong><span><StatusBadge status={viewRecord.employment_status} /></span></div>
-                <div><strong>Company</strong><span>{viewRecord.employment_status === "Unemployed" && !viewRecord.company_name ? "N/A" : (viewRecord.company_name || "—")}</span></div>
+                <div><strong>Company</strong><span>{(viewRecord.employment_status === "Unemployed" || viewRecord.employment_status === "Not Yet Updated") ? "N/A" : (viewRecord.company_name || "N/A")}</span></div>
                 <div><strong>Job Title</strong><span>{viewRecord.job_title || "—"}</span></div>
                 <div><strong>Industry</strong><span>{viewRecord.industry || "—"}</span></div>
                 <div><strong>Work Location</strong><span>{viewRecord.work_location || "—"}</span></div>
@@ -835,12 +829,12 @@ export default function EmploymentView({ active, showToast }) {
                     onChange={e => setEditForm(f => ({ ...f, employment_status: e.target.value }))}
                   >
                     <option value="">Select status…</option>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}  {/* includes Not Yet Updated */}
                   </select>
                   {editErrors.employment_status && <span className="field-error">{editErrors.employment_status}</span>}
                 </label>
 
-                {editForm.employment_status && editForm.employment_status !== "Unemployed" && (
+                {editForm.employment_status && editForm.employment_status !== "Unemployed" && editForm.employment_status !== "Not Yet Updated" && (
                   <>
                     <div className="field-row">
                       <label>
@@ -1159,7 +1153,7 @@ export default function EmploymentView({ active, showToast }) {
                   onChange={e => setAddForm(f => ({ ...f, employment_status: e.target.value }))}
                 >
                   <option value="">Select status…</option>
-                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  {ADD_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
                 {addErrors.employment_status && <span className="field-error">{addErrors.employment_status}</span>}
               </label>

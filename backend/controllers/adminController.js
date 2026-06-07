@@ -1,8 +1,10 @@
-const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
-const multer = require('multer');
-const xlsx = require('xlsx');
-const User = require('../models/User');
+const crypto          = require('crypto');
+const bcrypt          = require('bcryptjs');
+const multer          = require('multer');
+const xlsx            = require('xlsx');
+const User            = require('../models/User');
+const AlumniEmployment   = require('../models/AlumniEmployment');
+const EmploymentActivity = require('../models/EmploymentActivity');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 
 const upload = multer({
@@ -144,9 +146,15 @@ const importUsers = async (req, res) => {
 
     if (!rows.length) return res.status(400).json({ message: 'Spreadsheet is empty.' });
 
-    const created = [];
-    const skipped = [];
-    const failed  = [];
+    const created             = [];
+    const skipped             = [];
+    const failed              = [];
+    let   employmentCreated   = 0;
+    let   employmentSkipped   = 0;
+
+    const adminName = req.user
+      ? (await User.findById(req.user.id).select('firstName lastName').then(u => u ? `${u.firstName} ${u.lastName}` : 'Admin').catch(() => 'Admin'))
+      : 'Admin';
 
     const VALID_ROLES = ['admin', 'alumni', 'coordinator', 'employer'];
 
@@ -166,6 +174,7 @@ const importUsers = async (req, res) => {
 
       const role = VALID_ROLES.includes(rawRole) ? rawRole : 'alumni';
 
+      let user = null;
       try {
         const existing = await User.findOne({ email });
         if (existing) {
@@ -180,7 +189,55 @@ const importUsers = async (req, res) => {
         if (course)         userData.course         = course;
         if (graduationYear) userData.graduationYear = graduationYear;
 
-        const user = await User.create(userData);
+        user = await User.create(userData);
+
+        // ── Auto-create employment record for alumni ──────────────────────────
+        if (role === 'alumni') {
+          const empExists = await AlumniEmployment.exists({ alumni_id: user._id });
+          if (empExists) {
+            employmentSkipped++;
+          } else {
+            try {
+              await AlumniEmployment.create({
+                alumni_id:             user._id,
+                employment_status:     'Not Yet Updated',
+                company_name:          'N/A',
+                job_title:             null,
+                industry:              null,
+                work_location:         null,
+                salary_range:          '',
+                job_related_to_course: null,
+                date_employed:         null,
+                reason_unemployed:     null,
+                last_updated:          new Date(),
+              });
+              employmentCreated++;
+
+              // Log activity (fire-and-forget)
+              EmploymentActivity.create({
+                user_id:     req.user?.id || null,
+                user_name:   adminName,
+                action:      'added to employment details',
+                target_name: `${firstName} ${lastName}`,
+                details:     'auto-created from user import',
+              }).catch(() => {});
+            } catch (empErr) {
+              if (empErr.code === 11000) {
+                // Duplicate key — already exists, just skip
+                employmentSkipped++;
+              } else {
+                // Employment creation failed — rollback user to keep data consistent
+                await User.findByIdAndDelete(user._id).catch(() => {});
+                failed.push({
+                  email,
+                  name: `${firstName} ${lastName}`,
+                  reason: `User created but employment record failed: ${empErr.message}. User has been removed.`,
+                });
+                continue;
+              }
+            }
+          }
+        }
 
         let emailSent = true;
         try {
@@ -189,17 +246,37 @@ const importUsers = async (req, res) => {
           emailSent = false;
         }
 
-        created.push({ email, name: `${firstName} ${lastName}`, emailSent });
+        created.push({
+          email,
+          name:      `${firstName} ${lastName}`,
+          role,
+          emailSent,
+          employmentCreated: role === 'alumni',
+        });
       } catch (err) {
+        // If user was created before the error, remove it
+        if (user?._id) {
+          await User.findByIdAndDelete(user._id).catch(() => {});
+        }
         failed.push({ email, name: `${firstName} ${lastName}`, reason: err.message });
       }
     }
 
+    const parts = [
+      `${created.length} user${created.length !== 1 ? 's' : ''} imported`,
+      ...(employmentCreated > 0   ? [`${employmentCreated} employment record${employmentCreated !== 1 ? 's' : ''} created`]  : []),
+      ...(employmentSkipped > 0   ? [`${employmentSkipped} employment record${employmentSkipped !== 1 ? 's' : ''} skipped (already existed)`] : []),
+      ...(skipped.length > 0      ? [`${skipped.length} skipped`]   : []),
+      ...(failed.length > 0       ? [`${failed.length} failed`]     : []),
+    ];
+
     res.status(200).json({
-      message: `Import complete. ${created.length} created, ${skipped.length} skipped, ${failed.length} failed.`,
+      message: `Import complete. ${parts.join(', ')}.`,
       created,
       skipped,
       failed,
+      employmentCreated,
+      employmentSkipped,
     });
   } catch (err) {
     console.error('importUsers error:', err);
