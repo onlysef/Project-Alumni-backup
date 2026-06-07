@@ -126,8 +126,11 @@ const createEmploymentRecord = async (req, res) => {
       date_employed, reason_unemployed,
     } = req.body;
 
-    if (!alumni_id)          return res.status(400).json({ message: 'Alumni is required.' });
-    if (!employment_status)  return res.status(400).json({ message: 'Employment status is required.' });
+    if (!alumni_id) return res.status(400).json({ message: 'Alumni is required.' });
+    const MANUAL_STATUSES = ['Employed', 'Unemployed', 'Self-employed'];
+    if (!employment_status || !MANUAL_STATUSES.includes(employment_status)) {
+      return res.status(400).json({ message: 'Employment status must be Employed, Unemployed, or Self-employed.' });
+    }
 
     if (employment_status === 'Employed') {
       if (!company_name?.trim())  return res.status(400).json({ message: 'Company name is required.' });
@@ -347,7 +350,8 @@ const updateEmploymentRecord = async (req, res) => {
       date_employed, reason_unemployed,
     } = req.body;
 
-    if (!employment_status) {
+    const VALID_STATUSES = ['Not Yet Updated', 'Employed', 'Unemployed', 'Self-employed'];
+    if (!employment_status || !VALID_STATUSES.includes(employment_status)) {
       return res.status(400).json({ message: 'Employment status is required.' });
     }
     if (employment_status === 'Employed') {
@@ -392,6 +396,63 @@ const updateEmploymentRecord = async (req, res) => {
     res.json({ message: 'Employment record updated.', record });
   } catch (err) {
     console.error('updateEmploymentRecord error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/admin/employment/stats
+const getEmploymentStats = async (req, res) => {
+  try {
+    const counts = await AlumniEmployment.aggregate([
+      { $group: { _id: '$employment_status', count: { $sum: 1 } } },
+    ]);
+    const stats = { employed: 0, unemployed: 0, selfEmployed: 0, notYetUpdated: 0, total: 0 };
+    for (const c of counts) {
+      stats.total += c.count;
+      if (c._id === 'Employed')        stats.employed      = c.count;
+      else if (c._id === 'Unemployed') stats.unemployed    = c.count;
+      else if (c._id === 'Self-employed') stats.selfEmployed = c.count;
+      else if (c._id === 'Not Yet Updated') stats.notYetUpdated = c.count;
+    }
+    res.json(stats);
+  } catch (err) {
+    console.error('getEmploymentStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// POST /api/admin/employment/backfill
+const backfillEmploymentRecords = async (req, res) => {
+  try {
+    const existingIds = await AlumniEmployment.distinct('alumni_id');
+    const alumni      = await User.find({ role: 'alumni', _id: { $nin: existingIds } })
+      .select('_id firstName lastName');
+
+    let created = 0;
+    for (const a of alumni) {
+      try {
+        await AlumniEmployment.create({
+          alumni_id:             a._id,
+          employment_status:     'Not Yet Updated',
+          company_name:          'N/A',
+          job_title:             null,
+          industry:              null,
+          work_location:         null,
+          salary_range:          '',
+          job_related_to_course: null,
+          date_employed:         null,
+          reason_unemployed:     null,
+          last_updated:          new Date(),
+        });
+        created++;
+      } catch (err) {
+        if (err.code !== 11000) console.error(`backfill skip ${a._id}:`, err.message);
+      }
+    }
+
+    res.json({ created });
+  } catch (err) {
+    console.error('backfillEmploymentRecords error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -517,6 +578,8 @@ const deleteTracerQuestion = async (req, res) => {
 module.exports = {
   getAlumniWithoutRecord,
   createEmploymentRecord,
+  backfillEmploymentRecords,
+  getEmploymentStats,
   getEmploymentRecords,
   getEmploymentRecord,
   updateEmploymentRecord,
