@@ -470,6 +470,7 @@
         }
 
         .stat-card {
+            border: 1px solid rgb(255 255 255 / 12% 12%);
             min-height: 135px;
             display: flex;
             align-items: center;
@@ -1160,7 +1161,7 @@
             margin-bottom: 28px;
             padding: 14px 34px 28px;
             position: relative;
-            border: 1px solid rgba(87, 0, 19, 0.8);
+            border: 1px solid rgb(250 200 83);
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.14);
         }
@@ -1320,7 +1321,7 @@
 
         .recent-card {
             padding: 16px 18px 24px;
-            border: 1px solid rgba(0, 0, 0, 0.38);
+            border: 1px solid rgb(250 200 83);
             border-radius: 8px;
             background: #f4eeee;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
@@ -2932,12 +2933,12 @@
         body.dark-mode .main,
         body.dark-mode .content,
         body.dark-mode .admin-view {
-            background: #16070b;
+            background: #321820;
             color: #f3e7ea;
         }
 
         body.dark-mode .topbar {
-            background: #31000a;
+            background: #570013;
         }
 
         body.dark-mode .panel,
@@ -2951,7 +2952,7 @@
         }
 
         body.dark-mode .panel-head.light {
-            background: #32151c;
+            background: #570013;
             color: #fac853;
         }
 
@@ -2977,7 +2978,7 @@
         body.dark-mode .notification-item,
         body.dark-mode .profile-summary {
             border-color: rgba(250, 200, 83, 0.18);
-            background: #2b141a;
+            background: #2f171e;
             color: #f3e7ea;
         }
 
