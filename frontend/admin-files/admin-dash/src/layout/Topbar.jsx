@@ -13,15 +13,9 @@ const notificationsSeed = [
 export function Topbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast }) {
   const [panel, setPanel] = useState(null); // 'notifications' | 'settings' | 'profile'
   const [notifications, setNotifications] = useState(notificationsSeed);
-  const [profile, setProfile] = useState({
-    name: "Admin User",
-    email: "admin@tsu.edu.ph",
-    role: "System Administrator",
-  });
 
   const unread = notifications.filter((n) => n.unread).length;
   const badge = settings.dashboardNotifications ? unread : 0;
-  const initial = profile.name.charAt(0).toUpperCase();
 
   return (
     <>
@@ -54,14 +48,6 @@ export function Topbar({ title, collapsed, onToggleSidebar, settings, setSetting
             onClick={() => setPanel(panel === "settings" ? null : "settings")}
           >
             <span><Icon name="icon-10" /></span>
-          </button>
-          <button
-            className="avatar"
-            type="button"
-            aria-label="Admin profile"
-            onClick={() => setPanel(panel === "profile" ? null : "profile")}
-          >
-            {initial}
           </button>
         </div>
       </header>
@@ -113,51 +99,6 @@ export function Topbar({ title, collapsed, onToggleSidebar, settings, setSetting
           }}
           onClose={() => setPanel(null)}
         />
-      </Modal>
-
-      <Modal open={panel === "profile"} onClose={() => setPanel(null)} className="topbar-popover profile-popover">
-        <section className="tracer-modal topbar-modal" role="dialog" aria-modal="true">
-          <div className="modal-head">
-            <h3>Admin Profile</h3>
-            <button type="button" aria-label="Close profile" onClick={() => setPanel(null)}>×</button>
-          </div>
-          <form
-            className="profile-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const f = e.currentTarget.elements;
-              setProfile({
-                name: f.name.value.trim() || "Admin User",
-                email: f.email.value,
-                role: f.role.value,
-              });
-              setPanel(null);
-              showToast("Admin profile updated.");
-            }}
-          >
-            <div className="profile-summary">
-              <div className="profile-avatar-preview">{initial}</div>
-              <div>
-                <strong>{profile.name}</strong>
-                <span>{profile.role}</span>
-              </div>
-            </div>
-            <label>Name<input type="text" name="name" defaultValue={profile.name} required /></label>
-            <label>Email<input type="email" name="email" defaultValue={profile.email} required /></label>
-            <label>
-              Role
-              <select name="role" defaultValue={profile.role}>
-                <option>System Administrator</option>
-                <option>Staff Administrator</option>
-                <option>Records Manager</option>
-              </select>
-            </label>
-            <div className="modal-actions">
-              <button type="button" onClick={() => setPanel(null)}>Cancel</button>
-              <button type="submit">Save Profile</button>
-            </div>
-          </form>
-        </section>
       </Modal>
     </>
   );
