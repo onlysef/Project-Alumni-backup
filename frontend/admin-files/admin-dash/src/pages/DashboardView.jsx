@@ -94,7 +94,7 @@ export default function DashboardView({ active, showToast }) {
     <section className={`content figma-group-69 view${active ? " active-view" : ""}`}>
       <div className="admin-hero" aria-label="Welcome banner">
         {/* NOTE: placeholder copy — replace with your actual welcome message. */}
-        <h1 className="admin-hero-title">Hello, Admin! <span aria-hidden="true">👋</span></h1>
+        <h1 className="admin-hero-title">Hello, Admin!</h1>
         <p className="admin-hero-subtitle">
           Welcome to the Alumni Tracer Management System. Monitor alumni data,
           manage accounts, and review reports — all in one place.
