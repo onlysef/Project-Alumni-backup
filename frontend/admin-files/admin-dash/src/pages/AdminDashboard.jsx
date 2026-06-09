@@ -6,6 +6,7 @@ import { Topbar } from "../layout/Topbar.jsx";
 
 import DashboardView from "./DashboardView.jsx";
 import EmploymentView from "./EmploymentView.jsx";
+import JobConnectView from "./JobConnectView.jsx";
 import AppointmentsView from "./AppointmentsView.jsx";
 import AccountsView from "./AccountsView.jsx";
 import AnnouncementsView from "./AnnouncementsView.jsx";
@@ -54,9 +55,14 @@ export default function AdminDashboard() {
     document.title = `${viewRoutes[view]} | Tarlac State University`;
   }, [view]);
 
-  function selectView(v) {
+  const [accountsRoleFilter, setAccountsRoleFilter] = useState("Role");
+
+  function selectView(v, subFilter) {
     setView(v);
     localStorage.setItem("adminView", v);
+    if (v === "accounts" && subFilter) {
+      setAccountsRoleFilter(subFilter);
+    }
   }
 
   return (
@@ -74,9 +80,10 @@ export default function AdminDashboard() {
         <DashboardView active={view === "dashboard"} showToast={showToast} />
         <EmploymentView active={view === "employment"} showToast={showToast} />
         <AppointmentsView active={view === "appointments"} showToast={showToast} />
-        <AccountsView active={view === "accounts"} showToast={showToast} />
+        <AccountsView active={view === "accounts"} showToast={showToast} roleFilterFromNav={accountsRoleFilter} />
         <AnnouncementsView active={view === "announcements"} showToast={showToast} />
         <PartnershipsView active={view === "partnerships"} showToast={showToast} />
+        <JobConnectView active={view === "jobconnect"} showToast={showToast} />        
       </main>
       <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">
         {toast}
