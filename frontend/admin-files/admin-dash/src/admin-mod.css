@@ -134,6 +134,8 @@
         }
 
          .toptsu-logo {
+            width: 120%;
+            height: auto;
             object-fit: contain;
         }
 
@@ -282,6 +284,58 @@
             width: 18px;
             height: 18px;
             fill: currentColor;
+        }
+
+        /* ===== Expandable submenu (nav-group) ===== */
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* main row that has a caret: keep 3 columns (icon, label, caret) */
+        .nav-group > a {
+            grid-template-columns: 24px 1fr auto;
+        }
+
+        .nav-caret {
+            overflow: hidden;
+            font-size: 30px;
+            line-height: 1;
+            transition: transform 180ms ease;
+            justify-self: end;
+        }
+
+        .nav-caret.open {
+            transform: rotate(180deg);
+        }
+
+        /* sub-items container */
+        .nav-sub {
+            display: flex;
+            flex-direction: column;
+            background: rgba(0, 0, 0, 0.12);
+        }
+
+        /* sub-item links: indented, smaller, single column */
+        .nav-sub a {
+            height: 42px;
+            grid-template-columns: 1fr;
+            padding: 10px 32px 10px 55px;
+            font-size: 10px;
+            border-radius: 0;
+            color: rgba(255, 255, 255, 0.82);
+        }
+
+        .nav-sub a:hover {
+            padding-left: 60px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+        }
+
+        /* collapsed sidebar: hide sub-items and caret */
+        .app.sidebar-collapsed .nav-sub,
+        .app.sidebar-collapsed .nav-caret {
+            display: none;
         }
 
         .sidebar-footer {
@@ -2014,6 +2068,8 @@
             width: 14%;
         }
 
+
+
         .announcement-grid {
             grid-template-columns: minmax(360px, 1.15fr) minmax(280px, 0.55fr);
             align-items: start;
@@ -3296,6 +3352,20 @@
                 padding: 0;
                 justify-items: center;
             }
+
+            .nav-sub { display: flex; flex-direction: column; }
+            .nav-sub a {
+            padding-left: 48px;
+            font-size: 0.9em;
+            opacity: 0.85;
+            }
+            .nav-sub a:hover { opacity: 1; }
+            .nav-caret {
+            margin-left: auto;
+            transition: transform 0.15s ease;
+            font-size: 0.8em;
+            }
+            .nav-caret.open { transform: rotate(180deg); }
 
             .sidebar-footer {
                 padding-inline: 16px;
