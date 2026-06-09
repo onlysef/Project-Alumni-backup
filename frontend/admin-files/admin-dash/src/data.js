@@ -41,6 +41,7 @@ export function currentTime() {
 export const viewRoutes = {
   dashboard: "Dashboard",
   employment: "Alumni Employment Details",
+  jobconnect: "Job Connect",
   appointments: "Appointments",
   accounts: "Manage Accounts",
   announcements: "Post Announcements",
@@ -50,8 +51,13 @@ export const viewRoutes = {
 export const navItems = [
   { view: "dashboard", icon: "icon-1", label: "Dashboard" },
   { view: "employment", icon: "icon-2", label: "Alumni Employment Details" },
+  { view: "jobconnect", icon: "icon-6", label: "Job Connect" },
   { view: "appointments", icon: "icon-3", label: "Appointments" },
-  { view: "accounts", icon: "icon-4", label: "Manage Accounts" },
+  { view: "accounts", icon: "icon-4", label: "Manage Accounts", children: [
+      { key: "Alumni", label: "Alumni" },
+      { key: "Coordinator", label: "Coordinator" },
+      { key: "Employer", label: "Employer" },
+  ] },
   { view: "announcements", icon: "icon-5", label: "Post Announcements" },
   { view: "partnerships", icon: "icon-6", label: "Partnerships" },
 ];
@@ -64,6 +70,10 @@ export const adminMenuChoices = {
   "post-category": ["News", "Event", "Career", "Scholarship"],
   "partner-type": ["All", "Industry", "Academe", "Government"],
   "partner-status": ["All", "Active", "Pending", "Archived"],
+  "job-source": ["All", "TSU Partner", "Careerjet"],
+  "job-course": ["All", "BSIT", "BSCS", "BSIS"],
+  "job-row-open": ["View", "Deactivate"],
+  "job-row-closed": ["View", "Activate"],
 };
 
 export const reportFilters = [
