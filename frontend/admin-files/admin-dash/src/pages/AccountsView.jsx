@@ -32,7 +32,7 @@ function mapUser(u) {
 const COURSES = ["BSIT", "BSCS", "BSIS"];
 const BATCH_YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
 
-export default function AccountsView({ active, showToast }) {
+export default function AccountsView({ active, showToast, roleFilterFromNav }) {
   const [rows, setRows]               = useState([]);
   const [loading, setLoading]         = useState(true);
   const [roleFilter, setRoleFilter]   = useState("Role");
@@ -44,6 +44,12 @@ export default function AccountsView({ active, showToast }) {
     if (!active) return;
     fetchUsers();
   }, [active]);
+
+  useEffect(() => {
+    if (active && roleFilterFromNav) {
+      setRoleFilter(roleFilterFromNav);
+    }
+  }, [active, roleFilterFromNav]);
 
   async function fetchUsers() {
     setLoading(true);
