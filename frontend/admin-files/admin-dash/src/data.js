@@ -83,15 +83,15 @@ export const reportFilters = [
 ];
 
 export function accountActionList(status) {
-  if (status === "Pending") return ["edit", "approve", "reject", "delete"];
-  if (status === "Suspended") return ["edit", "activate", "delete"];
-  return ["edit", "suspend", "delete"];
+  if (status === "Pending") return ["edit", "approve", "reject"];
+  if (status === "Suspended") return ["edit", "activate"];
+  return ["edit", "suspend"];
 }
 
 export function partnerActionList(status) {
-  if (status === "Pending") return ["view", "edit", "approve", "delete"];
-  if (status === "Archived") return ["view", "edit", "activate", "delete"];
-  return ["view", "edit", "archive", "delete"];
+  if (status === "Pending") return ["view", "edit", "approve"];
+  if (status === "Archived") return ["view", "edit", "activate"];
+  return ["view", "edit", "archive"];
 }
 
 export const actionLabels = {
