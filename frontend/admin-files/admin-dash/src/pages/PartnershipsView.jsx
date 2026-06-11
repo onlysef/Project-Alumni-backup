@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Icon from "../Icon.jsx";
 import { Modal } from "../Primitives.jsx";
 import AdminMenu from "../components/AdminMenu.jsx";
+import ActionMenu from "../components/ActionMenu.jsx";
 import { partnerActionList, actionLabels } from "../data.js";
 
 const API = "http://localhost:5000/api";
@@ -139,11 +140,10 @@ export default function PartnershipsView({ active, showToast }) {
                 <tr key={r.id} className={visible(r) ? "" : "is-hidden"}>
                   <td>{r.partner}</td><td>{r.type}</td><td>{r.contact}</td><td>{r.status}</td>
                   <td>
-                    {partnerActionList(r.status).map((a) => (
-                      <button key={a} type="button" onClick={() => handleAction(r, a)}>
-                        {actionLabels[a]}
-                      </button>
-                    ))}
+                    <ActionMenu
+                      actions={partnerActionList(r.status)}
+                      onSelect={(a) => handleAction(r, a)}
+                    />
                   </td>
                 </tr>
               ))}
