@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import Icon from "../Icon.jsx";
 import { Dropdown, Modal } from "../Primitives.jsx";
 import AdminMenu from "../components/AdminMenu.jsx";
+import ActionMenu from "../components/ActionMenu.jsx";
 import { accountActionList, actionLabels } from "../data.js";
 
 const API = "http://localhost:5000/api";
@@ -152,12 +153,11 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
                   <td>{r.email}</td>
                   <td>{r.role}</td>
                   <td>{r.status}</td>
-                  <td>
-                    {accountActionList(r.status).map((a) => (
-                      <button key={a} type="button" onClick={() => handleAction(r, a)}>
-                        {actionLabels[a]}
-                      </button>
-                    ))}
+                   <td>
+                    <ActionMenu
+                      actions={accountActionList(r.status)}
+                      onSelect={(a) => handleAction(r, a)}
+                    />
                   </td>
                 </tr>
               ))}

@@ -30,15 +30,13 @@ export function Sidebar({ view, onSelect }) {
                   <span>{item.label}</span>
                   <span className={`nav-caret${isOpen ? " open" : ""}`}>▾</span>
                 </a>
-                {isOpen && (
-                  <div className="nav-sub">
-                    {item.children.map((child) => (
-                      <a key={child.key} href="#" onClick={(e) => { e.preventDefault(); onSelect(item.view, child.key); }}>
-                        <span>{child.label}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
+                <div className={`nav-sub${isOpen ? " open" : ""}`}>
+                  {item.children.map((child) => (
+                    <a key={child.key} href="#" tabIndex={isOpen ? 0 : -1} onClick={(e) => { e.preventDefault(); onSelect(item.view, child.key); }}>
+                      <span>{child.label}</span>
+                    </a>
+                  ))}
+                </div>
               </div>
             );
           }
