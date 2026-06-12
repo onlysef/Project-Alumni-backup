@@ -10,7 +10,8 @@ const userSchema = new mongoose.Schema({
   course:     { type: String },
   graduationYear: { type: Number },
 
-  firstLogin: { type: Boolean, default: false },
+  firstLogin:             { type: Boolean, default: false },
+  tracerStudyCompleted:   { type: Boolean, default: false },
 
   isTwoFactorEnabled: { type: Boolean, default: true },
 

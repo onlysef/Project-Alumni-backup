@@ -4,6 +4,7 @@ import ProtectedRoute from "./auth/ProtectedRoute";
 import AdminDashboard from "./pages/AdminDashboard";
 import AlumniDashboard from "./pages/AlumniDashboard";
 import AlumniOnboarding from "./pages/AlumniOnboarding";
+import TracerStudyForm from "./pages/TracerStudyForm";
 import CoordinatorDashboard from "./pages/CoordinatorDashboard";
 import EmployerDashboard from "./pages/EmployerDashboard";
 
@@ -48,7 +49,11 @@ export default function App() {
           />
           <Route
             path="/alumni/onboarding"
-            element={<ProtectedRoute allowedRole="alumni" skipOnboarding><AlumniOnboarding /></ProtectedRoute>}
+            element={<ProtectedRoute allowedRole="alumni" skipOnboarding skipTracerStudy><AlumniOnboarding /></ProtectedRoute>}
+          />
+          <Route
+            path="/alumni/tracer-study"
+            element={<ProtectedRoute allowedRole="alumni" skipTracerStudy><TracerStudyForm /></ProtectedRoute>}
           />
           <Route
             path="/coordinator/dashboard"

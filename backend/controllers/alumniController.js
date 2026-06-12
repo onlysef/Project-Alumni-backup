@@ -1,6 +1,7 @@
-const bcrypt          = require('bcryptjs');
-const User            = require('../models/User');
-const AlumniEmployment = require('../models/AlumniEmployment');
+const bcrypt               = require('bcryptjs');
+const User                 = require('../models/User');
+const AlumniEmployment     = require('../models/AlumniEmployment');
+const TracerStudyResponse  = require('../models/TracerStudyResponse');
 
 // POST /api/alumni/change-password
 const changePassword = async (req, res) => {
@@ -64,4 +65,62 @@ const completeOnboarding = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, completeOnboarding };
+// POST /api/alumni/tracer-study
+const submitTracerStudy = async (req, res) => {
+  try {
+    const alumniId = req.user.id;
+
+    const existing = await TracerStudyResponse.findOne({ alumni_id: alumniId });
+    if (existing) {
+      return res.status(400).json({ message: 'Tracer study already submitted.' });
+    }
+
+    const {
+      contactNumber, gender,
+      programsCompleted, professionalExam, professionalExamName,
+      employmentStatus, placeOfWork, occupationTitle, industryField,
+      presentEmploymentType, jobRelatedToDegree, yearsInCurrentJob,
+      reasonsNotEmployed,
+      furtherEducation, furtherEducationType,
+      pursuedTrainings, trainingType,
+      personalGrowthRatings,
+      promotedInJob, significantAccomplishments,
+      professionalCertifications, professionalDevelopmentActivities,
+    } = req.body;
+
+    await TracerStudyResponse.create({
+      alumni_id: alumniId,
+      contactNumber:    contactNumber    || '',
+      gender:           gender           || '',
+      programsCompleted:    programsCompleted    || [],
+      professionalExam:     professionalExam     || '',
+      professionalExamName: professionalExamName || '',
+      employmentStatus:     employmentStatus     || '',
+      placeOfWork:           placeOfWork           || '',
+      occupationTitle:       occupationTitle       || '',
+      industryField:         industryField         || '',
+      presentEmploymentType: presentEmploymentType || '',
+      jobRelatedToDegree:    jobRelatedToDegree    || '',
+      yearsInCurrentJob:     yearsInCurrentJob     || '',
+      reasonsNotEmployed:    reasonsNotEmployed    || [],
+      furtherEducation:      furtherEducation      || '',
+      furtherEducationType:  furtherEducationType  || '',
+      pursuedTrainings:      pursuedTrainings      || '',
+      trainingType:          trainingType          || '',
+      personalGrowthRatings: personalGrowthRatings || {},
+      promotedInJob:                    promotedInJob                    || '',
+      significantAccomplishments:       significantAccomplishments       || '',
+      professionalCertifications:       professionalCertifications       || '',
+      professionalDevelopmentActivities:professionalDevelopmentActivities|| '',
+    });
+
+    await User.findByIdAndUpdate(alumniId, { tracerStudyCompleted: true });
+
+    res.status(201).json({ message: 'Tracer study submitted successfully.' });
+  } catch (err) {
+    console.error('submitTracerStudy error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { changePassword, completeOnboarding, submitTracerStudy };

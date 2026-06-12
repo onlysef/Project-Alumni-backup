@@ -31,12 +31,12 @@
       <div id="msg-box" style="display:none;padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:16px;text-align:center;"></div>
 
       <div class="otp-row">
-        <input class="otp-input" id="d0" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)">
-        <input class="otp-input" id="d1" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)">
-        <input class="otp-input" id="d2" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)">
-        <input class="otp-input" id="d3" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)">
-        <input class="otp-input" id="d4" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)">
-        <input class="otp-input" id="d5" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)">
+        <input class="otp-input" id="d0" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" oninput="otpNext(this, 0)">
+        <input class="otp-input" id="d1" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" oninput="otpNext(this, 1)">
+        <input class="otp-input" id="d2" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" oninput="otpNext(this, 2)">
+        <input class="otp-input" id="d3" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" oninput="otpNext(this, 3)">
+        <input class="otp-input" id="d4" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" oninput="otpNext(this, 4)">
+        <input class="otp-input" id="d5" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="off" oninput="otpNext(this, 5)">
       </div>
 
       <div class="otp-resend">Didn't receive it? <a href="#" id="resend-link" onclick="resendCode(); return false;">Resend Code</a></div>

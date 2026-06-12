@@ -10,8 +10,8 @@ const ROLE_PATHS = {
   employer: "/employer/dashboard",
 };
 
-export default function ProtectedRoute({ children, allowedRole, skipOnboarding = false }) {
-  const { token, user, firstLogin } = useAuth();
+export default function ProtectedRoute({ children, allowedRole, skipOnboarding = false, skipTracerStudy = false }) {
+  const { token, user, firstLogin, tracerStudyCompleted } = useAuth();
 
   if (!token || !user) {
     window.location.replace(LOGIN_URL);
@@ -33,6 +33,10 @@ export default function ProtectedRoute({ children, allowedRole, skipOnboarding =
 
   if (!skipOnboarding && user.role === "alumni" && firstLogin) {
     return <Navigate to="/alumni/onboarding" replace />;
+  }
+
+  if (!skipTracerStudy && user.role === "alumni" && !firstLogin && !tracerStudyCompleted) {
+    return <Navigate to="/alumni/tracer-study" replace />;
   }
 
   return children;
