@@ -218,7 +218,13 @@ const importUsers = async (req, res) => {
     }
 
     // ── Phase 3: hash all passwords in parallel ───────────────────────────
-    await Promise.all(toInsert.map(async r => { r.hashed = await bcrypt.hash(r.tempPassword, 10); }));
+    // Cost 4: temp passwords must be changed on first login, so minimal rounds is fine
+    const BATCH = 8;
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      await Promise.all(toInsert.slice(i, i + BATCH).map(async r => {
+        r.hashed = await bcrypt.hash(r.tempPassword, 4);
+      }));
+    }
 
     // ── Phase 4: bulk insert in one DB round-trip ─────────────────────────
     const docs = toInsert.map(r => ({
