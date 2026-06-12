@@ -286,7 +286,6 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
             <p style={{ color: "var(--text-muted, #666)", fontSize: 13, margin: "0 0 12px" }}>
               Upload an <strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong> file.
               Required columns: <code>firstName</code>, <code>lastName</code>, <code>email</code>.
-              Optional: <code>role</code>, <code>course</code>, <code>graduationYear</code>.
             </p>
             <label style={{ display: "block", marginBottom: 16 }}>
               Spreadsheet file
@@ -307,72 +306,44 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
             </div>
           </form>
         ) : (
-          <div style={{ padding: "0 0 8px" }}>
-            <p style={{ margin: "0 0 12px", fontWeight: 600 }}>{result.message}</p>
+          <div style={{ padding: "4px 0 8px" }}>
 
-            {(result.employmentCreated > 0 || result.employmentSkipped > 0) && (
-              <div style={{ background: "#f0f7ff", border: "1px solid #bee3f8", borderRadius: 6, padding: "8px 12px", marginBottom: 12, fontSize: 13 }}>
-                {result.employmentCreated > 0 && (
-                  <div style={{ color: "#2b6cb0" }}>
-                    📋 {result.employmentCreated} employment record{result.employmentCreated !== 1 ? "s" : ""} auto-created in Alumni Employment Details.
-                  </div>
-                )}
-                {result.employmentSkipped > 0 && (
-                  <div style={{ color: "#975a16", marginTop: result.employmentCreated > 0 ? 4 : 0 }}>
-                    ⚠ {result.employmentSkipped} employment record{result.employmentSkipped !== 1 ? "s" : ""} skipped (already existed).
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Success header */}
+            <div style={{ textAlign: "center", padding: "18px 0 14px" }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: "#6b1a2a" }}>Import Complete</div>
+              <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>{result.message}</div>
+            </div>
 
-            {result.created.length > 0 && (
-              <details open>
-                <summary style={{ cursor: "pointer", color: "#276749", fontWeight: 600, marginBottom: 6 }}>
-                  ✓ Created ({result.created.length})
-                </summary>
-                <ul style={{ margin: "4px 0 12px 16px", fontSize: 13, color: "#2d3748" }}>
-                  {result.created.map((r) => (
-                    <li key={r.email}>
-                      {r.name} — {r.email}
-                      {r.role === "alumni" && <span style={{ color: "#2b6cb0" }}> (employment record created)</span>}
-                      {!r.emailSent && <span style={{ color: "#e53e3e" }}> (email not sent)</span>}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
+            {/* Divider */}
+            <div style={{ borderTop: "1px solid #f0e0e3", margin: "0 0 14px" }} />
 
-            {result.skipped.length > 0 && (
-              <details>
-                <summary style={{ cursor: "pointer", color: "#975a16", fontWeight: 600, marginBottom: 6 }}>
-                  ⚠ Skipped ({result.skipped.length})
-                </summary>
-                <ul style={{ margin: "4px 0 12px 16px", fontSize: 13, color: "#2d3748" }}>
-                  {result.skipped.map((r) => (
-                    <li key={r.email}>{r.name || r.email} — {r.reason}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
+            {/* Stat row */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+              {[
+                { count: result.created.length, label: "Created", icon: "✓", numColor: "#276749", iconBg: "#d4f0de", textColor: "#276749" },
+                { count: result.skipped.length, label: "Skipped", icon: "⚠", numColor: "#975a16", iconBg: "#fde9c0", textColor: "#975a16" },
+                { count: result.failed.length,  label: "Failed",  icon: "✗", numColor: "#c53030", iconBg: "#fdd0d0", textColor: "#c53030" },
+              ].map(({ count, label, icon, numColor, iconBg, textColor }) => (
+                <div key={label} style={{
+                  flex: 1, textAlign: "center",
+                  background: "#fafafa", border: "1px solid #eee",
+                  borderRadius: 10, padding: "14px 8px",
+                }}>
+                  <div style={{
+                    width: 34, height: 34, borderRadius: "50%",
+                    background: iconBg, display: "flex", alignItems: "center",
+                    justifyContent: "center", margin: "0 auto 8px",
+                    fontSize: 15, fontWeight: 700, color: numColor,
+                  }}>{icon}</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: numColor, lineHeight: 1 }}>{count}</div>
+                  <div style={{ fontSize: 11, color: textColor, marginTop: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</div>
+                </div>
+              ))}
+            </div>
 
-            {result.failed.length > 0 && (
-              <details>
-                <summary style={{ cursor: "pointer", color: "#c53030", fontWeight: 600, marginBottom: 6 }}>
-                  ✗ Failed ({result.failed.length})
-                </summary>
-                <ul style={{ margin: "4px 0 12px 16px", fontSize: 13, color: "#2d3748" }}>
-                  {result.failed.map((r, i) => (
-                    <li key={i}>{r.name || r.email} — {r.reason}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            <div className="modal-actions" style={{ marginTop: 12 }}>
-              <button type="button" onClick={() => { reset(); }}>Import Another</button>
-              <button type="button" onClick={() => { onDone(); reset(); }}>
-                Done
-              </button>
+            <div className="modal-actions" style={{ marginTop: 0, padding: "0 16px 8px" }}>
+              <button type="button" style={{ background: "var(--maroon)", color: "#fff", borderRadius: 8, padding: "8px 22px" }} onClick={() => { reset(); }}>Import Another</button>
+              <button type="button" style={{ background: "var(--maroon)", color: "#fff", borderRadius: 8, padding: "8px 22px" }} onClick={() => { onDone(); reset(); }}>Done</button>
             </div>
           </div>
         )}
