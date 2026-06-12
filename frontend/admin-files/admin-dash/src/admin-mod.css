@@ -768,7 +768,7 @@
         .filter:hover,
         .report-row button:hover,
         .send:hover,
-        .print:hover,
+        .download:hover,
         .icon-btn:hover {
             filter: brightness(0.94);
         }
@@ -1107,16 +1107,15 @@
             cursor: pointer;
         }
 
-        .print {
-            width: 24px;
-            height: 24px;
-            margin-left: -6px;
+        .download {
+            width: 29px;
+            height: 29px;
             border: 0;
-            padding: 2px;
+            border-radius: 5px;
+            padding: 4px;
             display: grid;
             place-items: center;
-            background: transparent;
-            color: #af4a19;
+            background: var(--maroon);
             cursor: pointer;
         }
 
@@ -3554,8 +3553,8 @@
             color: #fff7f8 !important;
         }
 
-        body.dark-mode .report-row .print img {
-            filter: brightness(0) invert(1) !important;
+        body.dark-mode .report-row .download {
+            background: var(--maroon);
         }
 
         .admin-svg-icon {

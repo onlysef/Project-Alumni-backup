@@ -44,6 +44,7 @@ const login = async (req, res) => {
       user.twoFactorTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
       await user.save();
 
+      console.log(`[2FA] OTP for ${user.email}: ${otp}`);
       await sendOTPEmail(
         user.email,
         'Your Two-Factor Authentication Code',
@@ -62,6 +63,7 @@ const login = async (req, res) => {
     res.json({
       message: 'Login successful.',
       token,
+      firstLogin: user.firstLogin,
       user: {
         id: user._id,
         firstName: user.firstName,
@@ -112,6 +114,7 @@ const verifyTwoFactor = async (req, res) => {
     res.json({
       message: 'Login successful.',
       token,
+      firstLogin: user.firstLogin,
       user: {
         id: user._id,
         firstName: user.firstName,
@@ -147,6 +150,7 @@ const resendTwoFactor = async (req, res) => {
     user.twoFactorOTPExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
+    console.log(`[2FA resend] OTP for ${user.email}: ${otp}`);
     await sendOTPEmail(
       user.email,
       'Your Two-Factor Authentication Code',

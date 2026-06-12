@@ -8,6 +8,15 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Verify SMTP connection on startup
+transporter.verify((err) => {
+  if (err) {
+    console.error('❌ SMTP connection failed:', err.message);
+  } else {
+    console.log('✅ SMTP connection ready — emails can be sent.');
+  }
+});
+
 const generateOTP = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 

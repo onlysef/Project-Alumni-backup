@@ -4,7 +4,6 @@ const multer          = require('multer');
 const xlsx            = require('xlsx');
 const User            = require('../models/User');
 const AlumniEmployment   = require('../models/AlumniEmployment');
-const EmploymentActivity = require('../models/EmploymentActivity');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 
 const upload = multer({
@@ -56,37 +55,21 @@ const createUser = async (req, res) => {
     if (existing) return res.status(400).json({ message: 'Email is already registered.' });
 
     const tempPassword = generateTempPassword();
-    const hashed = await bcrypt.hash(tempPassword, 12);
+    const hashed = await bcrypt.hash(tempPassword, 10);
 
     const userData = {
-      firstName: firstName.trim(),
-      lastName:  lastName.trim(),
-      email:     email.toLowerCase().trim(),
-      password:  hashed,
-      role:      role.toLowerCase(),
-      status:    'pending',
+      firstName:  firstName.trim(),
+      lastName:   lastName.trim(),
+      email:      email.toLowerCase().trim(),
+      password:   hashed,
+      role:       role.toLowerCase(),
+      status:     'pending',
+      firstLogin: true,
     };
     if (course         && role.toLowerCase() === 'alumni') userData.course         = course.trim().toUpperCase();
     if (graduationYear && role.toLowerCase() === 'alumni') userData.graduationYear = Number(graduationYear);
 
     const user = await User.create(userData);
-
-    // Auto-create employment record for alumni
-    if (role.toLowerCase() === 'alumni') {
-      AlumniEmployment.create({
-        alumni_id:             user._id,
-        employment_status:     'Not Yet Updated',
-        company_name:          'N/A',
-        job_title:             null,
-        industry:              null,
-        work_location:         null,
-        salary_range:          '',
-        job_related_to_course: null,
-        date_employed:         null,
-        reason_unemployed:     null,
-        last_updated:          new Date(),
-      }).catch(() => {});
-    }
 
     let emailSent = true;
     try {
@@ -183,25 +166,21 @@ const importUsers = async (req, res) => {
 
     if (!rows.length) return res.status(400).json({ message: 'Spreadsheet is empty.' });
 
-    const created             = [];
-    const skipped             = [];
-    const failed              = [];
-    let   employmentCreated   = 0;
-    let   employmentSkipped   = 0;
-
-    const adminName = req.user
-      ? (await User.findById(req.user.id).select('firstName lastName').then(u => u ? `${u.firstName} ${u.lastName}` : 'Admin').catch(() => 'Admin'))
-      : 'Admin';
+    const created = [];
+    const skipped = [];
+    const failed  = [];
 
     const VALID_ROLES = ['admin', 'alumni', 'coordinator', 'employer'];
 
+    // ── Phase 1: parse rows synchronously ────────────────────────────────
+    const parsed = [];
     for (const row of rows) {
-      const firstName      = String(row.firstName      || row['First Name']      || row.firstname      || '').trim();
-      const lastName       = String(row.lastName       || row['Last Name']       || row.lastname       || '').trim();
-      const email          = String(row.email          || row['Email']           || '').trim().toLowerCase();
-      const rawRole        = String(row.role           || row['Role']            || 'alumni').trim().toLowerCase();
-      const course         = String(row.course         || row['Course']          || '').trim();
-      const gradYearRaw    = row.graduationYear || row['Graduation Year'] || row.GraduationYear || '';
+      const firstName      = String(row.firstName || row['First Name'] || row.firstname || '').trim();
+      const lastName       = String(row.lastName  || row['Last Name']  || row.lastname  || '').trim();
+      const email          = String(row.email     || row['Email']      || '').trim().toLowerCase();
+      const rawRole        = String(row.role      || row['Role']       || 'alumni').trim().toLowerCase();
+      const course         = String(row.course    || row['Course']     || '').trim();
+      const gradYearRaw    = row.graduationYear   || row['Graduation Year'] || row.GraduationYear || '';
       const graduationYear = parseInt(gradYearRaw) || undefined;
 
       if (!firstName || !lastName || !email) {
@@ -209,102 +188,74 @@ const importUsers = async (req, res) => {
         continue;
       }
 
-      const role = VALID_ROLES.includes(rawRole) ? rawRole : 'alumni';
+      parsed.push({
+        firstName, lastName, email,
+        role:          VALID_ROLES.includes(rawRole) ? rawRole : 'alumni',
+        course:        course ? course.toUpperCase() : undefined,
+        graduationYear,
+        tempPassword:  generateTempPassword(),
+      });
+    }
 
-      let user = null;
-      try {
-        const existing = await User.findOne({ email });
-        if (existing) {
-          skipped.push({ email, name: `${firstName} ${lastName}`, reason: 'Email already registered.' });
-          continue;
-        }
+    // ── Phase 2: one query for all existing emails ────────────────────────
+    const existingDocs   = await User.find({ email: { $in: parsed.map(r => r.email) } }).select('email').lean();
+    const existingEmails = new Set(existingDocs.map(u => u.email));
 
-        const tempPassword = generateTempPassword();
-        const hashed       = await bcrypt.hash(tempPassword, 12);
-
-        const userData = { firstName, lastName, email, password: hashed, role, status: 'pending' };
-        if (course)         userData.course         = course.toUpperCase();
-        if (graduationYear) userData.graduationYear = graduationYear;
-
-        user = await User.create(userData);
-
-        // ── Auto-create employment record for alumni ──────────────────────────
-        if (role === 'alumni') {
-          const empExists = await AlumniEmployment.exists({ alumni_id: user._id });
-          if (empExists) {
-            employmentSkipped++;
-          } else {
-            try {
-              await AlumniEmployment.create({
-                alumni_id:             user._id,
-                employment_status:     'Not Yet Updated',
-                company_name:          'N/A',
-                job_title:             null,
-                industry:              null,
-                work_location:         null,
-                salary_range:          '',
-                job_related_to_course: null,
-                date_employed:         null,
-                reason_unemployed:     null,
-                last_updated:          new Date(),
-              });
-              employmentCreated++;
-
-              // Log activity (fire-and-forget)
-              EmploymentActivity.create({
-                user_id:     req.user?.id || null,
-                user_name:   adminName,
-                action:      'added to employment details',
-                target_name: `${firstName} ${lastName}`,
-                details:     'auto-created from user import',
-              }).catch(() => {});
-            } catch (empErr) {
-              if (empErr.code === 11000) {
-                // Duplicate key — already exists, just skip
-                employmentSkipped++;
-              } else {
-                // Employment creation failed — rollback user to keep data consistent
-                await User.findByIdAndDelete(user._id).catch(() => {});
-                failed.push({
-                  email,
-                  name: `${firstName} ${lastName}`,
-                  reason: `User created but employment record failed: ${empErr.message}. User has been removed.`,
-                });
-                continue;
-              }
-            }
-          }
-        }
-
-        let emailSent = true;
-        try {
-          await sendAccountCreatedEmail(user.email, user.firstName, tempPassword);
-        } catch {
-          emailSent = false;
-        }
-
-        created.push({
-          email,
-          name:      `${firstName} ${lastName}`,
-          role,
-          emailSent,
-          employmentCreated: role === 'alumni',
-        });
-      } catch (err) {
-        // If user was created before the error, remove it
-        if (user?._id) {
-          await User.findByIdAndDelete(user._id).catch(() => {});
-        }
-        failed.push({ email, name: `${firstName} ${lastName}`, reason: err.message });
+    const toInsert = [];
+    for (const r of parsed) {
+      if (existingEmails.has(r.email)) {
+        skipped.push({ email: r.email, name: `${r.firstName} ${r.lastName}`, reason: 'Email already registered.' });
+      } else {
+        toInsert.push(r);
       }
+    }
+
+    if (!toInsert.length) {
+      return res.status(200).json({
+        message: `Import complete. 0 users imported${skipped.length ? `, ${skipped.length} skipped` : ''}${failed.length ? `, ${failed.length} failed` : ''}.`,
+        created, skipped, failed,
+      });
+    }
+
+    // ── Phase 3: hash all passwords in parallel ───────────────────────────
+    await Promise.all(toInsert.map(async r => { r.hashed = await bcrypt.hash(r.tempPassword, 10); }));
+
+    // ── Phase 4: bulk insert in one DB round-trip ─────────────────────────
+    const docs = toInsert.map(r => ({
+      firstName:  r.firstName,
+      lastName:   r.lastName,
+      email:      r.email,
+      password:   r.hashed,
+      role:       r.role,
+      status:     'pending',
+      firstLogin: true,
+      ...(r.course        ? { course: r.course }               : {}),
+      ...(r.graduationYear ? { graduationYear: r.graduationYear } : {}),
+    }));
+
+    let insertedUsers = [];
+    try {
+      insertedUsers = await User.insertMany(docs, { ordered: false });
+    } catch (bulkErr) {
+      insertedUsers = bulkErr.insertedDocs || [];
+      for (const we of (bulkErr.writeErrors || [])) {
+        const r = toInsert[we.index];
+        if (r) failed.push({ email: r.email, name: `${r.firstName} ${r.lastName}`, reason: we.errmsg || 'Insert failed.' });
+      }
+    }
+
+    // ── Phase 5: fire all emails concurrently (non-blocking) ─────────────
+    const tempPasswordMap = new Map(toInsert.map(r => [r.email, r.tempPassword]));
+    for (const user of insertedUsers) {
+      const tempPassword = tempPasswordMap.get(user.email);
+      created.push({ email: user.email, name: `${user.firstName} ${user.lastName}`, role: user.role, emailSent: true });
+      if (tempPassword) sendAccountCreatedEmail(user.email, user.firstName, tempPassword).catch(() => {});
     }
 
     const parts = [
       `${created.length} user${created.length !== 1 ? 's' : ''} imported`,
-      ...(employmentCreated > 0   ? [`${employmentCreated} employment record${employmentCreated !== 1 ? 's' : ''} created`]  : []),
-      ...(employmentSkipped > 0   ? [`${employmentSkipped} employment record${employmentSkipped !== 1 ? 's' : ''} skipped (already existed)`] : []),
-      ...(skipped.length > 0      ? [`${skipped.length} skipped`]   : []),
-      ...(failed.length > 0       ? [`${failed.length} failed`]     : []),
+      ...(skipped.length > 0 ? [`${skipped.length} skipped`] : []),
+      ...(failed.length > 0  ? [`${failed.length} failed`]   : []),
     ];
 
     res.status(200).json({
@@ -312,8 +263,6 @@ const importUsers = async (req, res) => {
       created,
       skipped,
       failed,
-      employmentCreated,
-      employmentSkipped,
     });
   } catch (err) {
     console.error('importUsers error:', err);

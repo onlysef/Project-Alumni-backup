@@ -10,8 +10,8 @@ const ROLE_PATHS = {
   employer: "/employer/dashboard",
 };
 
-export default function ProtectedRoute({ children, allowedRole }) {
-  const { token, user } = useAuth();
+export default function ProtectedRoute({ children, allowedRole, skipOnboarding = false }) {
+  const { token, user, firstLogin } = useAuth();
 
   if (!token || !user) {
     window.location.replace(LOGIN_URL);
@@ -20,16 +20,19 @@ export default function ProtectedRoute({ children, allowedRole }) {
 
   const validRoles = Object.keys(ROLE_PATHS);
   if (!validRoles.includes(user.role)) {
-    // Invalid or missing role — force logout
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
+    localStorage.removeItem("auth_first_login");
     window.location.replace(LOGIN_URL);
     return null;
   }
 
   if (user.role !== allowedRole) {
-    // Logged in but wrong dashboard — redirect to their correct one
     return <Navigate to={ROLE_PATHS[user.role]} replace />;
+  }
+
+  if (!skipOnboarding && user.role === "alumni" && firstLogin) {
+    return <Navigate to="/alumni/onboarding" replace />;
   }
 
   return children;

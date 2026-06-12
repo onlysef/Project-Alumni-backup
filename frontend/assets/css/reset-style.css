@@ -46,11 +46,9 @@ body {
   position: relative;
   width: 100%;
   max-width: 1280px;
-  min-height: auto;
-  max-height: none;
   display: grid;
   grid-template-columns: 1.4fr 1fr;
-  align-items: center;
+  align-items: stretch;
   gap: clamp(24px, 4vw, 64px);
   padding: clamp(24px, 4vh, 64px) clamp(28px, 5vw, 96px);
   background: var(--white);
@@ -97,9 +95,8 @@ body {
 }
 
 .login-footer {
-  position: absolute;
-  left: 0;
-  bottom: 0;
+  margin-top: auto;
+  padding-top: 24px;
   color: var(--frame);
   font-family: 'Manrope', sans-serif;
   font-size: 10px;
@@ -471,7 +468,15 @@ footer {
     grid-template-columns: 1fr;
     gap: 28px;
     justify-items: center;
+    align-items: start;
   }
-  .left-panel { text-align: center; align-items: center; }
+  .left-panel {
+    text-align: center;
+    align-items: center;
+    height: auto;
+  }
+  .login-footer {
+    text-align: center;
+  }
   .right-panel { margin-left: 0; }
 }

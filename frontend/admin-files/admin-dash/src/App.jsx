@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ProtectedRoute from "./auth/ProtectedRoute";
 import AdminDashboard from "./pages/AdminDashboard";
 import AlumniDashboard from "./pages/AlumniDashboard";
+import AlumniOnboarding from "./pages/AlumniOnboarding";
 import CoordinatorDashboard from "./pages/CoordinatorDashboard";
 import EmployerDashboard from "./pages/EmployerDashboard";
 
@@ -44,6 +45,10 @@ export default function App() {
           <Route
             path="/alumni/dashboard"
             element={<ProtectedRoute allowedRole="alumni"><AlumniDashboard /></ProtectedRoute>}
+          />
+          <Route
+            path="/alumni/onboarding"
+            element={<ProtectedRoute allowedRole="alumni" skipOnboarding><AlumniOnboarding /></ProtectedRoute>}
           />
           <Route
             path="/coordinator/dashboard"

@@ -25,6 +25,35 @@ const reportNames = [
   "Survey Completion Report",
 ];
 
+function downloadReport(name, employmentIndex, careerIndex, employmentSets, careerSets) {
+  let csv = "";
+  let filename = "";
+
+  if (name === "Employment Status Distribution") {
+    const set = employmentSets[employmentIndex] || employmentSets[0];
+    csv = "Status,Percentage\nEmployed," + set.employed + "%\nUnemployed," + set.unemployed + "%\nUnidentified," + set.unidentified + "%\nTotal Records," + set.count;
+    filename = "employment-status-distribution.csv";
+  } else if (name === "Course vs Career Relationship") {
+    const set = careerSets[careerIndex] || careerSets[0];
+    csv = "Course,Percentage\n" + set.legends.map((l, i) => {
+      const [course] = l.split(" - ");
+      return course + "," + set.values[i] + "%";
+    }).join("\n");
+    filename = "course-vs-career-relationship.csv";
+  } else {
+    csv = "Report,Status\nSurvey Completion Report,No data available";
+    filename = "survey-completion-report.csv";
+  }
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function DashboardView({ active, showToast }) {
   const [careerIndex, setCareerIndex] = useState(0);
   const [employmentIndex, setEmploymentIndex] = useState(0);
@@ -222,15 +251,15 @@ export default function DashboardView({ active, showToast }) {
                   )}
                 />
                 <button
-                  className="print"
+                  className="download"
                   type="button"
-                  aria-label={`Print ${name}`}
+                  aria-label={`Download ${name}`}
                   onClick={() => {
-                    showToast(`${name} is ready to print.`);
-                    window.print();
+                    downloadReport(name, employmentIndex, careerIndex, employmentSets, careerSets);
+                    showToast(`${name} downloaded.`);
                   }}
                 >
-                  <span><Icon name="icon-16" /></span>
+                  <span><Icon name="icon-download" /></span>
                 </button>
               </div>
             ))}

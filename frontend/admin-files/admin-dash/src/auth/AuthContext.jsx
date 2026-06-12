@@ -12,7 +12,7 @@ function readAuthFromHash() {
     if (payload.token && payload.user) {
       localStorage.setItem("auth_token", payload.token);
       localStorage.setItem("auth_user", JSON.stringify(payload.user));
-      // Clean the hash so it doesn't stay in the URL
+      localStorage.setItem("auth_first_login", String(payload.firstLogin === true));
       window.history.replaceState(null, "", window.location.pathname);
       return payload;
     }
@@ -26,20 +26,25 @@ export function AuthProvider({ children }) {
     if (fromHash) return fromHash.user;
     try { return JSON.parse(localStorage.getItem("auth_user")); } catch { return null; }
   });
-  const [token, setToken] = useState(() => {
-    return localStorage.getItem("auth_token");
-  });
+  const [token] = useState(() => localStorage.getItem("auth_token"));
+  const [firstLogin, setFirstLoginState] = useState(
+    () => localStorage.getItem("auth_first_login") === "true"
+  );
+
+  function setFirstLoginDone() {
+    localStorage.setItem("auth_first_login", "false");
+    setFirstLoginState(false);
+  }
 
   function logout() {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
-    setUser(null);
-    setToken(null);
+    localStorage.removeItem("auth_first_login");
     window.location.href = LOGIN_URL;
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, logout }}>
+    <AuthContext.Provider value={{ user, token, firstLogin, setFirstLoginDone, logout }}>
       {children}
     </AuthContext.Provider>
   );
