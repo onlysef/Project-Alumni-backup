@@ -6,6 +6,7 @@ const cors = require('cors');
 const connectDB = require('./config/db');
 const authRoutes     = require('./routes/auth');
 const adminRoutes    = require('./routes/admin');
+const alumniRoutes   = require('./routes/alumni');
 const employerRoutes = require('./routes/employer');
 
 connectDB();
@@ -29,6 +30,7 @@ app.use(express.json({ limit: '10mb' }));
 
 app.use('/api/auth',     authRoutes);
 app.use('/api/admin',    adminRoutes);
+app.use('/api/alumni',   alumniRoutes);
 app.use('/api/employer', employerRoutes);
 
 app.get('/api/health', (req, res) => {

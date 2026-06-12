@@ -140,7 +140,7 @@
           employer: 'http://localhost:5173/employer/dashboard',
         };
         const base = dashboardMap[data.user.role] || 'http://localhost:5173/';
-        const payload = encodeURIComponent(JSON.stringify({ token: data.token, user: data.user }));
+        const payload = encodeURIComponent(JSON.stringify({ token: data.token, user: data.user, firstLogin: data.firstLogin }));
         window.location.href = `${base}#auth=${payload}`;
       } catch {
         showMsg('Could not connect to server. Make sure the backend is running.');

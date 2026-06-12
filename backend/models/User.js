@@ -10,6 +10,8 @@ const userSchema = new mongoose.Schema({
   course:     { type: String },
   graduationYear: { type: Number },
 
+  firstLogin: { type: Boolean, default: false },
+
   isTwoFactorEnabled: { type: Boolean, default: true },
 
   // Stored during the window between password-verified and OTP-verified

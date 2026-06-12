@@ -62,6 +62,7 @@ const login = async (req, res) => {
     res.json({
       message: 'Login successful.',
       token,
+      firstLogin: user.firstLogin,
       user: {
         id: user._id,
         firstName: user.firstName,
@@ -112,6 +113,7 @@ const verifyTwoFactor = async (req, res) => {
     res.json({
       message: 'Login successful.',
       token,
+      firstLogin: user.firstLogin,
       user: {
         id: user._id,
         firstName: user.firstName,
