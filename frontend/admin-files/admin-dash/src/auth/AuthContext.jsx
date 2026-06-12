@@ -30,10 +30,25 @@ export function AuthProvider({ children }) {
   const [firstLogin, setFirstLoginState] = useState(
     () => localStorage.getItem("auth_first_login") === "true"
   );
+  const [tracerStudyCompleted, setTracerStudyCompletedState] = useState(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("auth_user"));
+      return u?.tracerStudyCompleted === true;
+    } catch { return false; }
+  });
 
   function setFirstLoginDone() {
     localStorage.setItem("auth_first_login", "false");
     setFirstLoginState(false);
+  }
+
+  function setTracerStudyDone() {
+    try {
+      const u = JSON.parse(localStorage.getItem("auth_user")) || {};
+      u.tracerStudyCompleted = true;
+      localStorage.setItem("auth_user", JSON.stringify(u));
+    } catch {}
+    setTracerStudyCompletedState(true);
   }
 
   function logout() {
@@ -44,7 +59,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, firstLogin, setFirstLoginDone, logout }}>
+    <AuthContext.Provider value={{ user, token, firstLogin, setFirstLoginDone, tracerStudyCompleted, setTracerStudyDone, logout }}>
       {children}
     </AuthContext.Provider>
   );

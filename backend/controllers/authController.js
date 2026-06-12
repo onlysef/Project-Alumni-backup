@@ -72,6 +72,7 @@ const login = async (req, res) => {
         role: user.role,
         course: user.course,
         graduationYear: user.graduationYear,
+        tracerStudyCompleted: user.tracerStudyCompleted,
       },
     });
   } catch (err) {
@@ -123,6 +124,7 @@ const verifyTwoFactor = async (req, res) => {
         role: user.role,
         course: user.course,
         graduationYear: user.graduationYear,
+        tracerStudyCompleted: user.tracerStudyCompleted,
       },
     });
   } catch (err) {
