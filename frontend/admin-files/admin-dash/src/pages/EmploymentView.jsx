@@ -104,7 +104,9 @@ export default function EmploymentView({ active, showToast }) {
   const [pendingFilters, setPendingFilters] = useState(EMPTY_FILTERS);
 
   // ─── view / edit modals ─────────────────────────────────────────────────────
-  const [viewRecord, setViewRecord]   = useState(null);
+  const [viewRecord, setViewRecord]               = useState(null);
+  const [viewDetail, setViewDetail]               = useState(null);
+  const [viewDetailLoading, setViewDetailLoading] = useState(false);
   const [editRecord, setEditRecord]   = useState(null);
   const [editForm, setEditForm]       = useState({});
   const [editErrors, setEditErrors]   = useState({});
@@ -210,6 +212,17 @@ export default function EmploymentView({ active, showToast }) {
     fetchActivities();
   }, [active, fetchActivities]);
 
+  // ── fetch full record + tracer_data when the view modal opens ───────────────
+  useEffect(() => {
+    if (!viewRecord) { setViewDetail(null); return; }
+    setViewDetailLoading(true);
+    setViewDetail(null);
+    fetch(`${API}/admin/employment/${viewRecord._id}`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => setViewDetail(d.record || null))
+      .catch(() => {})
+      .finally(() => setViewDetailLoading(false));
+  }, [viewRecord]);
 
   // ── export menu click-outside ───────────────────────────────────────────────
   useEffect(() => {
@@ -284,7 +297,6 @@ export default function EmploymentView({ active, showToast }) {
     } else if (f.employment_status === "Self-employed") {
       if (!f.industry?.trim()) e.industry = "Industry or business type is required.";
     }
-    // "Not Yet Updated" requires no additional fields
     return e;
   }
 
@@ -665,22 +677,43 @@ export default function EmploymentView({ active, showToast }) {
           </div>
           {viewRecord && (
             <>
-              <div className="record-details">
-                <div><strong>Name</strong><span>{viewRecord.name}</span></div>
-                <div><strong>Course</strong><span>{viewRecord.course || "—"}</span></div>
-                <div><strong>Batch Year</strong><span>{viewRecord.graduation_year || "—"}</span></div>
-                <div><strong>Status</strong><span><StatusBadge status={viewRecord.employment_status} /></span></div>
-                <div><strong>Company</strong><span>{(viewRecord.employment_status === "Unemployed" || viewRecord.employment_status === "Not Yet Updated") ? "N/A" : (viewRecord.company_name || "N/A")}</span></div>
-                <div><strong>Job Title</strong><span>{viewRecord.job_title || "—"}</span></div>
-                <div><strong>Industry</strong><span>{viewRecord.industry || "—"}</span></div>
-                <div><strong>Work Location</strong><span>{viewRecord.work_location || "—"}</span></div>
-                <div><strong>Salary Range</strong><span>{viewRecord.salary_range || "—"}</span></div>
-                <div><strong>Related to Course</strong><span>{viewRecord.job_related_to_course ? "Yes" : "No"}</span></div>
-                {viewRecord.employment_status === "Unemployed" && (
-                  <div><strong>Reason Unemployed</strong><span>{viewRecord.reason_unemployed || "—"}</span></div>
-                )}
-                <div><strong>Last Updated</strong><span>{fmtDate(viewRecord.last_updated)}</span></div>
-              </div>
+              {(() => {
+                const r  = viewDetail || viewRecord;
+                const td = viewDetail?.tracer_data || null;
+                const isUnemployed = r.employment_status === "Unemployed";
+                const isNoRecord   = r.employment_status === "Not Yet Updated";
+
+                // Prefer tracer-sourced values; fall back to what's stored in AlumniEmployment
+                const jobTitle    = td?.occupationTitle    || r.job_title    || "—";
+                const industry    = td?.industryField      || r.industry     || "—";
+                const workLoc     = td?.placeOfWork        || r.work_location || "—";
+                const related     = td
+                  ? (td.jobRelatedToDegree === "Yes" ? "Yes" : "No")
+                  : (r.job_related_to_course ? "Yes" : "No");
+
+                return (
+                  <div className="record-details">
+                    <div><strong>Name</strong><span>{r.name}</span></div>
+                    <div><strong>Course</strong><span>{r.course || "—"}</span></div>
+                    <div><strong>Batch Year</strong><span>{r.graduation_year || "—"}</span></div>
+                    <div><strong>Status</strong><span><StatusBadge status={r.employment_status} /></span></div>
+                    <div><strong>Company</strong><span>{(isUnemployed || isNoRecord) ? "N/A" : (r.company_name || "N/A")}</span></div>
+                    {!isUnemployed && !isNoRecord && (
+                      <>
+                        <div><strong>Job Title</strong><span>{jobTitle}</span></div>
+                        <div><strong>Industry</strong><span>{industry}</span></div>
+                        <div><strong>Work Location</strong><span>{workLoc}</span></div>
+                        <div><strong>Related to Course</strong><span>{related}</span></div>
+                      </>
+                    )}
+                    {isUnemployed && (
+                      <div><strong>Reason Unemployed</strong><span>{r.reason_unemployed || "—"}</span></div>
+                    )}
+                    <div><strong>Last Updated</strong><span>{fmtDate(r.last_updated)}</span></div>
+                  </div>
+                );
+              })()}
+
               <div className="modal-actions record-actions">
                 <button type="button" onClick={() => setViewRecord(null)}>Close</button>
                 <button type="button" onClick={() => printRecord(viewRecord)}>Print Record</button>
@@ -715,7 +748,7 @@ export default function EmploymentView({ active, showToast }) {
                     onChange={e => setEditForm(f => ({ ...f, employment_status: e.target.value }))}
                   >
                     <option value="">Select status…</option>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}  {/* includes Not Yet Updated */}
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   {editErrors.employment_status && <span className="field-error">{editErrors.employment_status}</span>}
                 </label>

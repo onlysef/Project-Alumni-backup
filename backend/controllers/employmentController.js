@@ -1,9 +1,10 @@
-const { Types }          = require('mongoose');
-const AlumniEmployment   = require('../models/AlumniEmployment');
-const TracerFormQuestion = require('../models/TracerFormQuestion');
-const EmploymentActivity = require('../models/EmploymentActivity');
-const User               = require('../models/User');
-const XLSX               = require('xlsx');
+const { Types }           = require('mongoose');
+const AlumniEmployment    = require('../models/AlumniEmployment');
+const TracerStudyResponse = require('../models/TracerStudyResponse');
+const TracerFormQuestion  = require('../models/TracerFormQuestion');
+const EmploymentActivity  = require('../models/EmploymentActivity');
+const User                = require('../models/User');
+const XLSX                = require('xlsx');
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -334,7 +335,29 @@ const getEmploymentRecord = async (req, res) => {
     ]);
 
     if (!result.length) return res.status(404).json({ message: 'Employment record not found.' });
-    res.json({ record: result[0] });
+
+    // Attach tracer study snapshot so the admin view modal can show it
+    const tracer = await TracerStudyResponse.findOne({ alumni_id: result[0].alumni_id }).lean();
+    let tracer_data = null;
+    if (tracer) {
+      // extra_answers may be a plain object (lean) or Map — normalise to plain object
+      const extraRaw = tracer.extra_answers;
+      const extra_answers = (extraRaw instanceof Map)
+        ? Object.fromEntries(extraRaw)
+        : (extraRaw && typeof extraRaw === 'object' ? extraRaw : {});
+
+      tracer_data = {
+        // Employment fields — used to fill in the record display
+        occupationTitle:    tracer.occupationTitle    || '',
+        industryField:      tracer.industryField      || '',
+        placeOfWork:        tracer.placeOfWork        || '',
+        jobRelatedToDegree: tracer.jobRelatedToDegree || '',
+        employmentStatus:   tracer.employmentStatus   || '',
+        submittedAt:        tracer.submittedAt        || null,
+      };
+    }
+
+    res.json({ record: { ...result[0], tracer_data } });
   } catch (err) {
     console.error('getEmploymentRecord error:', err);
     res.status(500).json({ message: 'Server error.' });
