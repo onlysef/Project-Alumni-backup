@@ -252,16 +252,18 @@ function validatePage(page, answers) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TracerStudyForm() {
-  const { token, firstLogin, tracerStudyCompleted, setTracerStudyDone } = useAuth();
+  const { token, firstLogin, setTracerStudyDone } = useAuth();
   const navigate = useNavigate();
 
-  const [config, setConfig]             = useState(null);
-  const [configLoading, setConfigLoading] = useState(true);
-  const [configError, setConfigError]   = useState(""); // error loading the form config
-  const [step, setStep]                 = useState(1);
-  const [answers, setAnswers]           = useState({});
-  const [loading, setLoading]           = useState(false);
-  const [error, setError]               = useState(""); // validation / submission errors
+  const [config, setConfig]               = useState(null);
+  const [configLoading, setConfigLoading]   = useState(true);
+  const [configError, setConfigError]     = useState(""); // error loading the form config
+  const [step, setStep]                   = useState(1);
+  const [answers, setAnswers]             = useState({});
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState(""); // validation / submission errors
+  const [isAlreadySubmitted, setIsAlreadySubmitted] = useState(false);
+  const [existingDataLoading, setExistingDataLoading] = useState(true);
 
   // Fetch (or re-fetch) form config from backend
   // keepOnError=true: on failure, preserve existing config (used for background re-fetches)
@@ -304,9 +306,47 @@ export default function TracerStudyForm() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [fetchConfig]);
 
+  // Load existing tracer response on mount so alumni can edit their previous answers
+  useEffect(() => {
+    if (!token) { setExistingDataLoading(false); return; }
+    fetch(`${API}/alumni/tracer-study`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok || !data.submitted || !data.data) return;
+        setIsAlreadySubmitted(true);
+
+        // Flatten the stored response back into the same shape the form uses
+        const raw = data.data;
+        const STORED_KEYS = [
+          "contactNumber", "gender", "programsCompleted", "professionalExam",
+          "professionalExamName", "employmentStatus", "placeOfWork", "occupationTitle",
+          "industryField", "presentEmploymentType", "jobRelatedToDegree",
+          "yearsInCurrentJob", "reasonsNotEmployed", "furtherEducation",
+          "furtherEducationType", "pursuedTrainings", "trainingType",
+          "personalGrowthRatings", "promotedInJob", "significantAccomplishments",
+          "professionalCertifications", "professionalDevelopmentActivities",
+        ];
+        const flat = {};
+        STORED_KEYS.forEach((key) => {
+          const v = raw[key];
+          if (v !== undefined && v !== null && v !== "") flat[key] = v;
+        });
+        // Merge extra_answers (admin-added questions) back into the flat object
+        if (raw.extra_answers && typeof raw.extra_answers === "object") {
+          Object.entries(raw.extra_answers).forEach(([k, v]) => {
+            if (v !== undefined && v !== null) flat[k] = v;
+          });
+        }
+        setAnswers(flat);
+      })
+      .catch((err) => console.error("TracerStudyForm: could not load existing response", err))
+      .finally(() => setExistingDataLoading(false));
+  }, [token]);
+
   // Guards — must come after all hooks
-  if (firstLogin)           return <Navigate to="/alumni/onboarding" replace />;
-  if (tracerStudyCompleted) return <Navigate to="/alumni/dashboard"  replace />;
+  if (firstLogin) return <Navigate to="/alumni/onboarding" replace />;
 
   const TOTAL_STEPS = config ? config.pages.length : 6;
   const currentPage = config ? config.pages[step - 1] : null;
@@ -354,7 +394,7 @@ export default function TracerStudyForm() {
   }
 
   // ── Loading state ─────────────────────────────────────────────────────────
-  if (configLoading) {
+  if (configLoading || existingDataLoading) {
     return (
       <div style={{
         height: "100vh", display: "flex", alignItems: "center",
@@ -456,6 +496,20 @@ export default function TracerStudyForm() {
           </div>
 
           <div style={{ padding: "24px 28px" }}>
+
+            {isAlreadySubmitted && (
+              <div style={{
+                background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e",
+                borderRadius: 6, padding: "10px 14px", marginBottom: 20, fontSize: "0.875rem",
+                display: "flex", alignItems: "flex-start", gap: 8,
+              }}>
+                <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠</span>
+                <span>
+                  You have already submitted this form. Your previous answers are pre-filled below.
+                  You may update them and click <strong>Submit</strong> to save the latest version.
+                </span>
+              </div>
+            )}
 
             {error && (
               <div style={{
