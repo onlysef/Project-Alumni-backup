@@ -24,6 +24,9 @@ const {
   getAppointments,   createAppointment,
   updateAppointmentStatus, deleteAppointment,
 } = require('../controllers/appointmentController');
+const {
+  getTracerFormConfig, updateTracerFormConfig,
+} = require('../controllers/tracerFormConfigController');
 
 // All routes below require a valid token AND admin role
 router.use(protect, authorize('admin'));
@@ -58,6 +61,10 @@ router.get('/employment/export',                     exportEmploymentRecords);
 router.get('/employment/alumni-without-record',      getAlumniWithoutRecord);
 router.post('/employment/backfill',                  backfillEmploymentRecords);
 router.post('/employment/log-print',                 logPrintActivity);
+
+// Tracer form config (integrated 6-page form)
+router.get('/tracer-form-config',  getTracerFormConfig);
+router.put('/tracer-form-config',  updateTracerFormConfig);
 
 // Tracer form — reorder before /:id
 router.get('/employment/tracer-questions',            getTracerQuestions);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../Icon.jsx";
 import { Modal } from "../Primitives.jsx";
+import TracerFormEditor from "./TracerFormEditor.jsx";
 
 const API = "http://localhost:5000/api";
 
@@ -48,7 +49,6 @@ const INDUSTRIES = [
   "Government and Public Service", "Transportation and Logistics",
   "Retail and Commerce", "Media and Communications", "Other",
 ];
-const FIELD_TYPES = ["text", "textarea", "select", "radio", "checkbox"];
 const BATCH_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
 
 const EMPTY_FILTERS   = { status: "", course: "", batch_year: "", date_updated: "", company: "" };
@@ -110,15 +110,8 @@ export default function EmploymentView({ active, showToast }) {
   const [editErrors, setEditErrors]   = useState({});
   const [editSaving, setEditSaving]   = useState(false);
 
-  // ─── tracer form ────────────────────────────────────────────────────────────
-  const [tracerOpen, setTracerOpen]         = useState(false);
-  const [tracerQuestions, setTracerQuestions] = useState([]);
-  const [tracerLoading, setTracerLoading]   = useState(false);
-  const [tracerEditId, setTracerEditId]     = useState(null);
-  const [tracerEditForm, setTracerEditForm] = useState({});
-  const [tracerAddForm, setTracerAddForm]   = useState({ question_text: "", field_type: "text", options: "", is_required: false });
-  const [tracerAddOpen, setTracerAddOpen]   = useState(false);
-  const [tracerSaving, setTracerSaving]     = useState(false);
+  // ─── tracer form editor ─────────────────────────────────────────────────────
+  const [tracerOpen, setTracerOpen] = useState(false);
 
   // ─── activities ─────────────────────────────────────────────────────────────
   const [activities, setActivities]             = useState([]);
@@ -132,8 +125,6 @@ export default function EmploymentView({ active, showToast }) {
 
   // ─── confirm dialog ─────────────────────────────────────────────────────────
   const [confirm, setConfirm] = useState({ open: false, message: "", onConfirm: null });
-  // separate confirm for tracer-delete (rendered inside tracer modal)
-  const [tracerDeleteId, setTracerDeleteId] = useState(null);
 
   // ─── add record modal ────────────────────────────────────────────────────────
   const [addOpen, setAddOpen]       = useState(false);
@@ -219,16 +210,6 @@ export default function EmploymentView({ active, showToast }) {
     fetchActivities();
   }, [active, fetchActivities]);
 
-  // ── fetch tracer questions when modal opens ─────────────────────────────────
-  useEffect(() => {
-    if (!tracerOpen) return;
-    setTracerLoading(true);
-    fetch(`${API}/admin/employment/tracer-questions`, { headers: authHeaders() })
-      .then(r => r.json())
-      .then(d => setTracerQuestions(d.questions || []))
-      .catch(() => {})
-      .finally(() => setTracerLoading(false));
-  }, [tracerOpen]);
 
   // ── export menu click-outside ───────────────────────────────────────────────
   useEffect(() => {
@@ -385,110 +366,6 @@ export default function EmploymentView({ active, showToast }) {
   const from = total === 0 ? 0 : (page - 1) * limit + 1;
   const to   = Math.min(page * limit, total);
 
-  // ─── tracer actions ─────────────────────────────────────────────────────────
-  async function tracerToggleActive(q) {
-    try {
-      const res = await fetch(`${API}/admin/employment/tracer-questions/${q._id}`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ is_active: !q.is_active }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      setTracerQuestions(qs => qs.map(x => x._id === q._id ? data.question : x));
-    } catch {}
-  }
-
-  async function tracerSaveEdit() {
-    if (!tracerEditForm.question_text?.trim()) return;
-    setTracerSaving(true);
-    try {
-      const body = {
-        ...tracerEditForm,
-        options: tracerEditForm.options
-          ? tracerEditForm.options.split(",").map(s => s.trim()).filter(Boolean)
-          : [],
-      };
-      const res = await fetch(`${API}/admin/employment/tracer-questions/${tracerEditId}`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("Update failed.");
-      const data = await res.json();
-      setTracerQuestions(qs => qs.map(x => x._id === tracerEditId ? data.question : x));
-      setTracerEditId(null);
-      setTracerEditForm({});
-      showToast("Question updated.");
-      setTimeout(fetchActivities, 600);
-    } catch (err) {
-      showToast(err.message || "Update failed.");
-    } finally {
-      setTracerSaving(false);
-    }
-  }
-
-  async function tracerDoDelete(id) {
-    setTracerDeleteId(null);
-    try {
-      const res = await fetch(`${API}/admin/employment/tracer-questions/${id}`, {
-        method: "DELETE", headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error("Delete failed.");
-      setTracerQuestions(qs => qs.filter(q => q._id !== id));
-      showToast("Question deleted.");
-      setTimeout(fetchActivities, 600);
-    } catch (err) {
-      showToast(err.message || "Delete failed.");
-    }
-  }
-
-  async function tracerAdd() {
-    if (!tracerAddForm.question_text?.trim()) return;
-    setTracerSaving(true);
-    try {
-      const body = {
-        ...tracerAddForm,
-        options: tracerAddForm.options
-          ? tracerAddForm.options.split(",").map(s => s.trim()).filter(Boolean)
-          : [],
-      };
-      const res = await fetch(`${API}/admin/employment/tracer-questions`, {
-        method: "POST", headers: authHeaders(), body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("Failed to add question.");
-      const data = await res.json();
-      setTracerQuestions(qs => [...qs, data.question]);
-      setTracerAddForm({ question_text: "", field_type: "text", options: "", is_required: false });
-      setTracerAddOpen(false);
-      showToast("Question added.");
-      setTimeout(fetchActivities, 600);
-    } catch (err) {
-      showToast(err.message || "Add failed.");
-    } finally {
-      setTracerSaving(false);
-    }
-  }
-
-  async function tracerReorder(id, dir) {
-    const idx = tracerQuestions.findIndex(q => q._id === id);
-    if (idx === -1) return;
-    const swap = dir === "up" ? idx - 1 : idx + 1;
-    if (swap < 0 || swap >= tracerQuestions.length) return;
-    const next = [...tracerQuestions];
-    [next[idx], next[swap]] = [next[swap], next[idx]];
-    const ordered = next.map((q, i) => ({ ...q, order_number: i }));
-    setTracerQuestions(ordered);
-    try {
-      await fetch(`${API}/admin/employment/tracer-questions/reorder`, {
-        method: "PATCH", headers: authHeaders(),
-        body:   JSON.stringify({ order: ordered.map((q, i) => ({ id: q._id, order_number: i })) }),
-      });
-    } catch {}
-  }
-
-  function closeTracer() {
-    setTracerOpen(false);
-    setTracerEditId(null);
-    setTracerAddOpen(false);
-    setTracerAddForm({ question_text: "", field_type: "text", options: "", is_required: false });
-  }
 
   // ─── add record ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -948,185 +825,12 @@ export default function EmploymentView({ active, showToast }) {
         </section>
       </Modal>
 
-      {/* ── Tracer Form Modal ────────────────────────────────────────────────── */}
-      <Modal open={tracerOpen} onClose={closeTracer}>
-        <section className="tracer-modal tracer-modal-scroll" style={{ width: "min(700px, 100%)" }} role="dialog" aria-modal="true">
-          <div className="modal-head">
-            <h3>Edit Tracer Form</h3>
-            <button type="button" onClick={closeTracer}>×</button>
-          </div>
-
-          <div className="tracer-modal-body">
-            {tracerLoading ? (
-              <p style={{ color: "var(--muted)", fontSize: "13px" }}>Loading questions…</p>
-            ) : (
-              <>
-                {/* Question list */}
-                <div className="tracer-q-list">
-                  {tracerQuestions.length === 0 && (
-                    <p style={{ color: "var(--muted)", fontSize: "13px", margin: 0 }}>
-                      No questions yet. Click below to add one.
-                    </p>
-                  )}
-                  {tracerQuestions.map((q, idx) => (
-                    <div key={q._id} className={`tracer-q-item${q.is_active ? "" : " inactive"}`}>
-                      {tracerEditId === q._id ? (
-                        /* Inline edit form */
-                        <div style={{ gridColumn: "span 2", display: "grid", gap: "8px" }}>
-                          <input
-                            className="emp-search"
-                            value={tracerEditForm.question_text || ""}
-                            onChange={e => setTracerEditForm(f => ({ ...f, question_text: e.target.value }))}
-                            placeholder="Question text *"
-                            style={{ flex: "unset" }}
-                          />
-                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                            <select
-                              style={{ minHeight: "32px", border: "1px solid #cba0a6", borderRadius: "5px", padding: "0 8px", fontSize: "12px", color: "#2d2024" }}
-                              value={tracerEditForm.field_type || "text"}
-                              onChange={e => setTracerEditForm(f => ({ ...f, field_type: e.target.value }))}
-                            >
-                              {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <label style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", fontWeight: 600 }}>
-                              <input
-                                type="checkbox"
-                                checked={!!tracerEditForm.is_required}
-                                onChange={e => setTracerEditForm(f => ({ ...f, is_required: e.target.checked }))}
-                                style={{ margin: 0 }}
-                              />
-                              Required
-                            </label>
-                          </div>
-                          {["select", "radio", "checkbox"].includes(tracerEditForm.field_type) && (
-                            <input
-                              className="emp-search"
-                              value={tracerEditForm.options || ""}
-                              onChange={e => setTracerEditForm(f => ({ ...f, options: e.target.value }))}
-                              placeholder="Options (comma-separated)"
-                              style={{ flex: "unset" }}
-                            />
-                          )}
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <button type="button" className="tracer-q-btn success" disabled={tracerSaving} onClick={tracerSaveEdit}>
-                              {tracerSaving ? "Saving…" : "Save"}
-                            </button>
-                            <button type="button" className="tracer-q-btn" onClick={() => { setTracerEditId(null); setTracerEditForm({}); }}>
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <p className="tracer-q-text">{q.question_text}</p>
-                            <span className="tracer-q-meta">
-                              Type: {q.field_type}
-                              {q.is_required ? " · Required" : " · Optional"}
-                              {!q.is_active ? " · Inactive" : ""}
-                              {q.options?.length > 0 ? ` · ${q.options.join(", ")}` : ""}
-                            </span>
-                          </div>
-                          <div className="tracer-q-controls">
-                            <button type="button" className="tracer-q-btn" title="Move up"   disabled={idx === 0}                        onClick={() => tracerReorder(q._id, "up")}>↑</button>
-                            <button type="button" className="tracer-q-btn" title="Move down" disabled={idx === tracerQuestions.length - 1} onClick={() => tracerReorder(q._id, "down")}>↓</button>
-                            <button type="button" className={`tracer-q-btn${q.is_active ? "" : " success"}`} title={q.is_active ? "Deactivate" : "Activate"} onClick={() => tracerToggleActive(q)}>
-                              {q.is_active ? "Off" : "On"}
-                            </button>
-                            <button
-                              type="button"
-                              className="tracer-q-btn"
-                              title="Edit"
-                              onClick={() => {
-                                setTracerEditId(q._id);
-                                setTracerEditForm({ question_text: q.question_text, field_type: q.field_type, is_required: q.is_required, options: q.options?.join(", ") || "" });
-                              }}
-                            >✎</button>
-                            <button type="button" className="tracer-q-btn danger" title="Delete" onClick={() => setTracerDeleteId(q._id)}>✕</button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Add new question */}
-                {tracerAddOpen ? (
-                  <div className="tracer-q-item" style={{ gridTemplateColumns: "1fr", gap: "8px" }}>
-                    <input
-                      className="emp-search"
-                      value={tracerAddForm.question_text}
-                      onChange={e => setTracerAddForm(f => ({ ...f, question_text: e.target.value }))}
-                      placeholder="Question text *"
-                      style={{ flex: "unset" }}
-                      autoFocus
-                    />
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                      <select
-                        style={{ minHeight: "32px", border: "1px solid #cba0a6", borderRadius: "5px", padding: "0 8px", fontSize: "12px", color: "#2d2024" }}
-                        value={tracerAddForm.field_type}
-                        onChange={e => setTracerAddForm(f => ({ ...f, field_type: e.target.value }))}
-                      >
-                        {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <label style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", fontWeight: 600 }}>
-                        <input
-                          type="checkbox"
-                          checked={tracerAddForm.is_required}
-                          onChange={e => setTracerAddForm(f => ({ ...f, is_required: e.target.checked }))}
-                          style={{ margin: 0 }}
-                        />
-                        Required
-                      </label>
-                    </div>
-                    {["select", "radio", "checkbox"].includes(tracerAddForm.field_type) && (
-                      <input
-                        className="emp-search"
-                        value={tracerAddForm.options}
-                        onChange={e => setTracerAddForm(f => ({ ...f, options: e.target.value }))}
-                        placeholder="Options (comma-separated)"
-                        style={{ flex: "unset" }}
-                      />
-                    )}
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <button
-                        type="button"
-                        className="tracer-q-btn success"
-                        onClick={tracerAdd}
-                        disabled={tracerSaving || !tracerAddForm.question_text?.trim()}
-                      >
-                        {tracerSaving ? "Adding…" : "Add Question"}
-                      </button>
-                      <button
-                        type="button"
-                        className="tracer-q-btn"
-                        onClick={() => { setTracerAddOpen(false); setTracerAddForm({ question_text: "", field_type: "text", options: "", is_required: false }); }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="maroon-action"
-                    style={{ width: "100%", justifyContent: "center", marginTop: "8px" }}
-                    onClick={() => setTracerAddOpen(true)}
-                  >
-                    + Add New Question
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="modal-actions" style={{ padding: "0 20px 18px" }}>
-            <button type="button" style={{ background: "var(--maroon)", color: "#fff" }} onClick={() => { closeTracer(); showToast("Tracer form saved."); }}>
-              Done
-            </button>
-          </div>
-        </section>
-      </Modal>
+      {/* ── Tracer Form Editor (integrated 6-page editor) ───────────────────── */}
+      <TracerFormEditor
+        open={tracerOpen}
+        onClose={() => setTracerOpen(false)}
+        showToast={showToast}
+      />
 
       {/* ── Add Record Modal ─────────────────────────────────────────────────── */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)}>
@@ -1259,14 +963,6 @@ export default function EmploymentView({ active, showToast }) {
           </form>
         </section>
       </Modal>
-
-      {/* ── Tracer delete confirm (rendered after tracer modal so z-index wins) */}
-      <ConfirmDialog
-        open={!!tracerDeleteId}
-        message="Delete this question? This action cannot be undone."
-        onConfirm={() => tracerDoDelete(tracerDeleteId)}
-        onCancel={() => setTracerDeleteId(null)}
-      />
 
       {/* ── Generic confirm dialog ────────────────────────────────────────────── */}
       <ConfirmDialog

@@ -2,6 +2,23 @@ const bcrypt               = require('bcryptjs');
 const User                 = require('../models/User');
 const AlumniEmployment     = require('../models/AlumniEmployment');
 const TracerStudyResponse  = require('../models/TracerStudyResponse');
+const { getTracerFormConfig } = require('./tracerFormConfigController');
+
+// The set of keys that the TracerStudyResponse schema handles directly.
+// Everything else in the submitted answers object goes into extra_answers.
+const FIXED_KEYS = new Set([
+  'consent', // validated on frontend; not persisted
+  'contactNumber', 'gender',
+  'programsCompleted', 'professionalExam', 'professionalExamName',
+  'employmentStatus', 'placeOfWork', 'occupationTitle', 'industryField',
+  'presentEmploymentType', 'jobRelatedToDegree', 'yearsInCurrentJob',
+  'reasonsNotEmployed',
+  'furtherEducation', 'furtherEducationType',
+  'pursuedTrainings', 'trainingType',
+  'personalGrowthRatings',
+  'promotedInJob', 'significantAccomplishments',
+  'professionalCertifications', 'professionalDevelopmentActivities',
+]);
 
 // POST /api/alumni/change-password
 const changePassword = async (req, res) => {
@@ -66,6 +83,8 @@ const completeOnboarding = async (req, res) => {
 };
 
 // POST /api/alumni/tracer-study
+// Accepts a flat answers object whose keys match TracerStudyResponse field names for
+// fixed questions. Any unrecognised key is stored in extra_answers.
 const submitTracerStudy = async (req, res) => {
   try {
     const alumniId = req.user.id;
@@ -75,43 +94,41 @@ const submitTracerStudy = async (req, res) => {
       return res.status(400).json({ message: 'Tracer study already submitted.' });
     }
 
-    const {
-      contactNumber, gender,
-      programsCompleted, professionalExam, professionalExamName,
-      employmentStatus, placeOfWork, occupationTitle, industryField,
-      presentEmploymentType, jobRelatedToDegree, yearsInCurrentJob,
-      reasonsNotEmployed,
-      furtherEducation, furtherEducationType,
-      pursuedTrainings, trainingType,
-      personalGrowthRatings,
-      promotedInJob, significantAccomplishments,
-      professionalCertifications, professionalDevelopmentActivities,
-    } = req.body;
+    const body = req.body;
+
+    // Separate extra (custom admin-added) answers from the fixed schema fields
+    const extra_answers = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (!FIXED_KEYS.has(key)) {
+        extra_answers[key] = value;
+      }
+    }
 
     await TracerStudyResponse.create({
       alumni_id: alumniId,
-      contactNumber:    contactNumber    || '',
-      gender:           gender           || '',
-      programsCompleted:    programsCompleted    || [],
-      professionalExam:     professionalExam     || '',
-      professionalExamName: professionalExamName || '',
-      employmentStatus:     employmentStatus     || '',
-      placeOfWork:           placeOfWork           || '',
-      occupationTitle:       occupationTitle       || '',
-      industryField:         industryField         || '',
-      presentEmploymentType: presentEmploymentType || '',
-      jobRelatedToDegree:    jobRelatedToDegree    || '',
-      yearsInCurrentJob:     yearsInCurrentJob     || '',
-      reasonsNotEmployed:    reasonsNotEmployed    || [],
-      furtherEducation:      furtherEducation      || '',
-      furtherEducationType:  furtherEducationType  || '',
-      pursuedTrainings:      pursuedTrainings      || '',
-      trainingType:          trainingType          || '',
-      personalGrowthRatings: personalGrowthRatings || {},
-      promotedInJob:                    promotedInJob                    || '',
-      significantAccomplishments:       significantAccomplishments       || '',
-      professionalCertifications:       professionalCertifications       || '',
-      professionalDevelopmentActivities:professionalDevelopmentActivities|| '',
+      contactNumber:    body.contactNumber    || '',
+      gender:           body.gender           || '',
+      programsCompleted:    body.programsCompleted    || [],
+      professionalExam:     body.professionalExam     || '',
+      professionalExamName: body.professionalExamName || '',
+      employmentStatus:     body.employmentStatus     || '',
+      placeOfWork:           body.placeOfWork           || '',
+      occupationTitle:       body.occupationTitle       || '',
+      industryField:         body.industryField         || '',
+      presentEmploymentType: body.presentEmploymentType || '',
+      jobRelatedToDegree:    body.jobRelatedToDegree    || '',
+      yearsInCurrentJob:     body.yearsInCurrentJob     || '',
+      reasonsNotEmployed:    body.reasonsNotEmployed    || [],
+      furtherEducation:      body.furtherEducation      || '',
+      furtherEducationType:  body.furtherEducationType  || '',
+      pursuedTrainings:      body.pursuedTrainings      || '',
+      trainingType:          body.trainingType          || '',
+      personalGrowthRatings: body.personalGrowthRatings || {},
+      promotedInJob:                     body.promotedInJob                     || '',
+      significantAccomplishments:        body.significantAccomplishments        || '',
+      professionalCertifications:        body.professionalCertifications        || '',
+      professionalDevelopmentActivities: body.professionalDevelopmentActivities || '',
+      extra_answers,
     });
 
     await User.findByIdAndUpdate(alumniId, { tracerStudyCompleted: true });
@@ -123,4 +140,4 @@ const submitTracerStudy = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, completeOnboarding, submitTracerStudy };
+module.exports = { changePassword, completeOnboarding, submitTracerStudy, getTracerFormConfig };
