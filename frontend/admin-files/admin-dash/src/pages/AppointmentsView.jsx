@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Modal } from "../Primitives.jsx";
-
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 
 function authHeaders() {
   const token = localStorage.getItem("auth_token");
