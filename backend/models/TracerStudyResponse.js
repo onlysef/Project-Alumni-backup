@@ -50,6 +50,9 @@ const tracerStudyResponseSchema = new mongoose.Schema({
   professionalDevelopmentActivities:{ type: String, default: '' },
 
   submittedAt: { type: Date, default: Date.now },
+
+  // Holds answers for any custom questions the admin adds beyond the fixed schema
+  extra_answers: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
 module.exports = mongoose.model('TracerStudyResponse', tracerStudyResponseSchema);

@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 
 export default function AlumniOnboarding() {
   const { user, token, firstLogin, setFirstLoginDone } = useAuth();

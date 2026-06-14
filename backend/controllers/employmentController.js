@@ -1,9 +1,51 @@
-const { Types }          = require('mongoose');
-const AlumniEmployment   = require('../models/AlumniEmployment');
-const TracerFormQuestion = require('../models/TracerFormQuestion');
-const EmploymentActivity = require('../models/EmploymentActivity');
-const User               = require('../models/User');
-const XLSX               = require('xlsx');
+const { Types }           = require('mongoose');
+const AlumniEmployment    = require('../models/AlumniEmployment');
+const TracerStudyResponse = require('../models/TracerStudyResponse');
+const TracerFormConfig    = require('../models/TracerFormConfig');
+const TracerFormQuestion  = require('../models/TracerFormQuestion');
+const EmploymentActivity  = require('../models/EmploymentActivity');
+const User                = require('../models/User');
+const XLSX                = require('xlsx');
+
+// Maps programsCompleted → User.course code
+function mapProgramToCourse(programsCompleted) {
+  if (!Array.isArray(programsCompleted) || !programsCompleted.length) return '';
+  const combined = programsCompleted.join(' ').toLowerCase();
+  if (combined.includes('information technology')) return 'BSIT';
+  if (combined.includes('computer science'))       return 'BSCS';
+  if (combined.includes('information systems'))    return 'BSIS';
+  return '';
+}
+
+// Resolves company_name, work_location, and graduation_year from extra_answers by label matching
+async function resolveExtraFromTracer(extraAnswers) {
+  try {
+    const cfg = await TracerFormConfig.findOne().sort({ updatedAt: -1 }).lean();
+    if (!cfg?.config?.pages) return {};
+    const result = {};
+    for (const page of cfg.config.pages) {
+      for (const q of (page.questions || [])) {
+        if (!Object.prototype.hasOwnProperty.call(extraAnswers, q.id)) continue;
+        const val = extraAnswers[q.id];
+        if (!val) continue;
+        const label = (q.label || '').toLowerCase();
+        if (!result.company_name && (label.includes('company') || label.includes('employer'))) {
+          result.company_name = String(val).trim();
+        }
+        if (!result.work_location && label.includes('work location')) {
+          result.work_location = String(val).trim();
+        }
+        if (!result.graduation_year && (label.includes('graduation year') || label.includes('batch year'))) {
+          const yr = parseInt(String(val).trim(), 10);
+          if (!isNaN(yr)) result.graduation_year = yr;
+        }
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -325,6 +367,8 @@ const getEmploymentRecord = async (req, res) => {
           salary_range:          1,
           job_related_to_course: 1,
           date_employed:         1,
+          employment_type:       1,
+          years_in_current_job:  1,
           reason_unemployed:     1,
           last_updated:          1,
           createdAt:             1,
@@ -334,7 +378,32 @@ const getEmploymentRecord = async (req, res) => {
     ]);
 
     if (!result.length) return res.status(404).json({ message: 'Employment record not found.' });
-    res.json({ record: result[0] });
+
+    // Attach tracer study snapshot so the admin view modal can show it
+    const tracer = await TracerStudyResponse.findOne({ alumni_id: result[0].alumni_id }).lean();
+    let tracer_data = null;
+    if (tracer) {
+      // extra_answers may be a plain object (lean) or Map — normalise to plain object
+      const extraRaw = tracer.extra_answers;
+      const extra_answers = (extraRaw instanceof Map)
+        ? Object.fromEntries(extraRaw)
+        : (extraRaw && typeof extraRaw === 'object' ? extraRaw : {});
+
+      const extraResolved = await resolveExtraFromTracer(extra_answers);
+
+      tracer_data = {
+        occupationTitle:       tracer.occupationTitle       || '',
+        industryField:         tracer.industryField         || '',
+        jobRelatedToDegree:    tracer.jobRelatedToDegree    || '',
+        presentEmploymentType: tracer.presentEmploymentType || '',
+        yearsInCurrentJob:     tracer.yearsInCurrentJob     || '',
+        companyName:           extraResolved.company_name   || '',
+        workLocation:          extraResolved.work_location  || '',
+        submittedAt:           tracer.submittedAt           || null,
+      };
+    }
+
+    res.json({ record: { ...result[0], tracer_data } });
   } catch (err) {
     console.error('getEmploymentRecord error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -348,6 +417,7 @@ const updateEmploymentRecord = async (req, res) => {
       employment_status, company_name, job_title, industry,
       work_location, salary_range, job_related_to_course,
       date_employed, reason_unemployed,
+      employment_type, years_in_current_job,
     } = req.body;
 
     const VALID_STATUSES = ['Not Yet Updated', 'Employed', 'Unemployed', 'Self-employed'];
@@ -369,14 +439,16 @@ const updateEmploymentRecord = async (req, res) => {
 
     const updates = {
       employment_status,
-      company_name:          company_name?.trim()       || '',
-      job_title:             job_title?.trim()          || '',
-      industry:              industry?.trim()           || '',
-      work_location:         work_location?.trim()      || '',
-      salary_range:          salary_range?.trim()       || '',
+      company_name:          company_name?.trim()        || '',
+      job_title:             job_title?.trim()           || '',
+      industry:              industry?.trim()            || '',
+      work_location:         work_location?.trim()       || '',
+      salary_range:          salary_range?.trim()        || '',
       job_related_to_course: !!job_related_to_course,
-      date_employed:         date_employed              || null,
-      reason_unemployed:     reason_unemployed?.trim()  || '',
+      date_employed:         date_employed               || null,
+      reason_unemployed:     reason_unemployed?.trim()   || '',
+      employment_type:       employment_type?.trim()     || '',
+      years_in_current_job:  years_in_current_job?.trim() || '',
       last_updated:          new Date(),
     };
 
@@ -403,20 +475,95 @@ const updateEmploymentRecord = async (req, res) => {
 // GET /api/admin/employment/stats
 const getEmploymentStats = async (req, res) => {
   try {
-    const counts = await AlumniEmployment.aggregate([
-      { $group: { _id: '$employment_status', count: { $sum: 1 } } },
+    const [counts, tracerCount] = await Promise.all([
+      AlumniEmployment.aggregate([
+        { $group: { _id: '$employment_status', count: { $sum: 1 } } },
+      ]),
+      TracerStudyResponse.countDocuments(),
     ]);
-    const stats = { employed: 0, unemployed: 0, selfEmployed: 0, notYetUpdated: 0, total: 0 };
+    const stats = { employed: 0, unemployed: 0, selfEmployed: 0, notYetUpdated: 0, total: 0, tracerSubmissions: tracerCount };
     for (const c of counts) {
       stats.total += c.count;
-      if (c._id === 'Employed')        stats.employed      = c.count;
-      else if (c._id === 'Unemployed') stats.unemployed    = c.count;
-      else if (c._id === 'Self-employed') stats.selfEmployed = c.count;
+      if (c._id === 'Employed')           stats.employed      = c.count;
+      else if (c._id === 'Unemployed')    stats.unemployed    = c.count;
+      else if (c._id === 'Self-employed') stats.selfEmployed  = c.count;
       else if (c._id === 'Not Yet Updated') stats.notYetUpdated = c.count;
     }
     res.json(stats);
   } catch (err) {
     console.error('getEmploymentStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// Maps tracer employmentStatus answer → AlumniEmployment enum (same logic as alumniController)
+function mapTracerStatus(tracerStatus) {
+  if (!tracerStatus) return 'Not Yet Updated';
+  const s = String(tracerStatus).toLowerCase().trim();
+  if (s === 'yes') return 'Employed';
+  if (s === 'no' || s.includes('never')) return 'Unemployed';
+  if (s.includes('self')) return 'Self-employed';
+  if (s.includes('employ') && !s.includes('un')) return 'Employed';
+  if (s.includes('unemploy')) return 'Unemployed';
+  return 'Not Yet Updated';
+}
+
+// POST /api/admin/employment/sync-tracer
+// Reads every existing TracerStudyResponse and pushes employment fields into AlumniEmployment.
+// Safe to run multiple times (upsert). Called on mount so stale records catch up automatically.
+const syncTracerToEmployment = async (req, res) => {
+  try {
+    const responses = await TracerStudyResponse.find().lean();
+    let updated = 0;
+
+    for (const tracer of responses) {
+      const extraAnswers = (tracer.extra_answers instanceof Map)
+        ? Object.fromEntries(tracer.extra_answers)
+        : (tracer.extra_answers || {});
+
+      const extraResolved = await resolveExtraFromTracer(extraAnswers);
+
+      const reasonsArr = Array.isArray(tracer.reasonsNotEmployed) ? tracer.reasonsNotEmployed : [];
+      const jrd = String(tracer.jobRelatedToDegree || '').toLowerCase().trim();
+
+      const updates = {
+        employment_status:     mapTracerStatus(tracer.employmentStatus),
+        job_title:             tracer.occupationTitle       || '',
+        industry:              tracer.industryField         || '',
+        job_related_to_course: jrd.startsWith('yes'),
+        reason_unemployed:     reasonsArr.join('; '),
+        employment_type:       tracer.presentEmploymentType || '',
+        years_in_current_job:  tracer.yearsInCurrentJob     || '',
+        last_updated:          new Date(),
+        ...extraResolved,
+      };
+
+      await AlumniEmployment.findOneAndUpdate(
+        { alumni_id: tracer.alumni_id },
+        { $set: updates },
+        { upsert: true, new: true }
+      );
+
+      // Update User.course and User.graduationYear if currently empty
+      const userUpdates = {};
+      const currentUser = await User.findById(tracer.alumni_id).select('course graduationYear').lean();
+      if (!currentUser?.course) {
+        const mapped = mapProgramToCourse(tracer.programsCompleted);
+        if (mapped) userUpdates.course = mapped;
+      }
+      if (!currentUser?.graduationYear && extraResolved.graduation_year) {
+        userUpdates.graduationYear = extraResolved.graduation_year;
+      }
+      if (Object.keys(userUpdates).length) {
+        await User.findByIdAndUpdate(tracer.alumni_id, userUpdates);
+      }
+
+      updated++;
+    }
+
+    res.json({ updated });
+  } catch (err) {
+    console.error('syncTracerToEmployment error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -578,6 +725,7 @@ const deleteTracerQuestion = async (req, res) => {
 module.exports = {
   getAlumniWithoutRecord,
   createEmploymentRecord,
+  syncTracerToEmployment,
   backfillEmploymentRecords,
   getEmploymentStats,
   getEmploymentRecords,

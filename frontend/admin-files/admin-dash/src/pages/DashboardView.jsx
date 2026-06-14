@@ -4,7 +4,7 @@ import { Dropdown } from "../Primitives.jsx";
 import { CareerChart, EmploymentChart } from "../Charts.jsx";
 import { careerSets, employmentSets, assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
 
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 
 function authHeaders() {
   const token = localStorage.getItem("auth_token");
@@ -59,6 +59,7 @@ export default function DashboardView({ active, showToast }) {
   const [employmentIndex, setEmploymentIndex] = useState(0);
   const [totalUsers, setTotalUsers] = useState(null);
   const [employedCount, setEmployedCount] = useState(null);
+  const [tracerCount, setTracerCount]     = useState(null);
   const [postActivities, setPostActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
 
@@ -82,6 +83,7 @@ export default function DashboardView({ active, showToast }) {
         if (!res.ok) return;
         const data = await res.json();
         setEmployedCount(data.employed ?? 0);
+        setTracerCount(data.tracerSubmissions ?? 0);
       } catch {
         // silently fail
       }
@@ -157,7 +159,7 @@ export default function DashboardView({ active, showToast }) {
           <span><Icon name="icon-12" /></span>
         </article>
         <article className="stat-card">
-          <div><p className="stat-value">100</p><p className="stat-label">Recent Tracer Submissions</p></div>
+          <div><p className="stat-value">{tracerCount === null ? "—" : tracerCount}</p><p className="stat-label">Tracer Submissions</p></div>
           <span><Icon name="icon-13" /></span>
         </article>
       </div>

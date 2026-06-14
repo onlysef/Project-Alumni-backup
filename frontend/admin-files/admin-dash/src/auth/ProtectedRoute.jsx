@@ -1,7 +1,7 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
-const LOGIN_URL = "http://127.0.0.1:5500/frontend/pages/alumni-login.html";
+const LOGIN_URL = "/alumni-login.html";
 
 const ROLE_PATHS = {
   admin: "/admin/dashboard",

@@ -4,6 +4,7 @@ const multer          = require('multer');
 const xlsx            = require('xlsx');
 const User            = require('../models/User');
 const AlumniEmployment   = require('../models/AlumniEmployment');
+const TracerStudyResponse = require('../models/TracerStudyResponse');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 
 const upload = multer({
@@ -148,6 +149,13 @@ const deleteUser = async (req, res) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    // Clean up all records linked to this user
+    await Promise.all([
+      AlumniEmployment.deleteOne({ alumni_id: req.params.id }),
+      TracerStudyResponse.deleteOne({ alumni_id: req.params.id }),
+    ]);
+
     res.json({ message: 'User deleted.' });
   } catch (err) {
     console.error('deleteUser error:', err);
@@ -276,4 +284,23 @@ const importUsers = async (req, res) => {
   }
 };
 
-module.exports = { createUser, getUsers, updateUser, deleteUser, importUsers, upload };
+// POST /api/admin/users/:id/resend-credentials
+const resendCredentials = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    const tempPassword = crypto.randomBytes(4).toString('hex');
+    user.password = await bcrypt.hash(tempPassword, 10);
+    user.status   = 'pending';
+    await user.save();
+
+    await sendAccountCreatedEmail(user.email, user.firstName, tempPassword);
+    res.json({ message: `Credentials resent to ${user.email}.`, status: 'Pending' });
+  } catch (err) {
+    console.error('resendCredentials error:', err);
+    res.status(500).json({ message: 'Failed to resend credentials.' });
+  }
+};
+
+module.exports = { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials };

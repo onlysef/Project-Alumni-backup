@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../Icon.jsx";
 import { Modal } from "../Primitives.jsx";
+import TracerFormEditor from "./TracerFormEditor.jsx";
 
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 
 function authHeaders() {
   const token = localStorage.getItem("auth_token");
@@ -48,10 +49,10 @@ const INDUSTRIES = [
   "Government and Public Service", "Transportation and Logistics",
   "Retail and Commerce", "Media and Communications", "Other",
 ];
-const FIELD_TYPES = ["text", "textarea", "select", "radio", "checkbox"];
 const BATCH_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
 
 const EMPTY_FILTERS   = { status: "", course: "", batch_year: "", date_updated: "", company: "" };
+const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
 
 function StatusBadge({ status }) {
@@ -104,21 +105,16 @@ export default function EmploymentView({ active, showToast }) {
   const [pendingFilters, setPendingFilters] = useState(EMPTY_FILTERS);
 
   // ─── view / edit modals ─────────────────────────────────────────────────────
-  const [viewRecord, setViewRecord]   = useState(null);
+  const [viewRecord, setViewRecord]               = useState(null);
+  const [viewDetail, setViewDetail]               = useState(null);
+  const [viewDetailLoading, setViewDetailLoading] = useState(false);
   const [editRecord, setEditRecord]   = useState(null);
   const [editForm, setEditForm]       = useState({});
   const [editErrors, setEditErrors]   = useState({});
   const [editSaving, setEditSaving]   = useState(false);
 
-  // ─── tracer form ────────────────────────────────────────────────────────────
-  const [tracerOpen, setTracerOpen]         = useState(false);
-  const [tracerQuestions, setTracerQuestions] = useState([]);
-  const [tracerLoading, setTracerLoading]   = useState(false);
-  const [tracerEditId, setTracerEditId]     = useState(null);
-  const [tracerEditForm, setTracerEditForm] = useState({});
-  const [tracerAddForm, setTracerAddForm]   = useState({ question_text: "", field_type: "text", options: "", is_required: false });
-  const [tracerAddOpen, setTracerAddOpen]   = useState(false);
-  const [tracerSaving, setTracerSaving]     = useState(false);
+  // ─── tracer form editor ─────────────────────────────────────────────────────
+  const [tracerOpen, setTracerOpen] = useState(false);
 
   // ─── activities ─────────────────────────────────────────────────────────────
   const [activities, setActivities]             = useState([]);
@@ -132,8 +128,6 @@ export default function EmploymentView({ active, showToast }) {
 
   // ─── confirm dialog ─────────────────────────────────────────────────────────
   const [confirm, setConfirm] = useState({ open: false, message: "", onConfirm: null });
-  // separate confirm for tracer-delete (rendered inside tracer modal)
-  const [tracerDeleteId, setTracerDeleteId] = useState(null);
 
   // ─── add record modal ────────────────────────────────────────────────────────
   const [addOpen, setAddOpen]       = useState(false);
@@ -155,12 +149,16 @@ export default function EmploymentView({ active, showToast }) {
     return () => clearTimeout(searchTimer.current);
   }, [searchInput]);
 
-  // ── backfill missing employment records on mount ────────────────────────────
+  // ── on mount: backfill missing records + sync tracer data into employment ───
   useEffect(() => {
     if (!active) return;
-    fetch(`${API}/admin/employment/backfill`, { method: "POST", headers: authHeaders() })
-      .then((r) => r.ok && r.json())
-      .then((d) => { if (d?.created > 0) setRefreshKey((k) => k + 1); })
+    Promise.all([
+      fetch(`${API}/admin/employment/backfill`,     { method: "POST", headers: authHeaders() }).then(r => r.ok && r.json()),
+      fetch(`${API}/admin/employment/sync-tracer`,  { method: "POST", headers: authHeaders() }).then(r => r.ok && r.json()),
+    ])
+      .then(([backfill, sync]) => {
+        if ((backfill?.created > 0) || (sync?.updated > 0)) setRefreshKey(k => k + 1);
+      })
       .catch(() => {});
   }, [active]);
 
@@ -219,16 +217,17 @@ export default function EmploymentView({ active, showToast }) {
     fetchActivities();
   }, [active, fetchActivities]);
 
-  // ── fetch tracer questions when modal opens ─────────────────────────────────
+  // ── fetch full record + tracer_data when the view modal opens ───────────────
   useEffect(() => {
-    if (!tracerOpen) return;
-    setTracerLoading(true);
-    fetch(`${API}/admin/employment/tracer-questions`, { headers: authHeaders() })
+    if (!viewRecord) { setViewDetail(null); return; }
+    setViewDetailLoading(true);
+    setViewDetail(null);
+    fetch(`${API}/admin/employment/${viewRecord._id}`, { headers: authHeaders() })
       .then(r => r.json())
-      .then(d => setTracerQuestions(d.questions || []))
+      .then(d => setViewDetail(d.record || null))
       .catch(() => {})
-      .finally(() => setTracerLoading(false));
-  }, [tracerOpen]);
+      .finally(() => setViewDetailLoading(false));
+  }, [viewRecord]);
 
   // ── export menu click-outside ───────────────────────────────────────────────
   useEffect(() => {
@@ -274,18 +273,18 @@ export default function EmploymentView({ active, showToast }) {
     }
   }
 
-  function openEdit(r) {
+  function openEdit(r, tracerData = null) {
     setEditRecord(r);
     setEditForm({
-      employment_status:     r.employment_status || "",
-      company_name:          r.company_name || "",
-      job_title:             r.job_title || "",
-      industry:              r.industry || "",
-      work_location:         r.work_location || "",
-      salary_range:          r.salary_range || "",
+      employment_status:     r.employment_status     || "",
+      company_name:          tracerData?.companyName      || r.company_name          || "",
+      job_title:             tracerData?.occupationTitle  || r.job_title             || "",
+      industry:              tracerData?.industryField    || r.industry              || "",
+      work_location:         tracerData?.workLocation     || r.work_location         || "",
       job_related_to_course: !!r.job_related_to_course,
-      date_employed:         r.date_employed ? r.date_employed.slice(0, 10) : "",
-      reason_unemployed:     r.reason_unemployed || "",
+      employment_type:       tracerData?.presentEmploymentType || r.employment_type      || "",
+      years_in_current_job:  tracerData?.yearsInCurrentJob    || r.years_in_current_job || "",
+      reason_unemployed:     r.reason_unemployed     || "",
     });
     setEditErrors({});
   }
@@ -303,7 +302,6 @@ export default function EmploymentView({ active, showToast }) {
     } else if (f.employment_status === "Self-employed") {
       if (!f.industry?.trim()) e.industry = "Industry or business type is required.";
     }
-    // "Not Yet Updated" requires no additional fields
     return e;
   }
 
@@ -385,110 +383,6 @@ export default function EmploymentView({ active, showToast }) {
   const from = total === 0 ? 0 : (page - 1) * limit + 1;
   const to   = Math.min(page * limit, total);
 
-  // ─── tracer actions ─────────────────────────────────────────────────────────
-  async function tracerToggleActive(q) {
-    try {
-      const res = await fetch(`${API}/admin/employment/tracer-questions/${q._id}`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ is_active: !q.is_active }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      setTracerQuestions(qs => qs.map(x => x._id === q._id ? data.question : x));
-    } catch {}
-  }
-
-  async function tracerSaveEdit() {
-    if (!tracerEditForm.question_text?.trim()) return;
-    setTracerSaving(true);
-    try {
-      const body = {
-        ...tracerEditForm,
-        options: tracerEditForm.options
-          ? tracerEditForm.options.split(",").map(s => s.trim()).filter(Boolean)
-          : [],
-      };
-      const res = await fetch(`${API}/admin/employment/tracer-questions/${tracerEditId}`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("Update failed.");
-      const data = await res.json();
-      setTracerQuestions(qs => qs.map(x => x._id === tracerEditId ? data.question : x));
-      setTracerEditId(null);
-      setTracerEditForm({});
-      showToast("Question updated.");
-      setTimeout(fetchActivities, 600);
-    } catch (err) {
-      showToast(err.message || "Update failed.");
-    } finally {
-      setTracerSaving(false);
-    }
-  }
-
-  async function tracerDoDelete(id) {
-    setTracerDeleteId(null);
-    try {
-      const res = await fetch(`${API}/admin/employment/tracer-questions/${id}`, {
-        method: "DELETE", headers: authHeaders(),
-      });
-      if (!res.ok) throw new Error("Delete failed.");
-      setTracerQuestions(qs => qs.filter(q => q._id !== id));
-      showToast("Question deleted.");
-      setTimeout(fetchActivities, 600);
-    } catch (err) {
-      showToast(err.message || "Delete failed.");
-    }
-  }
-
-  async function tracerAdd() {
-    if (!tracerAddForm.question_text?.trim()) return;
-    setTracerSaving(true);
-    try {
-      const body = {
-        ...tracerAddForm,
-        options: tracerAddForm.options
-          ? tracerAddForm.options.split(",").map(s => s.trim()).filter(Boolean)
-          : [],
-      };
-      const res = await fetch(`${API}/admin/employment/tracer-questions`, {
-        method: "POST", headers: authHeaders(), body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error("Failed to add question.");
-      const data = await res.json();
-      setTracerQuestions(qs => [...qs, data.question]);
-      setTracerAddForm({ question_text: "", field_type: "text", options: "", is_required: false });
-      setTracerAddOpen(false);
-      showToast("Question added.");
-      setTimeout(fetchActivities, 600);
-    } catch (err) {
-      showToast(err.message || "Add failed.");
-    } finally {
-      setTracerSaving(false);
-    }
-  }
-
-  async function tracerReorder(id, dir) {
-    const idx = tracerQuestions.findIndex(q => q._id === id);
-    if (idx === -1) return;
-    const swap = dir === "up" ? idx - 1 : idx + 1;
-    if (swap < 0 || swap >= tracerQuestions.length) return;
-    const next = [...tracerQuestions];
-    [next[idx], next[swap]] = [next[swap], next[idx]];
-    const ordered = next.map((q, i) => ({ ...q, order_number: i }));
-    setTracerQuestions(ordered);
-    try {
-      await fetch(`${API}/admin/employment/tracer-questions/reorder`, {
-        method: "PATCH", headers: authHeaders(),
-        body:   JSON.stringify({ order: ordered.map((q, i) => ({ id: q._id, order_number: i })) }),
-      });
-    } catch {}
-  }
-
-  function closeTracer() {
-    setTracerOpen(false);
-    setTracerEditId(null);
-    setTracerAddOpen(false);
-    setTracerAddForm({ question_text: "", field_type: "text", options: "", is_required: false });
-  }
 
   // ─── add record ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -788,29 +682,58 @@ export default function EmploymentView({ active, showToast }) {
           </div>
           {viewRecord && (
             <>
-              <div className="record-details">
-                <div><strong>Name</strong><span>{viewRecord.name}</span></div>
-                <div><strong>Course</strong><span>{viewRecord.course || "—"}</span></div>
-                <div><strong>Batch Year</strong><span>{viewRecord.graduation_year || "—"}</span></div>
-                <div><strong>Status</strong><span><StatusBadge status={viewRecord.employment_status} /></span></div>
-                <div><strong>Company</strong><span>{(viewRecord.employment_status === "Unemployed" || viewRecord.employment_status === "Not Yet Updated") ? "N/A" : (viewRecord.company_name || "N/A")}</span></div>
-                <div><strong>Job Title</strong><span>{viewRecord.job_title || "—"}</span></div>
-                <div><strong>Industry</strong><span>{viewRecord.industry || "—"}</span></div>
-                <div><strong>Work Location</strong><span>{viewRecord.work_location || "—"}</span></div>
-                <div><strong>Salary Range</strong><span>{viewRecord.salary_range || "—"}</span></div>
-                <div><strong>Related to Course</strong><span>{viewRecord.job_related_to_course ? "Yes" : "No"}</span></div>
-                {viewRecord.employment_status === "Unemployed" && (
-                  <div><strong>Reason Unemployed</strong><span>{viewRecord.reason_unemployed || "—"}</span></div>
-                )}
-                <div><strong>Last Updated</strong><span>{fmtDate(viewRecord.last_updated)}</span></div>
-              </div>
+              {(() => {
+                const r  = viewDetail || viewRecord;
+                const td = viewDetail?.tracer_data || null;
+                const isUnemployed = r.employment_status === "Unemployed";
+                const isNoRecord   = r.employment_status === "Not Yet Updated";
+
+                // Tracer data takes priority; fall back to AlumniEmployment stored values
+                const company  = (isUnemployed || isNoRecord)
+                  ? "N/A"
+                  : (td?.companyName || r.company_name || "N/A");
+                const jobTitle = td?.occupationTitle || r.job_title    || "—";
+                const industry = td?.industryField   || r.industry     || "—";
+                const workLoc  = td?.workLocation    || r.work_location || "—";
+
+                // jobRelatedToDegree may be a full sentence — check startsWith 'yes'
+                const jrd = String(td?.jobRelatedToDegree || '').toLowerCase().trim();
+                const related = td?.jobRelatedToDegree
+                  ? (jrd.startsWith('yes') ? "Yes" : "No")
+                  : (r.job_related_to_course ? "Yes" : "No");
+
+                return (
+                  <div className="record-details">
+                    <div><strong>Name</strong><span>{r.name}</span></div>
+                    <div><strong>Course</strong><span>{r.course || "—"}</span></div>
+                    <div><strong>Batch Year</strong><span>{r.graduation_year || "—"}</span></div>
+                    <div><strong>Status</strong><span><StatusBadge status={r.employment_status} /></span></div>
+                    <div><strong>Company</strong><span>{company}</span></div>
+                    {!isUnemployed && !isNoRecord && (
+                      <>
+                        <div><strong>Job Title</strong><span>{jobTitle}</span></div>
+                        <div><strong>Industry</strong><span>{industry}</span></div>
+                        <div><strong>Work Location</strong><span>{workLoc}</span></div>
+                        <div><strong>Employment Type</strong><span>{td?.presentEmploymentType || r.employment_type || "—"}</span></div>
+                        <div><strong>Years in Job</strong><span>{td?.yearsInCurrentJob || r.years_in_current_job || "—"}</span></div>
+                        <div><strong>Related to Course</strong><span>{related}</span></div>
+                      </>
+                    )}
+                    {isUnemployed && (
+                      <div><strong>Reason Unemployed</strong><span>{r.reason_unemployed || "—"}</span></div>
+                    )}
+                    <div><strong>Last Updated</strong><span>{fmtDate(r.last_updated)}</span></div>
+                  </div>
+                );
+              })()}
+
               <div className="modal-actions record-actions">
                 <button type="button" onClick={() => setViewRecord(null)}>Close</button>
                 <button type="button" onClick={() => printRecord(viewRecord)}>Print Record</button>
                 <button
                   type="button"
                   style={{ background: "var(--maroon)", color: "#fff" }}
-                  onClick={() => { setViewRecord(null); openEdit(viewRecord); }}
+                  onClick={() => { setViewRecord(null); openEdit(viewRecord, viewDetail?.tracer_data); }}
                 >
                   Edit Record
                 </button>
@@ -838,7 +761,7 @@ export default function EmploymentView({ active, showToast }) {
                     onChange={e => setEditForm(f => ({ ...f, employment_status: e.target.value }))}
                   >
                     <option value="">Select status…</option>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}  {/* includes Not Yet Updated */}
+                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                   {editErrors.employment_status && <span className="field-error">{editErrors.employment_status}</span>}
                 </label>
@@ -894,20 +817,22 @@ export default function EmploymentView({ active, showToast }) {
 
                     <div className="field-row">
                       <label>
-                        Salary Range
-                        <input
-                          type="text"
-                          value={editForm.salary_range}
-                          onChange={e => setEditForm(f => ({ ...f, salary_range: e.target.value }))}
-                          placeholder="e.g. ₱20,000 – ₱30,000"
-                        />
+                        Employment Type
+                        <select
+                          value={editForm.employment_type}
+                          onChange={e => setEditForm(f => ({ ...f, employment_type: e.target.value }))}
+                        >
+                          <option value="">Select type…</option>
+                          {EMPLOYMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
                       </label>
                       <label>
-                        Date Employed
+                        Years in Current Job
                         <input
-                          type="date"
-                          value={editForm.date_employed}
-                          onChange={e => setEditForm(f => ({ ...f, date_employed: e.target.value }))}
+                          type="text"
+                          value={editForm.years_in_current_job}
+                          onChange={e => setEditForm(f => ({ ...f, years_in_current_job: e.target.value }))}
+                          placeholder="e.g. 2 years"
                         />
                       </label>
                     </div>
@@ -948,185 +873,12 @@ export default function EmploymentView({ active, showToast }) {
         </section>
       </Modal>
 
-      {/* ── Tracer Form Modal ────────────────────────────────────────────────── */}
-      <Modal open={tracerOpen} onClose={closeTracer}>
-        <section className="tracer-modal tracer-modal-scroll" style={{ width: "min(700px, 100%)" }} role="dialog" aria-modal="true">
-          <div className="modal-head">
-            <h3>Edit Tracer Form</h3>
-            <button type="button" onClick={closeTracer}>×</button>
-          </div>
-
-          <div className="tracer-modal-body">
-            {tracerLoading ? (
-              <p style={{ color: "var(--muted)", fontSize: "13px" }}>Loading questions…</p>
-            ) : (
-              <>
-                {/* Question list */}
-                <div className="tracer-q-list">
-                  {tracerQuestions.length === 0 && (
-                    <p style={{ color: "var(--muted)", fontSize: "13px", margin: 0 }}>
-                      No questions yet. Click below to add one.
-                    </p>
-                  )}
-                  {tracerQuestions.map((q, idx) => (
-                    <div key={q._id} className={`tracer-q-item${q.is_active ? "" : " inactive"}`}>
-                      {tracerEditId === q._id ? (
-                        /* Inline edit form */
-                        <div style={{ gridColumn: "span 2", display: "grid", gap: "8px" }}>
-                          <input
-                            className="emp-search"
-                            value={tracerEditForm.question_text || ""}
-                            onChange={e => setTracerEditForm(f => ({ ...f, question_text: e.target.value }))}
-                            placeholder="Question text *"
-                            style={{ flex: "unset" }}
-                          />
-                          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                            <select
-                              style={{ minHeight: "32px", border: "1px solid #cba0a6", borderRadius: "5px", padding: "0 8px", fontSize: "12px", color: "#2d2024" }}
-                              value={tracerEditForm.field_type || "text"}
-                              onChange={e => setTracerEditForm(f => ({ ...f, field_type: e.target.value }))}
-                            >
-                              {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                            <label style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", fontWeight: 600 }}>
-                              <input
-                                type="checkbox"
-                                checked={!!tracerEditForm.is_required}
-                                onChange={e => setTracerEditForm(f => ({ ...f, is_required: e.target.checked }))}
-                                style={{ margin: 0 }}
-                              />
-                              Required
-                            </label>
-                          </div>
-                          {["select", "radio", "checkbox"].includes(tracerEditForm.field_type) && (
-                            <input
-                              className="emp-search"
-                              value={tracerEditForm.options || ""}
-                              onChange={e => setTracerEditForm(f => ({ ...f, options: e.target.value }))}
-                              placeholder="Options (comma-separated)"
-                              style={{ flex: "unset" }}
-                            />
-                          )}
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <button type="button" className="tracer-q-btn success" disabled={tracerSaving} onClick={tracerSaveEdit}>
-                              {tracerSaving ? "Saving…" : "Save"}
-                            </button>
-                            <button type="button" className="tracer-q-btn" onClick={() => { setTracerEditId(null); setTracerEditForm({}); }}>
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <p className="tracer-q-text">{q.question_text}</p>
-                            <span className="tracer-q-meta">
-                              Type: {q.field_type}
-                              {q.is_required ? " · Required" : " · Optional"}
-                              {!q.is_active ? " · Inactive" : ""}
-                              {q.options?.length > 0 ? ` · ${q.options.join(", ")}` : ""}
-                            </span>
-                          </div>
-                          <div className="tracer-q-controls">
-                            <button type="button" className="tracer-q-btn" title="Move up"   disabled={idx === 0}                        onClick={() => tracerReorder(q._id, "up")}>↑</button>
-                            <button type="button" className="tracer-q-btn" title="Move down" disabled={idx === tracerQuestions.length - 1} onClick={() => tracerReorder(q._id, "down")}>↓</button>
-                            <button type="button" className={`tracer-q-btn${q.is_active ? "" : " success"}`} title={q.is_active ? "Deactivate" : "Activate"} onClick={() => tracerToggleActive(q)}>
-                              {q.is_active ? "Off" : "On"}
-                            </button>
-                            <button
-                              type="button"
-                              className="tracer-q-btn"
-                              title="Edit"
-                              onClick={() => {
-                                setTracerEditId(q._id);
-                                setTracerEditForm({ question_text: q.question_text, field_type: q.field_type, is_required: q.is_required, options: q.options?.join(", ") || "" });
-                              }}
-                            >✎</button>
-                            <button type="button" className="tracer-q-btn danger" title="Delete" onClick={() => setTracerDeleteId(q._id)}>✕</button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Add new question */}
-                {tracerAddOpen ? (
-                  <div className="tracer-q-item" style={{ gridTemplateColumns: "1fr", gap: "8px" }}>
-                    <input
-                      className="emp-search"
-                      value={tracerAddForm.question_text}
-                      onChange={e => setTracerAddForm(f => ({ ...f, question_text: e.target.value }))}
-                      placeholder="Question text *"
-                      style={{ flex: "unset" }}
-                      autoFocus
-                    />
-                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
-                      <select
-                        style={{ minHeight: "32px", border: "1px solid #cba0a6", borderRadius: "5px", padding: "0 8px", fontSize: "12px", color: "#2d2024" }}
-                        value={tracerAddForm.field_type}
-                        onChange={e => setTracerAddForm(f => ({ ...f, field_type: e.target.value }))}
-                      >
-                        {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <label style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", fontWeight: 600 }}>
-                        <input
-                          type="checkbox"
-                          checked={tracerAddForm.is_required}
-                          onChange={e => setTracerAddForm(f => ({ ...f, is_required: e.target.checked }))}
-                          style={{ margin: 0 }}
-                        />
-                        Required
-                      </label>
-                    </div>
-                    {["select", "radio", "checkbox"].includes(tracerAddForm.field_type) && (
-                      <input
-                        className="emp-search"
-                        value={tracerAddForm.options}
-                        onChange={e => setTracerAddForm(f => ({ ...f, options: e.target.value }))}
-                        placeholder="Options (comma-separated)"
-                        style={{ flex: "unset" }}
-                      />
-                    )}
-                    <div style={{ display: "flex", gap: "6px" }}>
-                      <button
-                        type="button"
-                        className="tracer-q-btn success"
-                        onClick={tracerAdd}
-                        disabled={tracerSaving || !tracerAddForm.question_text?.trim()}
-                      >
-                        {tracerSaving ? "Adding…" : "Add Question"}
-                      </button>
-                      <button
-                        type="button"
-                        className="tracer-q-btn"
-                        onClick={() => { setTracerAddOpen(false); setTracerAddForm({ question_text: "", field_type: "text", options: "", is_required: false }); }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="maroon-action"
-                    style={{ width: "100%", justifyContent: "center", marginTop: "8px" }}
-                    onClick={() => setTracerAddOpen(true)}
-                  >
-                    + Add New Question
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="modal-actions" style={{ padding: "0 20px 18px" }}>
-            <button type="button" style={{ background: "var(--maroon)", color: "#fff" }} onClick={() => { closeTracer(); showToast("Tracer form saved."); }}>
-              Done
-            </button>
-          </div>
-        </section>
-      </Modal>
+      {/* ── Tracer Form Editor (integrated 6-page editor) ───────────────────── */}
+      <TracerFormEditor
+        open={tracerOpen}
+        onClose={() => setTracerOpen(false)}
+        showToast={showToast}
+      />
 
       {/* ── Add Record Modal ─────────────────────────────────────────────────── */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)}>
@@ -1259,14 +1011,6 @@ export default function EmploymentView({ active, showToast }) {
           </form>
         </section>
       </Modal>
-
-      {/* ── Tracer delete confirm (rendered after tracer modal so z-index wins) */}
-      <ConfirmDialog
-        open={!!tracerDeleteId}
-        message="Delete this question? This action cannot be undone."
-        onConfirm={() => tracerDoDelete(tracerDeleteId)}
-        onCancel={() => setTracerDeleteId(null)}
-      />
 
       {/* ── Generic confirm dialog ────────────────────────────────────────────── */}
       <ConfirmDialog

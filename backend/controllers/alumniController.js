@@ -2,6 +2,101 @@ const bcrypt               = require('bcryptjs');
 const User                 = require('../models/User');
 const AlumniEmployment     = require('../models/AlumniEmployment');
 const TracerStudyResponse  = require('../models/TracerStudyResponse');
+const TracerFormConfig     = require('../models/TracerFormConfig');
+const { getTracerFormConfig } = require('./tracerFormConfigController');
+
+// The set of keys that the TracerStudyResponse schema handles directly.
+// Everything else in the submitted answers object goes into extra_answers.
+const FIXED_KEYS = new Set([
+  'consent', // validated on frontend; not persisted
+  'contactNumber', 'gender',
+  'programsCompleted', 'professionalExam', 'professionalExamName',
+  'employmentStatus', 'placeOfWork', 'occupationTitle', 'industryField',
+  'presentEmploymentType', 'jobRelatedToDegree', 'yearsInCurrentJob',
+  'reasonsNotEmployed',
+  'furtherEducation', 'furtherEducationType',
+  'pursuedTrainings', 'trainingType',
+  'personalGrowthRatings',
+  'promotedInJob', 'significantAccomplishments',
+  'professionalCertifications', 'professionalDevelopmentActivities',
+]);
+
+// Maps the tracer form's employmentStatus answer to AlumniEmployment status enum.
+// The tracer form typically uses "Yes" / "No" / "Never Employed".
+function mapEmploymentStatus(tracerStatus) {
+  if (!tracerStatus) return 'Not Yet Updated';
+  const s = String(tracerStatus).toLowerCase().trim();
+  if (s === 'yes') return 'Employed';
+  if (s === 'no')  return 'Unemployed';
+  if (s.includes('never'))  return 'Unemployed';
+  if (s.includes('self'))   return 'Self-employed';
+  // Fallback: look for "employ" but exclude "unemploy"
+  if (s.includes('employ') && !s.includes('un')) return 'Employed';
+  if (s.includes('unemploy')) return 'Unemployed';
+  return 'Not Yet Updated';
+}
+
+// Extracts only the AlumniEmployment fields that come from the tracer form.
+// company_name and work_location are resolved separately via resolveExtraEmploymentFields.
+function extractEmploymentFromTracer(answers) {
+  const reasonsArr = Array.isArray(answers.reasonsNotEmployed)
+    ? answers.reasonsNotEmployed
+    : answers.reasonsNotEmployed ? [answers.reasonsNotEmployed] : [];
+
+  // jobRelatedToDegree may be a full sentence ("Yes, my job is related to…")
+  const jrd = String(answers.jobRelatedToDegree || '').toLowerCase().trim();
+
+  return {
+    employment_status:     mapEmploymentStatus(answers.employmentStatus),
+    job_title:             answers.occupationTitle      || '',
+    industry:              answers.industryField        || '',
+    job_related_to_course: jrd.startsWith('yes'),
+    reason_unemployed:     reasonsArr.join('; '),
+    employment_type:       answers.presentEmploymentType || '',
+    years_in_current_job:  answers.yearsInCurrentJob    || '',
+  };
+}
+
+// Maps programsCompleted array → User.course code (BSIT / BSCS / BSIS)
+function mapProgramToCourse(programsCompleted) {
+  if (!Array.isArray(programsCompleted) || !programsCompleted.length) return '';
+  const combined = programsCompleted.join(' ').toLowerCase();
+  if (combined.includes('information technology')) return 'BSIT';
+  if (combined.includes('computer science'))       return 'BSCS';
+  if (combined.includes('information systems'))    return 'BSIS';
+  return '';
+}
+
+// Finds company_name, work_location, and graduation_year from admin-added custom
+// tracer questions by matching question labels — no hardcoded IDs.
+async function resolveExtraEmploymentFields(extraAnswers) {
+  try {
+    const cfg = await TracerFormConfig.findOne().sort({ updatedAt: -1 }).lean();
+    if (!cfg?.config?.pages) return {};
+    const result = {};
+    for (const page of cfg.config.pages) {
+      for (const q of (page.questions || [])) {
+        if (!Object.prototype.hasOwnProperty.call(extraAnswers, q.id)) continue;
+        const val = extraAnswers[q.id];
+        if (!val) continue;
+        const label = (q.label || '').toLowerCase();
+        if (!result.company_name && (label.includes('company') || label.includes('employer'))) {
+          result.company_name = String(val).trim();
+        }
+        if (!result.work_location && label.includes('work location')) {
+          result.work_location = String(val).trim();
+        }
+        if (!result.graduation_year && (label.includes('graduation year') || label.includes('batch year'))) {
+          const yr = parseInt(String(val).trim(), 10);
+          if (!isNaN(yr)) result.graduation_year = yr;
+        }
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
 
 // POST /api/alumni/change-password
 const changePassword = async (req, res) => {
@@ -65,62 +160,104 @@ const completeOnboarding = async (req, res) => {
   }
 };
 
+// GET /api/alumni/tracer-study  — returns the alumni's existing response so the
+// frontend can pre-populate the form for editing.
+const getMyTracerResponse = async (req, res) => {
+  try {
+    const response = await TracerStudyResponse.findOne({ alumni_id: req.user.id }).lean();
+    if (!response) return res.json({ submitted: false, data: null });
+
+    // Convert extra_answers Map to plain object if needed
+    if (response.extra_answers instanceof Map) {
+      const obj = {};
+      for (const [k, v] of response.extra_answers) obj[k] = v;
+      response.extra_answers = obj;
+    }
+
+    res.json({ submitted: true, data: response });
+  } catch (err) {
+    console.error('getMyTracerResponse error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // POST /api/alumni/tracer-study
+// Accepts a flat answers object. Upserts the TracerStudyResponse so alumni can
+// re-submit to update their answers. Also auto-syncs the AlumniEmployment record.
 const submitTracerStudy = async (req, res) => {
   try {
     const alumniId = req.user.id;
+    const body     = req.body;
 
-    const existing = await TracerStudyResponse.findOne({ alumni_id: alumniId });
-    if (existing) {
-      return res.status(400).json({ message: 'Tracer study already submitted.' });
+    // Separate extra (custom admin-added) answers from the fixed schema fields
+    const extra_answers = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (!FIXED_KEYS.has(key)) extra_answers[key] = value;
     }
 
-    const {
-      contactNumber, gender,
-      programsCompleted, professionalExam, professionalExamName,
-      employmentStatus, placeOfWork, occupationTitle, industryField,
-      presentEmploymentType, jobRelatedToDegree, yearsInCurrentJob,
-      reasonsNotEmployed,
-      furtherEducation, furtherEducationType,
-      pursuedTrainings, trainingType,
-      personalGrowthRatings,
-      promotedInJob, significantAccomplishments,
-      professionalCertifications, professionalDevelopmentActivities,
-    } = req.body;
+    // Upsert — creates on first submit, overwrites on re-submit
+    await TracerStudyResponse.findOneAndUpdate(
+      { alumni_id: alumniId },
+      {
+        $set: {
+          contactNumber:    body.contactNumber    || '',
+          gender:           body.gender           || '',
+          programsCompleted:    body.programsCompleted    || [],
+          professionalExam:     body.professionalExam     || '',
+          professionalExamName: body.professionalExamName || '',
+          employmentStatus:     body.employmentStatus     || '',
+          placeOfWork:           body.placeOfWork           || '',
+          occupationTitle:       body.occupationTitle       || '',
+          industryField:         body.industryField         || '',
+          presentEmploymentType: body.presentEmploymentType || '',
+          jobRelatedToDegree:    body.jobRelatedToDegree    || '',
+          yearsInCurrentJob:     body.yearsInCurrentJob     || '',
+          reasonsNotEmployed:    body.reasonsNotEmployed    || [],
+          furtherEducation:      body.furtherEducation      || '',
+          furtherEducationType:  body.furtherEducationType  || '',
+          pursuedTrainings:      body.pursuedTrainings      || '',
+          trainingType:          body.trainingType          || '',
+          personalGrowthRatings: body.personalGrowthRatings || {},
+          promotedInJob:                     body.promotedInJob                     || '',
+          significantAccomplishments:        body.significantAccomplishments        || '',
+          professionalCertifications:        body.professionalCertifications        || '',
+          professionalDevelopmentActivities: body.professionalDevelopmentActivities || '',
+          extra_answers,
+          submittedAt: new Date(),
+        },
+      },
+      { upsert: true, new: true }
+    );
 
-    await TracerStudyResponse.create({
-      alumni_id: alumniId,
-      contactNumber:    contactNumber    || '',
-      gender:           gender           || '',
-      programsCompleted:    programsCompleted    || [],
-      professionalExam:     professionalExam     || '',
-      professionalExamName: professionalExamName || '',
-      employmentStatus:     employmentStatus     || '',
-      placeOfWork:           placeOfWork           || '',
-      occupationTitle:       occupationTitle       || '',
-      industryField:         industryField         || '',
-      presentEmploymentType: presentEmploymentType || '',
-      jobRelatedToDegree:    jobRelatedToDegree    || '',
-      yearsInCurrentJob:     yearsInCurrentJob     || '',
-      reasonsNotEmployed:    reasonsNotEmployed    || [],
-      furtherEducation:      furtherEducation      || '',
-      furtherEducationType:  furtherEducationType  || '',
-      pursuedTrainings:      pursuedTrainings      || '',
-      trainingType:          trainingType          || '',
-      personalGrowthRatings: personalGrowthRatings || {},
-      promotedInJob:                    promotedInJob                    || '',
-      significantAccomplishments:       significantAccomplishments       || '',
-      professionalCertifications:       professionalCertifications       || '',
-      professionalDevelopmentActivities:professionalDevelopmentActivities|| '',
-    });
+    // Auto-sync employment record from tracer answers.
+    // Extra custom questions (company name, work location) are resolved by label matching.
+    const employmentUpdate = extractEmploymentFromTracer(body);
+    const extraFields      = await resolveExtraEmploymentFields(extra_answers);
+    Object.assign(employmentUpdate, extraFields);
 
-    await User.findByIdAndUpdate(alumniId, { tracerStudyCompleted: true });
+    await AlumniEmployment.findOneAndUpdate(
+      { alumni_id: alumniId },
+      { $set: { ...employmentUpdate, last_updated: new Date() } },
+      { upsert: true, new: true }
+    );
 
-    res.status(201).json({ message: 'Tracer study submitted successfully.' });
+    // Update User.course and User.graduationYear from tracer if currently empty
+    const userUpdates = { tracerStudyCompleted: true };
+    const currentUser = await User.findById(alumniId).select('course graduationYear').lean();
+    if (!currentUser?.course) {
+      const mapped = mapProgramToCourse(body.programsCompleted);
+      if (mapped) userUpdates.course = mapped;
+    }
+    if (!currentUser?.graduationYear && extraFields.graduation_year) {
+      userUpdates.graduationYear = extraFields.graduation_year;
+    }
+    await User.findByIdAndUpdate(alumniId, userUpdates);
+
+    res.status(200).json({ message: 'Tracer study submitted successfully.' });
   } catch (err) {
     console.error('submitTracerStudy error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
 
-module.exports = { changePassword, completeOnboarding, submitTracerStudy };
+module.exports = { changePassword, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig };

@@ -4,7 +4,7 @@ import { Modal } from "../Primitives.jsx";
 import AdminMenu from "../components/AdminMenu.jsx";
 import { adminMenuChoices } from "../data.js";
 
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 const TYPE_ART_CLASS = { News: "", Event: "event", Career: "career", Scholarship: "scholarship" };
 
 function authHeaders() {
