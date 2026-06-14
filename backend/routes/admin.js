@@ -11,7 +11,7 @@ const {
 } = require('../controllers/partnershipController');
 const { getAllJobs } = require('../controllers/jobController');
 const {
-  getAlumniWithoutRecord, createEmploymentRecord, backfillEmploymentRecords,
+  getAlumniWithoutRecord, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
   getEmploymentStats,
   getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
@@ -59,6 +59,7 @@ router.get('/employment/stats',                      getEmploymentStats);
 router.get('/employment/activity',                   getEmploymentActivity);
 router.get('/employment/export',                     exportEmploymentRecords);
 router.get('/employment/alumni-without-record',      getAlumniWithoutRecord);
+router.post('/employment/sync-tracer',               syncTracerToEmployment);
 router.post('/employment/backfill',                  backfillEmploymentRecords);
 router.post('/employment/log-print',                 logPrintActivity);
 

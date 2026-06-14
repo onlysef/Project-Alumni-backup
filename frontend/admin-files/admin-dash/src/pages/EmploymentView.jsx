@@ -52,6 +52,7 @@ const INDUSTRIES = [
 const BATCH_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
 
 const EMPTY_FILTERS   = { status: "", course: "", batch_year: "", date_updated: "", company: "" };
+const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
 
 function StatusBadge({ status }) {
@@ -148,12 +149,16 @@ export default function EmploymentView({ active, showToast }) {
     return () => clearTimeout(searchTimer.current);
   }, [searchInput]);
 
-  // ── backfill missing employment records on mount ────────────────────────────
+  // ── on mount: backfill missing records + sync tracer data into employment ───
   useEffect(() => {
     if (!active) return;
-    fetch(`${API}/admin/employment/backfill`, { method: "POST", headers: authHeaders() })
-      .then((r) => r.ok && r.json())
-      .then((d) => { if (d?.created > 0) setRefreshKey((k) => k + 1); })
+    Promise.all([
+      fetch(`${API}/admin/employment/backfill`,     { method: "POST", headers: authHeaders() }).then(r => r.ok && r.json()),
+      fetch(`${API}/admin/employment/sync-tracer`,  { method: "POST", headers: authHeaders() }).then(r => r.ok && r.json()),
+    ])
+      .then(([backfill, sync]) => {
+        if ((backfill?.created > 0) || (sync?.updated > 0)) setRefreshKey(k => k + 1);
+      })
       .catch(() => {});
   }, [active]);
 
@@ -268,18 +273,18 @@ export default function EmploymentView({ active, showToast }) {
     }
   }
 
-  function openEdit(r) {
+  function openEdit(r, tracerData = null) {
     setEditRecord(r);
     setEditForm({
-      employment_status:     r.employment_status || "",
-      company_name:          r.company_name || "",
-      job_title:             r.job_title || "",
-      industry:              r.industry || "",
-      work_location:         r.work_location || "",
-      salary_range:          r.salary_range || "",
+      employment_status:     r.employment_status     || "",
+      company_name:          tracerData?.companyName      || r.company_name          || "",
+      job_title:             tracerData?.occupationTitle  || r.job_title             || "",
+      industry:              tracerData?.industryField    || r.industry              || "",
+      work_location:         tracerData?.workLocation     || r.work_location         || "",
       job_related_to_course: !!r.job_related_to_course,
-      date_employed:         r.date_employed ? r.date_employed.slice(0, 10) : "",
-      reason_unemployed:     r.reason_unemployed || "",
+      employment_type:       tracerData?.presentEmploymentType || r.employment_type      || "",
+      years_in_current_job:  tracerData?.yearsInCurrentJob    || r.years_in_current_job || "",
+      reason_unemployed:     r.reason_unemployed     || "",
     });
     setEditErrors({});
   }
@@ -683,12 +688,18 @@ export default function EmploymentView({ active, showToast }) {
                 const isUnemployed = r.employment_status === "Unemployed";
                 const isNoRecord   = r.employment_status === "Not Yet Updated";
 
-                // Prefer tracer-sourced values; fall back to what's stored in AlumniEmployment
-                const jobTitle    = td?.occupationTitle    || r.job_title    || "—";
-                const industry    = td?.industryField      || r.industry     || "—";
-                const workLoc     = td?.placeOfWork        || r.work_location || "—";
-                const related     = td
-                  ? (td.jobRelatedToDegree === "Yes" ? "Yes" : "No")
+                // Tracer data takes priority; fall back to AlumniEmployment stored values
+                const company  = (isUnemployed || isNoRecord)
+                  ? "N/A"
+                  : (td?.companyName || r.company_name || "N/A");
+                const jobTitle = td?.occupationTitle || r.job_title    || "—";
+                const industry = td?.industryField   || r.industry     || "—";
+                const workLoc  = td?.workLocation    || r.work_location || "—";
+
+                // jobRelatedToDegree may be a full sentence — check startsWith 'yes'
+                const jrd = String(td?.jobRelatedToDegree || '').toLowerCase().trim();
+                const related = td?.jobRelatedToDegree
+                  ? (jrd.startsWith('yes') ? "Yes" : "No")
                   : (r.job_related_to_course ? "Yes" : "No");
 
                 return (
@@ -697,12 +708,14 @@ export default function EmploymentView({ active, showToast }) {
                     <div><strong>Course</strong><span>{r.course || "—"}</span></div>
                     <div><strong>Batch Year</strong><span>{r.graduation_year || "—"}</span></div>
                     <div><strong>Status</strong><span><StatusBadge status={r.employment_status} /></span></div>
-                    <div><strong>Company</strong><span>{(isUnemployed || isNoRecord) ? "N/A" : (r.company_name || "N/A")}</span></div>
+                    <div><strong>Company</strong><span>{company}</span></div>
                     {!isUnemployed && !isNoRecord && (
                       <>
                         <div><strong>Job Title</strong><span>{jobTitle}</span></div>
                         <div><strong>Industry</strong><span>{industry}</span></div>
                         <div><strong>Work Location</strong><span>{workLoc}</span></div>
+                        <div><strong>Employment Type</strong><span>{td?.presentEmploymentType || r.employment_type || "—"}</span></div>
+                        <div><strong>Years in Job</strong><span>{td?.yearsInCurrentJob || r.years_in_current_job || "—"}</span></div>
                         <div><strong>Related to Course</strong><span>{related}</span></div>
                       </>
                     )}
@@ -720,7 +733,7 @@ export default function EmploymentView({ active, showToast }) {
                 <button
                   type="button"
                   style={{ background: "var(--maroon)", color: "#fff" }}
-                  onClick={() => { setViewRecord(null); openEdit(viewRecord); }}
+                  onClick={() => { setViewRecord(null); openEdit(viewRecord, viewDetail?.tracer_data); }}
                 >
                   Edit Record
                 </button>
@@ -804,20 +817,22 @@ export default function EmploymentView({ active, showToast }) {
 
                     <div className="field-row">
                       <label>
-                        Salary Range
-                        <input
-                          type="text"
-                          value={editForm.salary_range}
-                          onChange={e => setEditForm(f => ({ ...f, salary_range: e.target.value }))}
-                          placeholder="e.g. ₱20,000 – ₱30,000"
-                        />
+                        Employment Type
+                        <select
+                          value={editForm.employment_type}
+                          onChange={e => setEditForm(f => ({ ...f, employment_type: e.target.value }))}
+                        >
+                          <option value="">Select type…</option>
+                          {EMPLOYMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
                       </label>
                       <label>
-                        Date Employed
+                        Years in Current Job
                         <input
-                          type="date"
-                          value={editForm.date_employed}
-                          onChange={e => setEditForm(f => ({ ...f, date_employed: e.target.value }))}
+                          type="text"
+                          value={editForm.years_in_current_job}
+                          onChange={e => setEditForm(f => ({ ...f, years_in_current_job: e.target.value }))}
+                          placeholder="e.g. 2 years"
                         />
                       </label>
                     </div>
