@@ -11,6 +11,7 @@ const ACTION_ICONS = {
   suspend:  "icon-9",
   activate: "icon-13",
   archive:  "icon-26",
+  resend:   "icon-15",
 };
 
 export default function ActionMenu({ actions, onSelect }) {

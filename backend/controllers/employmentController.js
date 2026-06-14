@@ -475,15 +475,18 @@ const updateEmploymentRecord = async (req, res) => {
 // GET /api/admin/employment/stats
 const getEmploymentStats = async (req, res) => {
   try {
-    const counts = await AlumniEmployment.aggregate([
-      { $group: { _id: '$employment_status', count: { $sum: 1 } } },
+    const [counts, tracerCount] = await Promise.all([
+      AlumniEmployment.aggregate([
+        { $group: { _id: '$employment_status', count: { $sum: 1 } } },
+      ]),
+      TracerStudyResponse.countDocuments(),
     ]);
-    const stats = { employed: 0, unemployed: 0, selfEmployed: 0, notYetUpdated: 0, total: 0 };
+    const stats = { employed: 0, unemployed: 0, selfEmployed: 0, notYetUpdated: 0, total: 0, tracerSubmissions: tracerCount };
     for (const c of counts) {
       stats.total += c.count;
-      if (c._id === 'Employed')        stats.employed      = c.count;
-      else if (c._id === 'Unemployed') stats.unemployed    = c.count;
-      else if (c._id === 'Self-employed') stats.selfEmployed = c.count;
+      if (c._id === 'Employed')           stats.employed      = c.count;
+      else if (c._id === 'Unemployed')    stats.unemployed    = c.count;
+      else if (c._id === 'Self-employed') stats.selfEmployed  = c.count;
       else if (c._id === 'Not Yet Updated') stats.notYetUpdated = c.count;
     }
     res.json(stats);

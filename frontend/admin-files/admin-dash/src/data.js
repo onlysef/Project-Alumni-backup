@@ -83,9 +83,9 @@ export const reportFilters = [
 ];
 
 export function accountActionList(status) {
-  if (status === "Pending") return ["edit", "approve", "reject"];
-  if (status === "Suspended") return ["edit", "activate"];
-  return ["edit", "suspend"];
+  if (status === "Pending") return ["edit", "approve", "reject", "resend"];
+  if (status === "Suspended") return ["edit", "activate", "resend"];
+  return ["edit", "suspend", "resend"];
 }
 
 export function partnerActionList(status) {
@@ -102,5 +102,6 @@ export const actionLabels = {
   suspend: "Suspend",
   activate: "Activate",
   view: "View",
+  resend: "Resend Credentials",
   archive: "Archive",
 };

@@ -88,6 +88,22 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
   async function handleAction(row, action) {
     if (action === "edit") { setEntry({ row }); return; }
 
+    if (action === "resend") {
+      try {
+        const res  = await fetch(`${API}/admin/users/${row.id}/resend-credentials`, {
+          method: "POST", headers: authHeaders(),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, status: "Pending" } : r));
+          showToast(data.message);
+        } else {
+          showToast(data.message || "Failed to resend credentials.");
+        }
+      } catch { showToast("Could not connect to server."); }
+      return;
+    }
+
     if (action === "delete") {
       try {
         const res = await fetch(`${API}/admin/users/${row.id}`, {
