@@ -4600,6 +4600,11 @@
         .action-menu-item:hover { background: #f3e7ea; }
         .action-menu-item .admin-svg-icon { width: 16px; height: 16px; }
         .action-menu-item.action-reject { color: #b3261e; }
+        .action-menu-item.action-resend { background: var(--maroon); color: #fff; }
+        .action-menu-item.action-resend:hover { background: #7a0420; }
+        .action-menu-item.action-resend .action-menu-icon img.admin-svg-icon {
+            filter: brightness(0) invert(1);
+        }
 
         body.dark-mode .action-menu-list {
             background: #2b141a;
