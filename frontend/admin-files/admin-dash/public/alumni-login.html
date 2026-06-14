@@ -114,12 +114,17 @@
       const original = btn.innerHTML;
       btn.textContent = 'Signing in...';
 
+      const warmupTimer = setTimeout(() => {
+        btn.textContent = 'Server warming up, please wait…';
+      }, 6000);
+
       try {
         const res = await fetch(`${API}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
         });
+        clearTimeout(warmupTimer);
         const data = await res.json();
 
         if (!res.ok) {
@@ -145,6 +150,7 @@
         const payload = encodeURIComponent(JSON.stringify({ token: data.token, user: data.user, firstLogin: data.firstLogin }));
         window.location.href = `${base}#auth=${payload}`;
       } catch {
+        clearTimeout(warmupTimer);
         showMsg('Could not connect to server. Please try again.');
         btn.disabled = false;
         btn.innerHTML = original;
