@@ -4,6 +4,7 @@ const multer          = require('multer');
 const xlsx            = require('xlsx');
 const User            = require('../models/User');
 const AlumniEmployment   = require('../models/AlumniEmployment');
+const TracerStudyResponse = require('../models/TracerStudyResponse');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 
 const upload = multer({
@@ -148,6 +149,13 @@ const deleteUser = async (req, res) => {
   try {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
+
+    // Clean up all records linked to this user
+    await Promise.all([
+      AlumniEmployment.deleteOne({ alumni_id: req.params.id }),
+      TracerStudyResponse.deleteOne({ alumni_id: req.params.id }),
+    ]);
+
     res.json({ message: 'User deleted.' });
   } catch (err) {
     console.error('deleteUser error:', err);
