@@ -16,7 +16,7 @@ const ROLE_PATHS = {
   employer: "/employer/dashboard",
 };
 
-const LOGIN_URL = "http://127.0.0.1:5500/frontend/pages/alumni-login.html";
+const LOGIN_URL = "/alumni-login.html";
 
 function RoleRedirect() {
   const { token, user } = useAuth();

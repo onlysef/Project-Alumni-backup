@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Modal } from "../Primitives.jsx";
 
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 const MAROON = "#570013";
 const GOLD = "#fac853";
 

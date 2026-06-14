@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alumni Portal — Reset Password</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/css/reset-style.css">
+</head>
+<body>
+
+<main class="page">
+  <div class="card">
+
+    <!-- Left -->
+    <section class="left-panel">
+      <div class="welcome-copy">
+        <p class="welcome-heading">Reset <span class="name">Password</span></p>
+        <p class="welcome-sub" id="left-sub">
+          No worries — it happens.<br>
+          Enter your email and we'll send
+          a verification code to get you
+          back into your account.
+        </p>
+      </div>
+      <footer class="login-footer">&copy; 2026 Alumni Portal &middot; Tarlac State University | College of Computer Studies</footer>
+    </section>
+
+    <!-- Right -->
+    <div class="right-panel">
+
+      <!-- Step indicators -->
+      <div class="steps">
+        <div class="step active" id="s1">
+          <div class="step-circle">1</div>
+          <div class="step-label">Email</div>
+        </div>
+        <div class="step-line" id="line1"></div>
+        <div class="step" id="s2">
+          <div class="step-circle">2</div>
+          <div class="step-label">Verify</div>
+        </div>
+        <div class="step-line" id="line2"></div>
+        <div class="step" id="s3">
+          <div class="step-circle">3</div>
+          <div class="step-label">New Password</div>
+        </div>
+      </div>
+
+      <!-- Step 1: Email -->
+      <div class="step-panel active" id="panel1">
+        <h1 class="login-title">Forgot Password?</h1>
+        <div class="title-underline"></div>
+        <p class="form-hint">Enter your registered email address and<br>we'll send you a 6-digit verification code.</p>
+
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <div class="input-wrap">
+            <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
+            </svg>
+            <input type="email" id="email" placeholder="ex. jl.delacruz@student.tsu.edu.ph" autocomplete="email">
+          </div>
+        </div>
+
+        <button class="btn-signin" id="btn1" type="button" onclick="sendCode()">
+          Send Code
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+
+        <div class="back-link-row">
+          Remembered it? <a href="alumni-login.html">Sign In</a>
+        </div>
+        <div class="links-row">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+      <!-- Step 2: OTP -->
+      <div class="step-panel" id="panel2">
+        <h1 class="login-title">Enter Code</h1>
+        <div class="title-underline"></div>
+        <p class="form-hint">We sent a 6-digit code to your email.<br>Enter it below to continue.</p>
+
+        <div class="otp-row">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)">
+        </div>
+
+        <div class="otp-resend">Didn't receive it? <a href="#" id="resend-link" onclick="resendCode(); return false;">Resend Code</a></div>
+
+        <button class="btn-signin" id="btn2" type="button" onclick="verifyOTP()">
+          Verify Code
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+
+        <div class="back-link-row">
+          <a href="#" onclick="goStep(1); return false;">← Back</a>
+        </div>
+        <div class="links-row">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+      <!-- Step 3: New Password -->
+      <div class="step-panel" id="panel3">
+        <h1 class="login-title">New Password</h1>
+        <div class="title-underline"></div>
+        <p class="form-hint">Create a strong new password<br>for your Alumni Portal account.</p>
+
+        <div class="form-group">
+          <label for="newpass">New Password</label>
+          <div class="input-wrap has-toggle">
+            <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+            </svg>
+            <input type="password" id="newpass" placeholder="Create a strong password" autocomplete="new-password" oninput="updateStrength(this.value)">
+              <button type="button" class="toggle-password" aria-label="Show password" data-target="newpass">
+                <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="display:none">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.4 5.7A9.3 9.3 0 0112 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 01-3 3.6M6.1 6.6A16 16 0 002.5 12S6 18.5 12 18.5a9 9 0 003.4-.65"/>
+                </svg>
+              </button>
+          </div>
+          <div class="password-strength">
+            <div class="strength-bar" id="bar1"></div>
+            <div class="strength-bar" id="bar2"></div>
+            <div class="strength-bar" id="bar3"></div>
+            <div class="strength-bar" id="bar4"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="confirmpass">Confirm Password</label>
+          <div class="input-wrap has-toggle">
+            <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+            <input type="password" id="confirmpass" placeholder="Re-enter your password" autocomplete="new-password">
+              <button type="button" class="toggle-password" aria-label="Show password" data-target="confirmpass">
+                <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="display:none">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.4 5.7A9.3 9.3 0 0112 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 01-3 3.6M6.1 6.6A16 16 0 002.5 12S6 18.5 12 18.5a9 9 0 003.4-.65"/>
+                </svg>
+              </button>
+          </div>
+        </div>
+
+        <button class="btn-signin" id="btn3" type="button" onclick="doReset()">
+          Reset Password
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+
+        <div class="back-link-row">
+          <a href="#" onclick="goStep(2); return false;">← Back</a>
+        </div>
+        <div class="links-row">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+      <!-- Step 4: Success -->
+      <div class="step-panel" id="panel4">
+        <div class="success-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+        <p class="success-title">Password Reset!</p>
+        <p class="success-msg">Your password has been successfully updated.<br>You can now sign in with your new password.</p>
+
+        <button class="btn-signin" type="button" onclick="window.location.href='alumni-login.html'">
+          Go to Login
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
+          </svg>
+        </button>
+        <div class="links-row" style="margin-top:18px;">
+          <a href="#">Privacy Policy</a>
+          <a href="#">About us</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<script>
+  const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  const API = IS_LOCAL ? 'http://localhost:5000/api' : 'https://project-alumni-3eei.onrender.com/api';
+  let resetEmail = '';
+  let resetToken = '';
+
+  const leftSubs = [
+    "No worries — it happens.<br>Enter your email and we'll send<br>a verification code to get you<br>back into your account.",
+    "Check your inbox.<br>We've sent a 6-digit code to<br>your registered email address.<br>It expires in 10 minutes.",
+    "Almost there!<br>Create a strong new password<br>to secure your Alumni Portal<br>account.",
+    "You're all set!<br>Your password has been reset.<br>Sign in and reconnect with<br>your fellow TSU alumni."
+  ];
+
+  function goStep(n) {
+    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+    const target = document.getElementById('panel' + n);
+    if (target) target.classList.add('active');
+
+    const steps = [document.getElementById('s1'), document.getElementById('s2'), document.getElementById('s3')];
+    const lines = [document.getElementById('line1'), document.getElementById('line2')];
+
+    steps.forEach((s, i) => {
+      s.classList.remove('active', 'done');
+      if (i + 1 < n) s.classList.add('done');
+      else if (i + 1 === n && n <= 3) s.classList.add('active');
+    });
+
+    lines.forEach((l, i) => {
+      l.classList.toggle('done', n > i + 2);
+    });
+
+    document.getElementById('left-sub').innerHTML = leftSubs[Math.min(n, 4) - 1];
+
+    if (n === 4) {
+      document.querySelector('.steps').style.display = 'none';
+    } else {
+      document.querySelector('.steps').style.display = 'flex';
+    }
+  }
+
+  function showMsg(panelId, text, isError = true) {
+    const panel = document.getElementById(panelId);
+    let box = panel.querySelector('.msg-box');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'msg-box';
+      box.style.padding = '10px 14px';
+      box.style.borderRadius = '8px';
+      box.style.fontSize = '14px';
+      box.style.marginBottom = '12px';
+      box.style.textAlign = 'center';
+      panel.querySelector('.btn-signin').insertAdjacentElement('beforebegin', box);
+    }
+    box.textContent = text;
+    box.style.display = 'block';
+    box.style.background = isError ? '#fff5f5' : '#f0fff4';
+    box.style.color = isError ? '#c53030' : '#276749';
+    box.style.border = `1px solid ${isError ? '#fc8181' : '#68d391'}`;
+  }
+
+  async function sendCode() {
+    const email = document.getElementById('email').value.trim();
+    if (!email) return showMsg('panel1', 'Please enter your email address.');
+
+    const btn = document.getElementById('btn1');
+    btn.disabled = true;
+    const original = btn.innerHTML;
+    btn.textContent = 'Sending...';
+
+    try {
+      const res = await fetch(`${API}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMsg('panel1', data.message || 'Something went wrong.');
+        btn.disabled = false;
+        btn.innerHTML = original;
+        return;
+      }
+
+      resetEmail = email;
+      showMsg('panel1', data.message, false);
+      setTimeout(() => goStep(2), 800);
+    } catch {
+      showMsg('panel1', 'Could not connect to server. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  }
+
+  async function verifyOTP() {
+    const inputs = document.querySelectorAll('.otp-input');
+    const otp = [...inputs].map(i => i.value).join('');
+    if (otp.length < 6) return showMsg('panel2', 'Please enter all 6 digits.');
+
+    const btn = document.getElementById('btn2');
+    btn.disabled = true;
+    const original = btn.innerHTML;
+    btn.textContent = 'Verifying...';
+
+    try {
+      const res = await fetch(`${API}/auth/verify-reset-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail, otp }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMsg('panel2', data.message || 'Invalid code.');
+        btn.disabled = false;
+        btn.innerHTML = original;
+        return;
+      }
+
+      resetToken = data.resetToken;
+      showMsg('panel2', 'Code verified!', false);
+      setTimeout(() => goStep(3), 800);
+    } catch {
+      showMsg('panel2', 'Could not connect to server. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  }
+
+  async function resendCode() {
+    if (!resetEmail) return;
+    const link = document.getElementById('resend-link');
+    link.textContent = 'Sending...';
+    try {
+      await fetch(`${API}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail }),
+      });
+      showMsg('panel2', 'A new code has been sent to your email.', false);
+    } catch {
+      showMsg('panel2', 'Could not resend. Please try again.');
+    } finally {
+      link.textContent = 'Resend Code';
+    }
+  }
+
+  async function doReset() {
+    const newPassword = document.getElementById('newpass').value;
+    const confirm = document.getElementById('confirmpass').value;
+
+    if (!newPassword || !confirm) return showMsg('panel3', 'Please fill in both fields.');
+    if (newPassword !== confirm) return showMsg('panel3', 'Passwords do not match.');
+    if (newPassword.length < 8) return showMsg('panel3', 'Password must be at least 8 characters.');
+
+    const btn = document.getElementById('btn3');
+    btn.disabled = true;
+    const original = btn.innerHTML;
+    btn.textContent = 'Resetting...';
+
+    try {
+      const res = await fetch(`${API}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetToken, newPassword }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMsg('panel3', data.message || 'Reset failed.');
+        btn.disabled = false;
+        btn.innerHTML = original;
+        return;
+      }
+
+      goStep(4);
+    } catch {
+      showMsg('panel3', 'Could not connect to server. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  }
+
+  function otpNext(el, idx) {
+    el.value = el.value.replace(/[^0-9]/g, '');
+    const inputs = document.querySelectorAll('.otp-input');
+    if (el.value && idx < 5) inputs[idx + 1].focus();
+  }
+
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Backspace') {
+      const inputs = document.querySelectorAll('.otp-input');
+      inputs.forEach((inp, idx) => {
+        if (document.activeElement === inp && !inp.value && idx > 0) {
+          inputs[idx - 1].focus();
+        }
+      });
+    }
+  });
+
+  function updateStrength(val) {
+    let score = 0;
+    if (val.length >= 8) score++;
+    if (/[A-Z]/.test(val)) score++;
+    if (/[0-9]/.test(val)) score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+    const colors = ['#e53e3e', '#dd6b20', '#d69e2e', '#38a169'];
+    for (let i = 1; i <= 4; i++) {
+      const bar = document.getElementById('bar' + i);
+      if (bar) bar.style.background = i <= score ? colors[score - 1] : 'var(--border)';
+    }
+  }
+
+  document.querySelectorAll('.toggle-password').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var input = document.getElementById(btn.dataset.target);
+      var open = btn.querySelector('.eye-open');
+      var closed = btn.querySelector('.eye-closed');
+      var hidden = input.type === 'password';
+      input.type = hidden ? 'text' : 'password';
+      open.style.display = hidden ? 'none' : 'block';
+      closed.style.display = hidden ? 'block' : 'none';
+      btn.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
+    });
+  });
+</script>
+
+</body>
+</html>

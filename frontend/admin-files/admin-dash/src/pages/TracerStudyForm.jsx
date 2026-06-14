@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
-const API    = "http://localhost:5000/api";
+import { API } from "../shared.js";
 const MAROON = "#7b1a2e";
 const GOLD   = "#c49a2a";
 

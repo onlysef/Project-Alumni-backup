@@ -3,7 +3,7 @@ import Icon from "../Icon.jsx";
 import { Modal } from "../Primitives.jsx";
 import TracerFormEditor from "./TracerFormEditor.jsx";
 
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 
 function authHeaders() {
   const token = localStorage.getItem("auth_token");

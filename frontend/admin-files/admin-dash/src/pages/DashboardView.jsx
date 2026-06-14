@@ -4,7 +4,7 @@ import { Dropdown } from "../Primitives.jsx";
 import { CareerChart, EmploymentChart } from "../Charts.jsx";
 import { careerSets, employmentSets, assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
 
-const API = "http://localhost:5000/api";
+import { API } from "../shared.js";
 
 function authHeaders() {
   const token = localStorage.getItem("auth_token");
