@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials } = require('../controllers/adminController');
+const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications } = require('../controllers/adminController');
 const {
   getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
   toggleLike, getComments, addComment, trackShare, getRecentActivity,
@@ -12,7 +12,7 @@ const {
 const { getAllJobs } = require('../controllers/jobController');
 const {
   getAlumniWithoutRecord, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
-  getEmploymentStats,
+  getCourseJobStats, getDonutStats, getSurveyStats, getEmploymentStats,
   getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
@@ -30,6 +30,8 @@ const {
 
 // All routes below require a valid token AND admin role
 router.use(protect, authorize('admin'));
+
+router.get('/notifications', getNotifications);
 
 router.post('/users',                      createUser);
 router.post('/users/import',               upload.single('file'), importUsers);
@@ -56,6 +58,9 @@ router.delete('/partnerships/:id', deletePartnership);
 router.get('/jobs', getAllJobs);
 
 // Employment records — static sub-paths before /:id
+router.get('/employment/course-stats',               getCourseJobStats);
+router.get('/employment/donut-stats',                getDonutStats);
+router.get('/employment/survey-stats',               getSurveyStats);
 router.get('/employment/stats',                      getEmploymentStats);
 router.get('/employment/activity',                   getEmploymentActivity);
 router.get('/employment/export',                     exportEmploymentRecords);

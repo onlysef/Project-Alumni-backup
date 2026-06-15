@@ -5,6 +5,10 @@ const xlsx            = require('xlsx');
 const User            = require('../models/User');
 const AlumniEmployment   = require('../models/AlumniEmployment');
 const TracerStudyResponse = require('../models/TracerStudyResponse');
+const EmploymentActivity = require('../models/EmploymentActivity');
+const Partnership        = require('../models/Partnership');
+const Announcement       = require('../models/Announcement');
+const Appointment        = require('../models/Appointment');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 
 const upload = multer({
@@ -47,7 +51,7 @@ function generateTempPassword() {
 // POST /api/admin/users
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, course, graduationYear } = req.body;
+    const { firstName, lastName, email, role, course, graduationYear, track } = req.body;
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
     }
@@ -69,6 +73,7 @@ const createUser = async (req, res) => {
     };
     if (course         && role.toLowerCase() === 'alumni') userData.course         = course.trim().toUpperCase();
     if (graduationYear && role.toLowerCase() === 'alumni') userData.graduationYear = Number(graduationYear);
+    if (track          && role.toLowerCase() === 'alumni' && userData.course === 'BSIT') userData.track = track;
 
     const user = await User.create(userData);
 
@@ -107,7 +112,7 @@ const getUsers = async (req, res) => {
 // PATCH /api/admin/users/:id
 const updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, status, course, graduationYear } = req.body;
+    const { firstName, lastName, email, role, status, course, graduationYear, track } = req.body;
     const updates = {};
     if (firstName      !== undefined) updates.firstName      = firstName.trim();
     if (lastName       !== undefined) updates.lastName       = lastName.trim();
@@ -116,6 +121,7 @@ const updateUser = async (req, res) => {
     if (status         !== undefined) updates.status         = status;
     if (course         !== undefined) updates.course         = course ? course.trim().toUpperCase() : course;
     if (graduationYear !== undefined) updates.graduationYear = graduationYear ? Number(graduationYear) : undefined;
+    if (track          !== undefined) updates.track          = (updates.course ?? course) === 'BSIT' ? (track || '') : '';
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -303,4 +309,61 @@ const resendCredentials = async (req, res) => {
   }
 };
 
-module.exports = { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials };
+const getNotifications = async (req, res) => {
+  try {
+    const [pendingUsers, empActivity, pendingPartners, recentAnnouncements, pendingAppointments] = await Promise.all([
+      User.find({ role: 'alumni', status: 'pending' })
+        .select('firstName lastName createdAt').sort({ createdAt: -1 }).limit(5).lean(),
+      EmploymentActivity.find()
+        .sort({ createdAt: -1 }).limit(5).lean(),
+      Partnership.find({ status: 'Pending' })
+        .select('name createdAt').sort({ createdAt: -1 }).limit(5).lean(),
+      Announcement.find()
+        .select('title createdAt').sort({ createdAt: -1 }).limit(5).lean(),
+      Appointment.find({ status: 'Pending' })
+        .select('alumni_name purpose createdAt').sort({ createdAt: -1 }).limit(5).lean(),
+    ]);
+
+    const notifications = [
+      ...pendingUsers.map(u => ({
+        type: 'pending_user',
+        title: 'New alumni registration',
+        body: `${u.firstName} ${u.lastName} is waiting for account approval.`,
+        createdAt: u.createdAt,
+      })),
+      ...empActivity.map(a => ({
+        type: 'employment',
+        title: 'Employment update',
+        body: `${a.user_name} ${a.action}.`,
+        createdAt: a.createdAt,
+      })),
+      ...pendingPartners.map(p => ({
+        type: 'partnership',
+        title: 'Partnership request',
+        body: `${p.name} needs review.`,
+        createdAt: p.createdAt,
+      })),
+      ...recentAnnouncements.map(a => ({
+        type: 'announcement',
+        title: 'Announcement posted',
+        body: `"${a.title}" was published.`,
+        createdAt: a.createdAt,
+      })),
+      ...pendingAppointments.map(a => ({
+        type: 'appointment',
+        title: 'Appointment request',
+        body: `${a.alumni_name} requested an appointment${a.purpose ? ` — ${a.purpose}` : ''}.`,
+        createdAt: a.createdAt,
+      })),
+    ];
+
+    notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.json({ notifications: notifications.slice(0, 20) });
+  } catch (err) {
+    console.error('getNotifications error:', err);
+    res.status(500).json({ message: 'Failed to load notifications.' });
+  }
+};
+
+module.exports = { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications };

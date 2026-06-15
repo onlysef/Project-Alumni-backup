@@ -67,6 +67,16 @@ function mapProgramToCourse(programsCompleted) {
   return '';
 }
 
+// Maps programsCompleted → BSIT track (TSM / WMA / NA / '')
+function mapProgramToTrack(programsCompleted) {
+  if (!Array.isArray(programsCompleted) || !programsCompleted.length) return '';
+  const combined = programsCompleted.join(' ').toLowerCase();
+  if (combined.includes('network administration'))       return 'NA';
+  if (combined.includes('web and mobile'))               return 'WMA';
+  if (combined.includes('technical service management')) return 'TSM';
+  return '';
+}
+
 // Finds company_name, work_location, and graduation_year from admin-added custom
 // tracer questions by matching question labels — no hardcoded IDs.
 async function resolveExtraEmploymentFields(extraAnswers) {
@@ -235,18 +245,33 @@ const submitTracerStudy = async (req, res) => {
     const extraFields      = await resolveExtraEmploymentFields(extra_answers);
     Object.assign(employmentUpdate, extraFields);
 
+    // When alumni is not employed, explicitly clear work-related fields so stale
+    // data from a previous "employed" submission doesn't linger.
+    const isNotEmployed = ['Unemployed', 'Not Yet Updated'].includes(employmentUpdate.employment_status);
+    if (isNotEmployed) {
+      employmentUpdate.company_name  = '';
+      employmentUpdate.work_location = '';
+      employmentUpdate.job_title     = '';
+    }
+
     await AlumniEmployment.findOneAndUpdate(
       { alumni_id: alumniId },
       { $set: { ...employmentUpdate, last_updated: new Date() } },
       { upsert: true, new: true }
     );
 
-    // Update User.course and User.graduationYear from tracer if currently empty
+    // Update User.course, track, and graduationYear from tracer answers
     const userUpdates = { tracerStudyCompleted: true };
-    const currentUser = await User.findById(alumniId).select('course graduationYear').lean();
+    const currentUser = await User.findById(alumniId).select('course track graduationYear').lean();
     if (!currentUser?.course) {
       const mapped = mapProgramToCourse(body.programsCompleted);
       if (mapped) userUpdates.course = mapped;
+    }
+    // Always sync track from programsCompleted (BSIT only)
+    const resolvedCourse = userUpdates.course ?? currentUser?.course ?? '';
+    if (resolvedCourse === 'BSIT') {
+      const mappedTrack = mapProgramToTrack(body.programsCompleted);
+      if (mappedTrack) userUpdates.track = mappedTrack;
     }
     if (!currentUser?.graduationYear && extraFields.graduation_year) {
       userUpdates.graduationYear = extraFields.graduation_year;

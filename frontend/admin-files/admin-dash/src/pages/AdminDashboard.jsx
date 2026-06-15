@@ -14,7 +14,7 @@ import PartnershipsView from "./PartnershipsView.jsx";
 
 export default function AdminDashboard() {
   const [view, setView] = useState(() => localStorage.getItem("adminView") || "dashboard");
-  const [collapsed, setCollapsed] = useState(window.innerWidth <= 1180);
+  const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
@@ -39,7 +39,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth <= 1024) setCollapsed(true);
+      if (window.innerWidth <= 600) setCollapsed(true);
     };
     handleResize();
     window.addEventListener("resize", handleResize);

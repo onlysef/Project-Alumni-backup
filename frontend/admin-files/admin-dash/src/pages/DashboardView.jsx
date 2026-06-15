@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import Icon from "../Icon.jsx";
 import { Dropdown } from "../Primitives.jsx";
-import { CareerChart, EmploymentChart } from "../Charts.jsx";
-import { careerSets, employmentSets, assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
+import { CourseJobChart, EmploymentChart } from "../Charts.jsx";
+import { assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
 
 import { API } from "../shared.js";
 
@@ -21,42 +21,103 @@ function timeAgo(dateStr) {
 
 const reportNames = [
   "Employment Status Distribution",
-  "Course vs Career Relationship",
+  "Course vs Job",
   "Survey Completion Report",
 ];
 
-function downloadReport(name, employmentIndex, careerIndex, employmentSets, careerSets) {
+function downloadReport(name, courseJobData, donutData, surveyStats, activeFilter) {
+  const filter = activeFilter || "All";
   let csv = "";
   let filename = "";
 
   if (name === "Employment Status Distribution") {
-    const set = employmentSets[employmentIndex] || employmentSets[0];
-    csv = "Status,Percentage\nEmployed," + set.employed + "%\nUnemployed," + set.unemployed + "%\nUnidentified," + set.unidentified + "%\nTotal Records," + set.count;
+    if (donutData) {
+      if (filter === "Employed") {
+        csv = `Status,Percentage,Count\nEmployed,${donutData.employedPct}%,${donutData.employed}`;
+      } else if (filter === "Unemployed") {
+        csv = `Status,Percentage,Count\nUnemployed,${donutData.unemployedPct}%,${donutData.unemployed}`;
+      } else if (filter === "Unidentified") {
+        csv = `Status,Percentage,Count\nUnidentified,${donutData.unidentifiedPct}%,${donutData.unidentified}`;
+      } else {
+        csv = "Status,Percentage,Count\n" +
+          `Employed,${donutData.employedPct}%,${donutData.employed}\n` +
+          `Unemployed,${donutData.unemployedPct}%,${donutData.unemployed}\n` +
+          `Unidentified,${donutData.unidentifiedPct}%,${donutData.unidentified}\n` +
+          `Total,,${donutData.total}`;
+      }
+    } else {
+      csv = "Status,Percentage,Count\nNo data available,,";
+    }
     filename = "employment-status-distribution.csv";
-  } else if (name === "Course vs Career Relationship") {
-    const set = careerSets[careerIndex] || careerSets[0];
-    csv = "Course,Percentage\n" + set.legends.map((l, i) => {
-      const [course] = l.split(" - ");
-      return course + "," + set.values[i] + "%";
-    }).join("\n");
-    filename = "course-vs-career-relationship.csv";
+
+  } else if (name === "Course vs Job") {
+    const courseRows = courseJobData.byCourse  || [];
+    const trackRows  = courseJobData.bsitByTrack || [];
+
+    if (["BSIT", "BSCS", "BSIS"].includes(filter)) {
+      const row = courseRows.find((d) => d.course === filter);
+      csv = row
+        ? `Course,Employment Rate,Job-Related Rate,Employed,Total\n${row.course},${row.employmentRate}%,${row.jobRelatedRate}%,${row.employed},${row.total}`
+        : `Course,Employment Rate,Job-Related Rate,Employed,Total\n${filter},No data,,,`;
+    } else if (["TSM", "WMA", "NA"].includes(filter)) {
+      const row = trackRows.find((d) => d.track === filter);
+      csv = row
+        ? `Track,Employment Rate,Job-Related Rate,Employed,Total\n${row.track},${row.employmentRate}%,${row.jobRelatedRate}%,${row.employed},${row.total}`
+        : `Track,Employment Rate,Job-Related Rate,Employed,Total\n${filter},No data,,,`;
+    } else {
+      csv = courseRows.length
+        ? "Course,Employment Rate,Job-Related Rate,Employed,Total\n" +
+          courseRows.map((d) => `${d.course},${d.employmentRate}%,${d.jobRelatedRate}%,${d.employed},${d.total}`).join("\n")
+        : "Course,Employment Rate\nNo data available";
+    }
+    filename = "course-vs-job.csv";
+
   } else {
-    csv = "Report,Status\nSurvey Completion Report,No data available";
+    if (surveyStats) {
+      if (filter === "Completed") {
+        csv = `Status,Count\nCompleted,${surveyStats.completed}\nCompletion Rate,${surveyStats.completionRate}%`;
+      } else if (filter === "Pending") {
+        csv = `Status,Count\nPending,${surveyStats.pending}\nTotal Alumni,${surveyStats.total}`;
+      } else if (filter === "This Month") {
+        csv = `Status,Count\nSubmitted This Month,${surveyStats.thisMonth}`;
+      } else {
+        csv = "Status,Count\n" +
+          `Total Alumni,${surveyStats.total}\n` +
+          `Completed,${surveyStats.completed}\n` +
+          `Pending,${surveyStats.pending}\n` +
+          `Completion Rate,${surveyStats.completionRate}%\n` +
+          `Submitted This Month,${surveyStats.thisMonth}`;
+      }
+    } else {
+      csv = "Status,Count\nNo data available,";
+    }
     filename = "survey-completion-report.csv";
   }
 
   const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
 
+const COURSE_JOB_METRICS = [
+  { label: "Employment Rate",  key: "employmentRate" },
+  { label: "Job-Related Rate", key: "jobRelatedRate" },
+  { label: "BSIT Tracks",     key: "bsitTracks" },
+];
+
+const DONUT_COURSES = ["All", "BSIT", "BSCS", "BSIS"];
+
 export default function DashboardView({ active, showToast }) {
-  const [careerIndex, setCareerIndex] = useState(0);
-  const [employmentIndex, setEmploymentIndex] = useState(0);
+  const [donutData, setDonutData]               = useState(null);
+  const [donutCourse, setDonutCourse]           = useState("All");
+  const [courseJobData, setCourseJobData]       = useState({ byCourse: [], bsitByTrack: [] });
+  const [surveyStats, setSurveyStats]           = useState(null);
+  const [reportActiveFilters, setReportActiveFilters] = useState(["All", "All", "All"]);
+  const [courseJobMetric, setCourseJobMetric] = useState("employmentRate");
   const [totalUsers, setTotalUsers] = useState(null);
   const [employedCount, setEmployedCount] = useState(null);
   const [tracerCount, setTracerCount]     = useState(null);
@@ -72,9 +133,7 @@ export default function DashboardView({ active, showToast }) {
         if (!res.ok) return;
         const data = await res.json();
         setTotalUsers(data.users?.length ?? 0);
-      } catch {
-        // silently fail — stat card stays at last known value
-      }
+      } catch {}
     }
 
     async function fetchEmploymentStats() {
@@ -84,9 +143,16 @@ export default function DashboardView({ active, showToast }) {
         const data = await res.json();
         setEmployedCount(data.employed ?? 0);
         setTracerCount(data.tracerSubmissions ?? 0);
-      } catch {
-        // silently fail
-      }
+      } catch {}
+    }
+
+    async function fetchCourseJobStats() {
+      try {
+        const res = await fetch(`${API}/admin/employment/course-stats`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setCourseJobData(data);
+      } catch {}
     }
 
     async function fetchActivities() {
@@ -95,24 +161,53 @@ export default function DashboardView({ active, showToast }) {
         if (!res.ok) return;
         const data = await res.json();
         setPostActivities(data.activities || []);
-      } catch {
-        // silently fail
-      } finally {
+      } catch {} finally {
         setActivitiesLoading(false);
+      }
+    }
+
+    async function fetchSurveyStats() {
+      try {
+        const res = await fetch(`${API}/admin/employment/survey-stats`, { headers: authHeaders() });
+        if (!res.ok) {
+          console.error("survey-stats:", res.status, await res.text());
+          return;
+        }
+        setSurveyStats(await res.json());
+      } catch (err) {
+        console.error("survey-stats fetch error:", err);
       }
     }
 
     fetchTotalUsers();
     fetchActivities();
     fetchEmploymentStats();
+    fetchCourseJobStats();
+    fetchSurveyStats();
 
     const interval = setInterval(() => {
       fetchTotalUsers();
       fetchActivities();
       fetchEmploymentStats();
+      fetchCourseJobStats();
+      fetchSurveyStats();
     }, 30000);
     return () => clearInterval(interval);
   }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    async function fetchDonutStats() {
+      try {
+        const qs  = donutCourse !== "All" ? `?course=${donutCourse}` : "";
+        const res = await fetch(`${API}/admin/employment/donut-stats${qs}`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setDonutData(data);
+      } catch {}
+    }
+    fetchDonutStats();
+  }, [active, donutCourse]);
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -170,24 +265,24 @@ export default function DashboardView({ active, showToast }) {
 
           <section className="panel">
             <div className="panel-head">
-              <span>Course vs Career Recommendation</span>
+              <span>Course vs Job</span>
               <Dropdown
                 menuClassName="filter-menu"
-                active={careerSets[careerIndex].label}
-                options={careerSets.map((s) => s.label)}
+                active={COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label}
+                options={COURSE_JOB_METRICS.map((m) => m.label)}
                 onSelect={(label) => {
-                  const i = careerSets.findIndex((s) => s.label === label);
-                  setCareerIndex(i);
-                  showToast(`Course chart filtered: ${label}`);
+                  const m = COURSE_JOB_METRICS.find((x) => x.label === label);
+                  if (m) setCourseJobMetric(m.key);
+                  showToast(`Course chart: ${label}`);
                 }}
                 trigger={(toggle) => (
                   <button className="filter" type="button" onClick={toggle}>
-                    {careerSets[careerIndex].label === "All" ? "Filter" : careerSets[careerIndex].label}
+                    {COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label ?? "Filter"}
                   </button>
                 )}
               />
             </div>
-            <CareerChart index={careerIndex} />
+            <CourseJobChart data={courseJobData} metric={courseJobMetric} />
           </section>
 
           <section className="panel">
@@ -195,21 +290,21 @@ export default function DashboardView({ active, showToast }) {
               <span>Employed vs Unemployed</span>
               <Dropdown
                 menuClassName="filter-menu"
-                active={employmentSets[employmentIndex].label}
-                options={employmentSets.map((s) => s.label)}
+                active={donutCourse}
+                options={DONUT_COURSES}
                 onSelect={(label) => {
-                  const i = employmentSets.findIndex((s) => s.label === label);
-                  setEmploymentIndex(i);
-                  showToast(`Employment chart filtered: ${label}`);
+                  setDonutCourse(label);
+                  setDonutData(null);
+                  showToast(`Employment chart: ${label}`);
                 }}
                 trigger={(toggle) => (
                   <button className="filter" type="button" onClick={toggle}>
-                    {employmentSets[employmentIndex].label === "All" ? "Filter" : employmentSets[employmentIndex].label}
+                    {donutCourse === "All" ? "Filter" : donutCourse}
                   </button>
                 )}
               />
             </div>
-            <EmploymentChart index={employmentIndex} />
+            <EmploymentChart data={donutData} />
           </section>
         </div>
 
@@ -240,31 +335,52 @@ export default function DashboardView({ active, showToast }) {
 
           <section className="panel reports">
             <div className="panel-head">Reports</div>
-            {reportNames.map((name, i) => (
-              <div className="report-row" key={name}>
-                <span>{name}</span>
-                <Dropdown
-                  menuClassName="report-filter-menu"
-                  options={reportFilters[i] || ["All", "This Month", "This Year"]}
-                  active={(reportFilters[i] || ["All"])[0]}
-                  onSelect={(label) => showToast(`${name}: ${label}`)}
-                  trigger={(toggle) => (
-                    <button type="button" onClick={toggle}>Filter</button>
-                  )}
-                />
-                <button
-                  className="download"
-                  type="button"
-                  aria-label={`Download ${name}`}
-                  onClick={() => {
-                    downloadReport(name, employmentIndex, careerIndex, employmentSets, careerSets);
-                    showToast(`${name} downloaded.`);
-                  }}
-                >
-                  <span><Icon name="icon-download" /></span>
-                </button>
-              </div>
-            ))}
+            {reportNames.map((name, i) => {
+              const activeFilter = reportActiveFilters[i] || "All";
+              const options = reportFilters[i] || ["All"];
+              return (
+                <div className="report-row" key={name}>
+                  <span>{name}</span>
+                  <Dropdown
+                    menuClassName="report-filter-menu"
+                    options={options}
+                    active={activeFilter}
+                    onSelect={(label) => {
+                      setReportActiveFilters((prev) => {
+                        const next = [...prev];
+                        next[i] = label;
+                        return next;
+                      });
+                      showToast(`${name}: ${label}`);
+                    }}
+                    trigger={(toggle) => (
+                      <button type="button" onClick={toggle}>
+                        {activeFilter === "All" ? "Filter" : activeFilter}
+                      </button>
+                    )}
+                  />
+                  <button
+                    className="download"
+                    type="button"
+                    aria-label={`Download ${name}`}
+                    onClick={() => {
+                      if (name === "Survey Completion Report" && !surveyStats) {
+                        showToast("Survey data is still loading. Please wait and try again.");
+                        return;
+                      }
+                      if (name === "Employment Status Distribution" && !donutData) {
+                        showToast("Employment data is still loading. Please wait and try again.");
+                        return;
+                      }
+                      downloadReport(name, courseJobData, donutData, surveyStats, activeFilter);
+                      showToast(`${name} downloaded.`);
+                    }}
+                  >
+                    <span><Icon name="icon-download" /></span>
+                  </button>
+                </div>
+              );
+            })}
           </section>
         </aside>
       </div>

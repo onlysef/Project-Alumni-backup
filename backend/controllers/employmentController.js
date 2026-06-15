@@ -472,6 +472,194 @@ const updateEmploymentRecord = async (req, res) => {
   }
 };
 
+// GET /api/admin/employment/course-stats
+// Returns employment & job-related rates per course (BSIT / BSCS / BSIS).
+const getCourseJobStats = async (req, res) => {
+  try {
+    const rows = await AlumniEmployment.aggregate([
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: { '_user.0': { $exists: true } } },
+      { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      {
+        $group: {
+          _id:         '$_u.course',
+          total:       { $sum: 1 },
+          employed:    { $sum: { $cond: [{ $in: ['$employment_status', ['Employed', 'Self-employed']] }, 1, 0] } },
+          jobRelated:  { $sum: { $cond: [{ $eq: ['$job_related_to_course', true] }, 1, 0] } },
+        },
+      },
+      { $match: { _id: { $in: ['BSIT', 'BSCS', 'BSIS'] } } },
+      { $sort:  { _id: 1 } },
+    ]);
+
+    const courses = ['BSIT', 'BSCS', 'BSIS'];
+    const byCourse = courses.map((course) => {
+      const row = rows.find((r) => r._id === course) || { total: 0, employed: 0, jobRelated: 0 };
+      return {
+        course,
+        total:          row.total,
+        employed:       row.employed,
+        jobRelated:     row.jobRelated,
+        employmentRate: row.total > 0 ? Math.round((row.employed   / row.total) * 100) : 0,
+        jobRelatedRate: row.total > 0 ? Math.round((row.jobRelated / row.total) * 100) : 0,
+      };
+    });
+
+    // BSIT breakdown by track (TSM / WMA / NA)
+    // Prefer User.track; fall back to programsCompleted in TracerStudyResponse.
+    const trackRows = await AlumniEmployment.aggregate([
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: { '_user.0': { $exists: true } } },
+      { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      { $match: { '_u.course': 'BSIT' } },
+      { $lookup: { from: 'tracerstudyresponses', localField: 'alumni_id', foreignField: 'alumni_id', as: '_tracer' } },
+      { $addFields: { _t: { $arrayElemAt: ['$_tracer', 0] } } },
+      {
+        $addFields: {
+          _progStr: {
+            $toLower: {
+              $reduce: {
+                input:        { $ifNull: ['$_t.programsCompleted', []] },
+                initialValue: '',
+                in:           { $concat: ['$$value', ' ', '$$this'] },
+              },
+            },
+          },
+        },
+      },
+      {
+        $addFields: {
+          _track: {
+            $switch: {
+              branches: [
+                // Explicit User.track wins if it's one of the valid values
+                { case: { $in: ['$_u.track', ['TSM', 'WMA', 'NA']] }, then: '$_u.track' },
+                // Otherwise derive from programsCompleted text
+                { case: { $gt: [{ $indexOfCP: ['$_progStr', 'network administration']       }, -1] }, then: 'NA'  },
+                { case: { $gt: [{ $indexOfCP: ['$_progStr', 'web and mobile']               }, -1] }, then: 'WMA' },
+                { case: { $gt: [{ $indexOfCP: ['$_progStr', 'technical service management'] }, -1] }, then: 'TSM' },
+              ],
+              default: '',
+            },
+          },
+        },
+      },
+      { $match: { _track: { $in: ['TSM', 'WMA', 'NA'] } } },
+      {
+        $group: {
+          _id:        '$_track',
+          total:      { $sum: 1 },
+          employed:   { $sum: { $cond: [{ $in: ['$employment_status', ['Employed', 'Self-employed']] }, 1, 0] } },
+          jobRelated: { $sum: { $cond: [{ $eq: ['$job_related_to_course', true] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    const tracks = ['TSM', 'WMA', 'NA'];
+    const bsitByTrack = tracks.map((track) => {
+      const row = trackRows.find((r) => r._id === track) || { total: 0, employed: 0, jobRelated: 0 };
+      return {
+        track,
+        total:          row.total,
+        employed:       row.employed,
+        jobRelated:     row.jobRelated,
+        employmentRate: row.total > 0 ? Math.round((row.employed   / row.total) * 100) : 0,
+        jobRelatedRate: row.total > 0 ? Math.round((row.jobRelated / row.total) * 100) : 0,
+      };
+    });
+
+    res.json({ byCourse, bsitByTrack });
+  } catch (err) {
+    console.error('getCourseJobStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/admin/employment/survey-stats
+const getSurveyStats = async (req, res) => {
+  try {
+    const existingUserLookup = [
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: { '_user.0': { $exists: true } } },
+    ];
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [totalAlumni, completedResult, thisMonthResult] = await Promise.all([
+      User.countDocuments({ role: 'alumni' }),
+      TracerStudyResponse.aggregate([...existingUserLookup, { $count: 'total' }]),
+      TracerStudyResponse.aggregate([
+        ...existingUserLookup,
+        { $match: { submittedAt: { $gte: monthStart } } },
+        { $count: 'total' },
+      ]),
+    ]);
+
+    const completed = completedResult[0]?.total ?? 0;
+    const thisMonth = thisMonthResult[0]?.total ?? 0;
+    const total     = totalAlumni;
+    const pending   = Math.max(0, total - completed);
+
+    res.json({
+      total,
+      completed,
+      pending,
+      thisMonth,
+      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
+    });
+  } catch (err) {
+    console.error('getSurveyStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/admin/employment/donut-stats?course=BSIT
+const getDonutStats = async (req, res) => {
+  try {
+    const { course = '' } = req.query;
+
+    const pipeline = [
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: { '_user.0': { $exists: true } } },
+      { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      { $match: { '_u.role': 'alumni' } },
+    ];
+
+    if (course && ['BSIT', 'BSCS', 'BSIS'].includes(course)) {
+      pipeline.push({ $match: { '_u.course': course } });
+    }
+
+    pipeline.push({
+      $group: {
+        _id:          null,
+        total:        { $sum: 1 },
+        employed:     { $sum: { $cond: [{ $in: ['$employment_status', ['Employed', 'Self-employed']] }, 1, 0] } },
+        unemployed:   { $sum: { $cond: [{ $eq: ['$employment_status', 'Unemployed'] }, 1, 0] } },
+        unidentified: { $sum: { $cond: [{ $eq: ['$employment_status', 'Not Yet Updated'] }, 1, 0] } },
+      },
+    });
+
+    const result = await AlumniEmployment.aggregate(pipeline);
+    const row = result[0] || { total: 0, employed: 0, unemployed: 0, unidentified: 0 };
+    const { total, employed, unemployed, unidentified } = row;
+
+    res.json({
+      total,
+      employed,
+      unemployed,
+      unidentified,
+      employedPct:     total > 0 ? Math.round((employed     / total) * 100) : 0,
+      unemployedPct:   total > 0 ? Math.round((unemployed   / total) * 100) : 0,
+      unidentifiedPct: total > 0 ? Math.round((unidentified / total) * 100) : 0,
+    });
+  } catch (err) {
+    console.error('getDonutStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // GET /api/admin/employment/stats
 const getEmploymentStats = async (req, res) => {
   try {
@@ -738,6 +926,9 @@ module.exports = {
   createEmploymentRecord,
   syncTracerToEmployment,
   backfillEmploymentRecords,
+  getCourseJobStats,
+  getDonutStats,
+  getSurveyStats,
   getEmploymentStats,
   getEmploymentRecords,
   getEmploymentRecord,

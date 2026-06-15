@@ -25,7 +25,7 @@ export function Sidebar({ view, onSelect }) {
           if (hasChildren) {
             return (
               <div key={item.view} className="nav-group">
-                <a className={view === item.view ? "active" : undefined} href="#" aria-expanded={isOpen} onClick={(e) => { e.preventDefault(); setOpenMenu(isOpen ? null : item.view); onSelect(item.view); }}>
+                <a className={view === item.view ? "active" : undefined} href="#" aria-expanded={isOpen} onClick={(e) => { e.preventDefault(); setOpenMenu(isOpen ? null : item.view); }}>
                   <span><Icon name={item.icon} /></span>
                   <span>{item.label}</span>
                   <span className={`nav-caret${isOpen ? " open" : ""}`}>▾</span>

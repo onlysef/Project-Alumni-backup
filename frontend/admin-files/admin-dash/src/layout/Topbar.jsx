@@ -1,21 +1,66 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../Icon.jsx";
 import { Modal } from "../Primitives.jsx";
 import toptsuLogo from "../logo/tsu-top-header.webp";
+import { API } from "../shared.js";
 
-const notificationsSeed = [
-  { title: "New alumni registration", body: "Danica Macapagal is waiting for account approval.", time: "5 min ago", unread: true },
-  { title: "Tracer survey submitted", body: "Juan Dela Cruz updated employment information.", time: "18 min ago", unread: true },
-  { title: "Partnership request", body: "Scholarship Program needs review.", time: "1 hr ago", unread: true },
-  { title: "Announcement posted", body: "Career Development Webinar was published.", time: "Yesterday", unread: false },
-];
+const LAST_READ_KEY = "adminNotifReadAt";
+
+function timeAgo(dateStr) {
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60)      return `${diff}s ago`;
+  if (diff < 3600)    return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400)   return `${Math.floor(diff / 3600)} hr ago`;
+  if (diff < 604800)  return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 2592000) return `${Math.floor(diff / 604800)}wk ago`;
+  return `${Math.floor(diff / 2592000)} mo ago`;
+}
+
+function authHeaders() {
+  const token = localStorage.getItem("auth_token");
+  return { Authorization: `Bearer ${token}` };
+}
 
 export function Topbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast }) {
-  const [panel, setPanel] = useState(null); // 'notifications' | 'settings' | 'profile'
-  const [notifications, setNotifications] = useState(notificationsSeed);
+  const [panel, setPanel] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [lastReadAt, setLastReadAt] = useState(() => {
+    const stored = localStorage.getItem(LAST_READ_KEY);
+    return stored ? new Date(stored) : new Date(0);
+  });
+  const pollRef = useRef(null);
 
-  const unread = notifications.filter((n) => n.unread).length;
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/admin/notifications`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setNotifications(data.notifications || []);
+    } catch {
+      // silently fail — no connection shouldn't break the UI
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    pollRef.current = setInterval(fetchNotifications, 60_000);
+    return () => clearInterval(pollRef.current);
+  }, [fetchNotifications]);
+
+  // Re-fetch every time the notifications panel is opened
+  useEffect(() => {
+    if (panel === "notifications") fetchNotifications();
+  }, [panel, fetchNotifications]);
+
+  const unread = notifications.filter((n) => new Date(n.createdAt) > lastReadAt).length;
   const badge = settings.dashboardNotifications ? unread : 0;
+
+  function markAllRead() {
+    const now = new Date();
+    setLastReadAt(now);
+    localStorage.setItem(LAST_READ_KEY, now.toISOString());
+    showToast("Notifications marked as read.");
+  }
 
   return (
     <>
@@ -59,24 +104,22 @@ export function Topbar({ title, collapsed, onToggleSidebar, settings, setSetting
             <button type="button" aria-label="Close notifications" onClick={() => setPanel(null)}>×</button>
           </div>
           <div className="notification-list">
-            {notifications.map((n, i) => (
-              <article key={i} className={`notification-item${n.unread ? " is-unread" : ""}`}>
-                <strong>{n.title}</strong>
-                <span>{n.body}</span>
-                <time>{n.time}</time>
-              </article>
-            ))}
+            {notifications.length === 0 ? (
+              <p style={{ padding: "20px", textAlign: "center", color: "#999", fontSize: "13px" }}>
+                No notifications yet.
+              </p>
+            ) : (
+              notifications.map((n, i) => (
+                <article key={i} className={`notification-item${new Date(n.createdAt) > lastReadAt ? " is-unread" : ""}`}>
+                  <strong>{n.title}</strong>
+                  <span>{n.body}</span>
+                  <time>{timeAgo(n.createdAt)}</time>
+                </article>
+              ))
+            )}
           </div>
           <div className="modal-actions topbar-modal-actions">
-            <button
-              type="button"
-              onClick={() => {
-                setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
-                showToast("Notifications marked as read.");
-              }}
-            >
-              Mark All Read
-            </button>
+            <button type="button" onClick={markAllRead}>Mark All Read</button>
             <button type="button" onClick={() => setPanel(null)}>Close</button>
           </div>
         </section>

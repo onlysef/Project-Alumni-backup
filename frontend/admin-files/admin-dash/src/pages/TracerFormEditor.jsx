@@ -284,7 +284,7 @@ const s = {
 };
 
 // ── QuestionCard ──────────────────────────────────────────────────────────────
-function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove }) {
+function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, allQuestions = [] }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
 
@@ -317,6 +317,7 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove }) 
       content: form.content ?? q.content,
       placeholder: form.placeholder ?? q.placeholder,
       required: form.required ?? q.required,
+      showIf: form.showIf || null,
       options: ["radio", "checkbox", "select"].includes(form.type ?? q.type)
         ? lines(form.optionsText)
         : [],
@@ -507,6 +508,78 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove }) 
             </>
           )}
 
+          {/* Conditional display */}
+          <div style={{ ...s.fieldRow, marginTop: 14, paddingTop: 12, borderTop: "1px solid #f3e8e8" }}>
+            <label style={{ ...s.fieldLabel, marginBottom: 8 }}>Conditional Display</label>
+            <label style={s.checkLabel}>
+              <input
+                type="checkbox"
+                checked={!!(form.showIf ?? q.showIf)}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    showIf: e.target.checked
+                      ? (q.showIf || { questionId: "", values: [] })
+                      : null,
+                  }))
+                }
+              />
+              Only show when another question has a specific answer
+            </label>
+          </div>
+          {!!(form.showIf ?? q.showIf) && (
+            <>
+              <div style={s.fieldRow}>
+                <label style={s.fieldLabel}>Depends on question</label>
+                <select
+                  style={{ ...s.selectInput, width: "100%" }}
+                  value={(form.showIf ?? q.showIf)?.questionId || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      showIf: { ...(f.showIf || {}), questionId: e.target.value },
+                    }))
+                  }
+                >
+                  <option value="">Select a question…</option>
+                  {allQuestions.map((aq) => (
+                    <option key={aq.id} value={aq.id}>
+                      {aq.pageTitle ? `[${aq.pageTitle}] ` : ""}
+                      {(aq.label || aq.content || aq.id).slice(0, 70)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={s.fieldRow}>
+                <label style={s.fieldLabel}>Show when answer is (one per line)</label>
+                <textarea
+                  style={{ ...s.textarea, minHeight: 60 }}
+                  value={
+                    Array.isArray((form.showIf ?? q.showIf)?.values)
+                      ? (form.showIf ?? q.showIf).values.join("\n")
+                      : ""
+                  }
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      showIf: {
+                        ...(f.showIf || {}),
+                        values: e.target.value
+                          .split("\n")
+                          .map((v) => v.trim())
+                          .filter(Boolean),
+                      },
+                    }))
+                  }
+                  placeholder={"Yes\nYes, I am currently employed"}
+                />
+                <p style={s.hint}>
+                  Exact answer values that trigger this question to appear. One per line.
+                </p>
+              </div>
+            </>
+          )}
+
           <div style={s.editActions}>
             <button type="button" style={s.primaryBtn} onClick={saveEdit}>
               Save Question
@@ -528,6 +601,7 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
   const [saving, setSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(null); // { pageIdx, qIdx }
+  const [confirmDeletePage, setConfirmDeletePage] = useState(null); // pageIdx
 
   // Load config each time the modal opens
   useEffect(() => {
@@ -605,6 +679,39 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
     });
   }, []);
 
+  // ── page-level mutators ───────────────────────────────────────────────────────
+  function addPage() {
+    const newPage = {
+      id: "page_" + Date.now().toString(36),
+      title: "New Page",
+      questions: [],
+    };
+    setConfig((c) => {
+      setCurrentPage(c.pages.length);
+      return { ...c, pages: [...c.pages, newPage] };
+    });
+  }
+
+  const deletePage = useCallback((pageIdx) => {
+    setConfig((c) => {
+      const pages = c.pages.filter((_, i) => i !== pageIdx);
+      return { ...c, pages };
+    });
+    setCurrentPage((prev) => (prev > 0 && prev >= pageIdx ? prev - 1 : prev));
+    setConfirmDeletePage(null);
+  }, []);
+
+  const movePage = useCallback((pageIdx, dir) => {
+    setConfig((c) => {
+      const pages = [...c.pages];
+      const swap = dir === "left" ? pageIdx - 1 : pageIdx + 1;
+      if (swap < 0 || swap >= pages.length) return c;
+      [pages[pageIdx], pages[swap]] = [pages[swap], pages[pageIdx]];
+      return { ...c, pages };
+    });
+    setCurrentPage((prev) => (dir === "left" ? prev - 1 : prev + 1));
+  }, []);
+
   // ── save ─────────────────────────────────────────────────────────────────────
   async function handleSave() {
     if (!config) return;
@@ -638,6 +745,14 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
   }
 
   // ── render ────────────────────────────────────────────────────────────────────
+  const allQuestionsFlat = config
+    ? config.pages.flatMap((p) =>
+        (p.questions || [])
+          .filter((q2) => q2.type !== "static_text")
+          .map((q2) => ({ id: q2.id, label: q2.label, content: q2.content, pageTitle: p.title }))
+      )
+    : [];
+
   return (
     <Modal open={open} onClose={onClose}>
       <div style={s.modal} role="dialog" aria-modal="true" aria-label="Edit Tracer Form">
@@ -677,6 +792,21 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
                   Page {i + 1}: {page.title}
                 </button>
               ))}
+              <button
+                type="button"
+                style={{
+                  ...s.tab(false),
+                  color: MAROON,
+                  fontWeight: 800,
+                  paddingLeft: 20,
+                  paddingRight: 20,
+                  opacity: 0.75,
+                }}
+                onClick={addPage}
+                title="Add a new page"
+              >
+                + Page
+              </button>
             </div>
 
             {/* Page body */}
@@ -709,6 +839,33 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
                       onChange={(e) => updatePageTitle(currentPage, e.target.value)}
                       placeholder="Page title…"
                     />
+                    <button
+                      type="button"
+                      style={s.iconBtn()}
+                      title="Move page left"
+                      disabled={currentPage === 0}
+                      onClick={() => movePage(currentPage, "left")}
+                    >
+                      ◀
+                    </button>
+                    <button
+                      type="button"
+                      style={s.iconBtn()}
+                      title="Move page right"
+                      disabled={currentPage === config.pages.length - 1}
+                      onClick={() => movePage(currentPage, "right")}
+                    >
+                      ▶
+                    </button>
+                    <button
+                      type="button"
+                      style={s.iconBtn("danger")}
+                      title="Delete this page"
+                      disabled={config.pages.length <= 1}
+                      onClick={() => setConfirmDeletePage(currentPage)}
+                    >
+                      🗑
+                    </button>
                   </div>
 
                   {/* Hint */}
@@ -733,6 +890,7 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
                       qIdx={qIdx}
                       pageIdx={currentPage}
                       totalQ={config.pages[currentPage].questions.length}
+                      allQuestions={allQuestionsFlat.filter((aq) => aq.id !== q.id)}
                       onUpdate={(updated) => updateQuestion(currentPage, qIdx, updated)}
                       onDelete={() => requestDelete(currentPage, qIdx)}
                       onMove={(dir) => moveQuestion(currentPage, qIdx, dir)}
@@ -768,6 +926,51 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
           </>
         )}
       </div>
+
+      {/* Delete page confirmation */}
+      {confirmDeletePage !== null && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+          }}
+          onClick={() => setConfirmDeletePage(null)}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 10,
+              padding: "28px 32px",
+              maxWidth: 380,
+              width: "90%",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h4 style={{ margin: "0 0 10px", color: MAROON, fontSize: 15 }}>Delete Page?</h4>
+            <p style={{ margin: "0 0 20px", fontSize: 13, color: "#555", lineHeight: 1.5 }}>
+              This will permanently remove <strong>Page {confirmDeletePage + 1}</strong> and all
+              its questions from the form. This cannot be undone until you close without saving.
+            </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button style={s.secondaryBtn} onClick={() => setConfirmDeletePage(null)}>
+                Cancel
+              </button>
+              <button
+                style={{ ...s.primaryBtn, background: "#8a1f2f" }}
+                onClick={() => deletePage(confirmDeletePage)}
+              >
+                Delete Page
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation */}
       {confirmDelete && (

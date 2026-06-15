@@ -100,11 +100,10 @@ body {
   line-height: 1.6;
 }
 
-/* Footer identity — pinned to the bottom of the left panel */
+/* Footer identity — sits at the bottom of the page */
 .login-footer {
-  position: absolute;
-  left: 0;
-  bottom: 0;
+  text-align: center;
+  padding: 12px 16px;
   color: var(--frame);
   font-family: 'Manrope', sans-serif;
   font-size: 10px;
@@ -349,12 +348,6 @@ input::placeholder {
 
   .welcome-copy {
     align-items: center;
-  }
-
-  .login-footer {
-    position: static;
-    margin-top: 16px;
-    text-align: center;
   }
 
   .right-shell {

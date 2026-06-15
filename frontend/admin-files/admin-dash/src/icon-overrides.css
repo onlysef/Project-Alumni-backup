@@ -27,6 +27,11 @@ img.admin-svg-icon {
   height: 18px;
 }
 
+.maroon-action img.admin-svg-icon,
+.table-filter img.admin-svg-icon {
+  filter: brightness(0) invert(1);
+}
+
 .stat-card img.admin-svg-icon {
   width: 64px;
   height: 64px;
