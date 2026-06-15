@@ -235,6 +235,15 @@ const submitTracerStudy = async (req, res) => {
     const extraFields      = await resolveExtraEmploymentFields(extra_answers);
     Object.assign(employmentUpdate, extraFields);
 
+    // When alumni is not employed, explicitly clear work-related fields so stale
+    // data from a previous "employed" submission doesn't linger.
+    const isNotEmployed = ['Unemployed', 'Not Yet Updated'].includes(employmentUpdate.employment_status);
+    if (isNotEmployed) {
+      employmentUpdate.company_name  = '';
+      employmentUpdate.work_location = '';
+      employmentUpdate.job_title     = '';
+    }
+
     await AlumniEmployment.findOneAndUpdate(
       { alumni_id: alumniId },
       { $set: { ...employmentUpdate, last_updated: new Date() } },

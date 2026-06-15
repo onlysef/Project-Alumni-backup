@@ -55,6 +55,12 @@ const EMPTY_FILTERS   = { status: "", course: "", batch_year: "", date_updated: 
 const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
 
+const EMPTY_VALUES = new Set(["n/a", "none", "na", "null", "undefined", "-", ""]);
+function fmtField(val) {
+  const v = String(val ?? "").trim();
+  return EMPTY_VALUES.has(v.toLowerCase()) ? "—" : v;
+}
+
 function StatusBadge({ status }) {
   const cls = {
     Employed:          "employed",
@@ -328,7 +334,7 @@ export default function EmploymentView({ active, showToast }) {
   }
 
   function printRecord(r) {
-    const co = r.employment_status === "Unemployed" && !r.company_name ? "N/A" : (r.company_name || "N/A");
+    const co = r.employment_status === "Unemployed" ? "—" : fmtField(r.company_name);
     const w  = window.open("", "_blank");
     if (!w) { showToast(`${r.name} record is ready to print.`); return; }
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -532,7 +538,7 @@ export default function EmploymentView({ active, showToast }) {
                 <tr key={r._id}>
                   <td>{r.name}</td>
                   <td>{r.course || "—"}</td>
-                  <td>{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") && !r.company_name ? "N/A" : (r.company_name || "N/A")}</td>
+                  <td>{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") ? "—" : fmtField(r.company_name)}</td>
                   <td><StatusBadge status={r.employment_status} /></td>
                   <td>{fmtDate(r.last_updated)}</td>
                   <td>
@@ -690,8 +696,8 @@ export default function EmploymentView({ active, showToast }) {
 
                 // Tracer data takes priority; fall back to AlumniEmployment stored values
                 const company  = (isUnemployed || isNoRecord)
-                  ? "N/A"
-                  : (td?.companyName || r.company_name || "N/A");
+                  ? "—"
+                  : fmtField(td?.companyName || r.company_name);
                 const jobTitle = td?.occupationTitle || r.job_title    || "—";
                 const industry = td?.industryField   || r.industry     || "—";
                 const workLoc  = td?.workLocation    || r.work_location || "—";
