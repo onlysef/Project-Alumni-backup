@@ -221,6 +221,7 @@
         .nav {
             display: grid;
             gap: 0;
+            align-content: start;
             flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
@@ -1206,7 +1207,7 @@
             border-radius: 5px;
             padding: 0 16px;
             background: var(--maroon);
-            color: #fac853;
+            color: #ffffff;
             font-size: 13px;
             font-weight: 800;
             cursor: pointer;
@@ -1245,7 +1246,7 @@
         .table-filter {
             min-height: 32px;
             margin-bottom: 18px;
-            color: #fac853;
+            color: #ffffff;
         }
 
         .table-filter-menu {
@@ -1524,14 +1525,25 @@
         }
 
         .day-pills button {
-            width: 22px;
-            height: 22px;
+            min-width: 30px;
+            height: 30px;
+            padding: 0 4px;
             border: 0;
             border-radius: 50%;
             background: #d8d8d8;
             color: #1e1e1e;
             font-size: 10px;
             font-weight: 900;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: background 150ms ease, color 150ms ease;
+        }
+
+        .day-pills button:disabled {
+            cursor: default;
+            opacity: 0.8;
         }
 
         .day-pills button.active {
@@ -1609,16 +1621,6 @@
             padding: 0 12px;
             line-height: 1;
             white-space: nowrap;
-        }
-
-        .edit-staff {
-            width: 33px;
-            min-height: 33px;
-            border: 0;
-            background: transparent;
-            color: var(--maroon);
-            font-size: 20px;
-            cursor: pointer;
         }
 
         .appointments-card {
@@ -2207,15 +2209,26 @@
             margin-left: auto;
         }
 
+        .edit-staff,
         .delete-staff {
-            min-height: 28px;
+            min-height: 30px;
+            min-width: 44px;
             border: 0;
             border-radius: 5px;
-            background: var(--maroon);
-            color: #fff;
             font-size: 12px;
             font-weight: 800;
             cursor: pointer;
+            padding: 0 10px;
+        }
+
+        .edit-staff {
+            background: #dedede;
+            color: var(--maroon);
+        }
+
+        .delete-staff {
+            background: var(--maroon);
+            color: #fff;
         }
 
         .composer-title,

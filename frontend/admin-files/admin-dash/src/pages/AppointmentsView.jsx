@@ -63,12 +63,16 @@ function statusStyle(s) {
   const c = STATUS_COLORS[s] || { color: "#2d2024", background: "#f0f0f0" };
   return {
     ...c,
-    display:      "inline-block",
+    display:      "inline-flex",
+    alignItems:   "center",
+    alignSelf:    "center",
     borderRadius: "99px",
     padding:      "2px 10px",
     fontSize:     "11px",
     fontWeight:   600,
     fontStyle:    "normal",
+    lineHeight:   1,
+    whiteSpace:   "nowrap",
   };
 }
 
@@ -138,7 +142,7 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
             const f = e.currentTarget.elements;
             onSubmit({
               name:   f.name.value.trim(),
-              role:   f.role.value.trim(),
+              role:   f.role.value,
               email:  f.email.value.trim(),
               status: f.status.value,
             });
@@ -151,7 +155,13 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
             </label>
             <label>
               Role
-              <input type="text" name="role" defaultValue={item?.role || ""} required />
+              <select name="role" defaultValue={item?.role || "Staff"} required>
+                <option value="Staff">Staff</option>
+                <option value="Admin">Admin</option>
+                <option value="Counselor">Counselor</option>
+                <option value="Coordinator">Coordinator</option>
+                <option value="Registrar">Registrar</option>
+              </select>
             </label>
             <label>
               Email
@@ -203,7 +213,7 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
               staff_id:         f.staff_id.value,
               appointment_date: f.appointment_date.value,
               appointment_time: f.appointment_time.value,
-              purpose:          f.purpose.value.trim(),
+              purpose:          f.purpose.value,
               notes:            f.notes.value.trim(),
             });
           }}
@@ -239,7 +249,17 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
             </label>
             <label>
               Purpose
-              <input type="text" name="purpose" placeholder="e.g. Document request" />
+              <select name="purpose" defaultValue="">
+                <option value="" disabled>Select a purpose</option>
+                <option value="Document Request">Document Request</option>
+                <option value="Academic Inquiry">Academic Inquiry</option>
+                <option value="Employment Verification">Employment Verification</option>
+                <option value="Transcript of Records">Transcript of Records</option>
+                <option value="Certificate of Graduation">Certificate of Graduation</option>
+                <option value="Alumni ID">Alumni ID</option>
+                <option value="Consultation">Consultation</option>
+                <option value="Other">Other</option>
+              </select>
             </label>
             <label>
               Notes
@@ -601,10 +621,10 @@ export default function AppointmentsView({ active, showToast }) {
                   <strong>{s.name}</strong>
                   <span>{s.role}</span>
                   <em style={statusStyle(s.status)}>{s.status}</em>
-                  <div style={{ display: "flex", gap: 4 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
                     <button
                       type="button"
-                      style={{ flex: 1, fontSize: 11, padding: "0 4px" }}
+                      className="edit-staff"
                       onClick={() => setStaffModal({ mode: "edit", item: s })}
                     >
                       Edit
@@ -612,7 +632,6 @@ export default function AppointmentsView({ active, showToast }) {
                     <button
                       type="button"
                       className="delete-staff"
-                      style={{ flex: 1 }}
                       onClick={() => confirmDeleteStaff(s)}
                     >
                       ✕
