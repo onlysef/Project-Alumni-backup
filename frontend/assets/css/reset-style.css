@@ -464,6 +464,14 @@ footer {
 
 /* Stack on narrow screens */
 @media (max-width: 880px) {
+  html, body {
+    height: auto;
+    min-height: 100%;
+  }
+  .page {
+    align-items: flex-start;
+    overflow-y: auto;
+  }
   .card {
     grid-template-columns: 1fr;
     gap: 28px;
@@ -479,4 +487,15 @@ footer {
     text-align: center;
   }
   .right-panel { margin-left: 0; }
+  .otp-row {
+    gap: clamp(6px, 2vw, 10px);
+    width: 100%;
+  }
+  .otp-input {
+    width: 100% !important;
+    max-width: 52px;
+    min-width: 0;
+    flex: 1 1 0;
+    height: clamp(48px, 13vw, 56px) !important;
+  }
 }
