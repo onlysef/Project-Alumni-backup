@@ -575,6 +575,46 @@ const getCourseJobStats = async (req, res) => {
   }
 };
 
+// GET /api/admin/employment/survey-stats
+const getSurveyStats = async (req, res) => {
+  try {
+    const existingUserLookup = [
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: { '_user.0': { $exists: true } } },
+    ];
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [totalAlumni, completedResult, thisMonthResult] = await Promise.all([
+      User.countDocuments({ role: 'alumni' }),
+      TracerStudyResponse.aggregate([...existingUserLookup, { $count: 'total' }]),
+      TracerStudyResponse.aggregate([
+        ...existingUserLookup,
+        { $match: { submittedAt: { $gte: monthStart } } },
+        { $count: 'total' },
+      ]),
+    ]);
+
+    const completed = completedResult[0]?.total ?? 0;
+    const thisMonth = thisMonthResult[0]?.total ?? 0;
+    const total     = totalAlumni;
+    const pending   = Math.max(0, total - completed);
+
+    res.json({
+      total,
+      completed,
+      pending,
+      thisMonth,
+      completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
+    });
+  } catch (err) {
+    console.error('getSurveyStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // GET /api/admin/employment/donut-stats?course=BSIT
 const getDonutStats = async (req, res) => {
   try {
@@ -888,6 +928,7 @@ module.exports = {
   backfillEmploymentRecords,
   getCourseJobStats,
   getDonutStats,
+  getSurveyStats,
   getEmploymentStats,
   getEmploymentRecords,
   getEmploymentRecord,

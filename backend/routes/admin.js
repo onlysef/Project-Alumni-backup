@@ -12,7 +12,7 @@ const {
 const { getAllJobs } = require('../controllers/jobController');
 const {
   getAlumniWithoutRecord, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
-  getCourseJobStats, getDonutStats, getEmploymentStats,
+  getCourseJobStats, getDonutStats, getSurveyStats, getEmploymentStats,
   getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
@@ -60,6 +60,7 @@ router.get('/jobs', getAllJobs);
 // Employment records — static sub-paths before /:id
 router.get('/employment/course-stats',               getCourseJobStats);
 router.get('/employment/donut-stats',                getDonutStats);
+router.get('/employment/survey-stats',               getSurveyStats);
 router.get('/employment/stats',                      getEmploymentStats);
 router.get('/employment/activity',                   getEmploymentActivity);
 router.get('/employment/export',                     exportEmploymentRecords);
