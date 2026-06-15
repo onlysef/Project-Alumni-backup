@@ -161,7 +161,8 @@
             background:
                 linear-gradient(180deg, #570013 72.12%, #945025 93.28%, #bf8931 100%), #800020;
             color: #fff;
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         .brand {
@@ -220,6 +221,9 @@
         .nav {
             display: grid;
             gap: 0;
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
         }
 
         .nav a {
@@ -353,6 +357,7 @@
 
         .sidebar-footer {
             margin-top: auto;
+            flex: 0 0 auto;
             padding: 18px 16px 0;
         }
 
@@ -3389,11 +3394,14 @@
         }
 
         @media (max-width: 600px) {
-            .app {
+            .app,
+            .app:not(.sidebar-collapsed) {
                 width: 100%;
+                max-width: 100%;
                 height: 100vh;
                 margin: 0;
-                grid-template-columns: 82px 1fr;
+                grid-template-columns: 72px 1fr;
+                overflow-x: hidden;
             }
 
             .sidebar {
@@ -3401,12 +3409,8 @@
                 height: 100vh;
             }
 
-            .topbar {
-                top: 0;
-            }
-
             .brand {
-                padding-inline: 10px;
+                padding-inline: 8px;
             }
 
             .brand h1 {
@@ -3414,56 +3418,155 @@
             }
 
             .brand p,
-            .nav span,
-            .sidebar-logout span {
+            .brand-text,
+            .nav a span:last-child,
+            .nav-group > a span:not(:first-child),
+            .sidebar-logout span:last-child {
                 display: none;
             }
 
-            .nav a {
-                width: 48px;
+            .sidebar-logo {
+                display: block;
+                width: 40px;
+                height: 40px;
+            }
+
+            .nav a,
+            .nav a.active,
+            .nav-group > a {
+                width: 100%;
                 grid-template-columns: 1fr;
-                margin-left: 16px;
+                margin-left: 0;
                 padding: 0;
                 justify-items: center;
+                border-radius: 0 24px 24px 0;
             }
 
-            .nav-sub { display: flex; flex-direction: column; }
-            .nav-sub a {
-            padding-left: 48px;
-            font-size: 0.9em;
-            opacity: 0.85;
+            .nav svg,
+            .nav .admin-svg-icon {
+                width: 20px;
+                height: 20px;
             }
-            .nav-sub a:hover { opacity: 1; }
-            .nav-caret {
-            margin-left: auto;
-            transition: transform 0.15s ease;
-            font-size: 0.8em;
-            }
-            .nav-caret.open { transform: rotate(180deg); }
+
+            .nav-sub,
+            .nav-caret { display: none; }
 
             .sidebar-footer {
-                padding-inline: 16px;
+                padding-inline: 12px;
             }
 
             .sidebar-logout {
-                width: 48px;
+                width: 44px;
                 grid-template-columns: 1fr;
                 justify-items: center;
                 padding: 0;
             }
 
-            .app:not(.sidebar-collapsed) {
-                grid-template-columns: 82px 1fr;
+            .topbar {
+                top: 0;
+                padding: 0 12px;
+            }
+
+            .title-wrap {
+                gap: 12px;
+                min-width: 0;
+            }
+
+            .topbar h2 {
+                font-size: 15px;
+                line-height: 1.2;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .top-actions {
+                gap: 12px;
+                flex: 0 0 auto;
+            }
+
+            .content {
+                padding: 16px 12px 28px;
             }
 
             .stats,
-            .grid {
+            .grid,
+            .bar-layout,
+            .donut-layout,
+            .announcement-grid,
+            .appointment-top-grid {
                 grid-template-columns: 1fr;
             }
 
-            .bar-layout,
-            .donut-layout {
-                grid-template-columns: 1fr;
+            .appointment-card,
+            .appointments-card {
+                min-height: 0;
+                padding: 18px 16px;
+            }
+
+            .admin-card-head {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+
+            .admin-card-head h3 {
+                font-size: 16px;
+            }
+
+            .admin-card-head > div,
+            .accounts-controls {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+                width: 100%;
+            }
+
+            .accounts-controls .admin-choice,
+            .accounts-controls .add-button,
+            .admin-card-head .admin-choice,
+            .admin-card-head .add-button {
+                width: 100%;
+                margin: 0;
+                justify-content: center;
+            }
+
+            .admin-search {
+                width: 100%;
+                min-width: 0;
+            }
+
+            .admin-card {
+                overflow: hidden;
+            }
+
+            .admin-table {
+                display: block;
+                width: auto;
+                margin: 12px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                white-space: nowrap;
+            }
+
+            .admin-table thead,
+            .admin-table tbody,
+            .admin-table tr {
+                display: table;
+                width: 100%;
+                table-layout: auto;
+            }
+
+            .admin-table th,
+            .admin-table td {
+                padding: 12px 10px;
+                white-space: nowrap;
+            }
+
+            .admin-table td:nth-child(2) {
+                white-space: normal;
+                word-break: break-word;
+                min-width: 160px;
             }
         }
 
