@@ -215,6 +215,7 @@ export default function AnnouncementsView({ active, showToast }) {
             />
           </div>
         </div>
+        <div className="table-scroll">
         <table className="admin-table announcement-table">
           <thead>
             <tr>
@@ -257,6 +258,7 @@ export default function AnnouncementsView({ active, showToast }) {
             )}
           </tbody>
         </table>
+        </div>
       </section>
 
       <div className="announcement-grid">

@@ -63,6 +63,7 @@ export default function JobConnectView({ active, showToast }) {
           </div>
         </div>
 
+        <div className="table-scroll">
         <table className="admin-table jobconnect-table">
           <thead>
             <tr>
@@ -106,6 +107,7 @@ export default function JobConnectView({ active, showToast }) {
             )}
           </tbody>
         </table>
+        </div>
       </section>
 
       <Modal open={!!entry} onClose={() => setEntry(null)}>

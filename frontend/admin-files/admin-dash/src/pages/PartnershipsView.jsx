@@ -133,6 +133,7 @@ export default function PartnershipsView({ active, showToast }) {
         {loading ? (
           <p style={{ padding: "1rem" }}>Loading...</p>
         ) : (
+          <div className="table-scroll">
           <table className="admin-table partnership-table">
             <thead><tr><th>Partner</th><th>Type</th><th>Contact</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
@@ -149,6 +150,7 @@ export default function PartnershipsView({ active, showToast }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 

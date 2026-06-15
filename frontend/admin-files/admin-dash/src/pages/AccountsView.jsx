@@ -158,6 +158,7 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
             Loading accounts…
           </p>
         ) : (
+          <div className="table-scroll">
           <table className="admin-table account-table">
             <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
@@ -179,6 +180,7 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
 
