@@ -95,8 +95,8 @@ body {
 }
 
 .login-footer {
-  margin-top: auto;
-  padding-top: 24px;
+  text-align: center;
+  padding: 12px 16px;
   color: var(--frame);
   font-family: 'Manrope', sans-serif;
   font-size: 10px;
@@ -105,7 +105,6 @@ body {
   letter-spacing: 1px;
   text-transform: uppercase;
   opacity: 0.4;
-  text-align: left;
 }
 
 /* Right panel */
@@ -464,19 +463,44 @@ footer {
 
 /* Stack on narrow screens */
 @media (max-width: 880px) {
+  html, body {
+    height: auto;
+    overflow: auto;
+  }
+  .page {
+    min-height: 100vh;
+    align-items: flex-start;
+  }
   .card {
+    height: auto;
+    max-height: none;
     grid-template-columns: 1fr;
-    gap: 28px;
+    box-shadow: none;
     justify-items: center;
     align-items: start;
+    gap: 28px;
   }
   .left-panel {
+    height: auto;
     text-align: center;
     align-items: center;
-    height: auto;
   }
-  .login-footer {
-    text-align: center;
+  .welcome-copy {
+    align-items: center;
   }
-  .right-panel { margin-left: 0; }
+  .right-panel {
+    margin: 0 auto;
+    width: 100%;
+  }
+  .otp-row {
+    gap: clamp(6px, 2vw, 10px);
+    width: 100%;
+  }
+  .otp-input {
+    width: 100% !important;
+    max-width: 52px;
+    min-width: 0;
+    flex: 1 1 0;
+    height: clamp(48px, 13vw, 56px) !important;
+  }
 }

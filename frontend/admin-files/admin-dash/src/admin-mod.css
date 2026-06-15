@@ -3582,6 +3582,36 @@
                 flex: 0 0 auto;
             }
 
+            /* ── Employment toolbar ── */
+            .employment-toolbar {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .section-title {
+                width: 100%;
+            }
+
+            .section-title h3 {
+                font-size: 18px;
+                white-space: nowrap;
+            }
+
+            .employment-actions {
+                width: 100%;
+                flex-wrap: nowrap;
+            }
+
+            .maroon-action {
+                white-space: nowrap;
+                flex: 1 1 auto;
+                justify-content: center;
+                font-size: 12px;
+                padding: 0 10px;
+                min-height: 38px;
+            }
+
             /* ── Content & grids ── */
             .content {
                 height: calc(100vh - 60px);

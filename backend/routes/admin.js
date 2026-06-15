@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials } = require('../controllers/adminController');
+const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications } = require('../controllers/adminController');
 const {
   getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
   toggleLike, getComments, addComment, trackShare, getRecentActivity,
@@ -30,6 +30,8 @@ const {
 
 // All routes below require a valid token AND admin role
 router.use(protect, authorize('admin'));
+
+router.get('/notifications', getNotifications);
 
 router.post('/users',                      createUser);
 router.post('/users/import',               upload.single('file'), importUsers);
