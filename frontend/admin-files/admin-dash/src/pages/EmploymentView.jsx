@@ -44,10 +44,19 @@ const STATUSES   = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"
 const ADD_STATUSES = ["Employed", "Unemployed", "Self-employed"];
 const LIMITS     = [10, 25, 50, 100];
 const INDUSTRIES = [
-  "Information Technology", "Business Process Outsourcing", "Healthcare",
-  "Education", "Finance and Banking", "Manufacturing", "Agriculture",
-  "Government and Public Service", "Transportation and Logistics",
-  "Retail and Commerce", "Media and Communications", "Other",
+  "Information Technology",
+  "Education",
+  "Virtual Assistance and Remote Services",
+  "Customer Service and Support",
+  "Engineering and Construction",
+  "Marketing",
+  "Healthcare",
+  "Manufacturing",
+  "Finance and Banking",
+  "Human Resources",
+  "Government and Public Administration",
+  "Non-Profit/NGO",
+  "Other",
 ];
 const BATCH_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
 

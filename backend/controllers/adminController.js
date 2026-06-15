@@ -51,7 +51,7 @@ function generateTempPassword() {
 // POST /api/admin/users
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, course, graduationYear } = req.body;
+    const { firstName, lastName, email, role, course, graduationYear, track } = req.body;
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
     }
@@ -73,6 +73,7 @@ const createUser = async (req, res) => {
     };
     if (course         && role.toLowerCase() === 'alumni') userData.course         = course.trim().toUpperCase();
     if (graduationYear && role.toLowerCase() === 'alumni') userData.graduationYear = Number(graduationYear);
+    if (track          && role.toLowerCase() === 'alumni' && userData.course === 'BSIT') userData.track = track;
 
     const user = await User.create(userData);
 
@@ -111,7 +112,7 @@ const getUsers = async (req, res) => {
 // PATCH /api/admin/users/:id
 const updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, status, course, graduationYear } = req.body;
+    const { firstName, lastName, email, role, status, course, graduationYear, track } = req.body;
     const updates = {};
     if (firstName      !== undefined) updates.firstName      = firstName.trim();
     if (lastName       !== undefined) updates.lastName       = lastName.trim();
@@ -120,6 +121,7 @@ const updateUser = async (req, res) => {
     if (status         !== undefined) updates.status         = status;
     if (course         !== undefined) updates.course         = course ? course.trim().toUpperCase() : course;
     if (graduationYear !== undefined) updates.graduationYear = graduationYear ? Number(graduationYear) : undefined;
+    if (track          !== undefined) updates.track          = (updates.course ?? course) === 'BSIT' ? (track || '') : '';
 
     const user = await User.findByIdAndUpdate(
       req.params.id,

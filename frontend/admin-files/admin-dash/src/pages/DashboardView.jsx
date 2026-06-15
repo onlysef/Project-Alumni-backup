@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import Icon from "../Icon.jsx";
 import { Dropdown } from "../Primitives.jsx";
-import { CareerChart, EmploymentChart } from "../Charts.jsx";
-import { careerSets, employmentSets, assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
+import { CourseJobChart, EmploymentChart } from "../Charts.jsx";
+import { employmentSets, assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
 
 import { API } from "../shared.js";
 
@@ -21,11 +21,11 @@ function timeAgo(dateStr) {
 
 const reportNames = [
   "Employment Status Distribution",
-  "Course vs Career Relationship",
+  "Course vs Job",
   "Survey Completion Report",
 ];
 
-function downloadReport(name, employmentIndex, careerIndex, employmentSets, careerSets) {
+function downloadReport(name, employmentIndex, courseJobData, employmentSets) {
   let csv = "";
   let filename = "";
 
@@ -33,13 +33,17 @@ function downloadReport(name, employmentIndex, careerIndex, employmentSets, care
     const set = employmentSets[employmentIndex] || employmentSets[0];
     csv = "Status,Percentage\nEmployed," + set.employed + "%\nUnemployed," + set.unemployed + "%\nUnidentified," + set.unidentified + "%\nTotal Records," + set.count;
     filename = "employment-status-distribution.csv";
-  } else if (name === "Course vs Career Relationship") {
-    const set = careerSets[careerIndex] || careerSets[0];
-    csv = "Course,Percentage\n" + set.legends.map((l, i) => {
-      const [course] = l.split(" - ");
-      return course + "," + set.values[i] + "%";
-    }).join("\n");
-    filename = "course-vs-career-relationship.csv";
+  } else if (name === "Course vs Job") {
+    const rows = courseJobData.byCourse || [];
+    if (rows.length) {
+      csv = "Course,Employment Rate,Job-Related Rate,Employed,Total\n" +
+        rows.map((d) =>
+          `${d.course},${d.employmentRate}%,${d.jobRelatedRate}%,${d.employed},${d.total}`
+        ).join("\n");
+    } else {
+      csv = "Course,Employment Rate\nNo data available";
+    }
+    filename = "course-vs-job.csv";
   } else {
     csv = "Report,Status\nSurvey Completion Report,No data available";
     filename = "survey-completion-report.csv";
@@ -54,9 +58,16 @@ function downloadReport(name, employmentIndex, careerIndex, employmentSets, care
   URL.revokeObjectURL(url);
 }
 
+const COURSE_JOB_METRICS = [
+  { label: "Employment Rate",  key: "employmentRate" },
+  { label: "Job-Related Rate", key: "jobRelatedRate" },
+  { label: "BSIT Tracks",     key: "bsitTracks" },
+];
+
 export default function DashboardView({ active, showToast }) {
-  const [careerIndex, setCareerIndex] = useState(0);
   const [employmentIndex, setEmploymentIndex] = useState(0);
+  const [courseJobData, setCourseJobData]     = useState({ byCourse: [], bsitByTrack: [] });
+  const [courseJobMetric, setCourseJobMetric] = useState("employmentRate");
   const [totalUsers, setTotalUsers] = useState(null);
   const [employedCount, setEmployedCount] = useState(null);
   const [tracerCount, setTracerCount]     = useState(null);
@@ -89,6 +100,17 @@ export default function DashboardView({ active, showToast }) {
       }
     }
 
+    async function fetchCourseJobStats() {
+      try {
+        const res = await fetch(`${API}/admin/employment/course-stats`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setCourseJobData(data);
+      } catch {
+        // silently fail
+      }
+    }
+
     async function fetchActivities() {
       try {
         const res = await fetch(`${API}/admin/announcements/activity`, { headers: authHeaders() });
@@ -105,11 +127,13 @@ export default function DashboardView({ active, showToast }) {
     fetchTotalUsers();
     fetchActivities();
     fetchEmploymentStats();
+    fetchCourseJobStats();
 
     const interval = setInterval(() => {
       fetchTotalUsers();
       fetchActivities();
       fetchEmploymentStats();
+      fetchCourseJobStats();
     }, 30000);
     return () => clearInterval(interval);
   }, [active]);
@@ -170,24 +194,24 @@ export default function DashboardView({ active, showToast }) {
 
           <section className="panel">
             <div className="panel-head">
-              <span>Course vs Career Recommendation</span>
+              <span>Course vs Job</span>
               <Dropdown
                 menuClassName="filter-menu"
-                active={careerSets[careerIndex].label}
-                options={careerSets.map((s) => s.label)}
+                active={COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label}
+                options={COURSE_JOB_METRICS.map((m) => m.label)}
                 onSelect={(label) => {
-                  const i = careerSets.findIndex((s) => s.label === label);
-                  setCareerIndex(i);
-                  showToast(`Course chart filtered: ${label}`);
+                  const m = COURSE_JOB_METRICS.find((x) => x.label === label);
+                  if (m) setCourseJobMetric(m.key);
+                  showToast(`Course chart: ${label}`);
                 }}
                 trigger={(toggle) => (
                   <button className="filter" type="button" onClick={toggle}>
-                    {careerSets[careerIndex].label === "All" ? "Filter" : careerSets[careerIndex].label}
+                    {COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label ?? "Filter"}
                   </button>
                 )}
               />
             </div>
-            <CareerChart index={careerIndex} />
+            <CourseJobChart data={courseJobData} metric={courseJobMetric} />
           </section>
 
           <section className="panel">
@@ -257,7 +281,7 @@ export default function DashboardView({ active, showToast }) {
                   type="button"
                   aria-label={`Download ${name}`}
                   onClick={() => {
-                    downloadReport(name, employmentIndex, careerIndex, employmentSets, careerSets);
+                    downloadReport(name, employmentIndex, courseJobData, employmentSets);
                     showToast(`${name} downloaded.`);
                   }}
                 >

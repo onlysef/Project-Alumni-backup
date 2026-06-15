@@ -12,7 +12,7 @@ const {
 const { getAllJobs } = require('../controllers/jobController');
 const {
   getAlumniWithoutRecord, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
-  getEmploymentStats,
+  getCourseJobStats, getEmploymentStats,
   getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
@@ -58,6 +58,7 @@ router.delete('/partnerships/:id', deletePartnership);
 router.get('/jobs', getAllJobs);
 
 // Employment records — static sub-paths before /:id
+router.get('/employment/course-stats',               getCourseJobStats);
 router.get('/employment/stats',                      getEmploymentStats);
 router.get('/employment/activity',                   getEmploymentActivity);
 router.get('/employment/export',                     exportEmploymentRecords);

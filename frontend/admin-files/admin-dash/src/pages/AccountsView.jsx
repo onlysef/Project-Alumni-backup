@@ -26,6 +26,7 @@ function mapUser(u) {
     role:           capitalize(u.role),
     status:         capitalize(u.status),
     course:         u.course         || "",
+    track:          u.track          || "",
     graduationYear: u.graduationYear || "",
   };
 }
@@ -207,6 +208,7 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
               if (data.role.toLowerCase() === "alumni") {
                 if (data.course)         payload.course         = data.course;
                 if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
+                payload.track = data.course === "BSIT" ? (data.track || "") : "";
               }
               const res = await fetch(`${API}/admin/users/${entry.row.id}`, {
                 method: "PATCH",
@@ -233,6 +235,7 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
               if (data.role.toLowerCase() === "alumni") {
                 if (data.course)         payload.course         = data.course;
                 if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
+                if (data.course === "BSIT" && data.track) payload.track = data.track;
               }
               const res = await fetch(`${API}/admin/users`, {
                 method: "POST",
@@ -370,11 +373,15 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
   );
 }
 
+const BSIT_TRACKS = ["TSM", "WMA", "NA"];
+
 export function AdminEntryModal({ entry, onClose, onSubmit }) {
-  const [role, setRole] = React.useState(entry?.row?.role || "Alumni");
+  const [role,   setRole]   = React.useState(entry?.row?.role   || "Alumni");
+  const [course, setCourse] = React.useState(entry?.row?.course || "");
 
   React.useEffect(() => {
-    setRole(entry?.row?.role || "Alumni");
+    setRole(entry?.row?.role     || "Alumni");
+    setCourse(entry?.row?.course || "");
   }, [entry]);
 
   if (!entry) return null;
@@ -400,6 +407,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
               role:           f.role.value,
               status:         f.status ? f.status.value : undefined,
               course:         f.course        ? f.course.value         : undefined,
+              track:          f.track         ? f.track.value          : "",
               graduationYear: f.graduationYear ? f.graduationYear.value : undefined,
             });
           }}
@@ -425,11 +433,19 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
             {role === "Alumni" && (
               <>
                 <label>Course
-                  <select name="course" defaultValue={row?.course || ""}>
+                  <select name="course" value={course} onChange={(e) => setCourse(e.target.value)}>
                     <option value="">— Select course —</option>
                     {COURSES.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </label>
+                {course === "BSIT" && (
+                  <label>Track
+                    <select name="track" defaultValue={row?.track || ""}>
+                      <option value="">— Select track —</option>
+                      {BSIT_TRACKS.map((t) => <option key={t}>{t}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label>Graduation Year
                   <select name="graduationYear" defaultValue={row?.graduationYear || ""}>
                     <option value="">— Select year —</option>
