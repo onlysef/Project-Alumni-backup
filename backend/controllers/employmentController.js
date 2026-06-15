@@ -475,18 +475,29 @@ const updateEmploymentRecord = async (req, res) => {
 // GET /api/admin/employment/stats
 const getEmploymentStats = async (req, res) => {
   try {
-    const [counts, tracerCount] = await Promise.all([
+    const existingUserLookup = [
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: { '_user.0': { $exists: true } } },
+    ];
+
+    const [counts, tracerResult] = await Promise.all([
       AlumniEmployment.aggregate([
+        ...existingUserLookup,
         { $group: { _id: '$employment_status', count: { $sum: 1 } } },
       ]),
-      TracerStudyResponse.countDocuments(),
+      TracerStudyResponse.aggregate([
+        ...existingUserLookup,
+        { $count: 'total' },
+      ]),
     ]);
+
+    const tracerCount = tracerResult[0]?.total ?? 0;
     const stats = { employed: 0, unemployed: 0, selfEmployed: 0, notYetUpdated: 0, total: 0, tracerSubmissions: tracerCount };
     for (const c of counts) {
       stats.total += c.count;
-      if (c._id === 'Employed')           stats.employed      = c.count;
-      else if (c._id === 'Unemployed')    stats.unemployed    = c.count;
-      else if (c._id === 'Self-employed') stats.selfEmployed  = c.count;
+      if (c._id === 'Employed')             stats.employed      = c.count;
+      else if (c._id === 'Unemployed')      stats.unemployed    = c.count;
+      else if (c._id === 'Self-employed')   stats.selfEmployed  = c.count;
       else if (c._id === 'Not Yet Updated') stats.notYetUpdated = c.count;
     }
     res.json(stats);
