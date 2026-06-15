@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Icon from "../Icon.jsx";
 import { Dropdown } from "../Primitives.jsx";
 import { CourseJobChart, EmploymentChart } from "../Charts.jsx";
-import { employmentSets, assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
+import { assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
 
 import { API } from "../shared.js";
 
@@ -25,13 +25,20 @@ const reportNames = [
   "Survey Completion Report",
 ];
 
-function downloadReport(name, employmentIndex, courseJobData, employmentSets) {
+function downloadReport(name, courseJobData, donutData) {
   let csv = "";
   let filename = "";
 
   if (name === "Employment Status Distribution") {
-    const set = employmentSets[employmentIndex] || employmentSets[0];
-    csv = "Status,Percentage\nEmployed," + set.employed + "%\nUnemployed," + set.unemployed + "%\nUnidentified," + set.unidentified + "%\nTotal Records," + set.count;
+    if (donutData) {
+      csv = "Status,Percentage,Count\n" +
+        `Employed,${donutData.employedPct}%,${donutData.employed}\n` +
+        `Unemployed,${donutData.unemployedPct}%,${donutData.unemployed}\n` +
+        `Unidentified,${donutData.unidentifiedPct}%,${donutData.unidentified}\n` +
+        `Total,,${donutData.total}`;
+    } else {
+      csv = "Status,Percentage,Count\nNo data available,,";
+    }
     filename = "employment-status-distribution.csv";
   } else if (name === "Course vs Job") {
     const rows = courseJobData.byCourse || [];
@@ -64,8 +71,11 @@ const COURSE_JOB_METRICS = [
   { label: "BSIT Tracks",     key: "bsitTracks" },
 ];
 
+const DONUT_COURSES = ["All", "BSIT", "BSCS", "BSIS"];
+
 export default function DashboardView({ active, showToast }) {
-  const [employmentIndex, setEmploymentIndex] = useState(0);
+  const [donutData, setDonutData]             = useState(null);
+  const [donutCourse, setDonutCourse]         = useState("All");
   const [courseJobData, setCourseJobData]     = useState({ byCourse: [], bsitByTrack: [] });
   const [courseJobMetric, setCourseJobMetric] = useState("employmentRate");
   const [totalUsers, setTotalUsers] = useState(null);
@@ -83,9 +93,7 @@ export default function DashboardView({ active, showToast }) {
         if (!res.ok) return;
         const data = await res.json();
         setTotalUsers(data.users?.length ?? 0);
-      } catch {
-        // silently fail — stat card stays at last known value
-      }
+      } catch {}
     }
 
     async function fetchEmploymentStats() {
@@ -95,9 +103,7 @@ export default function DashboardView({ active, showToast }) {
         const data = await res.json();
         setEmployedCount(data.employed ?? 0);
         setTracerCount(data.tracerSubmissions ?? 0);
-      } catch {
-        // silently fail
-      }
+      } catch {}
     }
 
     async function fetchCourseJobStats() {
@@ -106,9 +112,7 @@ export default function DashboardView({ active, showToast }) {
         if (!res.ok) return;
         const data = await res.json();
         setCourseJobData(data);
-      } catch {
-        // silently fail
-      }
+      } catch {}
     }
 
     async function fetchActivities() {
@@ -117,9 +121,7 @@ export default function DashboardView({ active, showToast }) {
         if (!res.ok) return;
         const data = await res.json();
         setPostActivities(data.activities || []);
-      } catch {
-        // silently fail
-      } finally {
+      } catch {} finally {
         setActivitiesLoading(false);
       }
     }
@@ -137,6 +139,20 @@ export default function DashboardView({ active, showToast }) {
     }, 30000);
     return () => clearInterval(interval);
   }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    async function fetchDonutStats() {
+      try {
+        const qs  = donutCourse !== "All" ? `?course=${donutCourse}` : "";
+        const res = await fetch(`${API}/admin/employment/donut-stats${qs}`, { headers: authHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setDonutData(data);
+      } catch {}
+    }
+    fetchDonutStats();
+  }, [active, donutCourse]);
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -219,21 +235,21 @@ export default function DashboardView({ active, showToast }) {
               <span>Employed vs Unemployed</span>
               <Dropdown
                 menuClassName="filter-menu"
-                active={employmentSets[employmentIndex].label}
-                options={employmentSets.map((s) => s.label)}
+                active={donutCourse}
+                options={DONUT_COURSES}
                 onSelect={(label) => {
-                  const i = employmentSets.findIndex((s) => s.label === label);
-                  setEmploymentIndex(i);
-                  showToast(`Employment chart filtered: ${label}`);
+                  setDonutCourse(label);
+                  setDonutData(null);
+                  showToast(`Employment chart: ${label}`);
                 }}
                 trigger={(toggle) => (
                   <button className="filter" type="button" onClick={toggle}>
-                    {employmentSets[employmentIndex].label === "All" ? "Filter" : employmentSets[employmentIndex].label}
+                    {donutCourse === "All" ? "Filter" : donutCourse}
                   </button>
                 )}
               />
             </div>
-            <EmploymentChart index={employmentIndex} />
+            <EmploymentChart data={donutData} />
           </section>
         </div>
 
@@ -281,7 +297,7 @@ export default function DashboardView({ active, showToast }) {
                   type="button"
                   aria-label={`Download ${name}`}
                   onClick={() => {
-                    downloadReport(name, employmentIndex, courseJobData, employmentSets);
+                    downloadReport(name, courseJobData, donutData);
                     showToast(`${name} downloaded.`);
                   }}
                 >

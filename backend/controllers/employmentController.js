@@ -575,6 +575,51 @@ const getCourseJobStats = async (req, res) => {
   }
 };
 
+// GET /api/admin/employment/donut-stats?course=BSIT
+const getDonutStats = async (req, res) => {
+  try {
+    const { course = '' } = req.query;
+
+    const pipeline = [
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: { '_user.0': { $exists: true } } },
+      { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      { $match: { '_u.role': 'alumni' } },
+    ];
+
+    if (course && ['BSIT', 'BSCS', 'BSIS'].includes(course)) {
+      pipeline.push({ $match: { '_u.course': course } });
+    }
+
+    pipeline.push({
+      $group: {
+        _id:          null,
+        total:        { $sum: 1 },
+        employed:     { $sum: { $cond: [{ $in: ['$employment_status', ['Employed', 'Self-employed']] }, 1, 0] } },
+        unemployed:   { $sum: { $cond: [{ $eq: ['$employment_status', 'Unemployed'] }, 1, 0] } },
+        unidentified: { $sum: { $cond: [{ $eq: ['$employment_status', 'Not Yet Updated'] }, 1, 0] } },
+      },
+    });
+
+    const result = await AlumniEmployment.aggregate(pipeline);
+    const row = result[0] || { total: 0, employed: 0, unemployed: 0, unidentified: 0 };
+    const { total, employed, unemployed, unidentified } = row;
+
+    res.json({
+      total,
+      employed,
+      unemployed,
+      unidentified,
+      employedPct:     total > 0 ? Math.round((employed     / total) * 100) : 0,
+      unemployedPct:   total > 0 ? Math.round((unemployed   / total) * 100) : 0,
+      unidentifiedPct: total > 0 ? Math.round((unidentified / total) * 100) : 0,
+    });
+  } catch (err) {
+    console.error('getDonutStats error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // GET /api/admin/employment/stats
 const getEmploymentStats = async (req, res) => {
   try {
@@ -842,6 +887,7 @@ module.exports = {
   syncTracerToEmployment,
   backfillEmploymentRecords,
   getCourseJobStats,
+  getDonutStats,
   getEmploymentStats,
   getEmploymentRecords,
   getEmploymentRecord,
