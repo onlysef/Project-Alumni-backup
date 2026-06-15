@@ -63,7 +63,7 @@ export default function AdminDashboard() {
     if (v === "accounts" && subFilter) {
       setAccountsRoleFilter(subFilter);
     }
-    if (window.innerWidth <= 600) setCollapsed(true);git add frontend/admin-files/admin-dash/src/pages/AdminDashboard.jsx frontend/admin-files/admin-dash/src/admin-mod.css
+    if (window.innerWidth <= 600) setCollapsed(true);
   }
 
   return (
