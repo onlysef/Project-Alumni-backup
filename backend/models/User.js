@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   role:       { type: String, enum: ['admin', 'alumni', 'coordinator', 'employer'], default: 'alumni' },
   status:     { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
   college:        { type: String, default: '' },
+  company:        { type: String, default: '' },
   course:         { type: String },
   track:          { type: String, enum: ['TSM', 'WMA', 'NA', ''], default: '' },
   graduationYear: { type: Number },

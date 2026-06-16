@@ -31,6 +31,7 @@ export default function PartnershipsView({ active, showToast }) {
   const [statusFilter, setStatusFilter] = useState("Status");
   const [activeFilter, setActiveFilter] = useState("All");
   const [entry, setEntry]           = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   useEffect(() => {
     if (!active) return;
@@ -143,7 +144,9 @@ export default function PartnershipsView({ active, showToast }) {
                   <td>
                     <ActionMenu
                       actions={partnerActionList(r.status)}
-                      onSelect={(a) => handleAction(r, a)}
+                      onSelect={(a) => { setOpenMenuId(null); handleAction(r, a); }}
+                      isOpen={openMenuId === r.id}
+                      onToggle={(v) => setOpenMenuId(typeof v === "function" ? (v(openMenuId === r.id) ? r.id : null) : (v ? r.id : null))}
                     />
                   </td>
                 </tr>

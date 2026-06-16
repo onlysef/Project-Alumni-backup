@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
+const Partnership = require('../models/Partnership');
 const { generateOTP, sendOTPEmail } = require('../utils/emailService');
 
 const signToken = (userId, role) =>
@@ -29,6 +30,9 @@ const login = async (req, res) => {
     }
 
     if (user.status === 'pending') {
+      if (user.role === 'employer') {
+        return res.status(403).json({ message: 'Your account is pending admin approval. Please wait before logging in.' });
+      }
       user.status = 'active';
       await user.save();
     }
@@ -279,6 +283,47 @@ const disableTwoFactor = async (req, res) => {
   }
 };
 
+// POST /api/auth/register-partner
+const registerPartner = async (req, res) => {
+  try {
+    const { firstName, lastName, company, partnerType, email, password } = req.body;
+
+    if (!firstName || !lastName || !company || !partnerType || !email || !password) {
+      return res.status(400).json({ message: 'All fields are required.' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existing) return res.status(400).json({ message: 'Email is already registered.' });
+
+    const hashed = await bcrypt.hash(password, 10);
+    await User.create({
+      firstName: firstName.trim(),
+      lastName:  lastName.trim(),
+      email:     email.toLowerCase().trim(),
+      password:  hashed,
+      role:      'employer',
+      status:    'pending',
+      firstLogin: false,
+      company:   company.trim(),
+    });
+
+    await Partnership.create({
+      name:    company.trim(),
+      type:    partnerType,
+      contact: email.toLowerCase().trim(),
+      status:  'Pending',
+    });
+
+    res.status(201).json({ message: 'Registration submitted. Please wait for admin approval before logging in.' });
+  } catch (err) {
+    console.error('registerPartner error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   login,
   verifyTwoFactor,
@@ -288,4 +333,5 @@ module.exports = {
   resetPassword,
   enableTwoFactor,
   disableTwoFactor,
+  registerPartner,
 };
