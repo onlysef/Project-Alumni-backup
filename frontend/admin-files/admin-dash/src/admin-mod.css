@@ -2137,6 +2137,26 @@
             width: 16%;
         }
 
+        .partnership-table th:nth-child(1),
+        .partnership-table td:nth-child(1),
+        .partnership-table th:nth-child(3),
+        .partnership-table td:nth-child(3) {
+            width: 24%;
+        }
+
+        .partnership-table th:nth-child(2),
+        .partnership-table td:nth-child(2),
+        .partnership-table th:nth-child(4),
+        .partnership-table td:nth-child(4) {
+            width: 18%;
+        }
+
+        .partnership-table th:last-child,
+        .partnership-table td:last-child {
+            width: 16% !important;
+            text-align: left;
+        }
+
         .account-table th:last-child,
         .account-table td:last-child {
             width: 14% !important;
