@@ -3,6 +3,7 @@ const router = express.Router();
 const ctrl = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 
+router.post('/register-partner',  ctrl.registerPartner);
 router.post('/login',             ctrl.login);
 router.post('/verify-2fa',        ctrl.verifyTwoFactor);
 router.post('/resend-2fa',        ctrl.resendTwoFactor);

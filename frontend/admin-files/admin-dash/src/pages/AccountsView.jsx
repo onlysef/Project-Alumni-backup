@@ -21,7 +21,7 @@ function mapUser(u) {
     id:             u._id,
     firstName:      u.firstName,
     lastName:       u.lastName,
-    name:           `${u.firstName} ${u.lastName}`,
+    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${u.lastName}`,
     email:          u.email,
     role:           capitalize(u.role),
     status:         capitalize(u.status),
@@ -29,6 +29,7 @@ function mapUser(u) {
     course:         u.course         || "",
     track:          u.track          || "",
     graduationYear: u.graduationYear || "",
+    company:        u.company        || "",
   };
 }
 

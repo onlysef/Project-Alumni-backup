@@ -36,6 +36,7 @@ app.use('/api/admin',    adminRoutes);
 app.use('/api/alumni',   alumniRoutes);
 app.use('/api/employer', employerRoutes);
 
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Alumni Portal API is running.' });
 });
