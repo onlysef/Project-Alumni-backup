@@ -1569,8 +1569,8 @@
             border-radius: 4px;
             background: var(--maroon);
             color: #fff;
-            font-size: 12px;
-            font-weight: 900;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
         }
 
@@ -1582,8 +1582,8 @@
             border-radius: 4px;
             background: #dedede;
             color: var(--maroon);
-            font-size: 12px;
-            font-weight: 900;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
         }
 
@@ -2070,6 +2070,9 @@
             border-radius: 7px;
             background: #fff;
             color: var(--maroon);
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1;
         }
 
         .admin-search {
@@ -2219,8 +2222,8 @@
             min-width: 44px;
             border: 0;
             border-radius: 5px;
-            font-size: 12px;
-            font-weight: 800;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
             padding: 0 10px;
         }
@@ -2901,13 +2904,25 @@
             padding: 0 16px;
             background: #e8dada;
             color: var(--maroon);
-            font-weight: 900;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
         }
 
-        .modal-actions button[type="submit"] {
+        .modal-actions button[type="submit"],
+        .modal-actions button.modal-confirm {
             background: var(--maroon);
             color: #fff;
+        }
+
+        .modal-body {
+            padding: 18px 18px 18px;
+        }
+
+         body.dark-mode .modal-actions button[type="submit"],
+        body.dark-mode .modal-actions button.modal-confirm {
+            background: #fac853;
+            color: #31000a;
         }
 
         .topbar-modal {
