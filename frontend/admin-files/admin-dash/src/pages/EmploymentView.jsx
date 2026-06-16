@@ -39,6 +39,7 @@ function groupActivities(acts) {
   return Object.entries(buckets).filter(([, v]) => v.length > 0);
 }
 
+const COLLEGES   = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
 const COURSES    = ["BSIT", "BSCS", "BSIS"];
 const STATUSES   = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
 const ADD_STATUSES = ["Employed", "Unemployed", "Self-employed"];
@@ -60,7 +61,7 @@ const INDUSTRIES = [
 ];
 const BATCH_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
 
-const EMPTY_FILTERS   = { status: "", course: "", batch_year: "", date_updated: "", company: "" };
+const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "", company: "" };
 const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
 
@@ -190,6 +191,7 @@ export default function EmploymentView({ active, showToast }) {
           page,
           limit,
           status:       appliedFilters.status,
+          college:      appliedFilters.college,
           course:       appliedFilters.course,
           batch_year:   appliedFilters.batch_year,
           date_updated: appliedFilters.date_updated,
@@ -264,6 +266,7 @@ export default function EmploymentView({ active, showToast }) {
         format,
         search,
         status:     appliedFilters.status,
+        college:    appliedFilters.college,
         course:     appliedFilters.course,
         batch_year: appliedFilters.batch_year,
         company:    appliedFilters.company,
@@ -306,16 +309,12 @@ export default function EmploymentView({ active, showToast }) {
 
   function validateEdit(f) {
     const e = {};
-    if (!f.employment_status) { e.employment_status = "Status is required."; return e; }
-    if (f.employment_status === "Employed") {
+    const status = f.employment_status;
+    if (status === "Employed") {
       if (!f.company_name?.trim())  e.company_name  = "Company name is required.";
       if (!f.job_title?.trim())     e.job_title     = "Job title is required.";
       if (!f.industry?.trim())      e.industry      = "Industry is required.";
       if (!f.work_location?.trim()) e.work_location = "Work location is required.";
-    } else if (f.employment_status === "Unemployed") {
-      if (!f.reason_unemployed?.trim()) e.reason_unemployed = "Reason is required.";
-    } else if (f.employment_status === "Self-employed") {
-      if (!f.industry?.trim()) e.industry = "Industry or business type is required.";
     }
     return e;
   }
@@ -360,6 +359,7 @@ export default function EmploymentView({ active, showToast }) {
 <h1>Employment Record</h1>
 <table>
   <tr><th>Name</th><td>${r.name}</td></tr>
+  <tr><th>College</th><td>${r.college || "—"}</td></tr>
   <tr><th>Course</th><td>${r.course || "—"}</td></tr>
   <tr><th>Batch Year</th><td>${r.graduation_year || "—"}</td></tr>
   <tr><th>Employment Status</th><td>${r.employment_status}</td></tr>
@@ -529,6 +529,7 @@ export default function EmploymentView({ active, showToast }) {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>College</th>
                 <th>Course</th>
                 <th>Company</th>
                 <th>Status</th>
@@ -538,14 +539,15 @@ export default function EmploymentView({ active, showToast }) {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6} className="emp-loading">Loading employment records…</td></tr>
+                <tr><td colSpan={7} className="emp-loading">Loading employment records…</td></tr>
               ) : error ? (
-                <tr><td colSpan={6} className="emp-error">{error} — <button type="button" style={{ color: "var(--maroon)", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }} onClick={() => setRefreshKey(k => k + 1)}>Retry</button></td></tr>
+                <tr><td colSpan={7} className="emp-error">{error} — <button type="button" style={{ color: "var(--maroon)", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }} onClick={() => setRefreshKey(k => k + 1)}>Retry</button></td></tr>
               ) : records.length === 0 ? (
-                <tr><td colSpan={6} className="emp-empty">No employment records found.</td></tr>
+                <tr><td colSpan={7} className="emp-empty">No employment records found.</td></tr>
               ) : records.map(r => (
                 <tr key={r._id}>
                   <td>{r.name}</td>
+                  <td>{r.college || "—"}</td>
                   <td>{r.course || "—"}</td>
                   <td>{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") ? "—" : fmtField(r.company_name)}</td>
                   <td><StatusBadge status={r.employment_status} /></td>
@@ -648,7 +650,14 @@ export default function EmploymentView({ active, showToast }) {
               </select>
             </label>
             <label>
-              Course
+              College
+              <select value={pendingFilters.college} onChange={e => setPendingFilters(f => ({ ...f, college: e.target.value }))}>
+                <option value="">All colleges</option>
+                {COLLEGES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </label>
+            <label>
+              Course (CCS)
               <select value={pendingFilters.course} onChange={e => setPendingFilters(f => ({ ...f, course: e.target.value }))}>
                 <option value="">All courses</option>
                 {COURSES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -769,19 +778,7 @@ export default function EmploymentView({ active, showToast }) {
             <form onSubmit={handleSaveEdit}>
               <div className="edit-record-form">
 
-                <label>
-                  Employment Status *
-                  <select
-                    value={editForm.employment_status}
-                    onChange={e => setEditForm(f => ({ ...f, employment_status: e.target.value }))}
-                  >
-                    <option value="">Select status…</option>
-                    {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                  {editErrors.employment_status && <span className="field-error">{editErrors.employment_status}</span>}
-                </label>
-
-                {editForm.employment_status && editForm.employment_status !== "Unemployed" && editForm.employment_status !== "Not Yet Updated" && (
+                {editForm.employment_status !== "Unemployed" && editForm.employment_status !== "Not Yet Updated" && (
                   <>
                     <div className="field-row">
                       <label>
@@ -866,14 +863,19 @@ export default function EmploymentView({ active, showToast }) {
 
                 {editForm.employment_status === "Unemployed" && (
                   <label>
-                    Reason for Unemployment *
+                    Reason for Unemployment
                     <textarea
                       value={editForm.reason_unemployed}
                       onChange={e => setEditForm(f => ({ ...f, reason_unemployed: e.target.value }))}
-                      placeholder="Briefly describe your situation…"
+                      placeholder="Briefly describe the situation…"
                     />
-                    {editErrors.reason_unemployed && <span className="field-error">{editErrors.reason_unemployed}</span>}
                   </label>
+                )}
+
+                {editForm.employment_status === "Not Yet Updated" && (
+                  <p style={{ color: "var(--muted)", fontSize: "13px", margin: 0 }}>
+                    This alumni has not yet submitted their employment status via the tracer form.
+                  </p>
                 )}
               </div>
 

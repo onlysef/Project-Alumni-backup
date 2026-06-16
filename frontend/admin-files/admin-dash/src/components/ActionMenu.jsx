@@ -14,9 +14,13 @@ const ACTION_ICONS = {
   resend:   "icon-15",
 };
 
-export default function ActionMenu({ actions, onSelect }) {
-  const [open, setOpen] = useState(false);
+export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
+  const [localOpen, setLocalOpen] = useState(false);
   const ref = useRef(null);
+
+  // Support both controlled (isOpen/onToggle) and uncontrolled modes
+  const open     = isOpen    !== undefined ? isOpen    : localOpen;
+  const setOpen  = onToggle  !== undefined ? onToggle  : setLocalOpen;
 
   useEffect(() => {
     if (!open) return;
@@ -25,7 +29,7 @@ export default function ActionMenu({ actions, onSelect }) {
     };
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
-  }, [open]);
+  }, [open, setOpen]);
 
   return (
     <span className="action-menu" ref={ref}>
