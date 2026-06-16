@@ -25,13 +25,15 @@ function mapUser(u) {
     email:          u.email,
     role:           capitalize(u.role),
     status:         capitalize(u.status),
+    college:        u.college        || "",
     course:         u.course         || "",
     track:          u.track          || "",
     graduationYear: u.graduationYear || "",
   };
 }
 
-const COURSES = ["BSIT", "BSCS", "BSIS"];
+const COLLEGES = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
+const CCS_COURSES = ["BSIT", "BSCS", "BSIS"];
 const BATCH_YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
 
 export default function AccountsView({ active, showToast, roleFilterFromNav }) {
@@ -41,6 +43,7 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
   const [statusFilter, setStatusFilter] = useState("Status");
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
+  const [openMenuId, setOpenMenuId]   = useState(null);
 
   useEffect(() => {
     if (!active) return;
@@ -174,7 +177,9 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
                    <td>
                     <ActionMenu
                       actions={accountActionList(r.status)}
-                      onSelect={(a) => handleAction(r, a)}
+                      onSelect={(a) => { setOpenMenuId(null); handleAction(r, a); }}
+                      isOpen={openMenuId === r.id}
+                      onToggle={(v) => setOpenMenuId(typeof v === "function" ? (v(openMenuId === r.id) ? r.id : null) : (v ? r.id : null))}
                     />
                   </td>
                 </tr>
@@ -206,6 +211,7 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
                 status:    data.status.toLowerCase(),
               };
               if (data.role.toLowerCase() === "alumni") {
+                if (data.college)        payload.college        = data.college;
                 if (data.course)         payload.course         = data.course;
                 if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
                 payload.track = data.course === "BSIT" ? (data.track || "") : "";
@@ -233,6 +239,7 @@ export default function AccountsView({ active, showToast, roleFilterFromNav }) {
                 role:      data.role.toLowerCase(),
               };
               if (data.role.toLowerCase() === "alumni") {
+                if (data.college)        payload.college        = data.college;
                 if (data.course)         payload.course         = data.course;
                 if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
                 if (data.course === "BSIT" && data.track) payload.track = data.track;
@@ -376,12 +383,12 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 
 export function AdminEntryModal({ entry, onClose, onSubmit }) {
-  const [role,   setRole]   = React.useState(entry?.row?.role   || "Alumni");
-  const [course, setCourse] = React.useState(entry?.row?.course || "");
+  const [role,    setRole]    = React.useState(entry?.row?.role    || "Alumni");
+  const [college, setCollege] = React.useState(entry?.row?.college || "");
 
   React.useEffect(() => {
-    setRole(entry?.row?.role     || "Alumni");
-    setCourse(entry?.row?.course || "");
+    setRole(entry?.row?.role       || "Alumni");
+    setCollege(entry?.row?.college || "");
   }, [entry]);
 
   if (!entry) return null;
@@ -405,9 +412,8 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
               lastName:       f.lastName.value.trim(),
               email:          f.email.value.trim(),
               role:           f.role.value,
-              status:         f.status ? f.status.value : undefined,
-              course:         f.course        ? f.course.value         : undefined,
-              track:          f.track         ? f.track.value          : "",
+              status:         f.status        ? f.status.value         : undefined,
+              college:        f.college       ? f.college.value        : undefined,
               graduationYear: f.graduationYear ? f.graduationYear.value : undefined,
             });
           }}
@@ -432,20 +438,12 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
             </label>
             {role === "Alumni" && (
               <>
-                <label>Course
-                  <select name="course" value={course} onChange={(e) => setCourse(e.target.value)}>
-                    <option value="">— Select course —</option>
-                    {COURSES.map((c) => <option key={c}>{c}</option>)}
+                <label>College
+                  <select name="college" value={college} onChange={(e) => setCollege(e.target.value)}>
+                    <option value="">— Select college —</option>
+                    {COLLEGES.map((c) => <option key={c}>{c}</option>)}
                   </select>
                 </label>
-                {course === "BSIT" && (
-                  <label>Track
-                    <select name="track" defaultValue={row?.track || ""}>
-                      <option value="">— Select track —</option>
-                      {BSIT_TRACKS.map((t) => <option key={t}>{t}</option>)}
-                    </select>
-                  </label>
-                )}
                 <label>Graduation Year
                   <select name="graduationYear" defaultValue={row?.graduationYear || ""}>
                     <option value="">— Select year —</option>

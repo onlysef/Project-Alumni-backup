@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import ReactDOM from "react-dom";
 
 // Generic "click to open, click outside to close" dropdown.
 export function Dropdown({ trigger, className, options, onSelect, active, menuClassName }) {
@@ -45,7 +46,7 @@ export function Dropdown({ trigger, className, options, onSelect, active, menuCl
 
 export function Modal({ open, onClose, className, children }) {
   if (!open) return null;
-  return (
+  return ReactDOM.createPortal(
     <div
       className={`modal-backdrop show${className ? " " + className : ""}`}
       onClick={(e) => {
@@ -53,6 +54,7 @@ export function Modal({ open, onClose, className, children }) {
       }}
     >
       {children}
-    </div>
+    </div>,
+    document.body
   );
 }

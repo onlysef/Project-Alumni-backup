@@ -68,7 +68,7 @@ async function resolveAdminName(userId) {
   }
 }
 
-function buildBasePipeline({ search, status, course, batch_year, date_updated, company }) {
+function buildBasePipeline({ search, status, college, course, batch_year, date_updated, company }) {
   const empMatch = {};
   if (status) empMatch.employment_status = status;
   if (company) empMatch.company_name = { $regex: company, $options: 'i' };
@@ -111,6 +111,7 @@ function buildBasePipeline({ search, status, course, batch_year, date_updated, c
       ],
     });
   }
+  if (college)     andFilters.push({ 'alumni.college':        college });
   if (course)      andFilters.push({ 'alumni.course':        course });
   if (batch_year)  andFilters.push({ 'alumni.graduationYear': parseInt(batch_year, 10) });
 
@@ -124,6 +125,7 @@ const listProjection = {
     _id:                   1,
     alumni_id:             1,
     name:                  { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
+    college:               '$alumni.college',
     course:                '$alumni.course',
     graduation_year:       '$alumni.graduationYear',
     employment_status:     1,
@@ -221,7 +223,7 @@ const createEmploymentRecord = async (req, res) => {
 const getEmploymentRecords = async (req, res) => {
   try {
     const {
-      search = '', status = '', course = '', batch_year = '',
+      search = '', status = '', college = '', course = '', batch_year = '',
       date_updated = '', company = '', page = 1, limit = 10,
     } = req.query;
 
@@ -229,7 +231,7 @@ const getEmploymentRecords = async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
     const skip     = (pageNum - 1) * limitNum;
 
-    const base = buildBasePipeline({ search, status, course, batch_year, date_updated, company });
+    const base = buildBasePipeline({ search, status, college, course, batch_year, date_updated, company });
 
     const [records, countResult] = await Promise.all([
       AlumniEmployment.aggregate([
@@ -276,9 +278,9 @@ const getEmploymentActivity = async (req, res) => {
 // GET /api/admin/employment/export  ← must be declared before /:id route
 const exportEmploymentRecords = async (req, res) => {
   try {
-    const { format = 'csv', status = '', course = '', batch_year = '', search = '', company = '' } = req.query;
+    const { format = 'csv', status = '', college = '', course = '', batch_year = '', search = '', company = '' } = req.query;
 
-    const base    = buildBasePipeline({ search, status, course, batch_year, company });
+    const base    = buildBasePipeline({ search, status, college, course, batch_year, company });
     const records = await AlumniEmployment.aggregate([
       ...base,
       { $sort: { last_updated: -1 } },
@@ -743,18 +745,12 @@ const syncTracerToEmployment = async (req, res) => {
         { upsert: true, new: true }
       );
 
-      // Update User.course and User.graduationYear if currently empty
-      const userUpdates = {};
-      const currentUser = await User.findById(tracer.alumni_id).select('course graduationYear').lean();
-      if (!currentUser?.course) {
-        const mapped = mapProgramToCourse(tracer.programsCompleted);
-        if (mapped) userUpdates.course = mapped;
-      }
-      if (!currentUser?.graduationYear && extraResolved.graduation_year) {
-        userUpdates.graduationYear = extraResolved.graduation_year;
-      }
-      if (Object.keys(userUpdates).length) {
-        await User.findByIdAndUpdate(tracer.alumni_id, userUpdates);
+      // Only backfill graduationYear from tracer if not already set on the account
+      if (extraResolved.graduation_year) {
+        const currentUser = await User.findById(tracer.alumni_id).select('graduationYear').lean();
+        if (!currentUser?.graduationYear) {
+          await User.findByIdAndUpdate(tracer.alumni_id, { graduationYear: extraResolved.graduation_year });
+        }
       }
 
       updated++;

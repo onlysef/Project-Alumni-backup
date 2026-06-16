@@ -51,7 +51,7 @@ function generateTempPassword() {
 // POST /api/admin/users
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, course, graduationYear, track } = req.body;
+    const { firstName, lastName, email, role, college, course, graduationYear, track } = req.body;
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
     }
@@ -71,9 +71,12 @@ const createUser = async (req, res) => {
       status:     'pending',
       firstLogin: true,
     };
-    if (course         && role.toLowerCase() === 'alumni') userData.course         = course.trim().toUpperCase();
-    if (graduationYear && role.toLowerCase() === 'alumni') userData.graduationYear = Number(graduationYear);
-    if (track          && role.toLowerCase() === 'alumni' && userData.course === 'BSIT') userData.track = track;
+    if (role.toLowerCase() === 'alumni') {
+      if (college)        userData.college        = college.trim().toUpperCase();
+      if (course)         userData.course         = course.trim().toUpperCase();
+      if (graduationYear) userData.graduationYear = Number(graduationYear);
+      if (track && userData.course === 'BSIT') userData.track = track;
+    }
 
     const user = await User.create(userData);
 
@@ -112,13 +115,14 @@ const getUsers = async (req, res) => {
 // PATCH /api/admin/users/:id
 const updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, status, course, graduationYear, track } = req.body;
+    const { firstName, lastName, email, role, status, college, course, graduationYear, track } = req.body;
     const updates = {};
     if (firstName      !== undefined) updates.firstName      = firstName.trim();
     if (lastName       !== undefined) updates.lastName       = lastName.trim();
     if (email          !== undefined) updates.email          = email.toLowerCase().trim();
     if (role           !== undefined) updates.role           = role;
     if (status         !== undefined) updates.status         = status;
+    if (college        !== undefined) updates.college        = college ? college.trim().toUpperCase() : '';
     if (course         !== undefined) updates.course         = course ? course.trim().toUpperCase() : course;
     if (graduationYear !== undefined) updates.graduationYear = graduationYear ? Number(graduationYear) : undefined;
     if (track          !== undefined) updates.track          = (updates.course ?? course) === 'BSIT' ? (track || '') : '';
@@ -193,6 +197,7 @@ const importUsers = async (req, res) => {
       const lastName       = String(row.lastName  || row['Last Name']  || row.lastname  || '').trim();
       const email          = String(row.email     || row['Email']      || '').trim().toLowerCase();
       const rawRole        = String(row.role      || row['Role']       || 'alumni').trim().toLowerCase();
+      const college        = String(row.college   || row['College']    || '').trim();
       const course         = String(row.course    || row['Course']     || '').trim();
       const gradYearRaw    = row.graduationYear   || row['Graduation Year'] || row.GraduationYear || '';
       const graduationYear = parseInt(gradYearRaw) || undefined;
@@ -205,6 +210,7 @@ const importUsers = async (req, res) => {
       parsed.push({
         firstName, lastName, email,
         role:          VALID_ROLES.includes(rawRole) ? rawRole : 'alumni',
+        college:       college ? college.toUpperCase() : undefined,
         course:        course ? course.toUpperCase() : undefined,
         graduationYear,
         tempPassword:  generateTempPassword(),
@@ -249,7 +255,8 @@ const importUsers = async (req, res) => {
       role:       r.role,
       status:     'pending',
       firstLogin: true,
-      ...(r.course        ? { course: r.course }               : {}),
+      ...(r.college        ? { college: r.college }               : {}),
+      ...(r.course         ? { course: r.course }                : {}),
       ...(r.graduationYear ? { graduationYear: r.graduationYear } : {}),
     }));
 

@@ -116,6 +116,15 @@ const DEFAULT_CONFIG = {
           order: 0,
         },
         {
+          id: 'companyName',
+          type: 'text',
+          label: 'Company Name',
+          placeholder: 'Enter the name of your employer or company',
+          required: true,
+          showIf: { questionId: 'employmentStatus', values: ['Yes'] },
+          order: 1,
+        },
+        {
           id: 'placeOfWork',
           type: 'radio',
           label: 'Where is your current place of work?',
@@ -125,7 +134,7 @@ const DEFAULT_CONFIG = {
           ],
           required: true,
           showIf: { questionId: 'employmentStatus', values: ['Yes'] },
-          order: 1,
+          order: 2,
         },
         {
           id: 'occupationTitle',
@@ -135,7 +144,7 @@ const DEFAULT_CONFIG = {
           placeholder: 'Enter your answer',
           required: true,
           showIf: { questionId: 'employmentStatus', values: ['Yes'] },
-          order: 2,
+          order: 3,
         },
         {
           id: 'industryField',
@@ -159,7 +168,7 @@ const DEFAULT_CONFIG = {
           ],
           required: true,
           showIf: { questionId: 'employmentStatus', values: ['Yes'] },
-          order: 3,
+          order: 4,
         },
         {
           id: 'presentEmploymentType',
@@ -174,7 +183,7 @@ const DEFAULT_CONFIG = {
           ],
           required: true,
           showIf: { questionId: 'employmentStatus', values: ['Yes'] },
-          order: 4,
+          order: 5,
         },
         {
           id: 'jobRelatedToDegree',
@@ -187,7 +196,7 @@ const DEFAULT_CONFIG = {
           ],
           required: true,
           showIf: { questionId: 'employmentStatus', values: ['Yes'] },
-          order: 5,
+          order: 6,
         },
         {
           id: 'yearsInCurrentJob',
@@ -203,7 +212,7 @@ const DEFAULT_CONFIG = {
           ],
           required: true,
           showIf: { questionId: 'employmentStatus', values: ['Yes'] },
-          order: 6,
+          order: 7,
         },
         {
           id: 'reasonsNotEmployed',
@@ -224,7 +233,7 @@ const DEFAULT_CONFIG = {
           ],
           required: true,
           showIf: { questionId: 'employmentStatus', values: ['No', 'Never Employed'] },
-          order: 7,
+          order: 8,
         },
       ],
     },
