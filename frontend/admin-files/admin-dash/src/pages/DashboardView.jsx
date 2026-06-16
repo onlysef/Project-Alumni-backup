@@ -223,7 +223,7 @@ export default function DashboardView({ active, showToast }) {
         <h1 className="admin-hero-title">Hello, Admin!</h1>
         <p className="admin-hero-subtitle">
           Welcome to the Alumni Tracer Management System. Monitor alumni data,
-          manage accounts, and review reports — all in one place.
+          manage accounts, and review reports all in one place.
         </p>
         <div className="admin-hero-pills">
           <span className="hero-pill hero-pill-gold">
