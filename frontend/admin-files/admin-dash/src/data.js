@@ -39,6 +39,7 @@ export function currentTime() {
 }
 
 export const viewRoutes = {
+  
   dashboard: "Dashboard",
   employment: "Alumni Employment Details",
   jobconnect: "Job Connect",
@@ -46,6 +47,7 @@ export const viewRoutes = {
   accounts: "Manage Accounts",
   announcements: "Post Announcements",
   partnerships: "Partnerships",
+  about: "Alumni Association Inc.",
 };
 
 export const navItems = [
