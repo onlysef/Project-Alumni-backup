@@ -622,7 +622,7 @@ export default function AppointmentsView({ active, showToast }) {
               ) : staff.map((s) => (
                 <div key={s._id}>
                   <strong>{s.name}</strong>
-                  <span>{s.role}</span>
+                  <span style={{ alignItems: "center", fontSize: 12, color: "var(--muted)" }}>{s.role}</span>
                   <em style={statusStyle(s.status)}>{s.status}</em>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button

@@ -127,6 +127,38 @@
             grid-template-columns: 82px 1fr;
         }
 
+        .about-section {
+            border: 1px solid #cf9c9f;
+            padding: 5%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+        }
+
+        .about-content {
+            padding: 10px;
+            flex: 1;
+        }
+        .about-content div{
+            align-items: center;
+             display: flex;
+             gap: 12px;
+        }
+
+        .about-image img {
+            width: 75%;
+            height: auto;
+            object-fit: contain;
+            display: block;
+            align-Items: center;
+             justify-content: center;
+        }
+
+        .about-title {
+            font-family: "Monotype Corsiva", cursive;
+        }
+
         .alumni-brand {
             display: flex;
             align-items: center;
@@ -2233,6 +2265,9 @@
         }
 
         .staff-list.is-editing div {
+            align-items: center;
+            border-radius: 5px;
+            background: #f9f0f0;
             display: flex;
             flex-wrap: wrap;
             align-items: center;
