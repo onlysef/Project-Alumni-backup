@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import Icon from "../Icon.jsx";
+import alumniLogo from "../logo/alumni-removebg.png";
 import tsuLogo from "../logo/tsu_logo-removebg.png";
 import toptsuLogo from "../logo/tsu-top-header.webp";
 import { navItems } from "../data.js";
@@ -12,9 +13,27 @@ export function Sidebar({ view, onSelect, collapsed }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <img src={tsuLogo} alt="TSU" className="sidebar-logo" />
+        <img
+          src={tsuLogo}
+          alt="TSU"
+          className="sidebar-logo"
+        />
+
         <div className="brand-text">
-          <img src={toptsuLogo} alt="TSU" className="toptsu-logo" />
+          <img
+              src={toptsuLogo}
+              alt="TSU"
+              className="toptsu-logo"
+          />
+
+          <div className="alumni-brand">
+            <img
+              src={alumniLogo}
+              alt="Alumni"
+              className="alumni-logo"
+            />
+            <p>Alumni Association<br /> Inc.</p>
+          </div>
         </div>
       </div>
       <nav className="nav" aria-label="Main navigation">
