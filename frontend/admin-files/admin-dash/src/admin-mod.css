@@ -139,10 +139,14 @@
             object-fit: contain;
         }
 
+        
+
         .alumni-logo {
             width: 24px;
             height: 24px;
             object-fit: contain;
+            display: block;
+  
         }
 
         .app.sidebar-collapsed .alumni-brand {
