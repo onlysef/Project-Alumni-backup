@@ -131,6 +131,15 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            cursor: pointer;
+            padding: 4px 10px 10px 10px; 
+            border-radius: 10px 10px 10px 10px;
+        }
+
+        .alumni-brand:hover,
+        .alumni-brand.active {
+            background: rgba(255, 255, 255, 0.16)
+           
         }
 
          .toptsu-logo {
