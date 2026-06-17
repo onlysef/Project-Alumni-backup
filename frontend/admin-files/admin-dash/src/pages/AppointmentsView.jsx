@@ -110,16 +110,19 @@ function ConfirmDialog({ open, message, confirmLabel = "Confirm", danger = false
           <h3>Confirm</h3>
           <button type="button" aria-label="Close" onClick={onCancel}>×</button>
         </div>
-        <p style={{ padding: "8px 0 16px", fontSize: 14, lineHeight: 1.6 }}>{message}</p>
-        <div className="modal-actions">
-          <button type="button" onClick={onCancel}>Cancel</button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            style={danger ? { background: "#c53030", color: "#fff" } : undefined}
-          >
-            {confirmLabel}
-          </button>
+        <div className="modal-body">
+          <p style={{ margin: 0, paddingBottom: 18, fontSize: 14, lineHeight: 1.6 }}>{message}</p>
+          <div className="modal-actions">
+            <button type="button" onClick={onCancel}>Cancel</button>
+            <button
+              type="button"
+              className="modal-confirm"
+              onClick={onConfirm}
+              style={danger ? { background: "#c53030", color: "#fff" } : undefined}
+            >
+              {confirmLabel}
+            </button>
+          </div>
         </div>
       </section>
     </Modal>

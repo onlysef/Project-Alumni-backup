@@ -11,6 +11,7 @@ import AppointmentsView from "./AppointmentsView.jsx";
 import AccountsView from "./AccountsView.jsx";
 import AnnouncementsView from "./AnnouncementsView.jsx";
 import PartnershipsView from "./PartnershipsView.jsx";
+import AboutView from "./AboutView.jsx";
 
 export default function AdminDashboard() {
   const [view, setView] = useState(() => localStorage.getItem("adminView") || "dashboard");
@@ -84,7 +85,8 @@ export default function AdminDashboard() {
         <AccountsView active={view === "accounts"} showToast={showToast} roleFilterFromNav={accountsRoleFilter} />
         <AnnouncementsView active={view === "announcements"} showToast={showToast} />
         <PartnershipsView active={view === "partnerships"} showToast={showToast} />
-        <JobConnectView active={view === "jobconnect"} showToast={showToast} />        
+        <JobConnectView active={view === "jobconnect"} showToast={showToast} />
+        <AboutView active={view === "about"} showToast={showToast} />        
       </main>
       <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">
         {toast}

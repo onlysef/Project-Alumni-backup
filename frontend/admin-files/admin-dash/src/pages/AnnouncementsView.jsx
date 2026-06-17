@@ -282,16 +282,24 @@ export default function AnnouncementsView({ active, showToast }) {
           <h3>Recent Posts</h3>
           {recentPosts.map((p) => (
             <article key={p.id}>
-              {p.imageUrl ? (
-                <img className="post-art-img" src={p.imageUrl} alt={p.title} />
-              ) : (
-                <div className={`post-art${TYPE_ART_CLASS[p.type] ? " " + TYPE_ART_CLASS[p.type] : ""}`}>
-                  {p.title}
+              <div
+                className="post-open"
+                role="button"
+                tabIndex={0}
+                onClick={() => setCommentTarget(p)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCommentTarget(p); } }}
+              >
+                {p.imageUrl ? (
+                  <img className="post-art-img" src={p.imageUrl} alt={p.title} />
+                ) : (
+                  <div className={`post-art${TYPE_ART_CLASS[p.type] ? " " + TYPE_ART_CLASS[p.type] : ""}`}>
+                    {p.title}
+                  </div>
+                )}
+                <div className="post-meta">
+                  <span className="post-meta-title">{p.title}</span>
+                  {p.type && <span className="post-meta-type">{p.type}</span>}
                 </div>
-              )}
-              <div className="post-meta">
-                <span className="post-meta-title">{p.title}</span>
-                {p.type && <span className="post-meta-type">{p.type}</span>}
               </div>
               <div className="post-actions">
                 <button
@@ -304,7 +312,7 @@ export default function AnnouncementsView({ active, showToast }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCommentTarget({ id: p.id, title: p.title })}
+                  onClick={() => setCommentTarget(p)}
                 >
                   <span><Icon name="icon-26" /></span>
                   <span>{p.commentsCount} Comment</span>
@@ -333,11 +341,12 @@ export default function AnnouncementsView({ active, showToast }) {
         showToast={showToast}
       />
 
-      <CommentModal
-        postId={commentTarget?.id}
-        postTitle={commentTarget?.title}
+       <CommentModal
+        post={commentTarget}
         onClose={() => setCommentTarget(null)}
         showToast={showToast}
+        onLike={handleLike}
+        onShare={handleShare}
         onCommentAdded={(postId, count) =>
           setRows(rs => rs.map(r => r.id === postId ? { ...r, commentsCount: count } : r))
         }
@@ -348,7 +357,8 @@ export default function AnnouncementsView({ active, showToast }) {
 
 // ─── Comment Modal ────────────────────────────────────────────────────────────
 
-function CommentModal({ postId, postTitle, onClose, showToast, onCommentAdded }) {
+function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShare }) {
+  const postId = post?.id;
   const [comments, setComments] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [text, setText]         = useState("");
@@ -390,28 +400,54 @@ function CommentModal({ postId, postTitle, onClose, showToast, onCommentAdded })
 
   return (
     <Modal open={!!postId} onClose={onClose}>
-      <section className="tracer-modal comment-modal" role="dialog" aria-modal="true">
+      <section className="tracer-modal post-viewer" role="dialog" aria-modal="true">
         <div className="modal-head">
-          <h3>Comments</h3>
+          <h3>{post.title || "Post"}</h3>
           <button type="button" aria-label="Close" onClick={onClose}>×</button>
         </div>
-        {postTitle && <div className="comment-modal-title">{postTitle}</div>}
-        <div className="comment-list">
-          {loading && <p className="comment-empty">Loading…</p>}
-          {!loading && comments.length === 0 && (
-            <p className="comment-empty">No comments yet. Be the first!</p>
-          )}
-          {comments.map((c, i) => (
-            <div key={c._id || i} className="comment-item">
-              <div className="comment-avatar">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
-              <div className="comment-bubble">
-                <strong>{c.userName}</strong>
-                <p>{c.text}</p>
-                <time>{new Date(c.createdAt).toLocaleString()}</time>
+
+        <div className="post-viewer-scroll">
+          <div className="post-viewer-body">
+            {post.type && <span className="post-meta-type">{post.type}</span>}
+            {post.imageUrl && (
+              <img className="post-viewer-img" src={post.imageUrl} alt={post.title} />
+            )}
+            {post.description && <p className="post-viewer-text">{post.description}</p>}
+          </div>
+
+          <div className="post-viewer-actions">
+            <button type="button" className={post.liked ? "liked" : ""} onClick={() => onLike?.(post.id)}>
+              <span><Icon name="icon-25" /></span>
+              <span>{post.likesCount} {post.liked ? "Liked" : "Like"}</span>
+            </button>
+            <button type="button">
+              <span><Icon name="icon-26" /></span>
+              <span>{comments.length} Comment{comments.length === 1 ? "" : "s"}</span>
+            </button>
+            <button type="button" className={post.shared ? "shared" : ""} onClick={() => onShare?.(post.id)}>
+              <span><Icon name="icon-27" /></span>
+              <span>{post.sharesCount} {post.shared ? "Shared" : "Share"}</span>
+            </button>
+          </div>
+
+          <div className="comment-list">
+            {loading && <p className="comment-empty">Loading…</p>}
+            {!loading && comments.length === 0 && (
+              <p className="comment-empty">No comments yet. Be the first!</p>
+            )}
+            {comments.map((c, i) => (
+              <div key={c._id || i} className="comment-item">
+                <div className="comment-avatar">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
+                <div className="comment-bubble">
+                  <strong>{c.userName}</strong>
+                  <p>{c.text}</p>
+                  <time>{new Date(c.createdAt).toLocaleString()}</time>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+
         <form className="comment-form" onSubmit={handleSubmit}>
           <input
             type="text"

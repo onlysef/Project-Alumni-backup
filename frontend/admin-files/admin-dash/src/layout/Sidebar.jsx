@@ -1,20 +1,42 @@
 import React, { useState } from "react";
 import Icon from "../Icon.jsx";
+import alumniLogo from "../logo/alumni-removebg.png";
 import tsuLogo from "../logo/tsu_logo-removebg.png";
 import toptsuLogo from "../logo/tsu-top-header.webp";
 import { navItems } from "../data.js";
 import { useAuth } from "../auth/AuthContext.jsx";
 
-export function Sidebar({ view, onSelect }) {
+export function Sidebar({ view, onSelect, collapsed }) {
   const { logout } = useAuth();
   const [openMenu, setOpenMenu] = useState(null);
 
   return (
     <aside className="sidebar">
       <div className="brand">
-        <img src={tsuLogo} alt="TSU" className="sidebar-logo" />
+        <img
+          src={tsuLogo}
+          alt="TSU"
+          className="sidebar-logo"
+        />
+
         <div className="brand-text">
-          <img src={toptsuLogo} alt="TSU" className="toptsu-logo" />
+          <img
+              src={toptsuLogo}
+              alt="TSU"
+              className="toptsu-logo"
+          />
+
+          <div
+            className={`alumni-brand ${view === "about" ? "active" : ""}`}
+            onClick={() => onSelect("about")}
+          >
+            <img
+              src={alumniLogo}
+              alt="Alumni"
+              className="alumni-logo"
+            />
+            <p>Alumni Association<br /> Inc.</p>
+          </div>
         </div>
       </div>
       <nav className="nav" aria-label="Main navigation">
@@ -25,7 +47,7 @@ export function Sidebar({ view, onSelect }) {
           if (hasChildren) {
             return (
               <div key={item.view} className="nav-group">
-                <a className={view === item.view ? "active" : undefined} href="#" aria-expanded={isOpen} onClick={(e) => { e.preventDefault(); setOpenMenu(isOpen ? null : item.view); }}>
+                <a className={view === item.view ? "active" : undefined} href="#" aria-expanded={isOpen} onClick={(e) => { e.preventDefault(); onSelect(item.view); if (!collapsed) { setOpenMenu(isOpen ? null : item.view); } }}>
                   <span><Icon name={item.icon} /></span>
                   <span>{item.label}</span>
                   <span className={`nav-caret${isOpen ? " open" : ""}`}>▾</span>

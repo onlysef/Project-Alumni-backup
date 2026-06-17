@@ -131,6 +131,15 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            cursor: pointer;
+            padding: 4px 10px 10px 10px; 
+            border-radius: 10px 10px 10px 10px;
+        }
+
+        .alumni-brand:hover,
+        .alumni-brand.active {
+            background: rgba(255, 255, 255, 0.16)
+           
         }
 
          .toptsu-logo {
@@ -139,10 +148,14 @@
             object-fit: contain;
         }
 
+        
+
         .alumni-logo {
             width: 24px;
             height: 24px;
             object-fit: contain;
+            display: block;
+  
         }
 
         .app.sidebar-collapsed .alumni-brand {
@@ -1377,10 +1390,11 @@
 
 
         .table-icon {
-            width: 24px;
-            height: 24px;
+            width: 34px;
+            height: 34px;
             border: 0;
             padding: 0;
+            margin: 0 4px;
             display: inline-grid;
             place-items: center;
             background: transparent;
@@ -1388,6 +1402,7 @@
             font-size: 0;
             vertical-align: middle;
             cursor: pointer;
+            border-radius: 6px;
         }
 
         .table-icon svg {
@@ -1398,6 +1413,7 @@
 
         .table-icon:hover {
             color: var(--maroon);
+            background: rgba(87, 0, 19, 0.08);
             transform: scale(1.08);
         }
 
@@ -1569,8 +1585,8 @@
             border-radius: 4px;
             background: var(--maroon);
             color: #fff;
-            font-size: 12px;
-            font-weight: 900;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
         }
 
@@ -1582,8 +1598,8 @@
             border-radius: 4px;
             background: #dedede;
             color: var(--maroon);
-            font-size: 12px;
-            font-weight: 900;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
         }
 
@@ -2070,6 +2086,9 @@
             border-radius: 7px;
             background: #fff;
             color: var(--maroon);
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1;
         }
 
         .admin-search {
@@ -2132,6 +2151,26 @@
         .account-table th:nth-child(4),
         .account-table td:nth-child(4) {
             width: 16%;
+        }
+
+        .partnership-table th:nth-child(1),
+        .partnership-table td:nth-child(1),
+        .partnership-table th:nth-child(3),
+        .partnership-table td:nth-child(3) {
+            width: 24%;
+        }
+
+        .partnership-table th:nth-child(2),
+        .partnership-table td:nth-child(2),
+        .partnership-table th:nth-child(4),
+        .partnership-table td:nth-child(4) {
+            width: 18%;
+        }
+
+        .partnership-table th:last-child,
+        .partnership-table td:last-child {
+            width: 16% !important;
+            text-align: left;
         }
 
         .account-table th:last-child,
@@ -2219,8 +2258,8 @@
             min-width: 44px;
             border: 0;
             border-radius: 5px;
-            font-size: 12px;
-            font-weight: 800;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
             padding: 0 10px;
         }
@@ -2901,13 +2940,25 @@
             padding: 0 16px;
             background: #e8dada;
             color: var(--maroon);
-            font-weight: 900;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
         }
 
-        .modal-actions button[type="submit"] {
+        .modal-actions button[type="submit"],
+        .modal-actions button.modal-confirm {
             background: var(--maroon);
             color: #fff;
+        }
+
+        .modal-body {
+            padding: 18px 18px 18px;
+        }
+
+         body.dark-mode .modal-actions button[type="submit"],
+        body.dark-mode .modal-actions button.modal-confirm {
+            background: #fac853;
+            color: #31000a;
         }
 
         .topbar-modal {
@@ -3903,6 +3954,16 @@
             height: 18px;
         }
 
+        .table-icon .admin-svg-icon {
+            width: 20px;
+            height: 20px;
+            filter: brightness(0) saturate(100%) invert(11%) sepia(73%) saturate(3884%) hue-rotate(330deg) brightness(70%) contrast(105%);
+        }
+
+        body.dark-mode .table-icon .admin-svg-icon {
+            filter: brightness(0) saturate(100%) invert(82%) sepia(38%) saturate(742%) hue-rotate(345deg) brightness(102%) contrast(98%);
+        }
+
         .icon-btn .admin-svg-icon {
             width: 18px;
             height: 18px;
@@ -4022,6 +4083,92 @@
             display: flex;
             flex-direction: column;
             max-height: 82vh;
+        }
+
+        .post-viewer {
+            width: min(540px, 100%);
+            display: flex;
+            flex-direction: column;
+            max-height: 86vh;
+        }
+
+        .post-open {
+            cursor: pointer;
+            display: block;
+        }
+
+        .post-open:hover .post-meta-title {
+            text-decoration: underline;
+        }
+
+        .post-viewer-scroll {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        .post-viewer-body {
+            padding: 16px 18px 0;
+            display: grid;
+            gap: 12px;
+            justify-items: start;
+        }
+
+        .post-viewer-img {
+            width: 100%;
+            border-radius: 8px;
+            display: block;
+        }
+
+        .post-viewer-text {
+            margin: 0;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #2d2024;
+            white-space: pre-wrap;
+        }
+
+        .post-viewer-actions {
+            display: flex;
+            gap: 8px;
+            padding: 12px 18px;
+            margin: 12px 0 0;
+            border-top: 1px solid #ead7da;
+            border-bottom: 1px solid #ead7da;
+        }
+
+        .post-viewer-actions button {
+            flex: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 36px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--maroon);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .post-viewer-actions button:hover {
+            background: rgba(87, 0, 19, 0.06);
+        }
+
+        .post-viewer-actions .liked,
+        .post-viewer-actions .shared {
+            color: #2563eb;
+        }
+
+        .post-viewer-actions .admin-svg-icon {
+            width: 16px;
+            height: 16px;
+        }
+
+        .post-viewer .comment-list {
+            max-height: none;
         }
 
         .comment-modal-title {
