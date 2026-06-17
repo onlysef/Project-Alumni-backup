@@ -26,7 +26,10 @@ export function Sidebar({ view, onSelect, collapsed }) {
               className="toptsu-logo"
           />
 
-          <div className="alumni-brand">
+          <div
+            className={`alumni-brand ${view === "about" ? "active" : ""}`}
+            onClick={() => onSelect("about")}
+          >
             <img
               src={alumniLogo}
               alt="Alumni"
