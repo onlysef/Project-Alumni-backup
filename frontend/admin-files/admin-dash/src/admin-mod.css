@@ -228,7 +228,7 @@
   
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 600px) {
             .app,
             .app.sidebar-collapsed,
             .app:not(.sidebar-collapsed) {

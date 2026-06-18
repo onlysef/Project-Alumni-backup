@@ -69,7 +69,7 @@ export default function AdminDashboard() {
 
   return (
     <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
-      <Sidebar view={view} onSelect={selectView} />
+      <Sidebar view={view} onSelect={selectView} collapsed={collapsed} />
       <main className="main">
         <Topbar
           title={viewRoutes[view]}
