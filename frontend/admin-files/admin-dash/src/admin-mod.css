@@ -129,42 +129,72 @@
 
         .about-section {
             border: 1px solid #cf9c9f;
-            padding: 5%;
+            border-radius: 12px;
+            padding: clamp(20px, 4vw, 48px);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 40px;
+            gap: clamp(20px, 4vw, 40px);
+            flex-wrap: wrap;
         }
 
         .about-content {
-            width: 150px;
+            flex: 1 1 320px;
+            min-width: 0;
             height: auto;
             font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            display: block;
-                align-items: center;
-            justify-content: center;
             padding: 10px;
-            flex: 1;
         }
-        .about-content div{
-            display: block;
-             align-items: center;
+
+        .about-content p {
+            font-size: 15px;
+            line-height: 1.7;
+            margin: 0 0 14px;
+        }
+
+        .about-content div {
             gap: 12px;
         }
 
+        .about-image {
+            flex: 0 1 280px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         .about-image img {
-            width: 70%;
+            width: 100%;
+            max-width: 280px;
             height: auto;
             object-fit: contain;
             display: block;
-            align-Items: center;
-             justify-content: center;
         }
 
         .about-title {
             max-width: 100%;
             white-space: normal;
             font-family: "Monotype Corsiva", cursive;
+        }
+
+        .about-title h2 {
+            font-size: clamp(20px, 4vw, 30px);
+            line-height: 1.3;
+            margin: 0 0 8px;
+        }
+
+        @media (max-width: 700px) {
+            .about-section {
+                flex-direction: column;
+                text-align: center;
+            }
+            .about-image {
+                order: -1;
+                flex-basis: auto;
+            }
+            .about-image img {
+                max-width: 180px;
+            }
         }
 
         .alumni-brand {
@@ -198,19 +228,39 @@
   
         }
 
-        @media (max-width: 768px) {
-            .app {
+        @media (max-width: 600px) {
+            .app,
+            .app.sidebar-collapsed,
+            .app:not(.sidebar-collapsed) {
                 grid-template-columns: 1fr;
+                width: 100%;
+                max-width: 100%;
+                overflow-x: hidden;
             }
 
             .sidebar {
                 position: fixed;
-                left: -224px;
-                transition: left 0.3s;
+                top: 0;
+                left: 0;
+                width: 240px;
+                height: 100vh;
+                z-index: 40;
+                transform: translateX(0);
+                transition: transform 220ms ease;
+                box-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
             }
 
-            .sidebar.open {
-                left: 0;
+            .app.sidebar-collapsed .sidebar {
+                transform: translateX(-100%);
+                box-shadow: none;
+            }
+
+            .app:not(.sidebar-collapsed)::after {
+                content: "";
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.4);
+                z-index: 30;
             }
 
             .content {
@@ -218,7 +268,6 @@
                 padding: 16px;
             }
         }
-
         .app.sidebar-collapsed .alumni-brand {
             display: none;
         }
