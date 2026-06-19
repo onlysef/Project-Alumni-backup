@@ -3,6 +3,7 @@ import Icon from "../Icon.jsx";
 import { Dropdown } from "../Primitives.jsx";
 import { CourseJobChart, EmploymentChart } from "../Charts.jsx";
 import { assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
+import { reportFilters } from "../data.js";
 
 import { API } from "../shared.js";
 
@@ -270,7 +271,6 @@ export default function DashboardView({ active, showToast, onOpenPost }) {
 
       <div className="grid">
         <div className="left-stack">
-          <Assistant showToast={showToast} />
 
           <section className="panel">
             <div className="panel-head">
