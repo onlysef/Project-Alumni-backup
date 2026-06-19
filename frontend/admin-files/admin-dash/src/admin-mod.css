@@ -3150,7 +3150,7 @@
 
         .topbar-popover .topbar-modal {
             position: fixed;
-            top: 78px;
+            top: 58px;
             right: 20px;
             width: min(420px, calc(100vw - 32px));
             max-height: calc(100vh - 96px);
@@ -3194,11 +3194,11 @@
         }
 
         .notifications-popover .topbar-modal {
-            right: 120px;
+            right: 56px;
         }
 
         .settings-popover .topbar-modal {
-            right: 70px;
+            right: 20px;
         }
 
         .profile-popover .topbar-modal {
@@ -3206,14 +3206,7 @@
         }
 
         .topbar-popover .topbar-modal::before {
-            content: "";
-            width: 14px;
-            height: 14px;
-            position: absolute;
-            top: -7px;
-            left: var(--popover-arrow-left, calc(100% - 30px));
-            transform: rotate(45deg);
-            background: var(--maroon);
+            display: none;
         }
 
         .notification-list {
