@@ -128,7 +128,7 @@ export default function PartnershipsView({ active, showToast }) {
           <div>
             <AdminMenu menuKey="partner-type" label={typeFilter} onSelect={(c) => applyFilter(c, "type")} />
             <AdminMenu menuKey="partner-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
-            <button type="button" className="add-button" onClick={() => setEntry({})}>Add Partnership</button>
+            <button type="button" className="add-button" onClick={() => setEntry({})}>Add</button>
           </div>
         </div>
         {loading ? (

@@ -236,8 +236,7 @@ export default function DashboardView({ active, showToast, onOpenPost }) {
           manage accounts, and review reports all in one place.
         </p>
         <div className="admin-hero-pills">
-          <span className="hero-pill hero-pill-gold">
-            <Icon name="icon-7" /> Role: Administrator
+          <span className="hero-pill hero-pill-gold"> Role: Administrator
           </span>
           <span className="hero-pill">
             <Icon name="icon-11" /> Alumni Tracer System
