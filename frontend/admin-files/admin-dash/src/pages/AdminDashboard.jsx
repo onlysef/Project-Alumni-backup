@@ -57,6 +57,13 @@ export default function AdminDashboard() {
   }, [view]);
 
   const [accountsRoleFilter, setAccountsRoleFilter] = useState("Role");
+  const [openPostId, setOpenPostId] = useState(null);
+
+  function openPost(postId) {
+    if (!postId) { selectView("announcements"); return; }
+    setOpenPostId(postId);
+    selectView("announcements");
+  }
 
   function selectView(v, subFilter) {
     setView(v);
@@ -79,11 +86,11 @@ export default function AdminDashboard() {
           setSettings={setSettings}
           showToast={showToast}
         />
-        <DashboardView active={view === "dashboard"} showToast={showToast} />
+        <DashboardView active={view === "dashboard"} showToast={showToast} onOpenPost={openPost} />
         <EmploymentView active={view === "employment"} showToast={showToast} />
         <AppointmentsView active={view === "appointments"} showToast={showToast} />
         <AccountsView active={view === "accounts"} showToast={showToast} roleFilterFromNav={accountsRoleFilter} />
-        <AnnouncementsView active={view === "announcements"} showToast={showToast} />
+        <AnnouncementsView active={view === "announcements"} showToast={showToast} openPostId={openPostId} onPostOpened={() => setOpenPostId(null)} />
         <PartnershipsView active={view === "partnerships"} showToast={showToast} />
         <JobConnectView active={view === "jobconnect"} showToast={showToast} />
         <AboutView active={view === "about"} showToast={showToast} />        
