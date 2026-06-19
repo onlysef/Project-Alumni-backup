@@ -202,14 +202,6 @@ function SettingsForm({ settings, onSave, onChangeTheme, onClose }) {
             onChange={(e) => setLocal((p) => ({ ...p, dashboardNotifications: e.target.checked }))}
           />
         </label>
-        <label className="setting-row">
-          <span><strong>Compact tables</strong><small>Reduce spacing for admin tables.</small></span>
-          <input
-            type="checkbox"
-            checked={local.compactTables}
-            onChange={(e) => setLocal((p) => ({ ...p, compactTables: e.target.checked }))}
-          />
-        </label>
         <div className="modal-actions">
           <button type="button" onClick={onClose}>Cancel</button>
           <button type="submit">Save Settings</button>

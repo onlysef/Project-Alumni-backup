@@ -1573,7 +1573,7 @@
 
         .appointment-top-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(280px, 1fr));
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 24px;
             margin-bottom: 36px;
         }
@@ -1642,7 +1642,12 @@
         }
 
         .office-form label:nth-child(2) {
-            grid-template-columns: 120px auto auto 1fr;
+            grid-template-columns: 120px 1fr 1fr;
+        }
+
+        .office-form label:nth-child(2) select {
+            min-width: 0;
+            width: 100%;
         }
 
         .day-pills {
@@ -1767,7 +1772,7 @@
 
         .appointments-table {
             width: 100%;
-            min-width: 760px;
+            min-width: 580px;
             border-collapse: separate;
             border-spacing: 0 9px;
             font-size: 12px;
@@ -1804,15 +1809,18 @@
             border-radius: 0 4px 4px 0;
         }
 
-        .appointments-table td:last-child {
+        .appt-actions {
             display: flex;
             justify-content: center;
-            gap: 10px;
+            gap: 6px;
+            flex-wrap: wrap;
         }
 
         .appointments-table button {
-            min-width: 70px;
+            min-width: 62px;
             min-height: 28px;
+            padding: 0 8px;
+            font-size: 11px;
         }
 
         .delete-appointment {
@@ -2834,7 +2842,7 @@
 
             .appointments-table,
             .employment-table {
-                min-width: 560px;
+                min-width: 480px;
             }
 
             .admin-table th,
@@ -2843,17 +2851,19 @@
             .appointments-table td,
             .employment-table th,
             .employment-table td {
-                padding: 12px 10px;
+                padding: 8px 7px;
                 white-space: nowrap;
+                font-size: 11px;
             }
 
             .admin-table button,
             .appointments-table button,
             .employment-table button {
                 white-space: nowrap;
-                min-height: 28px;
-                padding: 0 10px;
-                font-size: 12px;
+                min-width: 52px;
+                min-height: 26px;
+                padding: 0 7px;
+                font-size: 11px;
             }
         }
 

@@ -768,29 +768,31 @@ export default function AppointmentsView({ active, showToast }) {
                       <span style={statusStyle(a.status)}>{a.status}</span>
                     </td>
                     <td>
-                      {a.status === "Pending" && (
-                        <>
-                          <button type="button" onClick={() => confirmStatusChange(a, "Approve")}>
-                            Approve
-                          </button>
-                          <button type="button" onClick={() => confirmStatusChange(a, "Reject")}>
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      {a.status === "Approved" && (
-                        <>
-                          <button type="button" onClick={() => confirmStatusChange(a, "Complete")}>
-                            Complete
-                          </button>
-                          <button type="button" onClick={() => confirmStatusChange(a, "Cancel")}>
-                            Cancel
-                          </button>
-                        </>
-                      )}
-                      {!["Pending", "Approved"].includes(a.status) && (
-                        <span style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
-                      )}
+                      <div className="appt-actions">
+                        {a.status === "Pending" && (
+                          <>
+                            <button type="button" onClick={() => confirmStatusChange(a, "Approve")}>
+                              Approve
+                            </button>
+                            <button type="button" onClick={() => confirmStatusChange(a, "Reject")}>
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {a.status === "Approved" && (
+                          <>
+                            <button type="button" onClick={() => confirmStatusChange(a, "Complete")}>
+                              Complete
+                            </button>
+                            <button type="button" onClick={() => confirmStatusChange(a, "Cancel")}>
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                        {!["Pending", "Approved"].includes(a.status) && (
+                          <span style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
