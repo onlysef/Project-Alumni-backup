@@ -1,0 +1,1089 @@
+﻿/* ===== Coordinator module ===== */
+    /* ===== Coordinator standalone shell ===== */
+:root {
+            --maroon: #570013;
+            --maroon-dark: #570013;
+            --maroon-deep: #590012;
+            --gold: #fac853;
+            --orange: #b95a22;
+            --cream: #fff8f3;
+            --line: #e4cccc;
+            --muted: #76656a;
+            --secondary-text: #6f6266;
+            --text: #2d2024;
+            --panel-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+        }
+
+    * { box-sizing: border-box; }
+
+    html, body, #root {
+    width: 100%;
+    height: 100%;
+    }
+
+    body {
+    margin: 0;
+    height: 100vh;
+    font-family: Arial, Helvetica, sans-serif;
+    color: var(--text);
+    background: #fff;
+    overflow: hidden;
+    }
+
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+
+    .app {
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 224px 1fr;
+    overflow: hidden;
+    background: #fff;
+    }
+
+    .app.sidebar-collapsed { grid-template-columns: 82px 1fr; }
+
+    .sidebar {
+    height: 100vh;
+    padding: 24px 0;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(180deg, #570013 72%, #945025 93%, #bf8931 100%);
+    color: #fff;
+    overflow-y: auto;
+    overflow-x: hidden;
+    }
+
+    .brand { 
+        padding: 0 24px 20px; 
+    }
+
+    .sidebar-logo { 
+        display: none; 
+        width: 50px; 
+        height: 50px; 
+        object-fit: contain; 
+        margin: 0 auto; 
+    }
+
+    .toptsu-logo { 
+        width: 100%; 
+        height: auto; 
+        object-fit: contain; 
+    }
+
+    .alumni-brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        padding: 4px 10px 10px 10px; 
+        border-radius: 10px 10px 10px 10px;
+    }
+
+    .alumni-brand:hover,
+    .alumni-brand.active {
+        background: rgba(255, 255, 255, 0.16)
+           
+    }
+
+    .alumni-logo { width: 24px; height: 24px; object-fit: contain; }
+    .brand p { margin: 0; color: rgba(255,255,255,0.78); font-size: 11px; text-transform: uppercase; }
+
+    .nav {
+        display: grid;
+        gap: 0;
+        align-content: start;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    .nav a {
+    min-height: 54px;
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    align-items: center;
+    gap: 11px;
+    padding: 12px 30px;
+    border-radius: 0 35px 35px 0;
+    color: rgba(255,255,255,0.92);
+    text-decoration: none;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    }
+
+    .nav a:hover {
+        background: rgba(255, 255, 255, 0.16);
+        color: #fff;
+        padding-left: 38px;
+    }
+
+    .nav a.active {
+        width: 213px;
+        height: 51px;
+        padding-left: 16px;
+        background: #fff;
+        color: var(--maroon);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        font-weight: 600;
+    }
+
+    .nav a.active .admin-svg-icon {
+        filter: brightness(0) saturate(100%)
+        invert(9%) sepia(95%)
+        saturate(3500%)
+        hue-rotate(330deg);
+    }
+
+    .nav a.active:hover {
+        background: #fff;
+        color: var(--maroon);
+        padding-left: 16px;
+    }
+
+    .nav-group { 
+        display: flex; 
+        flex-direction: column; 
+    }
+
+    .nav-group > a { 
+        grid-template-columns: 24px 1fr auto; 
+    }
+
+    .nav-caret { 
+        color: var(--gold); 
+    }
+
+    .nav-sub { 
+        display: none; 
+    }
+
+    .nav-sub.open { 
+        display: grid; 
+        background: rgba(0,0,0,0.12); 
+    }
+
+    .nav-sub a { 
+        grid-template-columns: 1fr; 
+        min-height: 40px; 
+        padding-left: 55px; 
+    }
+
+    .sidebar-footer { 
+        padding: 18px 16px 0; 
+    }
+    .sidebar-logout {
+        width: 100%;
+        min-height: 44px;
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 8px;
+        display: grid;
+        grid-template-columns: 24px 1fr;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        background: rgba(255,255,255,0.1);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 800;
+        text-align: left;
+        text-transform: uppercase;
+    }
+
+    .main { 
+        min-width: 0; 
+        height: 100vh; 
+        overflow: hidden; 
+    }
+
+    .topbar {
+        height: 58px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 21px;
+        background: var(--maroon);
+        color: #fff;
+    }
+
+    .title-wrap, .top-actions { 
+        display: flex; 
+        align-items: center; 
+        gap: 18px; 
+    }
+
+    .topbar h2 { 
+        margin: 0; 
+        color: var(--gold); 
+        font-family: Georgia, "Times New Roman", serif; 
+        font-size: 18px; 
+    }
+
+    .hamburger, .icon-btn { 
+        width: 28px; height: 28px; 
+        border: 0; display: grid; 
+        place-items: center; 
+        background: transparent; 
+        color: inherit; 
+        cursor: pointer;
+    }
+    /* white topbar icons on maroon bar */
+    .topbar .hamburger .admin-svg-icon,
+    .topbar .icon-btn .admin-svg-icon {
+        width: 20px;
+        height: 20px;
+        filter: brightness(0) invert(1);
+    }
+    .topbar .hamburger:hover .admin-svg-icon,
+    .topbar .icon-btn:hover .admin-svg-icon {
+        filter: brightness(0) invert(1);
+        opacity: 0.8;
+    }
+
+    .divider { 
+        width: 1px; 
+        height: 22px; 
+        background: rgba(255,255,255,0.45); 
+    }
+
+    .content { 
+        height: calc(100vh - 58px); 
+        overflow-y: auto; 
+        overflow-x: hidden; 
+    }
+    .view { 
+        display: none; 
+    }
+
+    .view.active-view { 
+        display: block; 
+    }
+
+    .toast {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        padding: 12px 16px;
+        border-radius: 8px;
+        background: var(--maroon);
+        color: #fff;
+        opacity: 0;
+        transform: translateY(8px);
+        pointer-events: none;
+        transition: opacity 160ms ease, transform 160ms ease;
+        z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    .admin-svg-icon {
+        width: 18px;
+        height: 18px;
+        object-fit: contain;
+        display: inline-block;
+        flex: 0 0 auto;
+    }
+    .nav a .admin-svg-icon,
+    .sidebar-logout .admin-svg-icon {
+        width: 20px;
+        height: 20px;
+        /* white icons on maroon sidebar */
+        filter: brightness(0) invert(1);
+    }
+
+    .app.sidebar-collapsed .brand-text,
+    .app.sidebar-collapsed .nav a span:nth-child(2),
+    .app.sidebar-collapsed .sidebar-logout span:nth-child(2),
+    .app.sidebar-collapsed .nav-caret { 
+        display: none; 
+    }
+
+    .app.sidebar-collapsed .sidebar-logo { 
+        display: block; 
+    }
+
+    .app.sidebar-collapsed .brand { 
+        padding-inline: 10px; 
+    }
+    .app.sidebar-collapsed .nav a,
+    .app.sidebar-collapsed .sidebar-logout { 
+        grid-template-columns: 1fr; 
+        justify-items: center; 
+    }
+    .app.sidebar-collapsed .nav a.active {
+        width: 100%;
+        margin-left: 0;
+        padding: 0;
+        justify-items: center;
+        border-radius: 0 30px 30px 0;
+    }
+
+    @media (max-width: 600px) {
+        .app,
+        .app.sidebar-collapsed,
+        .app:not(.sidebar-collapsed) {
+            grid-template-columns: 1fr;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 240px;
+            height: 100vh;
+            z-index: 40;
+            transform: translateX(0);
+            transition: transform 220ms ease;
+            box-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .app.sidebar-collapsed .sidebar {
+            transform: translateX(-100%);
+            box-shadow: none;
+        }
+
+        .app:not(.sidebar-collapsed)::after {
+            content: "";
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 30;
+        }
+
+        .content {
+            width: 100%;
+            padding: 16px;
+        }
+    }
+
+            .coordinator-content {
+                padding: clamp(14px, 2vw, 24px);
+            }
+
+            .coordinator-app .topbar {
+                height: 58px;
+                background: #3a000d;
+            }
+
+            .coordinator-app .content {
+                height: calc(100vh - 58px);
+            }
+
+            .coord-stats {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(160px, 1fr));
+                gap: 18px;
+                margin-bottom: 22px;
+            }
+
+            .coord-stat,
+            .coord-highlight {
+                min-height: 70px;
+                border: 1px solid #b56c77;
+                border-radius: 8px;
+                background: #fff;
+                color: var(--maroon);
+                padding: 14px 16px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                box-shadow: none;
+            }
+
+            .coord-stat strong {
+                color: var(--maroon);
+                display: block;
+                font-size: 28px;
+                line-height: 1;
+                font-weight: 900;
+                margin-bottom: 8px;
+            }
+
+            .coord-stat span,
+            .coord-highlight span {
+                display: block;
+                font-size: 10px;
+                font-weight: 800;
+            }
+
+            .coord-stat .admin-svg-icon {
+                width: 31px;
+                height: 31px;
+                /* maroon icon on white stat card */
+                filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+            }
+
+            .coord-highlight {
+                display: grid;
+                gap: 2px;
+                align-content: center;
+                justify-content: start;
+                font-size: 11px;
+            }
+
+            .coord-dashboard-grid,
+            .coord-participation-grid {
+                display: grid;
+                grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
+                gap: 22px;
+                align-items: start;
+            }
+
+            .coord-left-stack,
+            .coord-right-stack {
+                display: grid;
+                gap: 22px;
+            }
+
+            .coord-card {
+                border: 1px solid #b56c77;
+                border-radius: 8px;
+                background: #fff;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+                overflow: hidden;
+            }
+
+            .coord-card h3 {
+                margin: 0;
+                min-height: 58px;
+                padding: 14px 18px;
+                background: var(--maroon);
+                color: #fff;
+                font-size: 18px;
+                font-weight: 700;
+            }
+
+            .coord-chart-box {
+                display: grid;
+                place-items: center;
+                padding: 12px;
+            }
+
+            .coord-chart-box p {
+                margin: 0 0 3px;
+                font-size: 10px;
+                color: #443438;
+            }
+
+            .coord-chart {
+                width: min(100%, 420px);
+                min-height: 180px;
+            }
+
+            .coord-chart line {
+                stroke: #777;
+                stroke-width: 1;
+            }
+
+            .coord-chart .coord-chart-grid {
+                stroke: #e6e0e0;
+            }
+
+            .coord-chart rect {
+                fill: #a00000;
+            }
+
+            .coord-chart text {
+                fill: #35262a;
+                font-size: 11px;
+            }
+
+            .coord-activity h3 {
+                background: #fff;
+                color: var(--maroon);
+                border-bottom: 1px solid #ead7da;
+            }
+
+            .coord-activity-row {
+                min-height: 42px;
+                padding: 0 15px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                font-size: 11px;
+                color: #4c3d41;
+            }
+
+            .coord-activity-row span::first-line {
+                color: var(--maroon);
+                font-weight: 800;
+            }
+
+            .coord-activity-row time {
+                color: #665b5e;
+                font-weight: 800;
+                white-space: nowrap;
+            }
+
+            .coord-reports {
+                padding: 12px 14px;
+            }
+
+            .coord-reports h3 {
+                min-height: 34px;
+                border-radius: 6px;
+                display: grid;
+                place-items: center;
+                padding: 0;
+            }
+
+            .coord-report-row {
+                min-height: 72px;
+                display: grid;
+                grid-template-columns: 1fr auto auto;
+                align-items: center;
+                gap: 13px;
+                font-size: 12px;
+                color: #4b3f42;
+            }
+
+            .coord-report-row button,
+            .coord-icon-button,
+            .coord-record-actions button,
+            .coord-contact-actions button {
+                border: 0;
+                border-radius: 5px;
+                min-height: 28px;
+                margin-right: 8px;
+                padding: 0 12px;
+                background: var(--maroon);
+                color: #fff;
+                font: inherit;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            }
+
+            .coord-icon-button {
+                padding: 0;
+                width: 30px;
+                background: transparent;
+                color: var(--orange);
+            }
+            .coord-icon-button .admin-svg-icon {
+                width: 20px;
+                height: 20px;
+                /* orange print/download icon */
+                filter: brightness(0) saturate(100%) invert(43%) sepia(46%) saturate(900%) hue-rotate(348deg) brightness(92%);
+            }
+
+            .coord-events-layout {
+                display: grid;
+                grid-template-columns: minmax(0, 1.05fr) minmax(290px, 0.95fr);
+                gap: clamp(24px, 4vw, 54px);
+                align-items: start;
+            }
+
+            .coord-create-card,
+            .coord-post-card,
+            .coord-event-list,
+            .coord-attendance-card,
+            .coord-current-status,
+            .coord-records-card,
+            .coord-contact-form {
+                border: 1px solid rgba(87, 0, 19, 0.55);
+                border-radius: 10px;
+                background: #fff;
+                padding: 16px 20px;
+                box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14);
+            }
+
+            .coord-create-card {
+                display: grid;
+                gap: 9px;
+            }
+
+            .coord-create-card h3,
+            .coord-section-kicker,
+            .coord-attendance-card h3,
+            .coord-records-card h3,
+            .coord-contact-form h3,
+            .coord-contacts-table h3 {
+                font-size: 18px;
+                font-weight: 700;
+                color: var(--maroon);
+                text-transform: none;
+                text-transform: uppercase;
+            }
+
+            .coord-create-card input,
+            .coord-create-card textarea,
+            .coord-create-card select,
+            .coord-attendance-card input,
+            .coord-attendance-card select,
+            .coord-record-toolbar select,
+            .coord-contact-form input,
+            .coord-contact-toolbar input,
+            .coord-contact-toolbar select {
+                width: 100%;
+                min-height: 34px;
+                border: 0;
+                border-radius: 8px;
+                background: #d9d9d9;
+                color: #2d2024;
+                padding: 0 12px;
+                font: inherit;
+                font-size: 13px;
+                text-transform: none;
+            }
+
+            .coord-create-card textarea {
+                min-height: 52px;
+                resize: vertical;
+                padding-top: 10px;
+            }
+
+            .coord-form-row {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 11px;
+            }
+
+            .coord-create-card button[type="submit"],
+            .coord-attendance-card button[type="submit"],
+            .coord-post-footer button,
+            .coord-record-actions button:last-child,
+            .coord-contact-actions button:first-child {
+                justify-self: end;
+                border: 0;
+                border-radius: 6px;
+                min-height: 35px;
+                padding: 0 18px;
+                background: var(--maroon);
+                color: #fff;
+                font: inherit;
+                font-size: 11px;
+                font-weight: 800;
+                text-transform: uppercase;
+                cursor: pointer;
+            }
+
+            .coord-section-kicker {
+                margin-top: 20px;
+            }
+
+            .coord-post-card {
+                display: grid;
+                gap: 14px;
+                color: #3a3033;
+            }
+
+            .coord-post-card h4 {
+                margin: 0;
+                color: var(--maroon);
+                font-size: 13px;
+                text-transform: uppercase;
+            }
+
+            .coord-post-card p {
+                margin: 0;
+                font-size: 12px;
+                line-height: 1.6;
+                text-transform: uppercase;
+            }
+
+            .coord-post-card small {
+                font-size: 10px;
+                color: #61575a;
+                text-transform: uppercase;
+            }
+
+            .coord-post-footer {
+                display: flex;
+                align-items: center;
+                gap: 22px;
+                flex-wrap: wrap;
+            }
+
+            .coord-post-footer span {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                color: var(--maroon);
+                font-size: 11px;
+                font-weight: 800;
+            }
+
+            .coord-post-footer .admin-svg-icon {
+                width: 15px;
+                height: 15px;
+            }
+
+            .coord-event-list {
+                background: var(--maroon);
+                color: #fff;
+                padding: 18px 24px;
+            }
+
+            .coord-event-list h3 {
+                margin: 0 0 12px;
+                color: #fff;
+                font-size: 11px;
+                text-transform: uppercase;
+            }
+
+            .coord-event-list-inner {
+                max-height: calc(100vh - 150px);
+                overflow-y: auto;
+                display: grid;
+                gap: 18px;
+                border-radius: 8px;
+                background: #fff;
+                color: #2d2024;
+                padding: 18px;
+            }
+
+            .coord-event-list article {
+                display: grid;
+                gap: 4px;
+                font-size: 11px;
+                text-transform: uppercase;
+            }
+
+            .coord-event-status {
+                width: fit-content;
+                margin-bottom: 9px;
+                border-radius: 999px;
+                background: var(--maroon);
+                color: #fff;
+                padding: 5px 18px;
+                font-size: 9px;
+                font-weight: 800;
+            }
+
+            .coord-attendance-card {
+                display: grid;
+                gap: 10px;
+            }
+
+            .coord-attendance-card label {
+                display: grid;
+                grid-template-columns: 82px 1fr;
+                align-items: center;
+                gap: 8px;
+                color: var(--maroon);
+                font-size: 11px;
+                font-weight: 900;
+                text-transform: uppercase;
+            }
+
+            .coord-attendance-card .coord-form-row label {
+                grid-template-columns: 70px 1fr;
+            }
+
+            .coord-current-status {
+                padding: 0;
+                border: 0;
+                display: grid;
+                gap: 13px;
+                background: transparent;
+            }
+
+            .coord-status-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 7px;
+                padding: 15px;
+                border-radius: 3px;
+                background: var(--maroon);
+            }
+
+            .coord-status-grid strong {
+                min-height: 64px;
+                border: 1px solid #d59633;
+                border-radius: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 14px;
+                color: #fac853;
+                font-size: 28px;
+            }
+
+            .coord-status-grid span {
+                color: #e3c2c8;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+            }
+
+            .coord-current-status p {
+                margin: 0;
+                border: 1px solid #c99da4;
+                background: #fff;
+                padding: 14px;
+                text-align: center;
+                color: #716569;
+                font-size: 12px;
+                line-height: 1.6;
+            }
+
+            .coord-records-card {
+                margin-top: 18px;
+            }
+
+            .coord-record-toolbar {
+                margin-bottom: 10px;
+                width: min(360px, 100%);
+            }
+
+            .coord-records-card table,
+            .coord-contacts-table table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 13px;
+            }
+
+            .coord-records-card th,
+            .coord-records-card td,
+            .coord-contacts-table th,
+            .coord-contacts-table td {
+                border-bottom: 1px solid #d8c6c9;
+                padding: 16px 14px;
+                text-align: left;
+            }
+
+            .coord-records-card th {
+                color: var(--maroon);
+                font-size: 13px;
+                font-weight: 700;
+                text-transform: none;
+            }
+
+            .coord-record-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 10px;
+                margin-top: 16px;
+            }
+
+            .coord-contact-form {
+                margin-bottom: 24px;
+                position: relative;
+            }
+
+            .coord-contact-grid {
+                display: grid;
+                grid-template-columns: 1.2fr 0.85fr;
+                gap: 12px 34px;
+                padding: 4px 14px 0;
+            }
+
+            .coord-contact-grid input:nth-child(5) {
+                max-width: 170px;
+            }
+
+            .coord-contact-actions {
+                display: flex;
+                justify-content: flex-end;
+                gap: 16px;
+                margin-top: 14px;
+            }
+
+            .coord-contact-actions button {
+                min-width: 58px;
+                text-transform: uppercase;
+            }
+
+            .coord-contacts-table {
+                overflow-x: auto;
+            }
+
+            .coord-contact-toolbar {
+                display: grid;
+                grid-template-columns: auto auto 92px 82px minmax(170px, 1fr);
+                align-items: center;
+                gap: 14px;
+                margin-bottom: 13px;
+            }
+
+            .coord-contact-toolbar h3 {
+                margin: 0;
+            }
+
+            .coord-contact-toolbar span {
+                color: #8d7d81;
+                font-size: 12px;
+            }
+
+            .coord-contacts-table thead {
+                background: var(--maroon);
+                color: #fff;
+            }
+
+            .coord-contacts-table th {
+                font-weight: 700;
+            }
+
+            .coord-contacts-table td strong,
+            .coord-contacts-table td small {
+                display: block;
+            }
+
+            .coord-contacts-table td small {
+                margin-top: 4px;
+                color: #4f4548;
+                font-size: 10px;
+                text-transform: uppercase;
+            }
+
+            .coord-contacts-table td:last-child {
+                white-space: nowrap;
+            }
+
+            .coord-contacts-table td:last-child button {
+                border: 0;
+                background: transparent;
+                color: var(--maroon);
+                font: inherit;
+                font-size: 11px;
+                font-weight: 800;
+                cursor: pointer;
+                margin-left: 5px;
+            }
+
+            body.dark-mode .coord-stat,
+            body.dark-mode .coord-highlight,
+            body.dark-mode .coord-card,
+            body.dark-mode .coord-create-card,
+            body.dark-mode .coord-post-card,
+            body.dark-mode .coord-attendance-card,
+            body.dark-mode .coord-records-card,
+            body.dark-mode .coord-contact-form,
+            body.dark-mode .coord-current-status p {
+                background: #241116;
+                border-color: rgba(250, 200, 83, 0.22);
+                color: #f3e7ea;
+            }
+
+            body.dark-mode .coord-event-list-inner,
+            body.dark-mode .coord-create-card input,
+            body.dark-mode .coord-create-card textarea,
+            body.dark-mode .coord-create-card select,
+            body.dark-mode .coord-attendance-card input,
+            body.dark-mode .coord-attendance-card select,
+            body.dark-mode .coord-record-toolbar select,
+            body.dark-mode .coord-contact-form input,
+            body.dark-mode .coord-contact-toolbar input,
+            body.dark-mode .coord-contact-toolbar select {
+                background: #2d1a20;
+                color: #f3e7ea;
+            }
+
+            @media (max-width: 1180px) {
+                .coord-stats {
+                    grid-template-columns: repeat(2, minmax(150px, 1fr));
+                }
+
+                .coord-dashboard-grid,
+                .coord-events-layout,
+                .coord-participation-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+
+            @media (max-width: 760px) {
+                .coord-stats,
+                .coord-form-row,
+                .coord-contact-grid,
+                .coord-contact-toolbar {
+                    grid-template-columns: 1fr;
+                }
+
+                .coord-attendance-card label,
+                .coord-attendance-card .coord-form-row label {
+                    grid-template-columns: 1fr;
+                }
+
+                .coord-report-row {
+                    grid-template-columns: 1fr;
+                    align-items: start;
+                }
+            }
+
+
+    /* ===== transitions (admin-style) ===== */
+
+    /* dashboard view fade-in on load/switch */
+    .view.active-view {
+        animation: coordViewFadeIn 220ms ease both;
+    }
+    @keyframes coordViewFadeIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* cards: hover lift + deeper shadow */
+    .coord-card,
+    .coord-stat,
+    .coord-highlight,
+    .coord-create-card,
+    .coord-post-card,
+    .coord-event-list,
+    .coord-attendance-card,
+    .coord-current-status,
+    .coord-records-card,
+    .coord-contact-form {
+        transition: box-shadow 180ms ease, transform 180ms ease, border-color 180ms ease;
+    }
+    .coord-card:hover,
+    .coord-stat:hover,
+    .coord-highlight:hover,
+    .coord-create-card:hover,
+    .coord-post-card:hover,
+    .coord-attendance-card:hover,
+    .coord-records-card:hover,
+    .coord-contact-form:hover {
+        box-shadow: 0 7px 16px rgba(0, 0, 0, 0.18);
+        transform: translateY(-2px);
+        border-color: var(--maroon);
+    }
+
+    /* buttons: hover background + slight lift */
+    .coord-report-row button,
+    .coord-record-actions button,
+    .coord-contact-actions button,
+    .coord-post-footer button,
+    .coord-create-card button[type="submit"],
+    .coord-attendance-card button[type="submit"],
+    .nav a,
+    .sidebar-logout,
+    .coord-icon-button {
+        transition: background-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease, padding-left 180ms ease;
+    }
+    .coord-report-row button:hover,
+    .coord-record-actions button:hover,
+    .coord-contact-actions button:hover,
+    .coord-post-footer button:hover,
+    .coord-create-card button[type="submit"]:hover,
+    .coord-attendance-card button[type="submit"]:hover {
+        background: #76162a;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+    }
+
+    /* icon buttons (print/download): subtle scale on hover */
+    .coord-icon-button:hover {
+        transform: scale(1.12);
+    }
+
+    /* sidebar logout hover */
+    .sidebar-logout:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-1px);
+    }
+
+    /* respect reduced-motion */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            animation-duration: 1ms !important;
+            transition-duration: 1ms !important;
+            scroll-behavior: auto !important;
+        }
+    }
