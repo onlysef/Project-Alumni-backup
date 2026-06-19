@@ -3450,6 +3450,7 @@
         body.dark-mode .quick-entry-form label,
         body.dark-mode .admin-entry-form label,
         body.dark-mode .tracer-form label,
+        body.dark-mode .post-meta-title,
         body.dark-mode .setting-row strong {
             color: #fac853;
         }
