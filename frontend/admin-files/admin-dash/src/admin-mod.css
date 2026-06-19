@@ -1150,6 +1150,24 @@
             place-items: center;
             background: conic-gradient(#941527 0 65%, #d7d7d7 65% 85%, #e9ad69 85% 100%);
             transition: background 240ms ease, filter 180ms ease, transform 180ms ease;
+            -webkit-mask: conic-gradient(#000 var(--donut-sweep, 360deg), transparent 0);
+            mask: conic-gradient(#000 var(--donut-sweep, 360deg), transparent 0);
+            animation: donut-reveal 900ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @property --donut-sweep {
+            syntax: "<angle>";
+            inherits: false;
+            initial-value: 0deg;
+        }
+
+        @keyframes donut-reveal {
+            from { --donut-sweep: 0deg; transform: scale(0.92); }
+            to   { --donut-sweep: 360deg; transform: scale(1); }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .donut { animation: none; --donut-sweep: 360deg; }
         }
 
         .donut:hover {
@@ -1185,6 +1203,22 @@
 
         .activity:last-child {
             border-bottom: 0;
+        }
+
+        .activity-clickable {
+            cursor: pointer;
+            padding-inline: 8px;
+            margin-inline: -8px;
+            border-radius: 6px;
+            transition: background-color 140ms ease;
+        }
+
+        .activity-clickable:hover {
+            background: rgba(87, 0, 19, 0.06);
+        }
+
+        body.dark-mode .activity-clickable:hover {
+            background: rgba(250, 200, 83, 0.1);
         }
 
         .activity p {
@@ -1573,7 +1607,7 @@
 
         .appointment-top-grid {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
             gap: 24px;
             margin-bottom: 36px;
         }
@@ -1633,6 +1667,9 @@
 
         .office-form select {
             min-height: 26px;
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
             border: 0;
             border-radius: 4px;
             padding: 0 8px;
@@ -1726,13 +1763,21 @@
         .staff-list div {
             display: grid;
             align-items: center;
-            grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto;
+            grid-template-columns: minmax(0, 1fr) auto auto auto;
             gap: 10px;
             padding: 10px 14px;
             background: #eeeeee;
             font-size: 12px;
             font-style: normal;
             font-weight: 400;
+        }
+
+        .staff-list div > div {
+            display: flex;
+            gap: 6px;
+            padding: 0;
+            background: none;
+            border-radius: 0;
         }
 
         .staff-list strong {
@@ -3105,21 +3150,55 @@
 
         .topbar-popover .topbar-modal {
             position: fixed;
-            top: 78px;
+            top: 58px;
             right: 20px;
             width: min(420px, calc(100vw - 32px));
             max-height: calc(100vh - 96px);
+            display: flex;
+            flex-direction: column;
             pointer-events: auto;
             overflow: visible;
             border: 1px solid rgba(87, 0, 19, 0.18);
         }
 
+        .topbar-popover .topbar-modal .modal-head {
+            flex: 0 0 auto;
+        }
+
+        .topbar-popover .topbar-modal-actions {
+            flex: 0 0 auto;
+        }
+
+        .notification-list,
+        .settings-form,
+        .profile-form {
+            flex: 1 1 auto;
+            min-height: 0;
+        }
+
+        @media (max-width: 600px) {
+            .topbar-popover .topbar-modal,
+            .notifications-popover .topbar-modal,
+            .settings-popover .topbar-modal,
+            .profile-popover .topbar-modal {
+                top: 64px;
+                right: 16px;
+                left: 16px;
+                width: auto;
+                max-height: calc(100vh - 84px);
+            }
+
+            .topbar-popover .topbar-modal::before {
+                display: none;
+            }
+        }
+
         .notifications-popover .topbar-modal {
-            right: 120px;
+            right: 56px;
         }
 
         .settings-popover .topbar-modal {
-            right: 70px;
+            right: 20px;
         }
 
         .profile-popover .topbar-modal {
@@ -3127,14 +3206,7 @@
         }
 
         .topbar-popover .topbar-modal::before {
-            content: "";
-            width: 14px;
-            height: 14px;
-            position: absolute;
-            top: -7px;
-            left: var(--popover-arrow-left, calc(100% - 30px));
-            transform: rotate(45deg);
-            background: var(--maroon);
+            display: none;
         }
 
         .notification-list {
@@ -3378,6 +3450,7 @@
         body.dark-mode .quick-entry-form label,
         body.dark-mode .admin-entry-form label,
         body.dark-mode .tracer-form label,
+        body.dark-mode .post-meta-title,
         body.dark-mode .setting-row strong {
             color: #fac853;
         }
@@ -3826,6 +3899,27 @@
             .appointments-card {
                 min-height: 0;
                 padding: 18px 16px;
+            }
+
+            .staff-list div {
+                grid-template-columns: 1fr;
+                justify-items: start;
+                gap: 8px;
+            }
+
+            .staff-list div span,
+            .staff-list em {
+                text-align: left;
+            }
+
+            .office-form label,
+            .office-form label:nth-child(2) {
+                grid-template-columns: 1fr;
+                gap: 6px;
+            }
+
+            .office-form .day-pills {
+                flex-wrap: wrap;
             }
 
             /* ── Admin card head ── */
@@ -4447,6 +4541,32 @@
             background: #321820;
             border-color: rgba(250, 200, 83, 0.22);
             color: #f8eef1;
+        }
+
+        body.dark-mode .post-viewer-text {
+            color: #f3e7ea;
+        }
+
+        body.dark-mode .post-viewer-actions {
+            border-top-color: rgba(250, 200, 83, 0.18);
+            border-bottom-color: rgba(250, 200, 83, 0.18);
+        }
+
+        body.dark-mode .post-viewer-actions button {
+            color: #f8eef1;
+        }
+
+        body.dark-mode .post-viewer-actions button:hover {
+            background: rgba(250, 200, 83, 0.1);
+        }
+
+        body.dark-mode .post-viewer-actions .liked,
+        body.dark-mode .post-viewer-actions .shared {
+            color: #7ab4ff;
+        }
+
+        body.dark-mode .comment-empty {
+            color: #c9b3b8;
         }
 
         /* ── Employer Dashboard ─────────────────────────────────────────── */

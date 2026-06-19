@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import Icon from "../Icon.jsx";
 import { Dropdown } from "../Primitives.jsx";
 import { CourseJobChart, EmploymentChart } from "../Charts.jsx";
-import { assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
+import { reportFilters } from "../data.js";
 
 import { API } from "../shared.js";
 
@@ -111,7 +111,7 @@ const COURSE_JOB_METRICS = [
 
 const DONUT_COURSES = ["All", "BSIT", "BSCS", "BSIS"];
 
-export default function DashboardView({ active, showToast }) {
+export default function DashboardView({ active, showToast, onOpenPost }) {
   const [donutData, setDonutData]               = useState(null);
   const [donutCourse, setDonutCourse]           = useState("All");
   const [courseJobData, setCourseJobData]       = useState({ byCourse: [], bsitByTrack: [] });
@@ -160,7 +160,17 @@ export default function DashboardView({ active, showToast }) {
         const res = await fetch(`${API}/admin/announcements/activity`, { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        setPostActivities(data.activities || []);
+        const raw = data.activities || [];
+        const seen = new Map();
+        for (const a of raw) {
+          const key = `${a.user_id || a.user_name}|${a.announcement_id || a.announcement_title}|${a.action}`;
+          const prev = seen.get(key);
+          if (!prev || new Date(a.createdAt) > new Date(prev.createdAt)) seen.set(key, a);
+        }
+        const deduped = [...seen.values()].sort(
+          (x, y) => new Date(y.createdAt) - new Date(x.createdAt)
+        );
+        setPostActivities(deduped);
       } catch {} finally {
         setActivitiesLoading(false);
       }
@@ -226,8 +236,7 @@ export default function DashboardView({ active, showToast }) {
           manage accounts, and review reports all in one place.
         </p>
         <div className="admin-hero-pills">
-          <span className="hero-pill hero-pill-gold">
-            <Icon name="icon-7" /> Role: Administrator
+          <span className="hero-pill hero-pill-gold"> Role: Administrator
           </span>
           <span className="hero-pill">
             <Icon name="icon-11" /> Alumni Tracer System
@@ -261,7 +270,6 @@ export default function DashboardView({ active, showToast }) {
 
       <div className="grid">
         <div className="left-stack">
-          <Assistant showToast={showToast} />
 
           <section className="panel">
             <div className="panel-head">
@@ -321,7 +329,14 @@ export default function DashboardView({ active, showToast }) {
                   No recent activity yet.
                 </div>
               ) : postActivities.map((a) => (
-                <div className="activity" key={a._id}>
+                <div
+                  className="activity activity-clickable"
+                  key={a._id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenPost?.(a.announcement_id)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenPost?.(a.announcement_id); } }}
+                >
                   <p>
                     <strong>{a.user_name}</strong>{" "}
                     {a.action}{" "}

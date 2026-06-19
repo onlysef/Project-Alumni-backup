@@ -42,7 +42,7 @@ function mapRow(a) {
   };
 }
 
-export default function AnnouncementsView({ active, showToast }) {
+export default function AnnouncementsView({ active, showToast, openPostId, onPostOpened }) {
   const [rows, setRows]             = useState([]);
   const [loading, setLoading]       = useState(true);
   const [search, setSearch]         = useState("");
@@ -55,6 +55,15 @@ export default function AnnouncementsView({ active, showToast }) {
     if (!active) return;
     fetchAnnouncements();
   }, [active]);
+
+  useEffect(() => {
+    if (!active || !openPostId || rows.length === 0) return;
+    const target = rows.find((r) => r.id === String(openPostId) || r.id === openPostId);
+    if (target) {
+      setCommentTarget(target);
+      onPostOpened?.();
+    }
+  }, [active, openPostId, rows]);
 
   async function fetchAnnouncements() {
     setLoading(true);

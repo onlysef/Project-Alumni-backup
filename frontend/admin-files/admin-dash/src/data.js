@@ -42,18 +42,17 @@ export const viewRoutes = {
   
   dashboard: "Dashboard",
   employment: "Alumni Employment Details",
-  jobconnect: "Job Connect",
   appointments: "Appointments",
   accounts: "Manage Accounts",
   announcements: "Post Announcements",
   partnerships: "Partnerships",
+  aiassistant: "AC - AI Assistant",
   about: "Alumni Association Inc.",
 };
 
 export const navItems = [
   { view: "dashboard", icon: "icon-1", label: "Dashboard" },
   { view: "employment", icon: "icon-2", label: "Alumni Employment Details" },
-  { view: "jobconnect", icon: "icon-6", label: "Job Connect" },
   { view: "appointments", icon: "icon-3", label: "Appointments" },
   { view: "accounts", icon: "icon-4", label: "Manage Accounts", children: [
       { key: "Alumni", label: "Alumni" },
@@ -62,6 +61,7 @@ export const navItems = [
   ] },
   { view: "announcements", icon: "icon-5", label: "Post Announcements" },
   { view: "partnerships", icon: "icon-6", label: "Partnerships" },
+  { view: "aiassistant", icon: "icon-15", label: "AC - AI Assistant" },
 ];
 
 export const adminMenuChoices = {

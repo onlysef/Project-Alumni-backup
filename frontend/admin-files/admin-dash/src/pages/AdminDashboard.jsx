@@ -6,8 +6,8 @@ import { Topbar } from "../layout/Topbar.jsx";
 
 import DashboardView from "./DashboardView.jsx";
 import EmploymentView from "./EmploymentView.jsx";
-import JobConnectView from "./JobConnectView.jsx";
 import AppointmentsView from "./AppointmentsView.jsx";
+import AIAssistantView from "./AIAssistantView.jsx";
 import AccountsView from "./AccountsView.jsx";
 import AnnouncementsView from "./AnnouncementsView.jsx";
 import PartnershipsView from "./PartnershipsView.jsx";
@@ -57,6 +57,13 @@ export default function AdminDashboard() {
   }, [view]);
 
   const [accountsRoleFilter, setAccountsRoleFilter] = useState("Role");
+  const [openPostId, setOpenPostId] = useState(null);
+
+  function openPost(postId) {
+    if (!postId) { selectView("announcements"); return; }
+    setOpenPostId(postId);
+    selectView("announcements");
+  }
 
   function selectView(v, subFilter) {
     setView(v);
@@ -79,13 +86,13 @@ export default function AdminDashboard() {
           setSettings={setSettings}
           showToast={showToast}
         />
-        <DashboardView active={view === "dashboard"} showToast={showToast} />
+        <DashboardView active={view === "dashboard"} showToast={showToast} onOpenPost={openPost} />
         <EmploymentView active={view === "employment"} showToast={showToast} />
         <AppointmentsView active={view === "appointments"} showToast={showToast} />
         <AccountsView active={view === "accounts"} showToast={showToast} roleFilterFromNav={accountsRoleFilter} />
-        <AnnouncementsView active={view === "announcements"} showToast={showToast} />
+        <AnnouncementsView active={view === "announcements"} showToast={showToast} openPostId={openPostId} onPostOpened={() => setOpenPostId(null)} />
         <PartnershipsView active={view === "partnerships"} showToast={showToast} />
-        <JobConnectView active={view === "jobconnect"} showToast={showToast} />
+        <AIAssistantView active={view === "aiassistant"} showToast={showToast} />
         <AboutView active={view === "about"} showToast={showToast} />        
       </main>
       <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">
