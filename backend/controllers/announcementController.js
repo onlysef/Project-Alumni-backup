@@ -109,6 +109,7 @@ const toggleLike = async (req, res) => {
 
     if (liked) {
       const userName = await resolveUserName(userId);
+      await ActivityLog.deleteOne({ user_id: userId, action: 'liked', announcement_id: ann._id });
       ActivityLog.create({
         user_id:            userId,
         user_name:          userName,
@@ -116,6 +117,8 @@ const toggleLike = async (req, res) => {
         announcement_id:    ann._id,
         announcement_title: ann.title,
       }).catch(() => {});
+    } else {
+      ActivityLog.deleteOne({ user_id: userId, action: 'liked', announcement_id: ann._id }).catch(() => {});
     }
 
     res.json({ liked, likesCount: ann.likedBy.length, likedBy: ann.likedBy });
