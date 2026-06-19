@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import Icon from "../Icon.jsx";
 import { Dropdown } from "../Primitives.jsx";
 import { CourseJobChart, EmploymentChart } from "../Charts.jsx";
-import { assistantGreetings, assistantReply, currentTime, reportFilters } from "../data.js";
 import { reportFilters } from "../data.js";
 
 import { API } from "../shared.js";
