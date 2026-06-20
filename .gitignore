@@ -3,3 +3,4 @@ backend/.env
 frontend/admin-files/admin-dash/.env
 frontend/admin-files/admin-dash/.env.production
 .claude/
+node_modules/
