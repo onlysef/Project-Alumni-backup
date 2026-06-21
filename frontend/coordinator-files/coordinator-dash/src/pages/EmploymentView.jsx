@@ -10,10 +10,16 @@ export default function EmploymentView({ active, showToast }) {
     { name: "John Ocampo", course: "BSIT", company: "TSU Support Desk", position: "Tech Support", status: "Employed" },
   ];
 
+  const activities = [
+    { text: "Maria Santos updated employment to Data Scientist", time: "5 min." },
+    { text: "Katie Salazar added a new company: CloudBridge", time: "1 hr." },
+    { text: "John Ocampo marked status as Employed", time: "2 hr." },
+  ];
+
   return (
     <section className={`content coordinator-content view${active ? " active-view" : ""}`}>
       <section className="coord-records-card">
-        <h3>Alumni Employment Details</h3>
+        <h3>Employment Details</h3>
         <div className="coord-record-toolbar">
           <select onChange={(event) => showToast?.(`Employment filter: ${event.target.value}`)}>
             <option>All Courses</option>
@@ -46,6 +52,18 @@ export default function EmploymentView({ active, showToast }) {
             ]);
             showToast?.("Employment details exported.");
           }}>Export Employment</button>
+        </div>
+      </section>
+
+      <section className="coord-card coord-activity">
+        <h3>Recent Activities</h3>
+        <div className="coord-activity-list">
+          {activities.map((activity, index) => (
+            <div className="coord-activity-row" key={`${activity.text}-${index}`}>
+              <span>{activity.text}</span>
+              <span className="coord-activity-time">{activity.time}</span>
+            </div>
+          ))}
         </div>
       </section>
     </section>
