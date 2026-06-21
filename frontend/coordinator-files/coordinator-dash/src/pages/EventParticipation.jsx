@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import Icon from "../SimpleIcon.jsx";
-import { initialRecords, downloadCsv } from "./coordinatorShared.jsx";
+import { initialRecords, downloadCsv } from "./CoordinatorShared.jsx";
 
 export default function EventParticipation({ active, showToast }) {
   const [records, setRecords] = useState(initialRecords);

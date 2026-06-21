@@ -3,6 +3,13 @@ import Icon from "../SimpleIcon.jsx";
 import { MiniBarChart, downloadCsv } from "./CoordinatorShared.jsx";
 
 export default function CoordinatorHome({ active, showToast }) {
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   const stats = [
     ["398", "Total Alumni", "icon-11"],
     ["14", "Annual Completed Events", "icon-5"],
@@ -14,6 +21,19 @@ export default function CoordinatorHome({ active, showToast }) {
 
   return (
     <section className={`content coordinator-content view${active ? " active-view" : ""}`}>
+      <div className="coord-hero" aria-label="Welcome banner">
+        <h1 className="coord-hero-title">Hello, Coordinator!</h1>
+        <p className="coord-hero-subtitle">
+          Welcome to the Alumni Tracer Management System. Manage events, track
+          participation, and review alumni feedback all in one place.
+        </p>
+        <div className="coord-hero-pills">
+          <span className="coord-hero-pill coord-hero-pill-gold">Role: Coordinator</span>
+          <span className="coord-hero-pill">
+            <Icon name="icon-13" /> {today}
+          </span>
+        </div>
+      </div>
       <div className="coord-stats">
         {stats.map(([value, label, icon]) => (
           <article className="coord-stat" key={label}>

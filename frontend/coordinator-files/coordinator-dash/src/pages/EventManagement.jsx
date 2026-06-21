@@ -35,19 +35,21 @@ export default function EventManagement({ active, showToast }) {
         <div className="coord-event-left">
           <form className="coord-create-card" onSubmit={createEvent}>
             <h3>Create Events</h3>
-            <input placeholder="Title" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} />
-            <textarea placeholder="Description" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
-            <input placeholder="Location" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} />
-            <div className="coord-form-row">
-              <input placeholder="Date & Time" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} />
-              <select value={form.scope} onChange={(e) => setForm((p) => ({ ...p, scope: e.target.value }))}>
-                <option>Select Scope</option>
-                <option>CCS Alumni</option>
-                <option>All Alumni</option>
-                <option>Public</option>
-              </select>
+            <div className="coord-create-body">
+              <input placeholder="Title" value={form.title} onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))} />
+              <textarea placeholder="Description" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
+              <input placeholder="Location" value={form.location} onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))} />
+              <div className="coord-form-row">
+                <input placeholder="Date & Time" value={form.date} onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))} />
+                <select value={form.scope} onChange={(e) => setForm((p) => ({ ...p, scope: e.target.value }))}>
+                  <option>Select Scope</option>
+                  <option>CCS Alumni</option>
+                  <option>All Alumni</option>
+                  <option>Public</option>
+                </select>
+              </div>
+              <button type="submit">Create Event</button>
             </div>
-            <button type="submit">Create Event</button>
           </form>
 
           <h3 className="coord-section-kicker">Recent Event Posts</h3>
@@ -69,7 +71,7 @@ export default function EventManagement({ active, showToast }) {
           <div className="coord-event-list-inner">
             {events.map((event) => (
               <article key={event.id}>
-                <span className="coord-event-status">{event.status}</span>
+                <span className={`coord-event-status status-${(event.status || "").toLowerCase().replace(/\s+/g, "-")}`}>{event.status}</span>
                 <strong>Title: {event.title}</strong>
                 <span>Date: {event.date}</span>
                 <span>Time: {event.time}</span>

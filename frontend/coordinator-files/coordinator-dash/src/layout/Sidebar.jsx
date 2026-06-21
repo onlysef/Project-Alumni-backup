@@ -102,7 +102,7 @@ export function Sidebar({ view, onSelect, collapsed, items = coordinatorNavItems
       <div className="sidebar-footer">
         <button className="sidebar-logout" type="button" onClick={() => onSelect("dashboard")} aria-label="Back to dashboard">
           <span><Icon name="icon-7" /></span>
-          <span>Dashboard</span>
+          <span>Logout</span>
         </button>
       </div>
     </aside>

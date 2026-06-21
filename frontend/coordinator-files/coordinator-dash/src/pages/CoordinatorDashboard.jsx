@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { coordinatorNavItems, coordinatorViewRoutes } from "../coordinatorData.js";
 import { Sidebar, useSidebar } from "../layout/Sidebar.jsx";
-import { CoordinatorTopbar } from "../layout/CoordinatorTopbar.jsx";
+import { CoordinatorTopbar } from "../layout/Coordinatortopbar.jsx";
 import CoordinatorHome from "./CoordinatorHome.jsx";
 import EventManagement from "./EventManagement.jsx";
 import EventParticipation from "./EventParticipation.jsx";
 import EmploymentView from "./EmploymentView.jsx";
 import AlumniContacts from "./AlumniContacts.jsx";
+import AboutView from "./AboutView.jsx";
 
 export default function CoordinatorDashboard() {
   const [view, setView] = useState(() => localStorage.getItem("coordinatorView") || "dashboard");
@@ -64,6 +65,7 @@ export default function CoordinatorDashboard() {
         <EventParticipation active={view === "participation"} showToast={showToast} />
         <EmploymentView active={view === "employment"} showToast={showToast} />
         <AlumniContacts active={view === "contacts"} showToast={showToast} />
+        <AboutView active={view === "about"} showToast={showToast} />
       </main>
       <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">
         {toast}
