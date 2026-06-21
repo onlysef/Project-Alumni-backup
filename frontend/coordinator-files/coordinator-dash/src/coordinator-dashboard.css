@@ -427,7 +427,6 @@
         justify-items: center;
         border-radius: 0 30px 30px 0;
     }
-
     .app.sidebar-collapsed .nav a:hover,
     .app.sidebar-collapsed .nav a.active:hover {
         padding-left: 16px;
@@ -562,11 +561,13 @@
 
             .coord-card h3 {
                 margin: 0;
-                min-height: 58px;
-                padding: 14px 18px;
+                min-height: 45px;
+                padding: 0 15px;
+                display: flex;
+                align-items: center;
                 background: var(--maroon);
                 color: #fff;
-                font-size: 18px;
+                font-size: 14px;
                 font-weight: 700;
             }
 
@@ -606,9 +607,8 @@
             }
 
             .coord-activity h3 {
-                background: #fff;
-                color: var(--maroon);
-                border-bottom: 1px solid #ead7da;
+                background: var(--maroon);
+                color: #fff;
             }
 
             .coord-activity-row {
@@ -646,43 +646,63 @@
             }
 
             .coord-report-row {
-                min-height: 72px;
+                min-height: 46px;
                 display: grid;
-                grid-template-columns: 1fr auto auto;
+                grid-template-columns: 1fr 62px 29px;
                 align-items: center;
-                gap: 13px;
-                font-size: 12px;
+                gap: 10px;
+                padding: 0 8px;
+                font-size: 14px;
                 color: #4b3f42;
+                border-bottom: 1px solid #ead7da;
+            }
+            .coord-report-row:last-child {
+                border-bottom: 0;
             }
 
-            .coord-report-row button,
-            .coord-icon-button,
+            .coord-report-row button {
+                border: 0;
+                border-radius: 5px;
+                height: 29px;
+                padding: 0 12px;
+                background: var(--maroon);
+                color: #fff;
+                font: inherit;
+                font-size: 10px;
+                font-weight: 600;
+                cursor: pointer;
+            }
             .coord-record-actions button,
             .coord-contact-actions button {
                 border: 0;
                 border-radius: 5px;
-                min-height: 28px;
+                height: 29px;
                 margin-right: 8px;
                 padding: 0 12px;
                 background: var(--maroon);
                 color: #fff;
                 font: inherit;
-                font-size: 12px;
+                font-size: 10px;
                 font-weight: 600;
                 cursor: pointer;
             }
 
             .coord-icon-button {
-                padding: 0;
-                width: 30px;
-                background: transparent;
-                color: var(--orange);
+                padding: 4px;
+                width: 29px;
+                height: 29px;
+                border: 0;
+                border-radius: 5px;
+                display: grid;
+                place-items: center;
+                background: var(--maroon);
+                cursor: pointer;
             }
             .coord-icon-button .admin-svg-icon {
-                width: 20px;
-                height: 20px;
-                /* orange print/download icon */
-                filter: brightness(0) saturate(100%) invert(43%) sepia(46%) saturate(900%) hue-rotate(348deg) brightness(92%);
+                width: 18px;
+                height: 18px;
+                /* white download icon on maroon button */
+                filter: brightness(0) invert(1);
             }
 
             .coord-events-layout {
@@ -711,7 +731,6 @@
                 gap: 9px;
             }
 
-            .coord-create-card h3,
             .coord-section-kicker,
             .coord-attendance-card h3,
             .coord-records-card h3,
@@ -968,6 +987,15 @@
                 text-transform: none;
             }
 
+            .coord-records-card tbody tr,
+            .coord-contacts-table tbody tr {
+                transition: background 150ms ease;
+            }
+            .coord-records-card tbody tr:hover,
+            .coord-contacts-table tbody tr:hover {
+                background: rgba(87, 0, 19, 0.05);
+            }
+
             .coord-record-actions {
                 display: flex;
                 justify-content: flex-end;
@@ -1190,56 +1218,6 @@
         transform: translateY(-1px);
     }
 
-    /* ===== welcome hero banner (admin-style) ===== */
-    .coord-hero {
-        background: linear-gradient(135deg, var(--maroon-deep) 0%, #7a0a24 55%, var(--maroon) 100%);
-        color: #fff;
-        border-radius: 16px;
-        padding: 22px 26px;
-        margin-bottom: 18px;
-        box-shadow: var(--panel-shadow);
-    }
-    .coord-hero-title {
-        margin: 0;
-        font-size: 26px;
-        font-weight: 800;
-        line-height: 1.2;
-    }
-    .coord-hero-subtitle {
-        margin: 8px 0 0;
-        font-size: 14px;
-        font-weight: 400;
-        color: rgba(255, 255, 255, 0.82);
-        max-width: 720px;
-    }
-    .coord-hero-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 16px;
-    }
-    .coord-hero-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        padding: 7px 14px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.14);
-        color: #fff;
-        font-size: 13px;
-        font-weight: 600;
-        white-space: nowrap;
-    }
-    .coord-hero-pill img.admin-svg-icon {
-        width: 15px;
-        height: 15px;
-        filter: brightness(0) invert(1);
-    }
-    .coord-hero-pill-gold {
-        background: var(--gold);
-        color: var(--maroon-deep);
-    }
-
     /* respect reduced-motion */
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
@@ -1248,3 +1226,279 @@
             scroll-behavior: auto !important;
         }
     }
+/* ===== welcome hero banner (admin-style) ===== */
+.coord-hero {
+    background: linear-gradient(135deg, var(--maroon-deep) 0%, #7a0a24 55%, var(--maroon) 100%);
+    color: #fff;
+    border-radius: 16px;
+    padding: 22px 26px;
+    margin-bottom: 18px;
+    box-shadow: var(--panel-shadow);
+}
+.coord-hero-title {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+.coord-hero-subtitle {
+    margin: 8px 0 0;
+    font-size: 14px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.82);
+    max-width: 720px;
+}
+.coord-hero-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+.coord-hero-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.coord-hero-pill img.admin-svg-icon {
+    width: 15px;
+    height: 15px;
+    filter: brightness(0) invert(1);
+}
+.coord-hero-pill-gold {
+    background: var(--gold);
+    color: var(--maroon-deep);
+}
+
+/* ===================================================================
+   Event Management — admin-card style (clean white, maroon headers)
+   =================================================================== */
+
+/* Card shells: maroon header bar + white body, like .admin-card */
+.coord-create-card,
+.coord-post-card,
+.coord-event-list {
+    background: #fff !important;
+    border: 1px solid rgba(87, 0, 19, 0.55) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14) !important;
+    overflow: hidden;
+    margin-bottom: 26px;
+    padding: 0 !important;
+}
+
+/* Maroon header bar (h3 = the card head) */
+.coord-create-card > h3,
+.coord-event-list > h3 {
+    margin: 0 !important;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    padding: 14px 18px !important;
+    background: var(--maroon) !important;
+    color: #fff !important;
+    font-size: 18px !important;
+    font-weight: 700;
+    border-radius: 10px 10px 0 0;
+}
+
+/* Body padding under the header */
+.coord-create-body {
+    padding: 18px;
+    display: grid;
+    gap: 12px;
+}
+.coord-event-list-inner {
+    padding: 18px;
+    display: grid;
+    gap: 12px;
+}
+
+/* Inputs — clean admin style */
+.coord-create-card input,
+.coord-create-card textarea,
+.coord-create-card select {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #d8c6c9 !important;
+    border-radius: 8px !important;
+    padding: 11px 13px !important;
+    background: #faf7f8 !important;
+    color: var(--text) !important;
+    font: inherit;
+    font-size: 13px;
+    transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+.coord-create-card input::placeholder,
+.coord-create-card textarea::placeholder {
+    color: rgba(45, 32, 36, 0.45);
+}
+.coord-create-card input:focus,
+.coord-create-card textarea:focus,
+.coord-create-card select:focus {
+    outline: none;
+    border-color: var(--maroon) !important;
+    background: #fff !important;
+    box-shadow: 0 0 0 3px rgba(87, 0, 19, 0.10) !important;
+}
+.coord-create-card textarea {
+    min-height: 70px;
+    resize: vertical;
+}
+.coord-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* Submit button — maroon */
+.coord-create-card button[type="submit"] {
+    justify-self: end;
+    border: 0;
+    border-radius: 8px;
+    min-height: 40px;
+    padding: 0 22px;
+    background: var(--maroon);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 160ms ease, transform 160ms ease;
+}
+.coord-create-card button[type="submit"]:hover {
+    background: #76162a;
+    transform: translateY(-1px);
+}
+
+/* Section kicker */
+.coord-section-kicker {
+    margin: 0 0 12px;
+    color: var(--maroon);
+    font-size: 16px;
+    font-weight: 700;
+}
+
+/* Recent post card */
+.coord-post-card {
+    padding: 18px !important;
+}
+.coord-post-card h4 {
+    margin: 0 0 8px;
+    color: var(--maroon);
+    font-size: 15px;
+    font-weight: 700;
+}
+.coord-post-card p {
+    margin: 0 0 10px;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+}
+.coord-post-card small {
+    color: var(--muted);
+    font-size: 11px;
+}
+.coord-post-footer {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 14px;
+}
+.coord-post-footer span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 700;
+}
+.coord-post-footer .admin-svg-icon {
+    width: 15px;
+    height: 15px;
+    filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+}
+.coord-post-footer button {
+    margin-left: auto;
+    border: 0;
+    border-radius: 8px;
+    min-height: 34px;
+    padding: 0 16px;
+    background: var(--maroon);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 160ms ease;
+}
+.coord-post-footer button:hover {
+    background: #76162a;
+}
+
+/* Event list items */
+.coord-event-list-inner article {
+    background: #faf7f8;
+    border: 1px solid #ecdfe2;
+    border-radius: 8px;
+    padding: 13px 15px;
+    display: grid;
+    gap: 4px;
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.coord-event-list-inner article:hover {
+    border-color: var(--maroon);
+    box-shadow: 0 3px 10px rgba(87, 0, 19, 0.10);
+}
+.coord-event-list-inner article strong {
+    color: var(--maroon);
+    font-size: 13px;
+}
+.coord-event-list-inner article span {
+    font-size: 11px;
+    color: var(--muted);
+}
+
+/* Status pills */
+.coord-event-status {
+    width: fit-content;
+    padding: 3px 11px;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+.status-on-going {
+    background: rgba(15, 110, 86, 0.12);
+    color: #0f6e56;
+    border: 1px solid rgba(15, 110, 86, 0.3);
+}
+.status-coming-soon {
+    background: rgba(185, 90, 34, 0.12);
+    color: #b95a22;
+    border: 1px solid rgba(185, 90, 34, 0.3);
+}
+
+/* Two-column layout */
+.coord-events-layout {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 20px;
+    align-items: start;
+}
+@media (max-width: 760px) {
+    .coord-events-layout {
+        grid-template-columns: 1fr;
+    }
+    .coord-form-row {
+        grid-template-columns: 1fr;
+    }
+}
