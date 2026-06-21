@@ -428,6 +428,11 @@
         border-radius: 0 30px 30px 0;
     }
 
+    .app.sidebar-collapsed .nav a:hover,
+    .app.sidebar-collapsed .nav a.active:hover {
+        padding-left: 16px;
+    }
+
     @media (max-width: 600px) {
         .app,
         .app.sidebar-collapsed,
@@ -1159,7 +1164,6 @@
     .coord-post-footer button,
     .coord-create-card button[type="submit"],
     .coord-attendance-card button[type="submit"],
-    .nav a,
     .sidebar-logout,
     .coord-icon-button {
         transition: background-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
@@ -1184,6 +1188,56 @@
     .sidebar-logout:hover {
         background: rgba(255, 255, 255, 0.2);
         transform: translateY(-1px);
+    }
+
+    /* ===== welcome hero banner (admin-style) ===== */
+    .coord-hero {
+        background: linear-gradient(135deg, var(--maroon-deep) 0%, #7a0a24 55%, var(--maroon) 100%);
+        color: #fff;
+        border-radius: 16px;
+        padding: 22px 26px;
+        margin-bottom: 18px;
+        box-shadow: var(--panel-shadow);
+    }
+    .coord-hero-title {
+        margin: 0;
+        font-size: 26px;
+        font-weight: 800;
+        line-height: 1.2;
+    }
+    .coord-hero-subtitle {
+        margin: 8px 0 0;
+        font-size: 14px;
+        font-weight: 400;
+        color: rgba(255, 255, 255, 0.82);
+        max-width: 720px;
+    }
+    .coord-hero-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+    }
+    .coord-hero-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .coord-hero-pill img.admin-svg-icon {
+        width: 15px;
+        height: 15px;
+        filter: brightness(0) invert(1);
+    }
+    .coord-hero-pill-gold {
+        background: var(--gold);
+        color: var(--maroon-deep);
     }
 
     /* respect reduced-motion */
