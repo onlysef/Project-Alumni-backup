@@ -2035,7 +2035,7 @@ body.dark-mode .theme-chip.active {
 body.dark-mode .main,
 body.dark-mode .content,
 body.dark-mode .coordinator-content {
-    background: #1a0d11;
+    background: #321820;
     color: #f3e7ea;
 }
 body.dark-mode .coord-records-card table th,
@@ -2094,4 +2094,166 @@ body.dark-mode .coord-post-card h4,
 body.dark-mode .coord-records-card h3,
 body.dark-mode .coord-contacts-table h3 {
     color: var(--gold);
+}
+
+/* ===================================================================
+   Dark mode — make ALL maroon/dark text readable on dark surfaces
+   =================================================================== */
+/* stat card numbers + labels */
+body.dark-mode .coord-stat strong,
+body.dark-mode .coord-highlight strong {
+    color: var(--gold);
+}
+body.dark-mode .coord-stat span,
+body.dark-mode .coord-highlight span,
+body.dark-mode .coord-stat div span {
+    color: #f3e7ea;
+}
+/* stat icons -> light */
+body.dark-mode .coord-stat .admin-svg-icon,
+body.dark-mode .coord-highlight .admin-svg-icon {
+    filter: brightness(0) saturate(100%) invert(82%) sepia(38%) saturate(640%) hue-rotate(330deg) brightness(101%);
+}
+
+/* activity rows */
+body.dark-mode .coord-activity-row,
+body.dark-mode .coord-activity-row span,
+body.dark-mode .coord-activity-row .coord-activity-time,
+body.dark-mode .coord-activity-row time {
+    color: #f3e7ea !important;
+}
+body.dark-mode .coord-activity-row span:first-child {
+    color: var(--gold) !important;
+}
+
+/* report rows */
+body.dark-mode .coord-report-row,
+body.dark-mode .coord-report-row span {
+    color: #f3e7ea;
+}
+
+/* recent activities / employment activity text */
+body.dark-mode .coord-activity .coord-activity-row span {
+    color: #f3e7ea !important;
+}
+
+/* generic: any maroon body text inside dark cards -> light */
+body.dark-mode .coord-post-card p,
+body.dark-mode .coord-post-card small,
+body.dark-mode .coord-post-footer span,
+body.dark-mode .coord-event-list-inner article strong,
+body.dark-mode .coord-current-status p,
+body.dark-mode .content p,
+body.dark-mode .content span,
+body.dark-mode .content td {
+    color: #f3e7ea;
+}
+
+/* event list item titles + status pills stay accent-colored */
+body.dark-mode .coord-event-list-inner article strong {
+    color: var(--gold);
+}
+
+/* table headers -> gold */
+body.dark-mode table th {
+    color: var(--gold) !important;
+}
+
+/* post footer icons -> light */
+body.dark-mode .coord-post-footer .admin-svg-icon {
+    filter: brightness(0) invert(1);
+}
+
+/* Dark mode — activity row text (override ::first-line maroon) */
+body.dark-mode .coord-activity-row span,
+body.dark-mode .coord-activity-row span::first-line {
+    color: #f8eef0 !important;
+}
+body.dark-mode .coord-activity-row time,
+body.dark-mode .coord-activity-row .coord-activity-time {
+    color: var(--gold) !important;
+}
+
+/* ===================================================================
+   Dark mode — global catch-all for readable text
+   (placed last so it wins the cascade)
+   =================================================================== */
+body.dark-mode .main,
+body.dark-mode .content,
+body.dark-mode .coordinator-content {
+    color: #f3e7ea;
+}
+/* any text node inside coordinator cards/sections */
+body.dark-mode .coord-card,
+body.dark-mode .coord-card p,
+body.dark-mode .coord-card span,
+body.dark-mode .coord-card small,
+body.dark-mode .coord-card strong,
+body.dark-mode .coord-card td,
+body.dark-mode .coord-card th,
+body.dark-mode .coord-card label,
+body.dark-mode .coord-records-card td,
+body.dark-mode .coord-contacts-table td,
+body.dark-mode .coord-create-card,
+body.dark-mode .coord-create-card label,
+body.dark-mode .coord-attendance-card,
+body.dark-mode .coord-attendance-card label,
+body.dark-mode .coord-attendance-card span,
+body.dark-mode .coord-current-status,
+body.dark-mode .coord-current-status p,
+body.dark-mode .coord-current-status span,
+body.dark-mode .coord-post-card,
+body.dark-mode .coord-post-card p,
+body.dark-mode .coord-post-card small,
+body.dark-mode .coord-event-list-inner article span,
+body.dark-mode .coord-stat span,
+body.dark-mode .coord-highlight span,
+body.dark-mode .coord-field,
+body.dark-mode .coord-record-toolbar,
+body.dark-mode .coord-record-toolbar label,
+body.dark-mode .coord-contact-toolbar,
+body.dark-mode .coord-contact-toolbar span {
+    color: #f3e7ea;
+}
+/* accent text (numbers, titles, headings, kickers) -> gold */
+body.dark-mode .coord-stat strong,
+body.dark-mode .coord-highlight strong,
+body.dark-mode .coord-card h3,
+body.dark-mode .coord-section-kicker,
+body.dark-mode .coord-post-card h4,
+body.dark-mode .coord-records-card h3,
+body.dark-mode .coord-contacts-table h3,
+body.dark-mode .coord-create-card > h3,
+body.dark-mode .coord-event-list > h3,
+body.dark-mode .coord-event-list-inner article strong,
+body.dark-mode .coord-field > span,
+body.dark-mode table th,
+body.dark-mode .coord-activity-row span:first-child {
+    color: var(--gold) !important;
+}
+/* muted labels (Filter by, "Time In", etc.) -> soft light */
+body.dark-mode .coord-contact-toolbar > span,
+body.dark-mode .coord-record-toolbar > span,
+body.dark-mode small,
+body.dark-mode .coord-post-card small,
+body.dark-mode .coord-contacts-table td small {
+    color: #c9b3b8 !important;
+}
+/* status pill text stays as-is (already colored). attendance stat labels -> gold */
+body.dark-mode .coord-attendance-card strong {
+    color: var(--gold);
+}
+
+/* Dark mode — chart labels + title readable */
+body.dark-mode .coord-chart text {
+    fill: #f3e7ea;
+}
+body.dark-mode .coord-chart-box p {
+    color: #f3e7ea;
+}
+body.dark-mode .coord-chart line {
+    stroke: #6b5560;
+}
+body.dark-mode .coord-chart .coord-chart-grid {
+    stroke: #50303a;
 }
