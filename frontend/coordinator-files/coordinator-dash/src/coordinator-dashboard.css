@@ -2257,3 +2257,68 @@ body.dark-mode .coord-chart line {
 body.dark-mode .coord-chart .coord-chart-grid {
     stroke: #50303a;
 }
+
+/* ===================================================================
+   Dark mode — Event Management page (list items, posts, pills)
+   =================================================================== */
+/* event list items (List of Events) */
+body.dark-mode .coord-event-list-inner article {
+    background: #2d1a20;
+    border-color: #50303a;
+}
+body.dark-mode .coord-event-list-inner article strong {
+    color: var(--gold);
+}
+body.dark-mode .coord-event-list-inner article span {
+    color: #d8c4c9;
+}
+/* status pills — brighten for dark bg */
+body.dark-mode .status-on-going {
+    background: rgba(93, 202, 165, 0.2);
+    color: #6fe0bc;
+    border-color: rgba(93, 202, 165, 0.45);
+}
+body.dark-mode .status-coming-soon {
+    background: rgba(250, 200, 83, 0.2);
+    color: var(--gold);
+    border-color: rgba(250, 200, 83, 0.45);
+}
+/* recent event post card text */
+body.dark-mode .coord-post-card h4 {
+    color: var(--gold);
+}
+body.dark-mode .coord-post-card p,
+body.dark-mode .coord-post-card small,
+body.dark-mode .coord-post-footer span {
+    color: #e8d9dd;
+}
+/* create event card title + body inputs already dark; ensure label/headers gold */
+body.dark-mode .coord-create-card > h3,
+body.dark-mode .coord-event-list > h3,
+body.dark-mode .coord-section-kicker {
+    color: var(--gold);
+}
+/* post footer count icons -> light */
+body.dark-mode .coord-post-footer .admin-svg-icon {
+    filter: brightness(0) invert(1);
+}
+
+/* Dark mode — override the !important white card backgrounds (Event Mgmt) */
+body.dark-mode .coord-create-card,
+body.dark-mode .coord-post-card,
+body.dark-mode .coord-event-list {
+    background: #241116 !important;
+    border-color: #50303a !important;
+}
+/* card header bars stay maroon (already), keep gold title */
+body.dark-mode .coord-create-card input,
+body.dark-mode .coord-create-card textarea,
+body.dark-mode .coord-create-card select {
+    background: #2d1a20 !important;
+    border-color: #50303a !important;
+    color: #f3e7ea !important;
+}
+body.dark-mode .coord-create-card input::placeholder,
+body.dark-mode .coord-create-card textarea::placeholder {
+    color: #9c868c !important;
+}
