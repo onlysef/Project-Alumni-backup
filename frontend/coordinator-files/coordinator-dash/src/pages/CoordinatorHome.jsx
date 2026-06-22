@@ -45,10 +45,13 @@ export default function CoordinatorHome({ active, showToast }) {
           </article>
         ))}
         <article className="coord-highlight">
-          <strong>Top Event:</strong>
-          <span>Job Fair 2026</span>
-          <strong>Low Response:</strong>
-          <span>March Seminar</span>
+          <div>
+            <strong>Top Event:</strong>
+            <span>Job Fair 2026</span>
+            <strong>Low Response:</strong>
+            <span>March Seminar</span>
+          </div>
+          <Icon name="icon-trophy" />
         </article>
       </div>
 

@@ -17,12 +17,11 @@ export default function CoordinatorDashboard() {
   const [settings, setSettings] = useState(() => {
     try {
       return {
+        theme: "light",
         emailAlerts: true,
         dashboardNotifications: true,
         compactTables: false,
-        ...(JSON.parse(localStorage.getItem("aptmsDashboardSettings")) || {}),
-        // Coordinator has no theme toggle yet: always force light.
-        theme: "light",
+        ...(JSON.parse(localStorage.getItem("aptmsCoordinatorSettings")) || {}),
       };
     } catch {
       return { theme: "light", emailAlerts: true, dashboardNotifications: true, compactTables: false };
@@ -59,6 +58,8 @@ export default function CoordinatorDashboard() {
           collapsed={collapsed}
           onToggleSidebar={toggleSidebar}
           showToast={showToast}
+          settings={settings}
+          setSettings={setSettings}
         />
         <CoordinatorHome active={view === "dashboard"} showToast={showToast} />
         <EventManagement active={view === "events"} showToast={showToast} />

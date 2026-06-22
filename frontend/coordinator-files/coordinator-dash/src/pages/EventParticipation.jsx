@@ -36,7 +36,7 @@ export default function EventParticipation({ active, showToast }) {
             <label>Time In:<input value={form.timeIn} onChange={(e) => setForm((p) => ({ ...p, timeIn: e.target.value }))} /></label>
             <label>Status:<select value={form.status} onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}><option>Present</option><option>Late</option><option>Excused</option></select></label>
           </div>
-          <button type="submit">Record Attendance</button>
+          <button type="submit" className="btn btn-primary"><Icon name="icon-save" /> Record</button>
         </form>
 
         <aside className="coord-current-status">
@@ -72,8 +72,8 @@ export default function EventParticipation({ active, showToast }) {
           <button type="button" onClick={() => {
             downloadCsv("event-attendance.csv", [["Name", "Course", "Time In", "Feedback"], ...records.map((r) => [r.name, r.course, r.timeIn, r.feedback ? "Yes" : "No"])]);
             showToast("Attendance exported.");
-          }}>Export Attendance</button>
-          <button type="button">View Event</button>
+          }} className="btn btn-primary"><Icon name="icon-export" /> Export</button>
+          <button type="button" className="btn btn-secondary"><Icon name="icon-view" /> View Event</button>
         </div>
       </section>
     </section>
