@@ -48,7 +48,7 @@ export default function EventManagement({ active, showToast }) {
                   <option>Public</option>
                 </select>
               </div>
-              <button type="submit">Create Event</button>
+              <button type="submit" className="btn btn-primary"><Icon name="icon-add" /> Create</button>
             </div>
           </form>
 
@@ -61,7 +61,7 @@ export default function EventManagement({ active, showToast }) {
               <span><Icon name="icon-12" /> 100</span>
               <span><Icon name="icon-11" /> 45</span>
               <span><Icon name="icon-13" /> 12</span>
-              <button type="button">{events[0]?.interested} Interested</button>
+              <button type="button" className="btn btn-secondary"><Icon name="icon-view" /> {events[0]?.interested} Interested</button>
             </div>
           </article>
         </div>

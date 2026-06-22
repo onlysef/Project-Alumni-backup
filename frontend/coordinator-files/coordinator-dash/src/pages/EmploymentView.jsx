@@ -51,7 +51,7 @@ export default function EmploymentView({ active, showToast }) {
               ...rows.map((row) => [row.name, row.course, row.company, row.position, row.status]),
             ]);
             showToast?.("Employment details exported.");
-          }}>Export Employment</button>
+          }} className="btn btn-primary"><Icon name="icon-export" /> Export</button>
         </div>
       </section>
 

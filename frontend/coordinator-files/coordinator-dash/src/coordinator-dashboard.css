@@ -530,11 +530,22 @@
     }
 
     .coord-highlight {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 11px;
+    }
+    .coord-highlight > div {
         display: grid;
         gap: 2px;
         align-content: center;
-        justify-content: start;
-        font-size: 11px;
+    }
+    .coord-highlight .admin-svg-icon {
+        width: 31px;
+        height: 31px;
+        flex: 0 0 auto;
+        filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
     }
 
             .coord-dashboard-grid,
@@ -1581,4 +1592,506 @@
         flex-direction: column;
         text-align: center;
     }
+}
+/* ===== Alumni Contacts — 3-dot action menu + add button ===== */
+.coord-add-btn {
+    margin-left: auto;
+    border: 0;
+    border-radius: 6px;
+    height: 32px;
+    padding: 0 14px;
+    background: var(--maroon);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 160ms ease;
+}
+.coord-add-btn:hover { background: #76162a; }
+
+/* kebab (3-dot) button */
+.coord-action-menu {
+    position: relative;
+    display: flex;
+    justify-content: center;
+}
+.coord-kebab {
+    border: 0;
+    background: transparent;
+    color: var(--maroon);
+    font-size: 20px;
+    line-height: 1;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 150ms ease;
+}
+.coord-kebab:hover { background: rgba(87, 0, 19, 0.08); }
+
+/* dropdown */
+.coord-action-dropdown {
+    position: absolute;
+    top: 34px;
+    right: 0;
+    z-index: 30;
+    min-width: 130px;
+    background: #fff;
+    border: 1px solid #e4cccc;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+    overflow: hidden;
+    display: grid;
+}
+.coord-action-dropdown button {
+    border: 0;
+    background: transparent;
+    text-align: left;
+    padding: 10px 14px;
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    transition: background 140ms ease;
+}
+.coord-action-dropdown button:hover { background: rgba(87, 0, 19, 0.06); }
+.coord-action-dropdown .coord-action-delete { color: #b00020; }
+.coord-action-dropdown .coord-action-delete:hover { background: rgba(176, 0, 32, 0.08); }
+
+/* cancel/ghost button in the form */
+.coord-contact-actions .coord-btn-ghost {
+    background: #fff !important;
+    color: var(--maroon) !important;
+    border: 1px solid var(--maroon) !important;
+}
+.coord-contact-actions .coord-btn-ghost:hover {
+    background: rgba(87, 0, 19, 0.06) !important;
+}
+
+/* Alumni Contacts — table footer buttons (Add + Export) */
+.coord-table-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 14px 18px 18px;
+}
+.coord-export-btn {
+    border: 0;
+    border-radius: 6px;
+    height: 36px;
+    padding: 0 18px;
+    background: var(--maroon);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: background 160ms ease, transform 160ms ease;
+}
+.coord-export-btn:hover {
+    background: #76162a;
+    transform: translateY(-1px);
+}
+.coord-table-footer .coord-add-btn {
+    margin-left: 0;
+    height: 36px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ===== Form field labels (Alumni Contacts) ===== */
+.coord-field {
+    display: grid;
+    gap: 5px;
+}
+.coord-field > span {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--maroon);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* ===== Icons inside action buttons ===== */
+.coord-add-btn,
+.coord-export-btn,
+.coord-record-actions button,
+.coord-action-dropdown button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+/* white icons on maroon buttons */
+.coord-add-btn .admin-svg-icon,
+.coord-export-btn .admin-svg-icon,
+.coord-record-actions button .admin-svg-icon {
+    width: 15px;
+    height: 15px;
+    filter: brightness(0) invert(1);
+}
+/* maroon icon on light dropdown items */
+.coord-action-dropdown button .admin-svg-icon {
+    width: 15px;
+    height: 15px;
+    filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+}
+/* delete icon = red */
+.coord-action-dropdown .coord-action-delete .admin-svg-icon {
+    filter: brightness(0) saturate(100%) invert(13%) sepia(94%) saturate(4000%) hue-rotate(343deg) brightness(78%);
+}
+
+/* ===================================================================
+   CONSISTENT BUTTON SYSTEM
+   .btn  + .btn-primary (solid maroon)  or  .btn-secondary (outline)
+   =================================================================== */
+.btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0 18px !important;
+    border-radius: 8px !important;
+    font: inherit !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+    white-space: nowrap !important;
+    width: auto !important;
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+
+/* primary — solid maroon */
+.btn-primary {
+    background: var(--maroon) !important;
+    color: #fff !important;
+    border-color: var(--maroon) !important;
+}
+.btn-primary:hover {
+    background: #76162a !important;
+    box-shadow: 0 4px 12px rgba(87, 0, 19, 0.28);
+}
+.btn-primary .admin-svg-icon {
+    width: 15px;
+    height: 15px;
+    filter: brightness(0) invert(1);
+}
+
+/* secondary — outline maroon */
+.btn-secondary {
+    background: #fff !important;
+    color: var(--maroon) !important;
+    border: 1.5px solid var(--maroon) !important;
+}
+.btn-secondary:hover {
+    background: rgba(87, 0, 19, 0.06) !important;
+    box-shadow: 0 4px 12px rgba(87, 0, 19, 0.14);
+}
+.btn-secondary .admin-svg-icon {
+    width: 15px;
+    height: 15px;
+}
+
+/* danger variant (delete) */
+.btn-danger {
+    background: #fff !important;
+    color: #b00020 !important;
+    border: 1.5px solid #b00020 !important;
+}
+.btn-danger:hover { background: rgba(176, 0, 32, 0.07); }
+.btn-danger .admin-svg-icon {
+    width: 15px;
+    height: 15px;
+    filter: brightness(0) saturate(100%) invert(13%) sepia(94%) saturate(4000%) hue-rotate(343deg) brightness(78%);
+}
+
+/* compact icon-only button */
+.btn-icon {
+    width: 38px;
+    padding: 0;
+}
+/* View event — icon only, no box */
+.coord-view-icon-btn {
+    border: 0;
+    background: transparent;
+    padding: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: background 150ms ease, transform 150ms ease;
+}
+.coord-view-icon-btn .admin-svg-icon {
+    width: 24px;
+    height: 24px;
+}
+.coord-view-icon-btn:hover {
+    background: rgba(87, 0, 19, 0.08);
+    transform: scale(1.08);
+}
+
+/* eye (view) icon — always natural maroon, never filtered, on both pages */
+.admin-svg-icon.icon-view {
+    filter: none !important;
+    width: 15px;
+    height: 15px;
+}
+/* ===================================================================
+   Topbar notifications + settings popovers
+   =================================================================== */
+.topbar-menu {
+    position: relative;
+    display: inline-flex;
+}
+
+/* notification badge */
+.topbar-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--gold);
+    color: var(--maroon-deep);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 16px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--maroon);
+}
+
+/* popover panel */
+.topbar-popover {
+    position: absolute;
+    top: 46px;
+    right: 0;
+    z-index: 100;
+    width: 300px;
+    background: #fff;
+    border: 1px solid #e4cccc;
+    border-radius: 12px;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+    overflow: hidden;
+    animation: topbar-pop 140ms ease;
+}
+@keyframes topbar-pop {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.topbar-popover-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 16px;
+    background: var(--maroon);
+    color: #fff;
+}
+.topbar-popover-head h3 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+}
+.topbar-popover-head button {
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+/* notification list */
+.topbar-notif-list {
+    max-height: 280px;
+    overflow-y: auto;
+}
+.topbar-notif {
+    display: grid;
+    gap: 2px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0e4e6;
+}
+.topbar-notif:last-child { border-bottom: 0; }
+.topbar-notif span {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+}
+.topbar-notif small {
+    font-size: 11px;
+    color: var(--muted);
+}
+.topbar-empty {
+    padding: 22px 16px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0;
+}
+.topbar-popover-foot {
+    padding: 10px 16px;
+    border-top: 1px solid #f0e4e6;
+    text-align: right;
+}
+.topbar-popover-foot button {
+    border: 0;
+    background: var(--maroon);
+    color: #fff;
+    border-radius: 6px;
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/* settings */
+.topbar-settings {
+    padding: 6px 0;
+}
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0e4e6;
+}
+.setting-row:last-child { border-bottom: 0; }
+.setting-row strong {
+    display: block;
+    font-size: 13px;
+    color: var(--text);
+}
+.setting-row small {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+}
+.theme-options {
+    display: inline-flex;
+    gap: 6px;
+    flex: 0 0 auto;
+}
+.theme-chip {
+    border: 1px solid var(--maroon);
+    background: #fff;
+    color: var(--maroon);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 140ms ease, color 140ms ease;
+}
+.theme-chip.active {
+    background: var(--maroon);
+    color: #fff;
+}
+.setting-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--maroon);
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+/* dark-mode versions of the popover */
+body.dark-mode .topbar-popover {
+    background: #2b141a;
+    border-color: #50303a;
+}
+body.dark-mode .topbar-notif span,
+body.dark-mode .setting-row strong {
+    color: #fff6f8;
+}
+body.dark-mode .topbar-notif,
+body.dark-mode .setting-row,
+body.dark-mode .topbar-popover-foot {
+    border-color: #50303a;
+}
+body.dark-mode .theme-chip {
+    background: #2b141a;
+}
+body.dark-mode .theme-chip.active {
+    background: var(--gold);
+    color: var(--maroon-deep);
+    border-color: var(--gold);
+}
+
+/* ===== Dark mode — main surfaces, tables, about, hero ===== */
+body.dark-mode .main,
+body.dark-mode .content,
+body.dark-mode .coordinator-content {
+    background: #1a0d11;
+    color: #f3e7ea;
+}
+body.dark-mode .coord-records-card table th,
+body.dark-mode .coord-contacts-table th {
+    color: var(--gold);
+}
+body.dark-mode .coord-records-card td,
+body.dark-mode .coord-contacts-table td,
+body.dark-mode .coord-records-card th,
+body.dark-mode .coord-contacts-table th {
+    border-color: #50303a;
+    color: #f3e7ea;
+}
+body.dark-mode .coord-records-card tbody tr:hover,
+body.dark-mode .coord-contacts-table tbody tr:hover {
+    background: rgba(250, 200, 83, 0.08);
+}
+body.dark-mode .coord-contacts-table td small,
+body.dark-mode .coord-event-list-inner article span {
+    color: #c9b3b8;
+}
+/* about page */
+body.dark-mode .about-section {
+    background: #241116;
+    border-color: #50303a;
+}
+body.dark-mode .about-content,
+body.dark-mode .about-content p {
+    color: #f3e7ea;
+}
+body.dark-mode .about-title h2 {
+    color: var(--gold);
+}
+/* glass cards (event management) */
+body.dark-mode .glass-card {
+    background: rgba(40, 20, 26, 0.7) !important;
+    border-color: #50303a !important;
+}
+/* secondary buttons readable on dark */
+body.dark-mode .btn-secondary {
+    background: #241116 !important;
+    color: var(--gold) !important;
+    border-color: var(--gold) !important;
+}
+body.dark-mode .btn-secondary .admin-svg-icon,
+body.dark-mode .admin-svg-icon.icon-view {
+    filter: brightness(0) saturate(100%) invert(82%) sepia(38%) saturate(640%) hue-rotate(330deg) brightness(101%) !important;
+}
+/* form field labels */
+body.dark-mode .coord-field > span {
+    color: var(--gold);
+}
+/* section kickers / headings stay readable */
+body.dark-mode .coord-section-kicker,
+body.dark-mode .coord-post-card h4,
+body.dark-mode .coord-records-card h3,
+body.dark-mode .coord-contacts-table h3 {
+    color: var(--gold);
 }
