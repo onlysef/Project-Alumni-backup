@@ -31,7 +31,9 @@ export function CourseJobChart({ data, metric }) {
   const maxVal        = Math.max(...values);
   const topLabel      = items.filter((d) => d[activeMetric] === maxVal).map(getLabel).join(", ");
   const avg           = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : 0;
-  const totalAlumni   = items.reduce((a, d) => a + d.total, 0);
+  const totalAlumni   = isTrackView
+    ? items.reduce((a, d) => a + d.total, 0)
+    : (data.totalAlumni ?? items.reduce((a, d) => a + d.total, 0));
   const totalRelated  = items.reduce((a, d) => a + d.jobRelated, 0);
   const jobRelatedRate = totalAlumni > 0 ? Math.round((totalRelated / totalAlumni) * 100) : 0;
 
