@@ -482,6 +482,7 @@ const getCourseJobStats = async (req, res) => {
       { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
       { $match: { '_user.0': { $exists: true } } },
       { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      { $match: { '_u.role': 'alumni' } },
       {
         $group: {
           _id:         '$_u.course',
@@ -513,7 +514,7 @@ const getCourseJobStats = async (req, res) => {
       { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
       { $match: { '_user.0': { $exists: true } } },
       { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
-      { $match: { '_u.course': 'BSIT' } },
+      { $match: { '_u.role': 'alumni', '_u.course': 'BSIT' } },
       { $lookup: { from: 'tracerstudyresponses', localField: 'alumni_id', foreignField: 'alumni_id', as: '_tracer' } },
       { $addFields: { _t: { $arrayElemAt: ['$_tracer', 0] } } },
       {
@@ -570,7 +571,9 @@ const getCourseJobStats = async (req, res) => {
       };
     });
 
-    res.json({ byCourse, bsitByTrack });
+    const totalAlumni = await User.countDocuments({ role: 'alumni' });
+
+    res.json({ byCourse, bsitByTrack, totalAlumni });
   } catch (err) {
     console.error('getCourseJobStats error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -583,6 +586,8 @@ const getSurveyStats = async (req, res) => {
     const existingUserLookup = [
       { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
       { $match: { '_user.0': { $exists: true } } },
+      { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      { $match: { '_u.role': 'alumni' } },
     ];
 
     const monthStart = new Date();
@@ -668,6 +673,8 @@ const getEmploymentStats = async (req, res) => {
     const existingUserLookup = [
       { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
       { $match: { '_user.0': { $exists: true } } },
+      { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      { $match: { '_u.role': 'alumni' } },
     ];
 
     const [counts, tracerResult] = await Promise.all([

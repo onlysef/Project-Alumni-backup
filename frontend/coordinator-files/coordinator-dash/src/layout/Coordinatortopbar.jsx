@@ -1,15 +1,40 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../SimpleIcon.jsx";
 
-const SAMPLE_NOTIFICATIONS = [
-  { id: 1, text: "Danica Macapagal submitted event feedback", time: "5 min ago" },
-  { id: 2, text: "New alumni registered: Juan D.L.C.", time: "1 hr ago" },
-  { id: 3, text: "Event 'Job Fair 2026' reached 135 interested", time: "3 hr ago" },
-];
+const API = import.meta.env.DEV
+  ? "http://localhost:5000/api"
+  : "https://project-alumni-phi.vercel.app/api";
+
+function timeAgo(date) {
+  const diff = (Date.now() - new Date(date)) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)} min. ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr. ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
 
 export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast, settings, setSettings }) {
-  const [panel, setPanel] = useState(null); // "notifications" | "settings" | null
+  const [panel, setPanel] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [unread, setUnread] = useState(0);
   const wrapRef = useRef(null);
+
+  const fetchNotifs = useCallback(async () => {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+    try {
+      const res = await fetch(`${API}/coordinator/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setNotifications(data.notifications ?? []);
+      setUnread(data.unread ?? 0);
+    } catch {
+      // silently fail
+    }
+  }, []);
+
+  useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
 
   useEffect(() => {
     if (!panel) return;
@@ -20,7 +45,23 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
     return () => window.removeEventListener("mousedown", onClick);
   }, [panel]);
 
-  const notifCount = settings?.dashboardNotifications ? SAMPLE_NOTIFICATIONS.length : 0;
+  async function handleMarkAllRead() {
+    const token = localStorage.getItem("auth_token");
+    try {
+      await fetch(`${API}/coordinator/notifications/read`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setUnread(0);
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      showToast("Notifications marked as read.");
+    } catch {
+      showToast("Failed to mark as read.");
+    }
+    setPanel(null);
+  }
+
+  const notifCount = settings?.dashboardNotifications ? unread : 0;
 
   function applyTheme(theme) {
     const next = { ...settings, theme };
@@ -70,19 +111,19 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
                 <button type="button" aria-label="Close" onClick={() => setPanel(null)}>&times;</button>
               </div>
               <div className="topbar-notif-list">
-                {notifCount === 0 ? (
+                {notifications.length === 0 ? (
                   <p className="topbar-empty">No new notifications.</p>
                 ) : (
-                  SAMPLE_NOTIFICATIONS.map((n) => (
-                    <div className="topbar-notif" key={n.id}>
-                      <span>{n.text}</span>
-                      <small>{n.time}</small>
+                  notifications.map((n, i) => (
+                    <div className={`topbar-notif${n.is_read ? "" : " topbar-notif-unread"}`} key={n._id ?? i}>
+                      <span>{n.message || n.title}</span>
+                      <small>{timeAgo(n.createdAt)}</small>
                     </div>
                   ))
                 )}
               </div>
               <div className="topbar-popover-foot">
-                <button type="button" onClick={() => { showToast("Notifications marked as read."); setPanel(null); }}>Mark All Read</button>
+                <button type="button" onClick={handleMarkAllRead}>Mark All Read</button>
               </div>
             </div>
           )}

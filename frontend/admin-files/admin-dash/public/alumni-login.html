@@ -83,6 +83,7 @@
     const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
     const API = IS_LOCAL ? 'http://localhost:5000/api' : 'https://project-alumni-phi.vercel.app/api';
     const APP = IS_LOCAL ? 'http://localhost:5173' : 'https://project-alumni-frontend.vercel.app';
+    const COORDINATOR_APP = IS_LOCAL ? 'http://localhost:5174' : 'https://project-alumni-frontend.vercel.app';
 
     function showMsg(text, isError = true) {
       let box = document.getElementById('msg-box');
@@ -143,7 +144,7 @@
         const dashboardMap = {
           admin: `${APP}/admin/dashboard`,
           alumni: `${APP}/alumni/dashboard`,
-          coordinator: `${APP}/coordinator/dashboard`,
+          coordinator: `${COORDINATOR_APP}`,
           employer: `${APP}/employer/dashboard`,
         };
         const base = dashboardMap[data.user.role] || APP;

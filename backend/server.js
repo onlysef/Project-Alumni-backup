@@ -4,10 +4,11 @@ dotenv.config();
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db');
-const authRoutes     = require('./routes/auth');
-const adminRoutes    = require('./routes/admin');
-const alumniRoutes   = require('./routes/alumni');
-const employerRoutes = require('./routes/employer');
+const authRoutes        = require('./routes/auth');
+const adminRoutes       = require('./routes/admin');
+const alumniRoutes      = require('./routes/alumni');
+const employerRoutes    = require('./routes/employer');
+const coordinatorRoutes = require('./routes/coordinator');
 
 connectDB();
 
@@ -18,6 +19,8 @@ const allowedOrigins = [
   'https://project-alumni-frontend.vercel.app',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
+  'http://localhost:5174',
+  'http://127.0.0.1:5174',
   'http://localhost:5500',
   'http://127.0.0.1:5500',
 ].filter(Boolean);
@@ -31,10 +34,11 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '10mb' }));
 
-app.use('/api/auth',     authRoutes);
-app.use('/api/admin',    adminRoutes);
-app.use('/api/alumni',   alumniRoutes);
-app.use('/api/employer', employerRoutes);
+app.use('/api/auth',        authRoutes);
+app.use('/api/admin',       adminRoutes);
+app.use('/api/alumni',      alumniRoutes);
+app.use('/api/employer',    employerRoutes);
+app.use('/api/coordinator', coordinatorRoutes);
 
 
 app.get('/api/health', (req, res) => {

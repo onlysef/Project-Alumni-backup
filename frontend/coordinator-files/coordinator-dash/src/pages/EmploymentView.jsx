@@ -1,69 +1,218 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Icon from "../SimpleIcon.jsx";
 import { downloadCsv } from "./CoordinatorShared.jsx";
 
-export default function EmploymentView({ active, showToast }) {
-  const rows = [
-    { name: "Maria Santos", course: "BSIS", company: "DataWorks PH", position: "Data Scientist", status: "Employed" },
-    { name: "Katie Salazar", course: "BSIT", company: "CloudBridge", position: "Web Developer", status: "Employed" },
-    { name: "Whitney Flores", course: "BSIT", company: "Northbyte", position: "Junior Developer", status: "Employed" },
-    { name: "John Ocampo", course: "BSIT", company: "TSU Support Desk", position: "Tech Support", status: "Employed" },
-  ];
+const API = import.meta.env.DEV
+  ? "http://localhost:5000/api"
+  : "https://project-alumni-phi.vercel.app/api";
 
-  const activities = [
-    { text: "Maria Santos updated employment to Data Scientist", time: "5 min." },
-    { text: "Katie Salazar added a new company: CloudBridge", time: "1 hr." },
-    { text: "John Ocampo marked status as Employed", time: "2 hr." },
-  ];
+function apiGet(path, params = {}) {
+  const token = localStorage.getItem("auth_token");
+  const url = new URL(`${API}${path}`);
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== "" && v !== undefined && v !== null) url.searchParams.set(k, v);
+  });
+  return fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => r.json());
+}
+
+const EMPTY_VALS = new Set(["N/A", "n/a", "None", "none", "null", "undefined", ""]);
+function display(val) {
+  return !val || EMPTY_VALS.has(String(val).trim()) ? "—" : val;
+}
+
+function timeAgo(date) {
+  const diff = (Date.now() - new Date(date)) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)} min.`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr.`;
+  return `${Math.floor(diff / 86400)}d`;
+}
+
+export default function EmploymentView({ active, showToast }) {
+  const [rows, setRows] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [course, setCourse] = useState("");
+  const [search, setSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState(null);
+  const debounceRef = useRef(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [emp, act] = await Promise.all([
+        apiGet("/coordinator/employment", {
+          course,
+          search: appliedSearch,
+          page,
+          limit: 10,
+        }),
+        apiGet("/coordinator/employment/activity", { limit: 10 }),
+      ]);
+      setRows(emp.records ?? []);
+      setPagination(emp.pagination ?? null);
+      setActivities(act.activities ?? []);
+    } catch {
+      showToast?.("Failed to load employment data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [course, appliedSearch, page]);
+
+  useEffect(() => {
+    if (active) load();
+  }, [active, load]);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [course, appliedSearch]);
+
+  // Debounce search input
+  function handleSearchChange(e) {
+    const val = e.target.value;
+    setSearch(val);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setAppliedSearch(val), 400);
+  }
+
+  async function handleExport() {
+    try {
+      const data = await apiGet("/coordinator/employment", {
+        course,
+        search: appliedSearch,
+        page: 1,
+        limit: 99999,
+      });
+      const all = data.records ?? [];
+      downloadCsv("coordinator-employment-details.csv", [
+        ["Name", "Course", "Company", "Position", "Status"],
+        ...all.map((r) => [
+          r.name,
+          r.course ?? "",
+          r.company_name ?? "",
+          r.job_title ?? "",
+          r.employment_status ?? "",
+        ]),
+      ]);
+      showToast?.("Employment details exported.");
+    } catch {
+      showToast?.("Export failed.");
+    }
+  }
 
   return (
-    <section className={`content coordinator-content view${active ? " active-view" : ""}`}>
+    <section
+      className={`content coordinator-content view${active ? " active-view" : ""}`}
+    >
       <section className="coord-records-card">
         <h3>Employment Details</h3>
-        <div className="coord-record-toolbar">
-          <select onChange={(event) => showToast?.(`Employment filter: ${event.target.value}`)}>
-            <option>All Courses</option>
-            <option>BSIT</option>
-            <option>BSCS</option>
-            <option>BSIS</option>
+        <div className="coord-record-toolbar coord-employ-toolbar">
+          <select
+            value={course}
+            onChange={(e) => setCourse(e.target.value)}
+          >
+            <option value="">All Courses</option>
+            <option value="BSIT">BSIT</option>
+            <option value="BSCS">BSCS</option>
+            <option value="BSIS">BSIS</option>
           </select>
+          <input
+            type="search"
+            className="coord-employ-search"
+            placeholder="Search name or company…"
+            value={search}
+            onChange={handleSearchChange}
+          />
         </div>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Course</th><th>Company</th><th>Position</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${row.name}-${row.company}`}>
-                <td>{row.name}</td>
-                <td>{row.course}</td>
-                <td>{row.company}</td>
-                <td>{row.position}</td>
-                <td>{row.status}</td>
+
+        {loading ? (
+          <p className="coord-employ-empty">Loading…</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Course</th>
+                <th>Company</th>
+                <th>Position</th>
+                <th>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="coord-employ-empty">
+                    No records found.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row) => (
+                  <tr key={row._id}>
+                    <td>{display(row.name)}</td>
+                    <td>{display(row.course)}</td>
+                    <td>{display(row.company_name)}</td>
+                    <td>{display(row.job_title)}</td>
+                    <td>{display(row.employment_status)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+
+        {pagination && (
+          <div className="coord-employ-pagination">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              ‹ Prev
+            </button>
+            <span>
+              Page {page} of {pagination.pages}
+            </span>
+            <button
+              disabled={page >= pagination.pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next ›
+            </button>
+          </div>
+        )}
+
         <div className="coord-record-actions">
-          <button type="button" onClick={() => {
-            downloadCsv("coordinator-employment-details.csv", [
-              ["Name", "Course", "Company", "Position", "Status"],
-              ...rows.map((row) => [row.name, row.course, row.company, row.position, row.status]),
-            ]);
-            showToast?.("Employment details exported.");
-          }} className="btn btn-primary"><Icon name="icon-export" /> Export</button>
+          <button type="button" onClick={handleExport} className="btn btn-primary">
+            <Icon name="icon-export" /> Export
+          </button>
         </div>
       </section>
 
       <section className="coord-card coord-activity">
         <h3>Recent Activities</h3>
         <div className="coord-activity-list">
-          {activities.map((activity, index) => (
-            <div className="coord-activity-row" key={`${activity.text}-${index}`}>
-              <span>{activity.text}</span>
-              <span className="coord-activity-time">{activity.time}</span>
-            </div>
-          ))}
+          {activities.length === 0 ? (
+            <p className="coord-employ-empty">No recent activity.</p>
+          ) : (
+            activities.map((a, i) => (
+              <div
+                className="coord-activity-row"
+                key={`${a._id ?? i}`}
+              >
+                <span>
+                  {a.user_name} {a.action}
+                  {a.target_name ? ` — ${a.target_name}` : ""}
+                </span>
+                <span className="coord-activity-time">
+                  {timeAgo(a.createdAt)}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </section>
     </section>
