@@ -80,18 +80,36 @@ router.get('/dashboard', async (req, res) => {
       lowEvent = allAttendance.length > 1 ? (lowDoc?.title || '—') : '—';
     }
 
-    // Recent activity: last 5 feedback submissions
-    const recentActivity = await EventFeedback.find()
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('alumni_id', 'firstName lastName')
-      .populate('event_id', 'title')
-      .lean();
+    // Recent activity: merge attendance logs + feedback submissions, newest first
+    const [recentLogs, recentFeedbackDocs] = await Promise.all([
+      AttendanceLog.find()
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('alumni_id', 'firstName lastName')
+        .populate('event_id', 'title')
+        .lean(),
+      EventFeedback.find()
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('alumni_id', 'firstName lastName')
+        .populate('event_id', 'title')
+        .lean(),
+    ]);
 
-    const activity = recentActivity.map(f => ({
-      text: `${f.alumni_id ? `${f.alumni_id.firstName} ${f.alumni_id.lastName}` : 'Alumni'} submitted feedback for ${f.event_id?.title || 'an event'}`,
-      time: f.createdAt,
-    }));
+    const activityItems = [
+      ...recentLogs.map(l => ({
+        text: `${l.alumni_id ? `${l.alumni_id.firstName} ${l.alumni_id.lastName}` : 'An alumni'} was recorded ${l.status || 'Present'} at "${l.event_id?.title || 'an event'}"`,
+        time: l.createdAt,
+      })),
+      ...recentFeedbackDocs.map(f => ({
+        text: `${f.alumni_id ? `${f.alumni_id.firstName} ${f.alumni_id.lastName}` : 'An alumni'} submitted feedback for "${f.event_id?.title || 'an event'}"`,
+        time: f.createdAt,
+      })),
+    ]
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, 8);
+
+    const activity = activityItems;
 
     res.json({
       totalAlumni,
@@ -113,16 +131,21 @@ router.get('/dashboard', async (req, res) => {
 router.get('/reports/:type', async (req, res) => {
   try {
     const { type } = req.params;
-    const year   = parseInt(req.query.year) || new Date().getFullYear();
-    const format = req.query.format === 'xlsx' ? 'xlsx' : 'csv';
-    const xlsx   = require('xlsx');
+    const year    = parseInt(req.query.year) || new Date().getFullYear();
+    const eventId = req.query.eventId || null;
+    const format  = req.query.format === 'xlsx' ? 'xlsx' : 'csv';
+    const xlsx    = require('xlsx');
 
-    const start = new Date(year, 0, 1);
-    const end   = new Date(year + 1, 0, 1);
-
-    const events = await Event.find({
-      event_datetime: { $gte: start, $lt: end },
-    }).sort({ event_datetime: -1 }).lean();
+    let events;
+    if (eventId) {
+      const single = await Event.findById(eventId).lean();
+      events = single ? [single] : [];
+    } else {
+      const start = new Date(year, 0, 1);
+      const end   = new Date(year + 1, 0, 1);
+      events = await Event.find({ event_datetime: { $gte: start, $lt: end } })
+        .sort({ event_datetime: -1 }).lean();
+    }
 
     const eventIds = events.map(e => e._id);
 
