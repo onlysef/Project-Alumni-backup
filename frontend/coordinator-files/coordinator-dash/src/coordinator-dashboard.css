@@ -512,14 +512,14 @@
         display: block;
         font-size: 28px;
         line-height: 1;
-        font-weight: 900;
+        font-weight: 700;
         margin-bottom: 8px;
     }
 
     .coord-stat span,
     .coord-highlight span {
         display: block;
-        font-size: 10px;
+        font-size: 13px;
         font-weight: 800;
     }
 
@@ -750,7 +750,7 @@
             .coord-contact-form h3,
             .coord-contacts-table h3 {
                 font-size: 18px;
-                font-weight: 700;
+                font-weight: 900;
                 color: var(--maroon);
                 text-transform: none;
                 text-transform: uppercase;
@@ -975,7 +975,70 @@
 
             .coord-record-toolbar {
                 margin-bottom: 10px;
-                width: min(360px, 100%);
+                width: 100%;
+            }
+
+            .coord-employ-toolbar {
+                display: flex;
+                gap: 10px;
+                align-items: center;
+            }
+
+            .coord-employ-toolbar select {
+                flex: 0 0 auto;
+                width: 160px;
+            }
+
+            .coord-employ-search {
+                flex: 1 1 0;
+                min-width: 0;
+                height: 34px;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                padding: 0 10px;
+                font: inherit;
+                font-size: 13px;
+                color: var(--text);
+                background: #fff;
+                outline: none;
+            }
+
+            .coord-employ-search:focus {
+                border-color: var(--maroon);
+            }
+
+            .coord-employ-pagination {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 12px;
+                margin-top: 12px;
+                font-size: 13px;
+                color: var(--muted);
+            }
+
+            .coord-employ-pagination button {
+                background: var(--maroon);
+                color: #fff;
+                border: 0;
+                border-radius: 5px;
+                padding: 4px 12px;
+                font-size: 12px;
+                cursor: pointer;
+            }
+
+            .coord-employ-pagination button:disabled {
+                opacity: 0.35;
+                cursor: default;
+                transform: none;
+                filter: none;
+            }
+
+            .coord-employ-empty {
+                text-align: center;
+                padding: 16px;
+                color: var(--muted);
+                font-size: 13px;
             }
 
             .coord-records-card table,
@@ -1123,6 +1186,7 @@
             body.dark-mode .coord-attendance-card input,
             body.dark-mode .coord-attendance-card select,
             body.dark-mode .coord-record-toolbar select,
+            body.dark-mode .coord-employ-search,
             body.dark-mode .coord-contact-form input,
             body.dark-mode .coord-contact-toolbar input,
             body.dark-mode .coord-contact-toolbar select {
@@ -1396,7 +1460,7 @@
     margin: 0 0 12px;
     color: var(--maroon);
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 900;
 }
 
 /* Recent post card */
