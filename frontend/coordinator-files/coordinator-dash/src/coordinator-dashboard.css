@@ -1564,6 +1564,174 @@
     color: #b95a22;
     border: 1px solid rgba(185, 90, 34, 0.3);
 }
+.status-ended {
+    background: rgba(100, 100, 100, 0.1);
+    color: #767676;
+    border: 1px solid rgba(100, 100, 100, 0.25);
+}
+
+/* datetime-local input */
+.coord-datetime-input {
+    width: 100%;
+    min-height: 34px;
+    border: 0;
+    border-radius: 8px;
+    background: #d9d9d9;
+    color: #2d2024;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+}
+.coord-datetime-input::-webkit-calendar-picker-indicator { cursor: pointer; }
+
+/* Post card action buttons */
+.coord-post-edit-btn,
+.coord-post-delete-btn {
+    padding: 4px 8px !important;
+    min-height: 30px !important;
+    border-radius: 5px !important;
+}
+.coord-post-delete-btn {
+    background: rgba(185, 30, 30, 0.08) !important;
+    border: 1px solid rgba(185, 30, 30, 0.25) !important;
+    color: #b91e1e !important;
+}
+.coord-post-delete-btn:hover { background: rgba(185, 30, 30, 0.18) !important; }
+.coord-btn-danger {
+    background: #b91e1e;
+    color: #fff;
+    border: 0;
+    border-radius: 6px;
+    min-height: 35px;
+    padding: 0 18px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+.coord-btn-danger:hover { background: #8f1717; }
+
+/* Modals */
+.coord-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+.coord-modal {
+    background: #fff;
+    border-radius: 10px;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.28);
+    display: flex;
+    flex-direction: column;
+}
+.coord-modal-sm { max-width: 380px; }
+.coord-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #e4cccc;
+}
+.coord-modal-head h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 900;
+    color: var(--maroon);
+    text-transform: uppercase;
+}
+.coord-modal-head button {
+    background: none;
+    border: none;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 0 4px;
+}
+.coord-modal-body {
+    padding: 16px 20px;
+    display: grid;
+    gap: 10px;
+}
+.coord-modal-body p { margin: 0; font-size: 13px; color: var(--text); }
+.coord-modal-subtitle {
+    font-size: 12px !important;
+    color: var(--muted) !important;
+    font-style: italic;
+}
+.coord-modal-foot {
+    padding: 12px 20px 16px;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    border-top: 1px solid #e4cccc;
+}
+.coord-modal .coord-field {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--maroon);
+    text-transform: uppercase;
+}
+.coord-modal .coord-field input,
+.coord-modal .coord-field textarea,
+.coord-modal .coord-field select {
+    width: 100%;
+    min-height: 34px;
+    border: 1px solid #e4cccc;
+    border-radius: 6px;
+    background: #fff;
+    color: var(--text);
+    padding: 0 10px;
+    font: inherit;
+    font-size: 13px;
+    text-transform: none;
+    font-weight: 400;
+}
+.coord-modal .coord-field textarea {
+    min-height: 70px;
+    padding-top: 8px;
+    resize: vertical;
+}
+.coord-modal .coord-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+/* Interested alumni table */
+.coord-interested-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.coord-interested-table th,
+.coord-interested-table td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid #f0e6e6;
+}
+.coord-interested-table th {
+    font-weight: 800;
+    color: var(--maroon);
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+/* Unread notification dot */
+.topbar-notif-unread { background: rgba(87, 0, 19, 0.05); border-left: 3px solid var(--maroon); }
 
 /* Two-column layout */
 .coord-events-layout {
@@ -2237,6 +2405,27 @@ body.dark-mode .coord-activity-row time,
 body.dark-mode .coord-activity-row .coord-activity-time {
     color: var(--gold) !important;
 }
+
+/* Dark mode — modals */
+body.dark-mode .coord-modal {
+    background: #1e1215;
+    color: #f8eef0;
+}
+body.dark-mode .coord-modal-head,
+body.dark-mode .coord-modal-foot { border-color: #3a2830; }
+body.dark-mode .coord-modal .coord-field input,
+body.dark-mode .coord-modal .coord-field textarea,
+body.dark-mode .coord-modal .coord-field select {
+    background: #2a1a20;
+    border-color: #3a2830;
+    color: #f8eef0;
+}
+body.dark-mode .coord-modal-body p { color: #f8eef0; }
+body.dark-mode .coord-interested-table th,
+body.dark-mode .coord-interested-table td { border-color: #3a2830; }
+body.dark-mode .coord-interested-table td { color: #f8eef0; }
+body.dark-mode .coord-datetime-input { background: #2d2024; color: #f8eef0; }
+body.dark-mode .coord-datetime-input::-webkit-calendar-picker-indicator { filter: invert(1); }
 
 /* ===================================================================
    Dark mode — global catch-all for readable text

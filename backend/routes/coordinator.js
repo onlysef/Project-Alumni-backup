@@ -2,16 +2,32 @@ const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { getEmploymentRecords, getEmploymentActivity } = require('../controllers/employmentController');
+const {
+  getEvents, createEvent, updateEvent, deleteEvent,
+  getInterestedAlumni, getCoordinatorNotifications, markNotificationsRead,
+} = require('../controllers/eventController');
 const User = require('../models/User');
 const AlumniEmployment = require('../models/AlumniEmployment');
 const TracerStudyResponse = require('../models/TracerStudyResponse');
 
 router.use(protect, authorize('admin', 'coordinator'));
 
-// Must declare /activity before plain /employment to avoid route collision
+// Notifications
+router.get('/notifications',        getCoordinatorNotifications);
+router.patch('/notifications/read', markNotificationsRead);
+
+// Employment (must declare /activity before plain /employment)
 router.get('/employment/activity', getEmploymentActivity);
 router.get('/employment',          getEmploymentRecords);
 
+// Events
+router.get('/events',                    getEvents);
+router.post('/events',                   createEvent);
+router.put('/events/:id',                updateEvent);
+router.delete('/events/:id',             deleteEvent);
+router.get('/events/:id/interested',     getInterestedAlumni);
+
+// Alumni contacts
 router.get('/alumni', async (req, res) => {
   try {
     const { course, year, search } = req.query;
