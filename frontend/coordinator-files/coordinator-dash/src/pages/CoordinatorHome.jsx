@@ -26,9 +26,13 @@ export default function CoordinatorHome({ active, showToast }) {
   });
 
   const [data, setData] = useState(null);
+  const [allEvents, setAllEvents] = useState([]);
   const currentYear = new Date().getFullYear();
   const [reportYears, setReportYears] = useState(
     Object.fromEntries(REPORTS.map(r => [r.type, currentYear]))
+  );
+  const [reportEvents, setReportEvents] = useState(
+    Object.fromEntries(REPORTS.map(r => [r.type, ""]))
   );
 
   useEffect(() => {
@@ -39,6 +43,12 @@ export default function CoordinatorHome({ active, showToast }) {
     })
       .then(r => r.json())
       .then(setData)
+      .catch(() => {});
+    fetch(`${API}/coordinator/attendance/events`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setAllEvents(d.events ?? []))
       .catch(() => {});
   }, [active]);
 
@@ -126,16 +136,20 @@ export default function CoordinatorHome({ active, showToast }) {
           <section className="coord-card coord-reports">
             <h3>Reports</h3>
             {REPORTS.map((report) => {
-              const year = reportYears[report.type];
+              const year      = reportYears[report.type];
+              const eventId   = reportEvents[report.type];
               function download() {
                 const token = localStorage.getItem("auth_token");
-                const url = `${API}/coordinator/reports/${report.type}?year=${year}&format=xlsx`;
+                const params = new URLSearchParams({ format: "xlsx" });
+                if (eventId) params.set("eventId", eventId);
+                else params.set("year", year);
+                const url = `${API}/coordinator/reports/${report.type}?${params}`;
                 fetch(url, { headers: { Authorization: `Bearer ${token}` } })
                   .then(r => r.blob())
                   .then(blob => {
                     const a = document.createElement("a");
                     a.href = URL.createObjectURL(blob);
-                    a.download = `${report.type}-${year}.xlsx`;
+                    a.download = `${report.type}-${eventId || year}.xlsx`;
                     a.click();
                     URL.revokeObjectURL(a.href);
                     showToast?.(`${report.label} downloaded.`);
@@ -145,23 +159,37 @@ export default function CoordinatorHome({ active, showToast }) {
               return (
                 <div className="coord-report-row" key={report.type}>
                   <span>{report.label}</span>
-                  <select
-                    value={year}
-                    onChange={e => setReportYears(prev => ({ ...prev, [report.type]: Number(e.target.value) }))}
-                    style={{ fontSize: 13, padding: "3px 6px" }}
-                  >
-                    {Array.from({ length: currentYear - 2019 }, (_, i) => currentYear - i).map(y => (
-                      <option key={y} value={y}>{y}</option>
-                    ))}
-                  </select>
-                  <button
-                    className="coord-icon-button"
-                    type="button"
-                    aria-label={`Download ${report.label}`}
-                    onClick={download}
-                  >
-                    <Icon name="icon-download" />
-                  </button>
+                  <div className="coord-report-filters">
+                    <select
+                      className="coord-report-select"
+                      value={eventId}
+                      onChange={e => setReportEvents(prev => ({ ...prev, [report.type]: e.target.value }))}
+                    >
+                      <option value="">All Events</option>
+                      {allEvents.map(ev => (
+                        <option key={String(ev._id)} value={String(ev._id)}>{ev.title}</option>
+                      ))}
+                    </select>
+                    {!eventId && (
+                      <select
+                        className="coord-report-select coord-report-year"
+                        value={year}
+                        onChange={e => setReportYears(prev => ({ ...prev, [report.type]: Number(e.target.value) }))}
+                      >
+                        {Array.from({ length: currentYear - 2019 }, (_, i) => currentYear - i).map(y => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    )}
+                    <button
+                      className="coord-icon-button"
+                      type="button"
+                      aria-label={`Download ${report.label}`}
+                      onClick={download}
+                    >
+                      <Icon name="icon-download" />
+                    </button>
+                  </div>
                 </div>
               );
             })}

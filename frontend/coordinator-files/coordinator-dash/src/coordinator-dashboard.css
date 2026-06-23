@@ -659,11 +659,12 @@
             .coord-report-row {
                 min-height: 46px;
                 display: grid;
-                grid-template-columns: 1fr 62px 29px;
+                grid-template-columns: 1fr auto;
                 align-items: center;
-                gap: 10px;
+                gap: 8px;
                 padding: 0 8px;
                 font-size: 14px;
+                font-weight: 500;
                 color: #4b3f42;
                 border-bottom: 1px solid #ead7da;
             }
@@ -671,17 +672,28 @@
                 border-bottom: 0;
             }
 
-            .coord-report-row button {
+            .coord-report-filters {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .coord-report-select {
+                height: 29px;
                 border: 0;
                 border-radius: 5px;
-                height: 29px;
-                padding: 0 12px;
                 background: var(--maroon);
                 color: #fff;
-                font: inherit;
                 font-size: 10px;
                 font-weight: 600;
+                font-family: inherit;
+                padding: 0 8px;
                 cursor: pointer;
+                outline: none;
+            }
+
+            .coord-report-year {
+                width: 62px;
             }
             .coord-record-actions button,
             .coord-contact-actions button {
@@ -2422,6 +2434,10 @@ body.dark-mode .coord-activity-row span:first-child {
 body.dark-mode .coord-report-row,
 body.dark-mode .coord-report-row span {
     color: #f3e7ea;
+}
+body.dark-mode .coord-report-select {
+    background: #7a1020;
+    color: #fff;
 }
 
 /* recent activities / employment activity text */
