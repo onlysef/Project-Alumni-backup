@@ -78,6 +78,7 @@ export function MiniBarChart({ title, values, labels }) {
           return (
             <g key={labels[index]}>
               <rect x={x} y={176 - h} width="38" height={h} rx="2" />
+              <text x={x + 19} y={176 - h - 5} textAnchor="middle" fontWeight="700">{value}</text>
               <text x={x + 19} y="202" textAnchor="middle">{labels[index]}</text>
             </g>
           );

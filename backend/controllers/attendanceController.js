@@ -1,8 +1,9 @@
-const xlsx        = require('xlsx');
-const Event        = require('../models/Event');
+const xlsx          = require('xlsx');
+const Event         = require('../models/Event');
 const AttendanceLog = require('../models/AttendanceLog');
 const EventFeedback = require('../models/EventFeedback');
-const User         = require('../models/User');
+const Notification  = require('../models/Notification');
+const User          = require('../models/User');
 
 // GET /coordinator/attendance/events
 const getAttendanceEvents = async (req, res) => {
@@ -68,7 +69,23 @@ const recordAttendance = async (req, res) => {
       recorded_by: req.user.id,
     });
 
-    const alumni = await User.findById(alumni_id, 'firstName lastName course email').lean();
+    const [alumni, event] = await Promise.all([
+      User.findById(alumni_id, 'firstName lastName course email').lean(),
+      Event.findById(event_id, 'title created_by').lean(),
+    ]);
+
+    // Notify the coordinator who created the event (skip if they recorded it themselves)
+    if (event?.created_by && String(event.created_by) !== String(req.user.id)) {
+      await Notification.create({
+        user_id:  event.created_by,
+        title:    'Attendance Recorded',
+        message:  `${alumni ? `${alumni.firstName} ${alumni.lastName}` : 'An alumni'} was recorded as ${status || 'Present'} at "${event.title}"`,
+        is_read:  false,
+        event_id: event._id,
+        type:     'attendance',
+      });
+    }
+
     res.status(201).json({
       log: {
         ...log.toObject(),
