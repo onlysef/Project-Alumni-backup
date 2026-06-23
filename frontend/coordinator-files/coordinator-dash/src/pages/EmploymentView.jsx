@@ -80,18 +80,29 @@ export default function EmploymentView({ active, showToast }) {
     debounceRef.current = setTimeout(() => setAppliedSearch(val), 400);
   }
 
-  function handleExport() {
-    downloadCsv("coordinator-employment-details.csv", [
-      ["Name", "Course", "Company", "Position", "Status"],
-      ...rows.map((r) => [
-        r.name,
-        r.course ?? "",
-        r.company_name ?? "",
-        r.job_title ?? "",
-        r.employment_status ?? "",
-      ]),
-    ]);
-    showToast?.("Employment details exported.");
+  async function handleExport() {
+    try {
+      const data = await apiGet("/coordinator/employment", {
+        course,
+        search: appliedSearch,
+        page: 1,
+        limit: 99999,
+      });
+      const all = data.records ?? [];
+      downloadCsv("coordinator-employment-details.csv", [
+        ["Name", "Course", "Company", "Position", "Status"],
+        ...all.map((r) => [
+          r.name,
+          r.course ?? "",
+          r.company_name ?? "",
+          r.job_title ?? "",
+          r.employment_status ?? "",
+        ]),
+      ]);
+      showToast?.("Employment details exported.");
+    } catch {
+      showToast?.("Export failed.");
+    }
   }
 
   return (
