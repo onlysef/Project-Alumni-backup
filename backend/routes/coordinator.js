@@ -6,6 +6,10 @@ const {
   getEvents, createEvent, updateEvent, deleteEvent,
   getInterestedAlumni, getCoordinatorNotifications, markNotificationsRead,
 } = require('../controllers/eventController');
+const {
+  getAttendanceEvents, searchAlumni, recordAttendance,
+  getAttendanceRecords, getAttendanceStats, getEventDetails, exportAttendance,
+} = require('../controllers/attendanceController');
 const User = require('../models/User');
 const AlumniEmployment = require('../models/AlumniEmployment');
 const TracerStudyResponse = require('../models/TracerStudyResponse');
@@ -19,6 +23,15 @@ router.patch('/notifications/read', markNotificationsRead);
 // Employment (must declare /activity before plain /employment)
 router.get('/employment/activity', getEmploymentActivity);
 router.get('/employment',          getEmploymentRecords);
+
+// Attendance — must declare specific paths before /:eventId param routes
+router.get('/attendance/events',                   getAttendanceEvents);
+router.get('/attendance/alumni-search',            searchAlumni);
+router.post('/attendance',                         recordAttendance);
+router.get('/attendance/:eventId/records',         getAttendanceRecords);
+router.get('/attendance/:eventId/stats',           getAttendanceStats);
+router.get('/attendance/:eventId/details',         getEventDetails);
+router.get('/attendance/:eventId/export',          exportAttendance);
 
 // Events
 router.get('/events',                    getEvents);

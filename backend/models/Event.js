@@ -6,6 +6,7 @@ const eventSchema = new mongoose.Schema({
   location:       { type: String, default: '' },
   event_datetime: { type: Date, required: true },
   visibility:     { type: String, enum: ['Public', 'Private', 'CCS Alumni', 'All Alumni'], default: 'Public' },
+  capacity:       { type: Number, default: 0 },
   created_by:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
 }, { timestamps: true });
 

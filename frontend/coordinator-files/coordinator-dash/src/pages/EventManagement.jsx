@@ -58,7 +58,7 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const BLANK = { title: "", description: "", location: "", event_datetime: "", visibility: "Public" };
+const BLANK = { title: "", description: "", location: "", event_datetime: "", visibility: "Public", capacity: "" };
 
 export default function EventManagement({ active, showToast }) {
   const [events, setEvents] = useState([]);
@@ -104,7 +104,7 @@ export default function EventManagement({ active, showToast }) {
     if (!form.event_datetime)        { showToast?.("Date & time is required."); return; }
     setSubmitting(true);
     try {
-      const data = await apiPost("/coordinator/events", form);
+      const data = await apiPost("/coordinator/events", { ...form, capacity: Number(form.capacity) || 0 });
       if (data.event) {
         setEvents(prev => [data.event, ...prev]);
         setForm(BLANK);
@@ -127,6 +127,7 @@ export default function EventManagement({ active, showToast }) {
       location:       event.location || "",
       event_datetime: toDatetimeLocal(event.event_datetime),
       visibility:     event.visibility || "Public",
+      capacity:       event.capacity ?? "",
     });
   }
 
@@ -136,7 +137,7 @@ export default function EventManagement({ active, showToast }) {
     if (!editForm.event_datetime)     { showToast?.("Date & time is required."); return; }
     setEditSubmitting(true);
     try {
-      const data = await apiPut(`/coordinator/events/${editEvent._id}`, editForm);
+      const data = await apiPut(`/coordinator/events/${editEvent._id}`, { ...editForm, capacity: Number(editForm.capacity) || 0 });
       if (data.event) {
         setEvents(prev => prev.map(ev => ev._id === data.event._id ? data.event : ev));
         setEditEvent(null);
@@ -202,6 +203,13 @@ export default function EventManagement({ active, showToast }) {
                 placeholder="Location"
                 value={form.location}
                 onChange={e => setForm(p => ({ ...p, location: e.target.value }))}
+              />
+              <input
+                type="number"
+                placeholder="Capacity (e.g. 100)"
+                min="0"
+                value={form.capacity}
+                onChange={e => setForm(p => ({ ...p, capacity: e.target.value }))}
               />
               <div className="coord-form-row">
                 <input
@@ -318,6 +326,15 @@ export default function EventManagement({ active, showToast }) {
                 </label>
                 <label className="coord-field"><span>Location</span>
                   <input value={editForm.location} onChange={e => setEditForm(p => ({ ...p, location: e.target.value }))} />
+                </label>
+                <label className="coord-field"><span>Capacity</span>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 100"
+                    value={editForm.capacity}
+                    onChange={e => setEditForm(p => ({ ...p, capacity: e.target.value }))}
+                  />
                 </label>
                 <div className="coord-form-row">
                   <label className="coord-field"><span>Date & Time</span>

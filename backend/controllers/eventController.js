@@ -1,6 +1,8 @@
 const Event          = require('../models/Event');
 const EventInterested = require('../models/EventInterested');
 const Notification   = require('../models/Notification');
+const AttendanceLog  = require('../models/AttendanceLog');
+const EventFeedback  = require('../models/EventFeedback');
 const User           = require('../models/User');
 
 // GET /coordinator/events
@@ -69,13 +71,14 @@ const createEvent = async (req, res) => {
 // PUT /coordinator/events/:id
 const updateEvent = async (req, res) => {
   try {
-    const { title, description, location, event_datetime, visibility } = req.body;
+    const { title, description, location, event_datetime, visibility, capacity } = req.body;
     const updates = {};
     if (title          !== undefined) updates.title          = title.trim();
     if (description    !== undefined) updates.description    = description.trim();
     if (location       !== undefined) updates.location       = location.trim();
     if (event_datetime !== undefined) updates.event_datetime = new Date(event_datetime);
     if (visibility     !== undefined) updates.visibility     = visibility;
+    if (capacity       !== undefined) updates.capacity       = Number(capacity) || 0;
 
     const event = await Event.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!event) return res.status(404).json({ message: 'Event not found.' });
@@ -95,6 +98,8 @@ const deleteEvent = async (req, res) => {
     if (!event) return res.status(404).json({ message: 'Event not found.' });
     await EventInterested.deleteMany({ event_id: req.params.id });
     await Notification.deleteMany({ event_id: req.params.id });
+    await AttendanceLog.deleteMany({ event_id: req.params.id });
+    await EventFeedback.deleteMany({ event_id: req.params.id });
     res.json({ message: 'Event deleted.' });
   } catch (err) {
     console.error('deleteEvent error:', err);

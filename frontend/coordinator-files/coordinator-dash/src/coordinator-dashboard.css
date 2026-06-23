@@ -1733,6 +1733,65 @@
 /* Unread notification dot */
 .topbar-notif-unread { background: rgba(87, 0, 19, 0.05); border-left: 3px solid var(--maroon); }
 
+/* Alumni search autocomplete */
+.coord-alumni-dropdown {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e4cccc;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    z-index: 200;
+    max-height: 220px;
+    overflow-y: auto;
+}
+.coord-alumni-option {
+    padding: 8px 12px;
+    cursor: pointer;
+    display: grid;
+    gap: 2px;
+    border-bottom: 1px solid #f5eaea;
+}
+.coord-alumni-option:last-child { border-bottom: 0; }
+.coord-alumni-option:hover { background: rgba(87, 0, 19, 0.06); }
+.coord-alumni-option strong { font-size: 12px; color: var(--maroon); }
+.coord-alumni-option span   { font-size: 11px; color: var(--muted); }
+.coord-alumni-empty {
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+}
+
+/* Status pill in records table */
+.coord-status-pill {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+/* Event detail grid in View Event modal */
+.coord-event-detail-grid {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 8px 16px;
+    font-size: 13px;
+}
+.coord-event-detail-grid span:nth-child(odd) {
+    font-weight: 700;
+    color: var(--maroon);
+    font-size: 11px;
+    text-transform: uppercase;
+}
+
+/* Dark mode */
+body.dark-mode .coord-alumni-dropdown { background: #1e1215; border-color: #3a2830; }
+body.dark-mode .coord-alumni-option   { border-color: #3a2830; }
+body.dark-mode .coord-alumni-option:hover { background: rgba(250, 200, 83, 0.08); }
+body.dark-mode .coord-alumni-option strong { color: var(--gold); }
+
 /* Two-column layout */
 .coord-events-layout {
     display: grid;
@@ -2031,6 +2090,7 @@
 .btn-secondary .admin-svg-icon {
     width: 15px;
     height: 15px;
+    filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%) !important;
 }
 
 /* danger variant (delete) */
