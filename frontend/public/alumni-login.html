@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alumni Portal - Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/login-style.css">
+</head>
+<body>
+
+
+  <main class="page">
+    <div class="card">
+
+      <section class="left-panel">
+        <div class="welcome-copy">
+          <p class="welcome-heading">Welcome! <span class="name">TSUsian</span></p>
+          <p class="welcome-sub">
+            to Alumni Portal, Reconnect with your Peers,<br>
+            explore exclusive recommendations, and manage<br>
+            your professional background.
+          </p>
+        </div>
+      </section>
+
+      <section class="right-shell">
+        <div class="right-panel">
+          <h1 class="login-title">Login</h1>
+          <div class="title-underline"></div>
+
+          <div class="form-group">
+            <label for="email">Email</label>
+            <div class="input-wrap">
+              <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
+              </svg>
+              <input type="email" id="email" placeholder="alumni.id@tsu.edu.ph" autocomplete="email">
+            </div>
+          </div>
+
+          <div class="form-group password-group">
+            <div class="password-row">
+              <label for="password">Password</label>
+              <a href="alumni-reset-pass.html" class="forgot-link">Forgot Password?</a>
+            </div>
+            <div class="input-wrap">
+              <svg class="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
+              <input type="password" id="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password">
+              <button type="button" class="toggle-password" aria-label="Show password" data-target="password">
+                <svg class="eye-open" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/>
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+                <svg class="eye-closed" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8" style="display:none">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18M10.6 10.6a3 3 0 004.2 4.2M9.4 5.7A9.3 9.3 0 0112 5.5c6 0 9.5 6.5 9.5 6.5a16 16 0 01-3 3.6M6.1 6.6A16 16 0 002.5 12S6 18.5 12 18.5a9 9 0 003.4-.65"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="links-row">
+            <a href="#">Privacy Policy</a>
+            <a href="#">About us</a>
+          </div>
+
+          <button class="btn-signin" id="login-btn" type="button" onclick="doLogin()">
+            Log in
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/>
+            </svg>
+          </button>
+
+        </div>
+      </section>
+    </div>
+  </main>
+  <footer class="login-footer">&copy; 2026 Alumni Portal &middot; Tarlac State University | College of Computer Studies</footer>
+
+  <script>
+    const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const API = IS_LOCAL ? 'http://localhost:5000/api' : 'https://project-alumni-phi.vercel.app/api';
+    const APP = IS_LOCAL ? 'http://localhost:5173' : 'https://project-alumni-frontend.vercel.app';
+
+    function showMsg(text, isError = true) {
+      let box = document.getElementById('msg-box');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = 'msg-box';
+        box.style.padding = '10px 14px';
+        box.style.borderRadius = '8px';
+        box.style.fontSize = '14px';
+        box.style.marginBottom = '12px';
+        box.style.textAlign = 'center';
+        document.querySelector('.btn-signin').insertAdjacentElement('beforebegin', box);
+      }
+      box.textContent = text;
+      box.style.display = 'block';
+      box.style.background = isError ? '#fff5f5' : '#f0fff4';
+      box.style.color = isError ? '#c53030' : '#276749';
+      box.style.border = `1px solid ${isError ? '#fc8181' : '#68d391'}`;
+    }
+
+    async function doLogin() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!email || !password) return showMsg('Please enter your email and password.');
+
+      const btn = document.getElementById('login-btn');
+      btn.disabled = true;
+      const original = btn.innerHTML;
+      btn.textContent = 'Signing in...';
+
+      const warmupTimer = setTimeout(() => {
+        btn.textContent = 'Server warming up, please wait…';
+      }, 6000);
+
+      try {
+        const res = await fetch(`${API}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        clearTimeout(warmupTimer);
+        const data = await res.json();
+
+        if (!res.ok) {
+          showMsg(data.message || 'Login failed.');
+          btn.disabled = false;
+          btn.innerHTML = original;
+          return;
+        }
+
+        if (data.twoFactorRequired) {
+          sessionStorage.setItem('tfa_temp_token', data.tempToken);
+          window.location.href = 'alumni-2fa.html';
+          return;
+        }
+
+        const dashboardMap = {
+          admin: `${APP}/admin/dashboard`,
+          alumni: `${APP}/alumni/dashboard`,
+          coordinator: `${APP}/coordinator/dashboard`,
+          employer: `${APP}/employer/dashboard`,
+        };
+        const base = dashboardMap[data.user.role] || APP;
+        const payload = encodeURIComponent(JSON.stringify({ token: data.token, user: data.user, firstLogin: data.firstLogin }));
+        window.location.href = `${base}#auth=${payload}`;
+      } catch {
+        clearTimeout(warmupTimer);
+        showMsg('Could not connect to server. Please try again.');
+        btn.disabled = false;
+        btn.innerHTML = original;
+      }
+    }
+
+    document.querySelectorAll('.toggle-password').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var input = document.getElementById(btn.dataset.target);
+        var open = btn.querySelector('.eye-open');
+        var closed = btn.querySelector('.eye-closed');
+        var hidden = input.type === 'password';
+        input.type = hidden ? 'text' : 'password';
+        open.style.display = hidden ? 'none' : 'block';
+        closed.style.display = hidden ? 'block' : 'none';
+        btn.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
+      });
+    });
+  </script>
+</body>
+</html>

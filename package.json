@@ -2,7 +2,7 @@
   "name": "project-alumni",
   "private": true,
   "scripts": {
-    "dev": "concurrently --names \"backend,admin,coordinator\" --prefix-colors \"cyan,green,yellow\" \"npm --prefix backend run dev\" \"npm --prefix frontend/admin-files/admin-dash run dev\" \"npm --prefix frontend/coordinator-files/coordinator-dash run dev\""
+    "dev": "concurrently --names \"backend,frontend\" --prefix-colors \"cyan,green\" \"npm --prefix backend run dev\" \"npm --prefix frontend run dev\""
   },
   "devDependencies": {
     "concurrently": "^9.0.0"

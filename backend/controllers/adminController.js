@@ -9,6 +9,11 @@ const EmploymentActivity = require('../models/EmploymentActivity');
 const Partnership        = require('../models/Partnership');
 const Announcement       = require('../models/Announcement');
 const Appointment        = require('../models/Appointment');
+const ActivityLog        = require('../models/ActivityLog');
+const AttendanceLog      = require('../models/AttendanceLog');
+const EventFeedback      = require('../models/EventFeedback');
+const EventInterested    = require('../models/EventInterested');
+const Notification       = require('../models/Notification');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 
 const upload = multer({
@@ -160,10 +165,17 @@ const deleteUser = async (req, res) => {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    // Clean up all records linked to this user
+    // Cascade delete all records linked to this user
     await Promise.all([
       AlumniEmployment.deleteOne({ alumni_id: req.params.id }),
       TracerStudyResponse.deleteOne({ alumni_id: req.params.id }),
+      Appointment.deleteMany({ alumni_id: req.params.id }),
+      AttendanceLog.deleteMany({ alumni_id: req.params.id }),
+      EventFeedback.deleteMany({ alumni_id: req.params.id }),
+      EventInterested.deleteMany({ alumni_id: req.params.id }),
+      ActivityLog.deleteMany({ user_id: req.params.id }),
+      EmploymentActivity.deleteMany({ user_id: req.params.id }),
+      Notification.deleteMany({ user_id: req.params.id }),
     ]);
 
     res.json({ message: 'User deleted.' });
