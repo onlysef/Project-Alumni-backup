@@ -25,4 +25,7 @@ const alumniEmploymentSchema = new mongoose.Schema({
   last_updated:          { type: Date, default: Date.now },
 }, { timestamps: true });
 
+alumniEmploymentSchema.index({ employment_status: 1 });
+alumniEmploymentSchema.index({ last_updated: -1 });
+
 module.exports = mongoose.model('AlumniEmployment', alumniEmploymentSchema);

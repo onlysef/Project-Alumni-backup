@@ -20,4 +20,7 @@ const employmentActivitySchema = new mongoose.Schema({
   details:     { type: String, default: '' },
 }, { timestamps: true });
 
+employmentActivitySchema.index({ createdAt: -1 });
+employmentActivitySchema.index({ user_id: 1 });
+
 module.exports = mongoose.model('EmploymentActivity', employmentActivitySchema);

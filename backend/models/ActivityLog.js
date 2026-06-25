@@ -8,4 +8,7 @@ const activityLogSchema = new mongoose.Schema({
   announcement_title: { type: String, required: true },
 }, { timestamps: true });
 
+activityLogSchema.index({ createdAt: -1 });
+activityLogSchema.index({ announcement_id: 1 });
+
 module.exports = mongoose.model('ActivityLog', activityLogSchema);

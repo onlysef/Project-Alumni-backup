@@ -418,24 +418,37 @@
             fill: currentColor;
         }
 
+        .nav a > span:first-child,
+        .sidebar-logout > span:first-child {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         /* ===== Expandable submenu (nav-group) ===== */
         .nav-group {
             display: flex;
             flex-direction: column;
         }
 
-        /* main row that has a caret: keep 3 columns (icon, label, caret) */
-        .nav-group > a {
+        /* main row: 3-column grid — icon | label | caret */
+        .nav .nav-group > a {
             grid-template-columns: 24px 1fr auto;
+            padding-right: 12px;
         }
 
         .nav-caret {
             color: var(--gold);
-            overflow: hidden;
-            font-size: 30px;
-            line-height: 1;
             transition: transform 180ms ease;
-            justify-self: end;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            align-self: center;
+        }
+
+        .nav-caret svg {
+            display: block;
+            stroke: var(--gold);
         }
 
         .nav-caret.open {
@@ -443,9 +456,6 @@
         }
 
         .nav-item-label {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
             white-space: nowrap;
             min-width: 0;
             overflow: hidden;
@@ -3835,10 +3845,9 @@
                 padding-left: 16px;
             }
 
-            .nav-group > a {
+            .nav .nav-group > a {
                 grid-template-columns: 24px 1fr auto;
                 padding: 10px 16px;
-                justify-items: start;
             }
 
             .nav svg,

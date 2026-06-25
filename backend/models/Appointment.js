@@ -15,4 +15,7 @@ const appointmentSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
+appointmentSchema.index({ status: 1, createdAt: -1 });
+appointmentSchema.index({ alumni_id: 1 });
+
 module.exports = mongoose.model('Appointment', appointmentSchema);

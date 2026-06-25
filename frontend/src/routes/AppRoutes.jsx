@@ -1,4 +1,4 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import ProtectedRoute from "./ProtectedRoute";
@@ -9,30 +9,30 @@ import AlumniLayout from "../layouts/AlumniLayout";
 import EmployerLayout from "../layouts/EmployerLayout";
 
 // Admin pages
-import DashboardView from "../pages/admin/DashboardView";
-import EmploymentView from "../pages/admin/EmploymentView";
-import AppointmentsView from "../pages/admin/AppointmentsView";
-import AccountsView from "../pages/admin/AccountsView";
-import AnnouncementsView from "../pages/admin/AnnouncementsView";
-import PartnershipsView from "../pages/admin/PartnershipsView";
-import AiAssistantView from "../pages/admin/AiAssistantView";
-import AboutView from "../pages/admin/AboutView";
+const DashboardView           = lazy(() => import("../pages/admin/DashboardView"));
+const EmploymentView          = lazy(() => import("../pages/admin/EmploymentView"));
+const AppointmentsView        = lazy(() => import("../pages/admin/AppointmentsView"));
+const AccountsView            = lazy(() => import("../pages/admin/AccountsView"));
+const AnnouncementsView       = lazy(() => import("../pages/admin/AnnouncementsView"));
+const PartnershipsView        = lazy(() => import("../pages/admin/PartnershipsView"));
+const AiAssistantView         = lazy(() => import("../pages/admin/AiAssistantView"));
+const AboutView               = lazy(() => import("../pages/admin/AboutView"));
 
 // Coordinator pages
-import CoordinatorHome from "../pages/coordinator/CoordinatorHome";
-import EventManagement from "../pages/coordinator/EventManagement";
-import EventParticipation from "../pages/coordinator/EventParticipation";
-import CoordinatorEmploymentView from "../pages/coordinator/CoordinatorEmploymentView";
-import AlumniContacts from "../pages/coordinator/AlumniContacts";
-import CoordinatorAboutView from "../pages/admin/AboutView";
+const CoordinatorHome         = lazy(() => import("../pages/coordinator/CoordinatorHome"));
+const EventManagement         = lazy(() => import("../pages/coordinator/EventManagement"));
+const EventParticipation      = lazy(() => import("../pages/coordinator/EventParticipation"));
+const CoordinatorEmploymentView = lazy(() => import("../pages/coordinator/CoordinatorEmploymentView"));
+const AlumniContacts          = lazy(() => import("../pages/coordinator/AlumniContacts"));
+const CoordinatorAboutView    = lazy(() => import("../pages/admin/AboutView"));
 
 // Alumni pages
-import AlumniDashboard from "../pages/alumni/AlumniDashboard";
-import AlumniOnboarding from "../pages/alumni/AlumniOnboarding";
-import TracerStudyForm from "../pages/alumni/TracerStudyForm";
+const AlumniDashboard         = lazy(() => import("../pages/alumni/AlumniDashboard"));
+const AlumniOnboarding        = lazy(() => import("../pages/alumni/AlumniOnboarding"));
+const TracerStudyForm         = lazy(() => import("../pages/alumni/TracerStudyForm"));
 
 // Employer pages
-import EmployerDashboard from "../pages/employer/EmployerDashboard";
+const EmployerDashboard       = lazy(() => import("../pages/employer/EmployerDashboard"));
 
 const ROLE_PATHS = {
   admin: "/admin/dashboard",
@@ -63,6 +63,7 @@ export default function AppRoutes() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <Suspense fallback={<div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#76656a", fontSize: 14 }}>Loading…</div>}>
         <Routes>
           <Route path="/" element={<RoleRedirect />} />
           <Route path="*" element={<RoleRedirect />} />
@@ -154,6 +155,7 @@ export default function AppRoutes() {
             <Route path="dashboard" element={<EmployerDashboard />} />
           </Route>
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
   );
