@@ -10,7 +10,7 @@ const alumniRoutes      = require('./routes/alumni');
 const employerRoutes    = require('./routes/employer');
 const coordinatorRoutes = require('./routes/coordinator');
 
-connectDB().catch(err => console.error('MongoDB connection failed:', err.message));
+connectDB();
 
 const app = express();
 
