@@ -446,6 +446,9 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            white-space: nowrap;
+            min-width: 0;
+            overflow: hidden;
         }
 
         /* sub-items container */
@@ -551,7 +554,6 @@
             z-index: 10;
             background: #3a000d;
             color: #fff;
-            box-shadow: 0 2px 0 rgba(0, 0, 0, 0.04);
         }
 
         .title-wrap {
@@ -3160,37 +3162,17 @@
             width: min(520px, 100%);
         }
 
-        .topbar-popover {
+        .modal-backdrop.topbar-popover {
+            inset: auto;
+            width: 0;
+            height: 0;
             padding: 0;
             place-items: unset;
             background: transparent;
             pointer-events: none;
         }
 
-        /* The coordinator stylesheet (loaded after this file) defines a
-         * legacy `.topbar-popover` as a solid white box — and a dark-mode
-         * variant `body.dark-mode .topbar-popover { background:#2b141a }`.
-         * Now that the coordinator topbar uses the shared Modal markup, those
-         * rules would paint a stray box (light mode) or a solid dark box that
-         * only clears on close/reopen (dark mode). Override both here with
-         * higher specificity so the backdrop stays transparent and inert. */
-        .modal-backdrop.topbar-popover,
-        body.dark-mode .modal-backdrop.topbar-popover {
-            position: fixed;
-            inset: 0;
-            top: 0;
-            right: 0;
-            width: auto;
-            background: transparent;
-            border: 0;
-            border-radius: 0;
-            box-shadow: none;
-            overflow: visible;
-            animation: none;
-            pointer-events: none;
-        }
-
-        .topbar-popover.show {
+        .modal-backdrop.topbar-popover.show {
             display: block;
             position: fixed;
             inset: 0;
@@ -3201,9 +3183,9 @@
             content: none;
         }
 
-        .topbar-popover .topbar-modal {
+        .modal-backdrop.topbar-popover .topbar-modal {
             position: fixed;
-            top: 58px;
+            top: 70px;
             right: 20px;
             width: min(420px, calc(100vw - 32px));
             max-height: calc(100vh - 96px);
@@ -3211,14 +3193,14 @@
             flex-direction: column;
             pointer-events: auto;
             overflow: visible;
-            border: 1px solid rgba(87, 0, 19, 0.18);
+            border: none;
         }
 
-        .topbar-popover .topbar-modal .modal-head {
+        .modal-backdrop.topbar-popover .topbar-modal .modal-head {
             flex: 0 0 auto;
         }
 
-        .topbar-popover .topbar-modal-actions {
+        .modal-backdrop.topbar-popover .topbar-modal-actions {
             flex: 0 0 auto;
         }
 
@@ -3230,18 +3212,17 @@
         }
 
         @media (max-width: 600px) {
-            .topbar-popover .topbar-modal,
+            .modal-backdrop.topbar-popover .topbar-modal,
             .notifications-popover .topbar-modal,
             .settings-popover .topbar-modal,
             .profile-popover .topbar-modal {
-                top: 64px;
-                right: 16px;
-                left: 16px;
-                width: auto;
-                max-height: calc(100vh - 84px);
+                top: 70px;
+                right: 8px;
+                width: min(340px, calc(100vw - 16px));
+                max-height: calc(100vh - 90px);
             }
 
-            .topbar-popover .topbar-modal::before {
+            .modal-backdrop.topbar-popover .topbar-modal::before {
                 display: none;
             }
         }
@@ -3258,7 +3239,7 @@
             right: 20px;
         }
 
-        .topbar-popover .topbar-modal::before {
+        .modal-backdrop.topbar-popover .topbar-modal::before {
             display: none;
         }
 
@@ -4059,16 +4040,15 @@
             }
 
             /* ── Notifications / settings popover ── */
-            .topbar-popover .topbar-modal {
-                top: 68px;
+            .modal-backdrop.topbar-popover .topbar-modal {
+                top: 70px;
             }
 
             .notifications-popover .topbar-modal,
             .settings-popover .topbar-modal,
             .profile-popover .topbar-modal {
                 right: 8px;
-                left: 8px;
-                width: auto;
+                width: min(340px, calc(100vw - 16px));
             }
 
             /* ── Modals ── */

@@ -83,14 +83,20 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
             className="icon-btn has-badge"
             aria-label="Notifications"
             data-count={badge}
-            onClick={() => setPanel(panel === "notifications" ? null : "notifications")}
+            onClick={() => {
+              if (window.innerWidth <= 600 && !collapsed) onToggleSidebar();
+              setPanel(panel === "notifications" ? null : "notifications");
+            }}
           >
             <span><Icon name="icon-9" /></span>
           </button>
           <button
             className="icon-btn"
             aria-label="Settings"
-            onClick={() => setPanel(panel === "settings" ? null : "settings")}
+            onClick={() => {
+              if (window.innerWidth <= 600 && !collapsed) onToggleSidebar();
+              setPanel(panel === "settings" ? null : "settings");
+            }}
           >
             <span><Icon name="icon-10" /></span>
           </button>
@@ -168,21 +174,19 @@ function SettingsForm({ settings, onSave, onChangeTheme, onClose }) {
             <strong>Theme</strong>
             <small>Switch the dashboard between light and dark mode.</small>
           </span>
-          <div className="theme-options" role="radiogroup" aria-label="Theme">
+          <div className="theme-options">
             {["light", "dark"].map((t) => (
-              <label key={t}>
-                <input
-                  type="radio"
-                  name="theme"
-                  value={t}
-                  checked={local.theme === t}
-                  onChange={() => {
-                    setLocal((p) => ({ ...p, theme: t }));
-                    onChangeTheme(t);
-                  }}
-                />
-                <span>{t === "light" ? "Light" : "Dark"}</span>
-              </label>
+              <button
+                key={t}
+                type="button"
+                className={`theme-chip${local.theme === t ? " active" : ""}`}
+                onClick={() => {
+                  setLocal((p) => ({ ...p, theme: t }));
+                  onChangeTheme(t);
+                }}
+              >
+                {t === "light" ? "Light" : "Dark"}
+              </button>
             ))}
           </div>
         </div>
