@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../common/Icon.jsx";
+import { Modal } from "../common/Primitives.jsx";
 
 const API = import.meta.env.DEV
   ? "http://localhost:5000/api"
@@ -17,7 +18,6 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
-  const wrapRef = useRef(null);
 
   const fetchNotifs = useCallback(async () => {
     const token = localStorage.getItem("auth_token");
@@ -36,14 +36,10 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
 
   useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
 
+  // Re-fetch every time the notifications panel is opened
   useEffect(() => {
-    if (!panel) return;
-    const onClick = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setPanel(null);
-    };
-    window.addEventListener("mousedown", onClick);
-    return () => window.removeEventListener("mousedown", onClick);
-  }, [panel]);
+    if (panel === "notifications") fetchNotifs();
+  }, [panel, fetchNotifs]);
 
   async function handleMarkAllRead() {
     const token = localStorage.getItem("auth_token");
@@ -58,7 +54,6 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
     } catch {
       showToast("Failed to mark as read.");
     }
-    setPanel(null);
   }
 
   const notifCount = settings?.dashboardNotifications ? unread : 0;
@@ -70,119 +65,140 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
     showToast(`${theme === "dark" ? "Dark" : "Light"} mode applied.`);
   }
 
-  function toggleSetting(key) {
-    const next = { ...settings, [key]: !settings[key] };
-    setSettings(next);
-    localStorage.setItem("aptmsCoordinatorSettings", JSON.stringify(next));
-  }
-
   return (
-    <header className="topbar">
-      <div className="title-wrap">
-        <button
-          className="hamburger"
-          type="button"
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          onClick={onToggleSidebar}
-        >
-          <Icon name="icon-8" />
-        </button>
-        <h2>{title}</h2>
-      </div>
-
-      <div className="top-actions" ref={wrapRef}>
-        <span className="divider" />
-
-        {/* Notifications */}
-        <div className="topbar-menu">
+    <>
+      <header className="topbar">
+        <div className="title-wrap">
           <button
-            className="icon-btn"
+            className="hamburger"
+            type="button"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-expanded={String(!collapsed)}
+            onClick={onToggleSidebar}
+          >
+            <span><Icon name="icon-8" /></span>
+          </button>
+          <h2>{title}</h2>
+        </div>
+        <div className="top-actions">
+          <span className="divider" />
+          <button
+            className="icon-btn has-badge"
             type="button"
             aria-label="Notifications"
+            data-count={notifCount}
             onClick={() => setPanel(panel === "notifications" ? null : "notifications")}
           >
-            <Icon name="icon-9" />
-            {notifCount > 0 && <span className="topbar-badge">{notifCount}</span>}
+            <span><Icon name="icon-9" /></span>
           </button>
-          {panel === "notifications" && (
-            <div className="topbar-popover">
-              <div className="topbar-popover-head">
-                <h3>Notifications</h3>
-                <button type="button" aria-label="Close" onClick={() => setPanel(null)}>&times;</button>
-              </div>
-              <div className="topbar-notif-list">
-                {notifications.length === 0 ? (
-                  <p className="topbar-empty">No new notifications.</p>
-                ) : (
-                  notifications.map((n, i) => (
-                    <div className={`topbar-notif${n.is_read ? "" : " topbar-notif-unread"}`} key={n._id ?? i}>
-                      <span>{n.message || n.title}</span>
-                      <small>{timeAgo(n.createdAt)}</small>
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="topbar-popover-foot">
-                <button type="button" onClick={handleMarkAllRead}>Mark All Read</button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Settings */}
-        <div className="topbar-menu">
           <button
             className="icon-btn"
             type="button"
             aria-label="Settings"
             onClick={() => setPanel(panel === "settings" ? null : "settings")}
           >
-            <Icon name="icon-10" />
+            <span><Icon name="icon-10" /></span>
           </button>
-          {panel === "settings" && (
-            <div className="topbar-popover">
-              <div className="topbar-popover-head">
-                <h3>Settings</h3>
-                <button type="button" aria-label="Close" onClick={() => setPanel(null)}>&times;</button>
-              </div>
-              <div className="topbar-settings">
-                <div className="setting-row">
-                  <div>
-                    <strong>Theme</strong>
-                    <small>Switch between light and dark mode.</small>
-                  </div>
-                  <div className="theme-options">
-                    {["light", "dark"].map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        className={`theme-chip${settings?.theme === t ? " active" : ""}`}
-                        onClick={() => applyTheme(t)}
-                      >
-                        {t === "light" ? "Light" : "Dark"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <label className="setting-row">
-                  <div>
-                    <strong>Dashboard Notifications</strong>
-                    <small>Show the notification badge.</small>
-                  </div>
-                  <input type="checkbox" checked={!!settings?.dashboardNotifications} onChange={() => toggleSetting("dashboardNotifications")} />
-                </label>
-                <label className="setting-row">
-                  <div>
-                    <strong>Compact Tables</strong>
-                    <small>Reduce row spacing in tables.</small>
-                  </div>
-                  <input type="checkbox" checked={!!settings?.compactTables} onChange={() => toggleSetting("compactTables")} />
-                </label>
-              </div>
-            </div>
-          )}
         </div>
+      </header>
+
+      <Modal open={panel === "notifications"} onClose={() => setPanel(null)} className="topbar-popover notifications-popover">
+        <section className="tracer-modal topbar-modal" role="dialog" aria-modal="true">
+          <div className="modal-head">
+            <h3>Notifications</h3>
+            <button type="button" aria-label="Close notifications" onClick={() => setPanel(null)}>×</button>
+          </div>
+          <div className="notification-list">
+            {notifications.length === 0 ? (
+              <p style={{ padding: "20px", textAlign: "center", color: "#999", fontSize: "13px" }}>
+                No new notifications.
+              </p>
+            ) : (
+              notifications.map((n, i) => (
+                <article key={n._id ?? i} className={`notification-item${n.is_read ? "" : " is-unread"}`}>
+                  <strong>{n.title || "Notification"}</strong>
+                  <span>{n.message || n.body}</span>
+                  <time>{timeAgo(n.createdAt)}</time>
+                </article>
+              ))
+            )}
+          </div>
+          <div className="modal-actions topbar-modal-actions">
+            <button type="button" onClick={handleMarkAllRead}>Mark All Read</button>
+            <button type="button" onClick={() => setPanel(null)}>Close</button>
+          </div>
+        </section>
+      </Modal>
+
+      <Modal open={panel === "settings"} onClose={() => setPanel(null)} className="topbar-popover settings-popover">
+        <SettingsForm
+          settings={settings}
+          onSave={(s) => {
+            setSettings(s);
+            localStorage.setItem("aptmsCoordinatorSettings", JSON.stringify(s));
+            setPanel(null);
+            showToast("Settings saved.");
+          }}
+          onChangeTheme={applyTheme}
+          onClose={() => setPanel(null)}
+        />
+      </Modal>
+    </>
+  );
+}
+
+function SettingsForm({ settings, onSave, onChangeTheme, onClose }) {
+  const [local, setLocal] = useState(settings);
+  useEffect(() => setLocal(settings), [settings]);
+  return (
+    <section className="tracer-modal topbar-modal" role="dialog" aria-modal="true">
+      <div className="modal-head">
+        <h3>Settings</h3>
+        <button type="button" aria-label="Close settings" onClick={onClose}>×</button>
       </div>
-    </header>
+      <form
+        className="settings-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSave(local);
+        }}
+      >
+        <div className="setting-row theme-setting">
+          <span>
+            <strong>Theme</strong>
+            <small>Switch the dashboard between light and dark mode.</small>
+          </span>
+          <div className="theme-options" role="radiogroup" aria-label="Theme">
+            {["light", "dark"].map((t) => (
+              <label key={t}>
+                <input
+                  type="radio"
+                  name="theme"
+                  value={t}
+                  checked={local.theme === t}
+                  onChange={() => {
+                    setLocal((p) => ({ ...p, theme: t }));
+                    onChangeTheme(t);
+                  }}
+                />
+                <span>{t === "light" ? "Light" : "Dark"}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <label className="setting-row">
+          <span><strong>Dashboard Notifications</strong><small>Show the notification badge.</small></span>
+          <input
+            type="checkbox"
+            checked={!!local.dashboardNotifications}
+            onChange={(e) => setLocal((p) => ({ ...p, dashboardNotifications: e.target.checked }))}
+          />
+        </label>
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button type="submit">Save Settings</button>
+        </div>
+      </form>
+    </section>
   );
 }

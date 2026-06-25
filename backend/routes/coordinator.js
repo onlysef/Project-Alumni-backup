@@ -97,14 +97,16 @@ router.get('/dashboard', async (req, res) => {
     ]);
 
     const activityItems = [
-      ...recentLogs.map(l => ({
-        text: `${l.alumni_id ? `${l.alumni_id.firstName} ${l.alumni_id.lastName}` : 'An alumni'} was recorded ${l.status || 'Present'} at "${l.event_id?.title || 'an event'}"`,
-        time: l.createdAt,
-      })),
-      ...recentFeedbackDocs.map(f => ({
-        text: `${f.alumni_id ? `${f.alumni_id.firstName} ${f.alumni_id.lastName}` : 'An alumni'} submitted feedback for "${f.event_id?.title || 'an event'}"`,
-        time: f.createdAt,
-      })),
+      ...recentLogs.map(l => {
+        const name = l.alumni_id ? `${l.alumni_id.firstName} ${l.alumni_id.lastName}` : 'An alumni';
+        const detail = `was recorded ${l.status || 'Present'} at "${l.event_id?.title || 'an event'}"`;
+        return { name, detail, text: `${name} ${detail}`, time: l.createdAt };
+      }),
+      ...recentFeedbackDocs.map(f => {
+        const name = f.alumni_id ? `${f.alumni_id.firstName} ${f.alumni_id.lastName}` : 'An alumni';
+        const detail = `submitted feedback for "${f.event_id?.title || 'an event'}"`;
+        return { name, detail, text: `${name} ${detail}`, time: f.createdAt };
+      }),
     ]
       .sort((a, b) => new Date(b.time) - new Date(a.time))
       .slice(0, 8);

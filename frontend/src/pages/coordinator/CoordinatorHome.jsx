@@ -124,12 +124,23 @@ export default function CoordinatorHome() {
           <section className="coord-card coord-activity">
             <h3>Activity</h3>
             {data?.activity?.length ? (
-              data.activity.map((a, i) => (
-                <div className="coord-activity-row" key={i}>
-                  <span>{a.text}</span>
-                  <time>{timeAgo(a.time)}</time>
-                </div>
-              ))
+              <div className="activity-list">
+                {data.activity.map((a, i) => (
+                  <div className="activity" key={i}>
+                    <p>
+                      {a.name ? (
+                        <>
+                          <strong>{a.name}</strong>{" "}
+                          {a.detail}
+                        </>
+                      ) : (
+                        a.text
+                      )}
+                    </p>
+                    <time>{timeAgo(a.time)}</time>
+                  </div>
+                ))}
+              </div>
             ) : (
               <p style={{ fontSize: 13, color: "#888" }}>No recent activity.</p>
             )}

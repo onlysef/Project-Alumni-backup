@@ -9,6 +9,7 @@ const PATH_TITLES = {
   "/coordinator/participation":"Event Participation",
   "/coordinator/employment":   "Employment Details",
   "/coordinator/contacts":     "Alumni Contacts",
+  "/coordinator/aiassistant":  "AC - AI Assistant",
   "/coordinator/about":        "Alumni Association Inc.",
 };
 
