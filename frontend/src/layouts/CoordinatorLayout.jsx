@@ -20,15 +20,14 @@ export default function CoordinatorLayout() {
   const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
     try {
+      const saved = JSON.parse(localStorage.getItem("aptmsCoordinatorSettings")) || {};
       return {
-        theme: "light",
-        emailAlerts: true,
+        theme: saved.theme ?? "light",
+        compactTables: true,
         dashboardNotifications: true,
-        compactTables: false,
-        ...(JSON.parse(localStorage.getItem("aptmsCoordinatorSettings")) || {}),
       };
     } catch {
-      return { theme: "light", emailAlerts: true, dashboardNotifications: true, compactTables: false };
+      return { theme: "light", dashboardNotifications: true, compactTables: true };
     }
   });
 

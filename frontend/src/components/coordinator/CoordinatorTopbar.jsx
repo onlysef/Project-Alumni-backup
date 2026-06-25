@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../common/Icon.jsx";
-import { Modal } from "../common/Primitives.jsx";
-
-const API = import.meta.env.DEV
-  ? "http://localhost:5000/api"
-  : "https://project-alumni-phi.vercel.app/api";
+import { API } from "../../services/api.js";
 
 function timeAgo(date) {
   const diff = (Date.now() - new Date(date)) / 1000;

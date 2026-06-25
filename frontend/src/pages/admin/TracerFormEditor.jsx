@@ -1,14 +1,9 @@
 ﻿import { useState, useEffect, useCallback } from "react";
 import { Modal } from "../../components/common/Primitives.jsx";
 
-import { API } from "../../services/api.js";
+import { API, authHeaders } from "../../services/api.js";
 const MAROON = "#570013";
 const GOLD = "#fac853";
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
 
 // ── helper: auto-generate a camelCase key from a label string ─────────────────
 function toKey(str) {

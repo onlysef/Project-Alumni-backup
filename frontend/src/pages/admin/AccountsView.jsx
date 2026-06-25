@@ -1,17 +1,12 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext, useSearchParams } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { Dropdown, Modal } from "../../components/common/Primitives.jsx";
+import { Dropdown, Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { accountActionList, actionLabels } from "../../data.js";
 
-import { API } from "../../services/api.js";
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
+import { API, authHeaders } from "../../services/api.js";
 
 function capitalize(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -49,6 +44,7 @@ export default function AccountsView() {
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
   const [openMenuId, setOpenMenuId]   = useState(null);
+  const [confirm, setConfirm]         = useState(null);
 
   useEffect(() => {
       fetchUsers();
@@ -113,15 +109,23 @@ export default function AccountsView() {
     }
 
     if (action === "delete") {
-      try {
-        const res = await fetch(`${API}/admin/users/${row.id}`, {
-          method: "DELETE", headers: authHeaders(),
-        });
-        const data = await res.json();
-        if (!res.ok) { showToast(data.message || "Delete failed."); return; }
-        setRows((prev) => prev.filter((r) => r.id !== row.id));
-        showToast(`${row.name} deleted.`);
-      } catch { showToast("Could not connect to server."); }
+      setConfirm({
+        message:      `Delete ${row.name}? This cannot be undone.`,
+        confirmLabel: "Delete",
+        danger:       true,
+        onConfirm:    async () => {
+          setConfirm(null);
+          try {
+            const res = await fetch(`${API}/admin/users/${row.id}`, {
+              method: "DELETE", headers: authHeaders(),
+            });
+            const data = await res.json();
+            if (!res.ok) { showToast(data.message || "Delete failed."); return; }
+            setRows((prev) => prev.filter((r) => r.id !== row.id));
+            showToast(`${row.name} deleted.`);
+          } catch { showToast("Could not connect to server."); }
+        },
+      });
       return;
     }
 
@@ -199,6 +203,15 @@ export default function AccountsView() {
         onClose={() => setImportOpen(false)}
         onDone={() => { fetchUsers(); setImportOpen(false); }}
         showToast={showToast}
+      />
+
+      <ConfirmDialog
+        open={!!confirm}
+        message={confirm?.message}
+        confirmLabel={confirm?.confirmLabel}
+        danger={confirm?.danger}
+        onConfirm={confirm?.onConfirm}
+        onCancel={() => setConfirm(null)}
       />
 
       <AdminEntryModal

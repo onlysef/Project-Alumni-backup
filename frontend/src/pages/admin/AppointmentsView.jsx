@@ -1,12 +1,7 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
-import { API } from "../../services/api.js";
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
+import { API, authHeaders } from "../../services/api.js";
 
 // "HH:MM" (24-h) → "8:00 AM"
 function fmt24to12(t) {

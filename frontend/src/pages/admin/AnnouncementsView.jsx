@@ -1,17 +1,12 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { Modal } from "../../components/common/Primitives.jsx";
+import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
 
-import { API } from "../../services/api.js";
+import { API, authHeaders } from "../../services/api.js";
 const TYPE_ART_CLASS = { News: "", Event: "event", Career: "career", Scholarship: "scholarship" };
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
 
 async function safeJson(res) {
   const text = await res.text();
@@ -56,6 +51,7 @@ export default function AnnouncementsView() {
   const [typeFilter, setTypeFilter] = useState("All");
   const [composer, setComposer]     = useState(null);
   const [commentTarget, setCommentTarget] = useState(null);
+  const [confirm, setConfirm]       = useState(null);
 
   // Inline quick composer state
   const [quickTitle, setQuickTitle]       = useState("");
@@ -130,16 +126,24 @@ export default function AnnouncementsView() {
     }
   }
 
-  async function handleDelete(row) {
-    try {
-      const res  = await fetch(`${API}/admin/announcements/${row.id}`, { method: "DELETE", headers: authHeaders() });
-      const json = await safeJson(res);
-      if (!res.ok) { showToast(json.message || "Failed to delete."); return; }
-      setRows((prev) => prev.filter((r) => r.id !== row.id));
-      showToast(`${row.title} deleted.`);
-    } catch {
-      showToast("Could not connect to server.");
-    }
+  function handleDelete(row) {
+    setConfirm({
+      message:      `Delete "${row.title}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      danger:       true,
+      onConfirm:    async () => {
+        setConfirm(null);
+        try {
+          const res  = await fetch(`${API}/admin/announcements/${row.id}`, { method: "DELETE", headers: authHeaders() });
+          const json = await safeJson(res);
+          if (!res.ok) { showToast(json.message || "Failed to delete."); return; }
+          setRows((prev) => prev.filter((r) => r.id !== row.id));
+          showToast(`${row.title} deleted.`);
+        } catch {
+          showToast("Could not connect to server.");
+        }
+      },
+    });
   }
 
   async function handleLike(id) {
@@ -410,6 +414,15 @@ export default function AnnouncementsView() {
         onCommentAdded={(postId, count) =>
           setRows(rs => rs.map(r => r.id === postId ? { ...r, commentsCount: count } : r))
         }
+      />
+
+      <ConfirmDialog
+        open={!!confirm}
+        message={confirm?.message}
+        confirmLabel={confirm?.confirmLabel}
+        danger={confirm?.danger}
+        onConfirm={confirm?.onConfirm}
+        onCancel={() => setConfirm(null)}
       />
     </section>
   );

@@ -58,3 +58,31 @@ export function Modal({ open, onClose, className, children }) {
     document.body
   );
 }
+
+export function ConfirmDialog({ open, message, confirmLabel = "Confirm", danger = false, onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <Modal open={open} onClose={onCancel}>
+      <section className="tracer-modal" role="dialog" aria-modal="true" style={{ maxWidth: 380 }}>
+        <div className="modal-head">
+          <h3>Confirm</h3>
+          <button type="button" aria-label="Close" onClick={onCancel}>×</button>
+        </div>
+        <div className="modal-body">
+          <p style={{ margin: 0, paddingBottom: 18, fontSize: 14, lineHeight: 1.6 }}>{message}</p>
+          <div className="modal-actions">
+            <button type="button" onClick={onCancel}>Cancel</button>
+            <button
+              type="button"
+              className="modal-confirm"
+              onClick={onConfirm}
+              style={danger ? { background: "#c53030", color: "#fff" } : undefined}
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </div>
+      </section>
+    </Modal>
+  );
+}

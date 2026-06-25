@@ -21,12 +21,12 @@ export default function AdminLayout() {
   const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
     try {
+      const saved = JSON.parse(localStorage.getItem("aptmsDashboardSettings")) || {};
       return {
-        theme: "light",
+        theme: saved.theme ?? "light",
+        compactTables: saved.compactTables ?? false,
         emailAlerts: true,
         dashboardNotifications: true,
-        compactTables: false,
-        ...(JSON.parse(localStorage.getItem("aptmsDashboardSettings")) || {}),
       };
     } catch {
       return { theme: "light", emailAlerts: true, dashboardNotifications: true, compactTables: false };

@@ -1,17 +1,12 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { Modal } from "../../components/common/Primitives.jsx";
+import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { partnerActionList, actionLabels } from "../../data.js";
 
-import { API } from "../../services/api.js";
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
+import { API, authHeaders } from "../../services/api.js";
 
 function mapPartnership(p) {
   return {
@@ -34,6 +29,7 @@ export default function PartnershipsView() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [entry, setEntry]           = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [confirm, setConfirm]       = useState(null);
 
   useEffect(() => {
       fetchPartnerships();
@@ -82,15 +78,23 @@ export default function PartnershipsView() {
       return;
     }
     if (action === "delete") {
-      try {
-        const res = await fetch(`${API}/admin/partnerships/${row.id}`, {
-          method: "DELETE", headers: authHeaders(),
-        });
-        if (!res.ok) { showToast("Failed to delete."); return; }
-        setRows((prev) => prev.filter((r) => r.id !== row.id));
-        showToast(`${row.partner} deleted.`);
-        refreshStats();
-      } catch { showToast("Could not connect to server."); }
+      setConfirm({
+        message:      `Delete "${row.partner}"? This cannot be undone.`,
+        confirmLabel: "Delete",
+        danger:       true,
+        onConfirm:    async () => {
+          setConfirm(null);
+          try {
+            const res = await fetch(`${API}/admin/partnerships/${row.id}`, {
+              method: "DELETE", headers: authHeaders(),
+            });
+            if (!res.ok) { showToast("Failed to delete."); return; }
+            setRows((prev) => prev.filter((r) => r.id !== row.id));
+            showToast(`${row.partner} deleted.`);
+            refreshStats();
+          } catch { showToast("Could not connect to server."); }
+        },
+      });
       return;
     }
     const newStatus = action === "approve" || action === "activate" ? "Active" : "Archived";
@@ -183,6 +187,15 @@ export default function PartnershipsView() {
             refreshStats();
           } catch { showToast("Could not connect to server."); }
         }}
+      />
+
+      <ConfirmDialog
+        open={!!confirm}
+        message={confirm?.message}
+        confirmLabel={confirm?.confirmLabel}
+        danger={confirm?.danger}
+        onConfirm={confirm?.onConfirm}
+        onCancel={() => setConfirm(null)}
       />
     </section>
   );
