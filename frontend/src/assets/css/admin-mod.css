@@ -442,6 +442,12 @@
             transform: rotate(180deg);
         }
 
+        .nav-item-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
         /* sub-items container */
         .nav-sub {
             display: flex;

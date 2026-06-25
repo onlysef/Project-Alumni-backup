@@ -75,7 +75,7 @@ export function AdminSidebar({ collapsed }) {
                   }}
                 >
                   <span><Icon name={item.icon} /></span>
-                  <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span className="nav-item-label">
                     {item.label}
                     <span className={`nav-caret${isOpen ? " open" : ""}`}>▾</span>
                   </span>
