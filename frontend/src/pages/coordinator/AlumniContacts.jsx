@@ -3,16 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { downloadCsv } from "./CoordinatorShared.jsx";
 
-import { API } from "../../services/api.js";
-
-function apiGet(path, params = {}) {
-  const token = localStorage.getItem("auth_token");
-  const url = new URL(`${API}${path}`);
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== "" && v !== undefined && v !== null) url.searchParams.set(k, v);
-  });
-  return fetch(url, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json());
-}
+import { apiFetch } from "../../services/api.js";
 
 export default function AlumniContacts() {
   const { showToast } = useOutletContext();
@@ -29,7 +20,7 @@ export default function AlumniContacts() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiGet("/coordinator/alumni", { course, year, search: appliedSearch, page, limit: 10 });
+      const data = await apiFetch("/coordinator/alumni", { params: { course, year, search: appliedSearch, page, limit: 10 } });
       setContacts(data.contacts ?? []);
       setPagination(data.pagination ?? null);
     } catch {
@@ -51,12 +42,8 @@ export default function AlumniContacts() {
 
   async function handleExport() {
     try {
-      const data = await apiGet("/coordinator/alumni", {
-        course,
-        year,
-        search: appliedSearch,
-        page: 1,
-        limit: 99999,
+      const data = await apiFetch("/coordinator/alumni", {
+        params: { course, year, search: appliedSearch, page: 1, limit: 99999 },
       });
       const all = data.contacts ?? [];
       downloadCsv("alumni-contacts.csv", [

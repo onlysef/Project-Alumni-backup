@@ -55,7 +55,7 @@ const INDUSTRIES = [
   "Non-Profit/NGO",
   "Other",
 ];
-const BATCH_YEARS = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
+const BATCH_YEARS = Array.from({ length: new Date().getFullYear() - 2019 + 1 }, (_, i) => 2019 + i);
 
 const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "", company: "" };
 const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
@@ -611,7 +611,7 @@ export default function EmploymentView() {
             {gi > 0 && <h4>{group}</h4>}
             {items.map((a, i) => (
               <div
-                key={i}
+                key={a._id ?? `${group}-${i}`}
                 className={`recent-row${gi > 0 && !activitiesExpanded ? " extra-row" : ""}`}
               >
                 <span>{a.user_name}</span>

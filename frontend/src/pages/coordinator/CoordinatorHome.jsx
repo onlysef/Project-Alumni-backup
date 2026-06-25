@@ -3,7 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { MiniBarChart, downloadCsv } from "./CoordinatorShared.jsx";
 
-import { API } from "../../services/api.js";
+import { API, apiFetch } from "../../services/api.js";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
@@ -26,6 +26,7 @@ export default function CoordinatorHome() {
   });
 
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [allEvents, setAllEvents] = useState([]);
   const currentYear = new Date().getFullYear();
   const [reportYears, setReportYears] = useState(
@@ -36,19 +37,17 @@ export default function CoordinatorHome() {
   );
 
   useEffect(() => {
-      const token = localStorage.getItem("auth_token");
-    fetch(`${API}/coordinator/dashboard`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(setData)
-      .catch(() => {});
-    fetch(`${API}/coordinator/attendance/events`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(d => setAllEvents(d.events ?? []))
-      .catch(() => {});
+    setLoading(true);
+    Promise.all([
+      apiFetch("/coordinator/dashboard"),
+      apiFetch("/coordinator/attendance/events"),
+    ])
+      .then(([dashboard, events]) => {
+        setData(dashboard);
+        setAllEvents(events.events ?? []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const statCards = [
@@ -80,20 +79,20 @@ export default function CoordinatorHome() {
 
       <div className="coord-stats">
         {statCards.map(([value, label, icon]) => (
-          <article className="coord-stat" key={label}>
+          <article className={`coord-stat${loading ? " coord-stat-loading" : ""}`} key={label}>
             <div>
-              <strong>{value}</strong>
+              <strong>{loading ? "…" : value}</strong>
               <span>{label}</span>
             </div>
             <Icon name={icon} />
           </article>
         ))}
-        <article className="coord-highlight">
+        <article className={`coord-highlight${loading ? " coord-stat-loading" : ""}`}>
           <div>
             <strong>Top Event:</strong>
-            <span>{data?.topEvent ?? "—"}</span>
+            <span>{loading ? "…" : (data?.topEvent ?? "—")}</span>
             <strong>Low Response:</strong>
-            <span>{data?.lowEvent ?? "—"}</span>
+            <span>{loading ? "…" : (data?.lowEvent ?? "—")}</span>
           </div>
           <Icon name="icon-trophy" />
         </article>
@@ -121,18 +120,20 @@ export default function CoordinatorHome() {
         <aside className="coord-right-stack">
           <section className="coord-card coord-activity">
             <h3>Activity</h3>
-            {data?.activity?.length ? (
+            {loading ? (
+              <p style={{ fontSize: 13, color: "#888" }}>Loading…</p>
+            ) : data?.activity?.length ? (
               <div className="activity-list">
                 {data.activity.map((a, i) => (
-                  <div className="activity" key={i}>
+                  <div className="activity" key={a._id ?? i}>
                     <p>
                       {a.name ? (
                         <>
                           <strong>{a.name}</strong>{" "}
-                          {a.detail}
+                          {a.detail ?? ""}
                         </>
                       ) : (
-                        a.text
+                        a.text ?? ""
                       )}
                     </p>
                     <time>{timeAgo(a.time)}</time>

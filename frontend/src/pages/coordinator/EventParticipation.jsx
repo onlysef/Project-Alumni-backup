@@ -2,10 +2,8 @@
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 
-import { API, authHeaders } from "../../services/api.js";
-function authGet(path) {
-  return fetch(`${API}${path}`, { headers: authHeaders() }).then(r => r.json());
-}
+import { API, authHeaders, apiFetch } from "../../services/api.js";
+const authGet = (path) => apiFetch(path);
 
 function nowTime() {
   return new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });

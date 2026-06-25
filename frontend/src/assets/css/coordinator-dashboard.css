@@ -525,8 +525,17 @@
 
     .coord-stat .admin-svg-icon {
         width: 31px;
-        height: 31px;     
+        height: 31px;
         filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+    }
+
+    .coord-stat-loading {
+        animation: coord-pulse 1.4s ease-in-out infinite;
+        pointer-events: none;
+    }
+    @keyframes coord-pulse {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0.45; }
     }
 
     .coord-highlight {

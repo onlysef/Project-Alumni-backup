@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AdminSidebar } from "../components/admin/AdminSidebar.jsx";
 import { AdminTopbar } from "../components/admin/AdminTopbar.jsx";
+import { apiFetch } from "../services/api.js";
 
 const PATH_TITLES = {
   "/admin/dashboard":    "Dashboard",
@@ -38,6 +39,25 @@ export default function AdminLayout() {
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(""), 2400);
   }, []);
+
+  // Load settings from server on mount; server takes priority over localStorage
+  useEffect(() => {
+    apiFetch("/auth/settings")
+      .then(({ settings: s }) => {
+        if (s && Object.keys(s).length > 0) {
+          setSettings(prev => ({ ...prev, ...s }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist settings to server whenever they change (skip initial render)
+  const settingsInitialized = useRef(false);
+  useEffect(() => {
+    if (!settingsInitialized.current) { settingsInitialized.current = true; return; }
+    apiFetch("/auth/settings", { method: "PUT", body: { settings } }).catch(() => {});
+    localStorage.setItem("aptmsDashboardSettings", JSON.stringify(settings));
+  }, [settings]);
 
   useEffect(() => {
     const handleResize = () => {
