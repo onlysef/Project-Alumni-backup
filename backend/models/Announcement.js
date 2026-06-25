@@ -18,4 +18,7 @@ const announcementSchema = new mongoose.Schema({
   createdBy:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true });
 
+announcementSchema.index({ createdAt: -1 });
+announcementSchema.index({ type: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Announcement', announcementSchema);

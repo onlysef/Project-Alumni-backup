@@ -75,9 +75,11 @@ export function AdminSidebar({ collapsed }) {
                   }}
                 >
                   <span><Icon name={item.icon} /></span>
-                  <span className="nav-item-label">
-                    {item.label}
-                    <span className={`nav-caret${isOpen ? " open" : ""}`}>▾</span>
+                  <span className="nav-item-label">{item.label}</span>
+                  <span className={`nav-caret${isOpen ? " open" : ""}`}>
+                    <svg width="4" height="4" viewBox="0 0 10 6" fill="none" aria-hidden="true">
+                      <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
                   </span>
                 </a>
                 <div className={`nav-sub${isOpen ? " open" : ""}`}>

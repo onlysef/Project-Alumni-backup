@@ -3,7 +3,8 @@ const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications } = require('../controllers/adminController');
 const {
-  getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
+  getAnnouncements, getAnnouncement, getRecentAnnouncements,
+  createAnnouncement, updateAnnouncement, deleteAnnouncement,
   toggleLike, getComments, addComment, trackShare, getRecentActivity,
 } = require('../controllers/announcementController');
 const {
@@ -42,6 +43,8 @@ router.post('/users/:id/resend-credentials', resendCredentials);
 
 router.get('/announcements',                    getAnnouncements);
 router.get('/announcements/activity',           getRecentActivity);
+router.get('/announcements/recent',             getRecentAnnouncements);
+router.get('/announcements/:id',               getAnnouncement);
 router.post('/announcements',                   createAnnouncement);
 router.patch('/announcements/:id',              updateAnnouncement);
 router.delete('/announcements/:id',             deleteAnnouncement);

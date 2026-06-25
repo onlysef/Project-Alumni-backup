@@ -34,4 +34,7 @@ const userSchema = new mongoose.Schema({
   settings: { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
+userSchema.index({ role: 1, status: 1 });
+userSchema.index({ createdAt: -1 });
+
 module.exports = mongoose.model('User', userSchema);

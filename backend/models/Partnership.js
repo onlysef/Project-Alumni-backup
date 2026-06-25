@@ -8,4 +8,6 @@ const partnershipSchema = new mongoose.Schema({
   description: { type: String, default: '' },
 }, { timestamps: true });
 
+partnershipSchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Partnership', partnershipSchema);

@@ -14,21 +14,36 @@ async function resolveUserName(userId) {
 // GET /api/admin/announcements
 const getAnnouncements = async (req, res) => {
   try {
-    const announcements = await Announcement.aggregate([
-      { $sort: { createdAt: -1 } },
-      { $addFields: {
-        likesCount:    { $cond: [{ $isArray: '$likedBy' },   { $size: '$likedBy' },   0] },
-        commentsCount: { $cond: [{ $isArray: '$comments' },  { $size: '$comments' },  0] },
-        sharesCount:   { $cond: [{ $isArray: '$sharedBy' },  { $size: '$sharedBy' },  0] },
-      }},
-      { $project: {
-        title: 1, description: 1, type: 1, imageUrl: 1,
-        createdAt: 1, updatedAt: 1, createdBy: 1,
-        likedBy: 1, sharedBy: 1,
-        likesCount: 1, commentsCount: 1, sharesCount: 1,
-      }},
+    const { Types } = require('mongoose');
+    const userId = req.user?.id ? new Types.ObjectId(req.user.id) : null;
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip  = (page - 1) * limit;
+
+    const [announcements, total] = await Promise.all([
+      Announcement.aggregate([
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        { $addFields: {
+          likesCount:    { $cond: [{ $isArray: '$likedBy' },  { $size: '$likedBy' },  0] },
+          commentsCount: { $cond: [{ $isArray: '$comments' }, { $size: '$comments' }, 0] },
+          sharesCount:   { $cond: [{ $isArray: '$sharedBy' }, { $size: '$sharedBy' }, 0] },
+          isLikedByMe:   userId ? { $in: [userId, { $ifNull: ['$likedBy',  []] }] } : false,
+          isSharedByMe:  userId ? { $in: [userId, { $ifNull: ['$sharedBy', []] }] } : false,
+        }},
+        { $project: {
+          title: 1, description: 1, type: 1,
+          createdAt: 1, updatedAt: 1, createdBy: 1,
+          likesCount: 1, commentsCount: 1, sharesCount: 1,
+          isLikedByMe: 1, isSharedByMe: 1,
+          hasImage: { $cond: [{ $and: [{ $isArray: [{ $ifNull: ['$imageUrl', ''] }] }, false] }, true, { $gt: [{ $strLenCP: { $ifNull: ['$imageUrl', ''] } }, 0] }] },
+        }},
+      ]),
+      Announcement.countDocuments(),
     ]);
-    res.json({ announcements });
+
+    res.json({ announcements, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     console.error('getAnnouncements error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -121,7 +136,7 @@ const toggleLike = async (req, res) => {
       ActivityLog.deleteOne({ user_id: userId, action: 'liked', announcement_id: ann._id }).catch(() => {});
     }
 
-    res.json({ liked, likesCount: ann.likedBy.length, likedBy: ann.likedBy });
+    res.json({ liked, likesCount: ann.likedBy.length });
   } catch (err) {
     console.error('toggleLike error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -195,7 +210,7 @@ const trackShare = async (req, res) => {
       }).catch(() => {});
     }
 
-    res.json({ shared: true, sharesCount: ann.sharedBy.length, sharedBy: ann.sharedBy });
+    res.json({ shared: true, sharesCount: ann.sharedBy.length });
   } catch (err) {
     console.error('trackShare error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -217,7 +232,63 @@ const getRecentActivity = async (req, res) => {
   }
 };
 
+// GET /api/admin/announcements/recent  — 5 most recent with imageUrl (for sidebar)
+const getRecentAnnouncements = async (req, res) => {
+  try {
+    const { Types } = require('mongoose');
+    const userId = req.user?.id ? new Types.ObjectId(req.user.id) : null;
+    const limit  = Math.min(10, Math.max(1, parseInt(req.query.limit) || 5));
+
+    const announcements = await Announcement.aggregate([
+      { $sort: { createdAt: -1 } },
+      { $limit: limit },
+      { $addFields: {
+        likesCount:    { $cond: [{ $isArray: '$likedBy' },  { $size: '$likedBy' },  0] },
+        commentsCount: { $cond: [{ $isArray: '$comments' }, { $size: '$comments' }, 0] },
+        sharesCount:   { $cond: [{ $isArray: '$sharedBy' }, { $size: '$sharedBy' }, 0] },
+        isLikedByMe:   userId ? { $in: [userId, { $ifNull: ['$likedBy',  []] }] } : false,
+        isSharedByMe:  userId ? { $in: [userId, { $ifNull: ['$sharedBy', []] }] } : false,
+      }},
+      { $project: {
+        title: 1, description: 1, type: 1, imageUrl: 1,
+        createdAt: 1,
+        likesCount: 1, commentsCount: 1, sharesCount: 1,
+        isLikedByMe: 1, isSharedByMe: 1,
+      }},
+    ]);
+    res.json({ announcements });
+  } catch (err) {
+    console.error('getRecentAnnouncements error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/admin/announcements/:id  — full data including imageUrl (for modal)
+const getAnnouncement = async (req, res) => {
+  try {
+    const ann = await Announcement.findById(req.params.id)
+      .select('title description type imageUrl createdAt updatedAt likedBy sharedBy comments')
+      .lean();
+    if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
+    const userId = String(req.user?.id || '');
+    res.json({
+      announcement: {
+        ...ann,
+        likesCount:    ann.likedBy?.length  ?? 0,
+        commentsCount: ann.comments?.length ?? 0,
+        sharesCount:   ann.sharedBy?.length ?? 0,
+        isLikedByMe:   ann.likedBy?.some(id => String(id) === userId) ?? false,
+        isSharedByMe:  ann.sharedBy?.some(id => String(id) === userId) ?? false,
+      },
+    });
+  } catch (err) {
+    console.error('getAnnouncement error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
-  getAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
+  getAnnouncements, getAnnouncement, getRecentAnnouncements,
+  createAnnouncement, updateAnnouncement, deleteAnnouncement,
   toggleLike, getComments, addComment, trackShare, getRecentActivity,
 };

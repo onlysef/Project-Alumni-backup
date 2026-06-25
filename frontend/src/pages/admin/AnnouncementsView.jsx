@@ -13,27 +13,20 @@ async function safeJson(res) {
   try { return JSON.parse(text); } catch { return { message: `Server error (${res.status})` }; }
 }
 
-function currentUserId() {
-  return JSON.parse(localStorage.getItem("auth_user") || "{}").id || "";
-}
 
 function mapRow(a) {
-  const uid      = currentUserId();
-  const likedBy  = (a.likedBy  || []).map(String);
-  const sharedBy = (a.sharedBy || []).map(String);
   return {
     id:            String(a._id),
     title:         a.title,
     description:   a.description,
     type:          a.type,
     imageUrl:      a.imageUrl || "",
-    likedBy,
-    liked:         likedBy.includes(uid),
-    likesCount:    a.likesCount  ?? likedBy.length,
-    commentsCount: a.commentsCount ?? (Array.isArray(a.comments) ? a.comments.length : 0),
-    sharedBy,
-    shared:        sharedBy.includes(uid),
-    sharesCount:   a.sharesCount ?? sharedBy.length,
+    hasImage:      a.hasImage ?? !!a.imageUrl,
+    liked:         a.isLikedByMe ?? false,
+    likesCount:    a.likesCount  ?? 0,
+    commentsCount: a.commentsCount ?? 0,
+    shared:        a.isSharedByMe ?? false,
+    sharesCount:   a.sharesCount  ?? 0,
     date:          a.createdAt,
   };
 }
@@ -46,6 +39,9 @@ export default function AnnouncementsView() {
   function onPostOpened() { navigate(".", { state: null, replace: true }); }
   const [rows, setRows]             = useState([]);
   const [loading, setLoading]       = useState(true);
+  const [page, setPage]             = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [recentPosts, setRecentPosts] = useState([]);
   const [search, setSearch]         = useState("");
   const [dateFilter, setDateFilter] = useState("All");
   const [typeFilter, setTypeFilter] = useState("All");
@@ -60,7 +56,14 @@ export default function AnnouncementsView() {
   const [quickSaving, setQuickSaving]     = useState(false);
 
   useEffect(() => {
-      fetchAnnouncements();
+    fetchAnnouncements(page);
+  }, [page]);
+
+  useEffect(() => {
+    fetch(`${API}/admin/announcements/recent?limit=5`, { headers: authHeaders() })
+      .then(safeJson)
+      .then(data => { if (data.announcements) setRecentPosts(data.announcements.map(mapRow)); })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -72,13 +75,14 @@ export default function AnnouncementsView() {
     }
   }, [openPostId, rows]);
 
-  async function fetchAnnouncements() {
+  async function fetchAnnouncements(p = 1) {
     setLoading(true);
     try {
-      const res  = await fetch(`${API}/admin/announcements`, { headers: authHeaders() });
+      const res  = await fetch(`${API}/admin/announcements?page=${p}&limit=20`, { headers: authHeaders() });
       const data = await safeJson(res);
       if (!res.ok) { showToast(data.message || "Failed to load announcements."); return; }
       setRows(data.announcements.map(mapRow));
+      setTotalPages(data.pages ?? 1);
     } catch {
       showToast("Could not connect to server.");
     } finally {
@@ -103,7 +107,6 @@ export default function AnnouncementsView() {
       (typeFilter === "All" || r.type === typeFilter)
   );
 
-  const recentPosts = rows.slice(0, 5);
 
   async function handlePost(data, editId) {
     try {
@@ -117,8 +120,9 @@ export default function AnnouncementsView() {
         setRows((prev) => prev.map((r) => (r.id === editId ? mapRow(json.announcement) : r)));
         showToast("Announcement updated.");
       } else {
-        setRows((prev) => [mapRow(json.announcement), ...prev]);
         showToast("Announcement posted.");
+        setPage(1);
+        fetchAnnouncements(1);
       }
       setComposer(null);
     } catch {
@@ -149,33 +153,26 @@ export default function AnnouncementsView() {
   async function handleLike(id) {
     const prev = rows.find(r => r.id === id);
     if (!prev) return;
-    const uid      = currentUserId();
     const nowLiked = !prev.liked;
 
-    // Optimistic update
-    setRows(rs => rs.map(r => r.id === id ? {
-      ...r,
-      liked:      nowLiked,
-      likesCount: nowLiked ? r.likesCount + 1 : r.likesCount - 1,
-      likedBy:    nowLiked ? [...r.likedBy, uid] : r.likedBy.filter(x => x !== uid),
-    } : r));
+    const patchLike = (rs, liked, count) => rs.map(r => r.id === id ? { ...r, liked, likesCount: count } : r);
+    setRows(rs => patchLike(rs, nowLiked, nowLiked ? prev.likesCount + 1 : prev.likesCount - 1));
+    setRecentPosts(rs => patchLike(rs, nowLiked, nowLiked ? prev.likesCount + 1 : prev.likesCount - 1));
 
     try {
       const res  = await fetch(`${API}/admin/announcements/${id}/like`, { method: "POST", headers: authHeaders() });
       const json = await safeJson(res);
       if (!res.ok) {
-        setRows(rs => rs.map(r => r.id === id ? prev : r)); // revert
+        setRows(rs => rs.map(r => r.id === id ? prev : r));
+        setRecentPosts(rs => rs.map(r => r.id === id ? prev : r));
         showToast(json.message || "Failed to update like.");
         return;
       }
-      setRows(rs => rs.map(r => r.id === id ? {
-        ...r,
-        liked:      json.liked,
-        likesCount: json.likesCount,
-        likedBy:    (json.likedBy || []).map(String),
-      } : r));
+      setRows(rs => patchLike(rs, json.liked, json.likesCount));
+      setRecentPosts(rs => patchLike(rs, json.liked, json.likesCount));
     } catch {
       setRows(rs => rs.map(r => r.id === id ? prev : r));
+      setRecentPosts(rs => rs.map(r => r.id === id ? prev : r));
       showToast("Could not connect to server.");
     }
   }
@@ -194,14 +191,9 @@ export default function AnnouncementsView() {
       return;
     }
 
-    // Optimistic update
-    const uid = currentUserId();
-    setRows(rs => rs.map(r => r.id === id ? {
-      ...r,
-      shared:      true,
-      sharesCount: r.sharesCount + 1,
-      sharedBy:    [...r.sharedBy, uid],
-    } : r));
+    const patchShare = (rs, shared, count) => rs.map(r => r.id === id ? { ...r, shared, sharesCount: count } : r);
+    setRows(rs => patchShare(rs, true, post.sharesCount + 1));
+    setRecentPosts(rs => patchShare(rs, true, post.sharesCount + 1));
 
     try {
       const res  = await fetch(`${API}/admin/announcements/${id}/share`, { method: "POST", headers: authHeaders() });
@@ -210,12 +202,8 @@ export default function AnnouncementsView() {
         showToast(json.message || "Failed to track share.");
         return;
       }
-      setRows(rs => rs.map(r => r.id === id ? {
-        ...r,
-        shared:      json.shared,
-        sharesCount: json.sharesCount,
-        sharedBy:    (json.sharedBy || []).map(String),
-      } : r));
+      setRows(rs => patchShare(rs, json.shared, json.sharesCount));
+      setRecentPosts(rs => patchShare(rs, json.shared, json.sharesCount));
       showToast("Link copied and share tracked!");
     } catch {
       showToast("Link copied.");
@@ -295,6 +283,27 @@ export default function AnnouncementsView() {
           </tbody>
         </table>
         </div>
+        {totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+            >
+              ‹ Prev
+            </button>
+            <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+            >
+              Next ›
+            </button>
+          </div>
+        )}
       </section>
 
       <div className="announcement-grid">
@@ -432,21 +441,31 @@ export default function AnnouncementsView() {
 
 function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShare }) {
   const postId = post?.id;
-  const [comments, setComments] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [text, setText]         = useState("");
+  const [fullPost, setFullPost]   = useState(null);
+  const [comments, setComments]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [text, setText]           = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (!postId) return;
+    setFullPost(null);
     setComments([]);
     setText("");
     setLoading(true);
-    fetch(`${API}/admin/announcements/${postId}/comments`, { headers: authHeaders() })
+    fetch(`${API}/admin/announcements/${postId}`, { headers: authHeaders() })
       .then(safeJson)
-      .then(data => { setComments(data.comments || []); setLoading(false); })
+      .then(data => {
+        if (data.announcement) {
+          setFullPost(data.announcement);
+          setComments(data.announcement.comments || []);
+        }
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [postId]);
+
+  const display = fullPost ? { ...post, imageUrl: fullPost.imageUrl || "", description: fullPost.description } : post;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -475,31 +494,31 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
     <Modal open={!!postId} onClose={onClose}>
       <section className="tracer-modal post-viewer" role="dialog" aria-modal="true">
         <div className="modal-head">
-          <h3>{post.title || "Post"}</h3>
+          <h3>{display.title || "Post"}</h3>
           <button type="button" aria-label="Close" onClick={onClose}>×</button>
         </div>
 
         <div className="post-viewer-scroll">
           <div className="post-viewer-body">
-            {post.type && <span className="post-meta-type">{post.type}</span>}
-            {post.imageUrl && (
-              <img className="post-viewer-img" src={post.imageUrl} alt={post.title} />
+            {display.type && <span className="post-meta-type">{display.type}</span>}
+            {display.imageUrl && (
+              <img className="post-viewer-img" src={display.imageUrl} alt={display.title} />
             )}
-            {post.description && <p className="post-viewer-text">{post.description}</p>}
+            {display.description && <p className="post-viewer-text">{display.description}</p>}
           </div>
 
           <div className="post-viewer-actions">
-            <button type="button" className={post.liked ? "liked" : ""} onClick={() => onLike?.(post.id)}>
+            <button type="button" className={display.liked ? "liked" : ""} onClick={() => onLike?.(display.id)}>
               <span><Icon name="icon-25" /></span>
-              <span>{post.likesCount} {post.liked ? "Liked" : "Like"}</span>
+              <span>{display.likesCount} {display.liked ? "Liked" : "Like"}</span>
             </button>
             <button type="button">
               <span><Icon name="icon-26" /></span>
               <span>{comments.length} Comment{comments.length === 1 ? "" : "s"}</span>
             </button>
-            <button type="button" className={post.shared ? "shared" : ""} onClick={() => onShare?.(post.id)}>
+            <button type="button" className={display.shared ? "shared" : ""} onClick={() => onShare?.(display.id)}>
               <span><Icon name="icon-27" /></span>
-              <span>{post.sharesCount} {post.shared ? "Shared" : "Share"}</span>
+              <span>{display.sharesCount} {display.shared ? "Shared" : "Share"}</span>
             </button>
           </div>
 
