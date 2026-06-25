@@ -112,7 +112,7 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
               </p>
             ) : (
               notifications.map((n, i) => (
-                <article key={i} className={`notification-item${new Date(n.createdAt) > lastReadAt ? " is-unread" : ""}`}>
+                <article key={n._id ?? i} className={`notification-item${new Date(n.createdAt) > lastReadAt ? " is-unread" : ""}`}>
                   <strong>{n.title}</strong>
                   <span>{n.body}</span>
                   <time>{timeAgo(n.createdAt)}</time>

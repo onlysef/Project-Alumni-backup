@@ -4,7 +4,6 @@ export const coordinatorViewRoutes = {
   participation:"Event Participation",
   employment:   "Employment Details",
   contacts:     "Alumni Contacts",
-  aiassistant:  "AC - AI Assistant",
   about:        "Alumni Association Inc.",
 };
 
@@ -14,5 +13,4 @@ export const coordinatorNavItems = [
   { view: "participation",icon: "icon-3", label: "Event Participation" },
   { view: "employment",   icon: "icon-2", label: "Alumni Employment Details" },
   { view: "contacts",     icon: "icon-4", label: "Alumni Contacts" },
-  { view: "aiassistant",  icon: "icon-15", label: "AC - AI Assistant" },
 ];

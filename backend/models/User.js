@@ -29,6 +29,9 @@ const userSchema = new mongoose.Schema({
   resetOTPExpiry:   { type: Date },
   resetToken:       { type: String },
   resetTokenExpiry: { type: Date },
+
+  // Dashboard settings (theme, notifications, etc.)
+  settings: { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

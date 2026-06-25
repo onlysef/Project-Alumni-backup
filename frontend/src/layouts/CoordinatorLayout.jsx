@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { CoordinatorSidebar, useSidebarCoordinator } from "../components/coordinator/CoordinatorSidebar.jsx";
 import { CoordinatorTopbar } from "../components/coordinator/CoordinatorTopbar.jsx";
+import { apiFetch } from "../services/api.js";
 
 const PATH_TITLES = {
   "/coordinator/dashboard":    "Coordinator Dashboard",
@@ -9,7 +10,6 @@ const PATH_TITLES = {
   "/coordinator/participation":"Event Participation",
   "/coordinator/employment":   "Employment Details",
   "/coordinator/contacts":     "Alumni Contacts",
-  "/coordinator/aiassistant":  "AC - AI Assistant",
   "/coordinator/about":        "Alumni Association Inc.",
 };
 
@@ -36,6 +36,25 @@ export default function CoordinatorLayout() {
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(""), 2400);
   }, []);
+
+  // Load settings from server on mount; server takes priority over localStorage
+  useEffect(() => {
+    apiFetch("/auth/settings")
+      .then(({ settings: s }) => {
+        if (s && Object.keys(s).length > 0) {
+          setSettings(prev => ({ ...prev, ...s }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Persist settings to server whenever they change (skip initial render)
+  const settingsInitialized = useRef(false);
+  useEffect(() => {
+    if (!settingsInitialized.current) { settingsInitialized.current = true; return; }
+    apiFetch("/auth/settings", { method: "PUT", body: { settings } }).catch(() => {});
+    localStorage.setItem("aptmsCoordinatorSettings", JSON.stringify(settings));
+  }, [settings]);
 
   useEffect(() => {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../common/Icon.jsx";
+import { Modal } from "../common/Primitives.jsx";
 import { API } from "../../services/api.js";
 
 function timeAgo(date) {

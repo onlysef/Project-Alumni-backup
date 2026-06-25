@@ -2,35 +2,12 @@
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 
-import { API } from "../../services/api.js";
+import { apiFetch } from "../../services/api.js";
 
-function apiGet(path) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(`${API}${path}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json());
-}
-function apiPost(path, body) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(`${API}${path}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then(r => r.json());
-}
-function apiPut(path, body) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(`${API}${path}`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then(r => r.json());
-}
-function apiDelete(path) {
-  const token = localStorage.getItem("auth_token");
-  return fetch(`${API}${path}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  }).then(r => r.json());
-}
+const apiGet    = (path)       => apiFetch(path);
+const apiPost   = (path, body) => apiFetch(path, { method: "POST",   body });
+const apiPut    = (path, body) => apiFetch(path, { method: "PUT",    body });
+const apiDelete = (path)       => apiFetch(path, { method: "DELETE" });
 
 const STATUS_ORDER = { "On Going": 0, "Coming Soon": 1, "Ended": 2 };
 
@@ -369,27 +346,34 @@ export default function EventManagement() {
       )}
 
       {/* DELETE MODAL */}
-      {deleteId && (
-        <div className="coord-modal-backdrop" onClick={() => setDeleteId(null)}>
-          <div className="coord-modal coord-modal-sm" onClick={e => e.stopPropagation()}>
-            <div className="coord-modal-head">
-              <h3>Delete Event</h3>
-              <button type="button" onClick={() => setDeleteId(null)}>&times;</button>
-            </div>
-            <div className="coord-modal-body">
-              <p>Are you sure you want to delete this event? This cannot be undone.</p>
-            </div>
-            <div className="coord-modal-foot">
-              <button type="button" className="btn coord-btn-danger" onClick={handleDelete} disabled={deleting}>
-                <Icon name="icon-delete" /> {deleting ? "Deleting…" : "Delete"}
-              </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setDeleteId(null)}>
-                Cancel
-              </button>
+      {deleteId && (() => {
+        const ev = events.find(e => String(e._id) === String(deleteId));
+        return (
+          <div className="coord-modal-backdrop" onClick={() => setDeleteId(null)}>
+            <div className="coord-modal coord-modal-sm" onClick={e => e.stopPropagation()}>
+              <div className="coord-modal-head">
+                <h3>Delete Event</h3>
+                <button type="button" onClick={() => setDeleteId(null)}>&times;</button>
+              </div>
+              <div className="coord-modal-body">
+                {ev && <p style={{ fontWeight: 600, marginBottom: 8 }}>&ldquo;{ev.title}&rdquo;</p>}
+                <p>Are you sure you want to delete this event? This cannot be undone.</p>
+                <p style={{ marginTop: 10, padding: "8px 12px", background: "#fff3cd", borderLeft: "3px solid #d69e2e", borderRadius: 4, fontSize: 13, color: "#7d5a00" }}>
+                  <strong>Warning:</strong> All attendance records and feedback submissions linked to this event will also be permanently deleted.
+                </p>
+              </div>
+              <div className="coord-modal-foot">
+                <button type="button" className="btn coord-btn-danger" onClick={handleDelete} disabled={deleting}>
+                  <Icon name="icon-delete" /> {deleting ? "Deleting…" : "Delete"}
+                </button>
+                <button type="button" className="btn btn-secondary" onClick={() => setDeleteId(null)}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* INTERESTED MODAL */}
       {interestedModal && (

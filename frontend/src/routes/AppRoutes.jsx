@@ -102,7 +102,6 @@ export default function AppRoutes() {
             <Route path="participation"element={<EventParticipation />} />
             <Route path="employment"   element={<CoordinatorEmploymentView />} />
             <Route path="contacts"     element={<AlumniContacts />} />
-            <Route path="aiassistant"  element={<AiAssistantView />} />
             <Route path="about"        element={<CoordinatorAboutView />} />
           </Route>
 
