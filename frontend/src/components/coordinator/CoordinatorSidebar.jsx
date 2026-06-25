@@ -15,6 +15,7 @@ const VIEW_TO_PATH = {
   participation:"/coordinator/participation",
   employment:   "/coordinator/employment",
   contacts:     "/coordinator/contacts",
+  aiassistant:  "/coordinator/aiassistant",
   about:        "/coordinator/about",
 };
 

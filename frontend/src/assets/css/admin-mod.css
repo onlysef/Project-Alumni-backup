@@ -1227,6 +1227,23 @@
             background: rgba(250, 200, 83, 0.1);
         }
 
+        /* Coordinator activity rows — match the admin activity hover.
+         * Defined here (admin-mod.css) per the change scope; the class is
+         * coordinator-only so there's no conflict with the legacy stylesheet. */
+        .coord-activity-row {
+            cursor: pointer;
+            border-radius: 6px;
+            transition: background-color 140ms ease;
+        }
+
+        .coord-activity-row:hover {
+            background: rgba(87, 0, 19, 0.06);
+        }
+
+        body.dark-mode .coord-activity-row:hover {
+            background: rgba(250, 200, 83, 0.1);
+        }
+
         .activity p {
             margin: 0 0 8px;
             font-size: 13px;
@@ -3145,13 +3162,43 @@
 
         .topbar-popover {
             padding: 0;
-            place-items: start;
+            place-items: unset;
             background: transparent;
+            pointer-events: none;
+        }
+
+        /* The coordinator stylesheet (loaded after this file) defines a
+         * legacy `.topbar-popover` as a solid white box — and a dark-mode
+         * variant `body.dark-mode .topbar-popover { background:#2b141a }`.
+         * Now that the coordinator topbar uses the shared Modal markup, those
+         * rules would paint a stray box (light mode) or a solid dark box that
+         * only clears on close/reopen (dark mode). Override both here with
+         * higher specificity so the backdrop stays transparent and inert. */
+        .modal-backdrop.topbar-popover,
+        body.dark-mode .modal-backdrop.topbar-popover {
+            position: fixed;
+            inset: 0;
+            top: 0;
+            right: 0;
+            width: auto;
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+            overflow: visible;
+            animation: none;
             pointer-events: none;
         }
 
         .topbar-popover.show {
             display: block;
+            position: fixed;
+            inset: 0;
+        }
+
+        .topbar-popover::before,
+        .topbar-popover::after {
+            content: none;
         }
 
         .topbar-popover .topbar-modal {
@@ -3292,7 +3339,8 @@
             align-items: stretch;
         }
 
-        .theme-options {
+        .theme-options,
+        .theme-setting .theme-options {
             width: 170px;
             min-height: 40px;
             padding: 4px;
@@ -3301,6 +3349,7 @@
             grid-template-columns: 1fr 1fr;
             gap: 4px;
             background: #f1e1e4;
+            flex: none;
         }
 
         .theme-options label {
@@ -4037,6 +4086,7 @@
             }
 
             .modal-head h3 {
+                border-radius: 5px 5px 0 0;
                 font-size: 15px;
             }
 
@@ -4946,18 +4996,26 @@
 
         .status-badge {
             display: inline-block;
-            padding: 3px 10px;
+            padding: 4px 12px;
             border-radius: 999px;
             font-size: 11px;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.3px;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            line-height: 1.4;
         }
 
-        .status-badge.employed       { background: #e6f7ee; color: #257a4e; }
-        .status-badge.unemployed     { background: #f7eeee; color: #8a1f2f; }
-        .status-badge.self-employed  { background: #fff8e6; color: #895a00; }
-        .status-badge.not-yet-updated { background: #f0f0f0; color: #666; }
+        .status-badge.employed       { background: #d4f0de; color: #1b5e3a; border-color: #97d7af; }
+        .status-badge.unemployed     { background: #f7d9d9; color: #8a1f2f; border-color: #e3a4ab; }
+        .status-badge.self-employed  { background: #fdeec2; color: #7a4e00; border-color: #e6cf8a; }
+        .status-badge.not-yet-updated { background: #e8e8e8; color: #555; border-color: #cfcfcf; }
+
+        body.dark-mode .status-badge.employed       { background: rgba(40, 122, 78, 0.22); color: #7be0a6; border-color: rgba(123, 224, 166, 0.4); }
+        body.dark-mode .status-badge.unemployed     { background: rgba(138, 31, 47, 0.28); color: #f3a3ad; border-color: rgba(243, 163, 173, 0.4); }
+        body.dark-mode .status-badge.self-employed  { background: rgba(137, 90, 0, 0.28); color: #f0cf86; border-color: rgba(240, 207, 134, 0.4); }
+        body.dark-mode .status-badge.not-yet-updated { background: rgba(255, 255, 255, 0.12); color: #ccc; border-color: rgba(255, 255, 255, 0.2); }
 
         .tracer-q-list {
             display: grid;
