@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
 import toptsuLogo from "../../assets/images/tsu-top-header.webp";
-import { API } from "../../services/api.js";
+import { API, authHeaders } from "../../services/api.js";
 
 const LAST_READ_KEY = "adminNotifReadAt";
 
@@ -16,10 +16,6 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 2592000)} mo ago`;
 }
 
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { Authorization: `Bearer ${token}` };
-}
 
 export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast }) {
   const [panel, setPanel] = useState(null);

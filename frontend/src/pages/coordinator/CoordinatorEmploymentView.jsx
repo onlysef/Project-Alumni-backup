@@ -3,9 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { downloadCsv } from "./CoordinatorShared.jsx";
 
-const API = import.meta.env.DEV
-  ? "http://localhost:5000/api"
-  : "https://project-alumni-phi.vercel.app/api";
+import { API } from "../../services/api.js";
 
 function apiGet(path, params = {}) {
   const token = localStorage.getItem("auth_token");

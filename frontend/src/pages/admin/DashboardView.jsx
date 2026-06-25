@@ -5,12 +5,7 @@ import { Dropdown } from "../../components/common/Primitives.jsx";
 import { CourseJobChart, EmploymentChart } from "../../components/common/Charts.jsx";
 import { reportFilters } from "../../data.js";
 
-import { API } from "../../services/api.js";
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { Authorization: `Bearer ${token}` };
-}
+import { API, authHeaders } from "../../services/api.js";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);

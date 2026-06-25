@@ -3,9 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { MiniBarChart, downloadCsv } from "./CoordinatorShared.jsx";
 
-const API = import.meta.env.DEV
-  ? "http://localhost:5000/api"
-  : "https://project-alumni-phi.vercel.app/api";
+import { API } from "../../services/api.js";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);

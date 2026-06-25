@@ -4,12 +4,7 @@ import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
 import TracerFormEditor from "./TracerFormEditor.jsx";
 
-import { API } from "../../services/api.js";
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
+import { API, authHeaders } from "../../services/api.js";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);

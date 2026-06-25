@@ -2,14 +2,7 @@
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 
-const API = import.meta.env.DEV
-  ? "http://localhost:5000/api"
-  : "https://project-alumni-phi.vercel.app/api";
-
-function authHeaders() {
-  const token = localStorage.getItem("auth_token");
-  return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-}
+import { API, authHeaders } from "../../services/api.js";
 function authGet(path) {
   return fetch(`${API}${path}`, { headers: authHeaders() }).then(r => r.json());
 }
