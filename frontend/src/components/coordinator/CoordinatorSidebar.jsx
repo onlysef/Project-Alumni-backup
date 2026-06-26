@@ -42,7 +42,7 @@ export function useSidebarCoordinator() {
   return { collapsed, setCollapsed, toggleSidebar, collapseOnMobile };
 }
 
-export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems }) {
+export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onNavigate }) {
   const [openMenu, setOpenMenu] = useState(null);
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -56,7 +56,10 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems }) {
   function handleSelect(view) {
     const path = VIEW_TO_PATH[view] || "/coordinator/dashboard";
     navigate(path);
-    if (window.innerWidth <= MOBILE_BREAKPOINT) setOpenMenu(null);
+    if (window.innerWidth <= MOBILE_BREAKPOINT) {
+      setOpenMenu(null);
+      onNavigate?.();
+    }
   }
 
   const view = currentView();

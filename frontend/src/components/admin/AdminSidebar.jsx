@@ -18,7 +18,7 @@ const VIEW_TO_PATH = {
   about:        "/admin/about",
 };
 
-export function AdminSidebar({ collapsed }) {
+export function AdminSidebar({ collapsed, onNavigate }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -36,7 +36,10 @@ export function AdminSidebar({ collapsed }) {
     } else {
       navigate(path);
     }
-    if (window.innerWidth <= 600) setOpenMenu(null);
+    if (window.innerWidth <= 600) {
+      setOpenMenu(null);
+      onNavigate?.();
+    }
   }
 
   const view = currentView();

@@ -82,7 +82,17 @@ export default function AdminLayout() {
 
   return (
     <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
-      <AdminSidebar collapsed={collapsed} />
+      <AdminSidebar
+        collapsed={collapsed}
+        onNavigate={() => { if (window.innerWidth <= 600) setCollapsed(true); }}
+      />
+      {!collapsed && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => { if (window.innerWidth <= 600) setCollapsed(true); }}
+          aria-hidden="true"
+        />
+      )}
       <main className="main">
         <AdminTopbar
           title={title}
