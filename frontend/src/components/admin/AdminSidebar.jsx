@@ -16,6 +16,7 @@ const VIEW_TO_PATH = {
   partnerships: "/admin/partnerships",
   aiassistant:  "/admin/aiassistant",
   about:        "/admin/about",
+  tsu:          "/admin/tsu",
 };
 
 export function AdminSidebar({ collapsed, onNavigate }) {
@@ -47,9 +48,23 @@ export function AdminSidebar({ collapsed, onNavigate }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <img src={tsuLogo} alt="TSU" className="sidebar-logo" />
+        <button
+          type="button"
+          className="tsu-brand-link"
+          onClick={() => handleSelect("tsu")}
+          aria-label="Open Tarlac State University profile"
+        >
+          <img src={tsuLogo} alt="TSU" className="sidebar-logo" />
+        </button>
         <div className="brand-text">
-          <img src={toptsuLogo} alt="TSU" className="toptsu-logo" />
+          <button
+            type="button"
+            className="tsu-top-brand-link"
+            onClick={() => handleSelect("tsu")}
+            aria-label="Open Tarlac State University profile"
+          >
+            <img src={toptsuLogo} alt="TSU" className="toptsu-logo" />
+          </button>
           <div
             className={`alumni-brand ${view === "about" ? "active" : ""}`}
             onClick={() => handleSelect("about")}

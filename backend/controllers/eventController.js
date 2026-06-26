@@ -33,16 +33,18 @@ const getEvents = async (req, res) => {
 // POST /coordinator/events
 const createEvent = async (req, res) => {
   try {
-    const { title, description, location, event_datetime, visibility } = req.body;
+    const { title, description, image, location, event_datetime, visibility, capacity } = req.body;
     if (!title?.trim())    return res.status(400).json({ message: 'Title is required.' });
     if (!event_datetime)   return res.status(400).json({ message: 'Date & time is required.' });
 
     const event = await Event.create({
       title:          title.trim(),
       description:    description?.trim() || '',
+      image:          image || '',
       location:       location?.trim()    || '',
       event_datetime: new Date(event_datetime),
       visibility:     visibility || 'Public',
+      capacity:       Number(capacity) || 0,
       created_by:     req.user.id,
     });
 
@@ -71,10 +73,11 @@ const createEvent = async (req, res) => {
 // PUT /coordinator/events/:id
 const updateEvent = async (req, res) => {
   try {
-    const { title, description, location, event_datetime, visibility, capacity } = req.body;
+    const { title, description, image, location, event_datetime, visibility, capacity } = req.body;
     const updates = {};
     if (title          !== undefined) updates.title          = title.trim();
     if (description    !== undefined) updates.description    = description.trim();
+    if (image          !== undefined) updates.image          = image || '';
     if (location       !== undefined) updates.location       = location.trim();
     if (event_datetime !== undefined) updates.event_datetime = new Date(event_datetime);
     if (visibility     !== undefined) updates.visibility     = visibility;

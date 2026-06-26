@@ -10,6 +10,11 @@
             --secondary-text: #6f6266;
             --text: #2d2024;
             --panel-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+            --kpi-card-bg: var(--maroon);
+            --kpi-card-text: #fff;
+            --kpi-icon-bg: rgba(255, 255, 255, 0.94);
+            --kpi-icon-ring: rgba(87, 0, 19, 0.08);
+            --kpi-icon-filter: none;
         }
 
         * {
@@ -197,6 +202,70 @@
             }
         }
 
+        .tsu-landing-view {
+            color: #4d4749;
+            background:
+                radial-gradient(circle at 1px 1px, rgba(87, 0, 19, 0.06) 1px, transparent 0),
+                #fbfaf7;
+            background-size: 18px 18px;
+        }
+
+        .tsu-document {
+            max-width: 980px;
+            padding: 8px 0 32px;
+        }
+
+        .tsu-document h2 {
+            margin: 0 0 16px;
+            color: #444;
+            font-size: 26px;
+            font-weight: 900;
+            line-height: 1.2;
+        }
+
+        .tsu-document h3 {
+            margin: 54px 0 18px;
+            color: #444;
+            font-size: 15px;
+            font-weight: 900;
+        }
+
+        .tsu-document p {
+            margin: 0 0 28px;
+            color: #5d5759;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .tsu-document ul {
+            margin: 0 0 34px 22px;
+            padding: 0;
+            color: #5d5759;
+        }
+
+        .tsu-document li {
+            margin-bottom: 11px;
+            padding-left: 4px;
+            font-size: 15px;
+            line-height: 1.65;
+        }
+
+        .tsu-document strong {
+            color: #454042;
+            font-weight: 900;
+        }
+
+        @media (max-width: 620px) {
+            .tsu-document h2 {
+                font-size: 23px;
+            }
+
+            .tsu-document p,
+            .tsu-document li {
+                font-size: 14px;
+            }
+        }
+
         .alumni-brand {
             display: flex;
             align-items: center;
@@ -334,12 +403,42 @@
             margin: 0 auto;
         }
 
+        .tsu-brand-link,
+        .tsu-top-brand-link {
+            border: 0;
+            padding: 0;
+            background: transparent;
+            cursor: pointer;
+            font: inherit;
+        }
+
+        .tsu-brand-link {
+            width: 54px;
+            height: 54px;
+            border-radius: 50%;
+            margin: 0 auto;
+            display: none;
+        }
+
+        .tsu-top-brand-link {
+            display: block;
+            width: 100%;
+            border-radius: 8px;
+            margin: 0 0 4px;
+        }
+
         .app.sidebar-collapsed .brand-text {
             display: none;
         }
 
         .app.sidebar-collapsed .sidebar-logo {
             display: block;
+        }
+
+        .app.sidebar-collapsed .tsu-brand-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .nav {
@@ -1221,6 +1320,23 @@
             border-bottom: 1px solid #e1d7d7;
         }
 
+        .coord-activity .activity {
+            cursor: pointer;
+            padding-inline: 10px;
+            margin-inline: -10px;
+            border-radius: 6px;
+            transition: background-color 140ms ease, transform 140ms ease;
+        }
+
+        .coord-activity .activity:hover {
+            background: rgba(87, 0, 19, 0.06);
+            transform: translateX(2px);
+        }
+
+        body.dark-mode .coord-activity .activity:hover {
+            background: rgba(250, 200, 83, 0.1);
+        }
+
         .activity:last-child {
             border-bottom: 0;
         }
@@ -1272,59 +1388,78 @@
         }
 
         .reports {
-            padding: 0 10px 12px;
+            padding: 12px 14px 16px;
             overflow: visible;
             position: relative;
             z-index: 5;
         }
 
         .reports .panel-head {
-            margin: 11px 0 9px;
-            height: 38px;
+            margin: 0 0 12px;
+            min-height: 42px;
             border-radius: 8px;
             justify-content: center;
         }
 
         .report-row {
-            min-height: 46px;
+            min-height: 56px;
             display: grid;
-            grid-template-columns: 1fr 62px 24px;
+            grid-template-columns: minmax(0, 1fr) auto auto;
             align-items: center;
             gap: 10px;
-            padding: 0 8px;
+            padding: 9px 8px;
             position: relative;
             font-size: 14px;
-            font-weight: 500;
+            font-weight: 700;
+            color: #4b3f42;
+            border-bottom: 1px solid #ead7da;
+        }
+
+        .report-row:last-child {
+            border-bottom: 0;
+        }
+
+        .report-row > span {
+            min-width: 0;
+            line-height: 1.25;
         }
 
         .report-row button {
-            height: 29px;
+            min-width: 66px;
+            height: 34px;
             border: 0;
-            border-radius: 5px;
+            border-radius: 6px;
             background: var(--maroon);
             color: #fff;
-            font-size: 10px;
-            font-weight: 600;
+            font-size: 11px;
+            font-weight: 800;
             cursor: pointer;
         }
 
         .download {
-            width: 29px;
-            height: 29px;
+            min-width: 0 !important;
+            width: 34px;
+            height: 34px;
             border: 0;
-            border-radius: 5px;
-            padding: 4px;
+            border-radius: 6px;
+            padding: 0;
             display: grid;
             place-items: center;
             background: var(--maroon);
             cursor: pointer;
         }
 
+        .download .admin-svg-icon {
+            width: 18px;
+            height: 18px;
+            filter: brightness(0) invert(1);
+        }
+
         .report-filter-menu {
             position: absolute;
-            top: 38px;
-            right: 42px;
-            width: 132px;
+            top: 48px;
+            right: 50px;
+            width: 148px;
             padding: 6px;
             display: none;
             border: 1px solid rgba(87, 0, 19, 0.25);
@@ -1355,6 +1490,30 @@
         .report-filter-menu button:hover,
         .report-filter-menu button.active {
             background: #f0dede;
+        }
+
+        @media (max-width: 520px) {
+            .reports {
+                padding: 10px 12px 14px;
+            }
+
+            .report-row {
+                grid-template-columns: minmax(0, 1fr) auto auto;
+                gap: 8px;
+                padding: 10px 4px;
+                font-size: 13px;
+            }
+
+            .report-row button {
+                min-width: 58px;
+                height: 32px;
+                font-size: 10px;
+            }
+
+            .download {
+                width: 32px;
+                height: 32px;
+            }
         }
 
         .employment-view {
@@ -1949,15 +2108,38 @@
         .admin-kpis article {
             padding: 18px;
             border-radius: 10px;
-            background: var(--maroon);
-            color: #fff;
+            background: var(--kpi-card-bg);
+            color: var(--kpi-card-text);
             box-shadow: var(--panel-shadow);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
         }
 
         .admin-kpis strong {
             display: block;
             font-size: 28px;
             margin-bottom: 6px;
+        }
+
+        .admin-kpi-icon {
+            width: 48px;
+            height: 48px;
+            flex: 0 0 48px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background: var(--kpi-icon-bg);
+            box-shadow: inset 0 0 0 1px var(--kpi-icon-ring);
+        }
+
+        .admin-kpi-icon .admin-svg-icon {
+            width: 26px;
+            height: 26px;
+            object-fit: contain;
+            filter: var(--kpi-icon-filter);
         }
 
         .admin-card,
@@ -2061,6 +2243,12 @@
 
         .admin-table tr.is-hidden {
             display: none;
+        }
+
+        .appt-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
         }
 
         .announcement-grid {
@@ -3435,6 +3623,11 @@
         body.dark-mode {
             color: #f3e7ea;
             background: #3b0211;
+            --kpi-card-bg: linear-gradient(135deg, #2b1018 0%, #4b0618 55%, #6f0a25 100%);
+            --kpi-card-text: #fff7f8;
+            --kpi-icon-bg: rgba(250, 200, 83, 0.16);
+            --kpi-icon-ring: rgba(250, 200, 83, 0.36);
+            --kpi-icon-filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
         }
 
         body.dark-mode .app,
@@ -3457,6 +3650,24 @@
             background: #241116;
             color: #f3e7ea;
             box-shadow: 0 12px 30px rgba(0, 0, 0, 0.38);
+        }
+
+        body.dark-mode .tsu-landing-view {
+            background:
+                radial-gradient(circle at 1px 1px, rgba(250, 200, 83, 0.08) 1px, transparent 0),
+                #321820;
+            background-size: 18px 18px;
+        }
+
+        body.dark-mode .tsu-document h2,
+        body.dark-mode .tsu-document h3,
+        body.dark-mode .tsu-document strong {
+            color: var(--gold);
+        }
+
+        body.dark-mode .tsu-document p,
+        body.dark-mode .tsu-document li {
+            color: #f3e7ea;
         }
 
         body.dark-mode .panel-head.light {
@@ -5084,11 +5295,17 @@
         .status-badge.unemployed     { background: #f7d9d9; color: #8a1f2f; border-color: #e3a4ab; }
         .status-badge.self-employed  { background: #fdeec2; color: #7a4e00; border-color: #e6cf8a; }
         .status-badge.not-yet-updated { background: #e8e8e8; color: #555; border-color: #cfcfcf; }
+        .status-badge.account-status.active    { background: #d4f0de; color: #1b5e3a; border-color: #97d7af; }
+        .status-badge.account-status.pending   { background: #fdeec2; color: #7a4e00; border-color: #e6cf8a; }
+        .status-badge.account-status.suspended { background: #f7d9d9; color: #8a1f2f; border-color: #e3a4ab; }
 
         body.dark-mode .status-badge.employed       { background: rgba(40, 122, 78, 0.22); color: #7be0a6; border-color: rgba(123, 224, 166, 0.4); }
         body.dark-mode .status-badge.unemployed     { background: rgba(138, 31, 47, 0.28); color: #f3a3ad; border-color: rgba(243, 163, 173, 0.4); }
         body.dark-mode .status-badge.self-employed  { background: rgba(137, 90, 0, 0.28); color: #f0cf86; border-color: rgba(240, 207, 134, 0.4); }
         body.dark-mode .status-badge.not-yet-updated { background: rgba(255, 255, 255, 0.12); color: #ccc; border-color: rgba(255, 255, 255, 0.2); }
+        body.dark-mode .status-badge.account-status.active    { background: rgba(40, 122, 78, 0.22); color: #7be0a6; border-color: rgba(123, 224, 166, 0.4); }
+        body.dark-mode .status-badge.account-status.pending   { background: rgba(137, 90, 0, 0.28); color: #f0cf86; border-color: rgba(240, 207, 134, 0.4); }
+        body.dark-mode .status-badge.account-status.suspended { background: rgba(138, 31, 47, 0.28); color: #f3a3ad; border-color: rgba(243, 163, 173, 0.4); }
 
         .tracer-q-list {
             display: grid;
@@ -5457,3 +5674,464 @@
         }
         body.dark-mode .action-menu-item { color: #f3e7ea; }
         body.dark-mode .action-menu-item:hover { background: #3a1f27; }
+
+        @media (max-width: 600px) {
+            html,
+            body,
+            #root,
+            .app,
+            .main,
+            .content {
+                max-width: 100%;
+                overflow-x: hidden;
+            }
+
+            .content {
+                padding-inline: 10px;
+            }
+
+            .stats {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 10px;
+            }
+
+            .stat-card {
+                min-height: 86px;
+                border-radius: 10px;
+                padding: 14px;
+            }
+
+            .stat-card .admin-svg-icon {
+                width: 38px;
+                height: 38px;
+            }
+
+            .stat-value {
+                font-size: 27px;
+                margin-bottom: 5px;
+            }
+
+            .stat-label {
+                font-size: 11px;
+                line-height: 1.2;
+            }
+
+            .admin-kpis {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 10px;
+                margin-bottom: 16px;
+            }
+
+            .admin-kpis article {
+                min-height: 86px;
+                padding: 14px;
+                gap: 10px;
+            }
+
+            .admin-kpis strong {
+                font-size: 26px;
+                margin-bottom: 5px;
+            }
+
+            .admin-kpis span:not(.admin-kpi-icon) {
+                font-size: 12px;
+                line-height: 1.2;
+            }
+
+            .admin-kpi-icon {
+                width: 38px;
+                height: 38px;
+                flex-basis: 38px;
+            }
+
+            .admin-kpi-icon .admin-svg-icon {
+                width: 22px;
+                height: 22px;
+            }
+
+            .admin-card {
+                overflow: hidden;
+            }
+
+            .admin-card-head {
+                padding: 14px 16px;
+            }
+
+            .admin-card-head > div,
+            .admin-card-head > .accounts-controls {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            }
+
+            .admin-card-head .add-button,
+            .admin-card-head .admin-choice {
+                min-width: 0;
+                min-height: 34px;
+                padding-inline: 10px;
+                font-size: 11px;
+            }
+
+            .table-scroll,
+            .appointments-table-wrap {
+                overflow-x: visible !important;
+                width: 100%;
+            }
+
+            .admin-table,
+            .appointments-table {
+                width: 100% !important;
+                min-width: 0 !important;
+                margin: 0 !important;
+                display: block;
+                table-layout: fixed;
+                font-size: 12px;
+            }
+
+            .admin-table thead,
+            .appointments-table thead {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+
+            .admin-table tbody,
+            .appointments-table tbody {
+                display: grid;
+                gap: 10px;
+                padding: 12px;
+            }
+
+            .admin-table tr,
+            .appointments-table tr {
+                display: grid;
+                gap: 0;
+                border: 1px solid #ead7da;
+                border-radius: 8px;
+                background: #fff;
+                overflow: hidden;
+            }
+
+            .admin-table tr.is-hidden {
+                display: none;
+            }
+
+            .admin-table td,
+            .appointments-table td {
+                width: 100%;
+                min-width: 0;
+                display: grid;
+                grid-template-columns: 76px minmax(0, 1fr);
+                align-items: center;
+                gap: 12px;
+                padding: 10px 12px !important;
+                border-bottom: 1px solid #f0e5e7;
+                white-space: normal !important;
+                word-break: normal;
+                overflow-wrap: anywhere;
+                text-align: left;
+                font-size: 12px !important;
+            }
+
+            .admin-table td:last-child,
+            .appointments-table td:last-child {
+                border-bottom: 0;
+            }
+
+            .account-table td:nth-child(1)::before { content: "Name"; }
+            .account-table td:nth-child(2)::before { content: "Email"; }
+            .account-table td:nth-child(3)::before { content: "Role"; }
+            .account-table td:nth-child(4)::before { content: "Status"; }
+            .account-table td:nth-child(5)::before { content: "Actions"; }
+
+            .partnership-table td:nth-child(1)::before { content: "Partner"; }
+            .partnership-table td:nth-child(2)::before { content: "Type"; }
+            .partnership-table td:nth-child(3)::before { content: "Contact"; }
+            .partnership-table td:nth-child(4)::before { content: "Status"; }
+            .partnership-table td:nth-child(5)::before { content: "Actions"; }
+
+            .announcement-table td:nth-child(1)::before { content: "Post Title"; }
+            .announcement-table td:nth-child(2)::before { content: "Type"; }
+            .announcement-table td:nth-child(3)::before { content: "Description"; }
+            .announcement-table td:nth-child(4)::before { content: "Actions"; }
+
+            .appointments-table td:nth-child(1)::before { content: "Date & Time"; }
+            .appointments-table td:nth-child(2)::before { content: "Alumni"; }
+            .appointments-table td:nth-child(3)::before { content: "Staff"; }
+            .appointments-table td:nth-child(4)::before { content: "Purpose"; }
+            .appointments-table td:nth-child(5)::before { content: "Status"; }
+            .appointments-table td:nth-child(6)::before { content: "Actions"; }
+
+            .admin-table td::before,
+            .appointments-table td::before {
+                color: var(--maroon);
+                font-weight: 800;
+                text-align: left;
+                overflow-wrap: normal;
+            }
+
+            .admin-table td[colspan],
+            .appointments-table td[colspan] {
+                display: block !important;
+                text-align: center !important;
+            }
+
+            .admin-table td[colspan]::before,
+            .appointments-table td[colspan]::before {
+                content: "";
+                display: none;
+            }
+
+            .action-menu,
+            .appt-actions {
+                margin-left: 0;
+                justify-self: start;
+            }
+
+            .appt-actions {
+                justify-content: flex-end;
+                max-width: 150px;
+            }
+
+            .admin-table button,
+            .appointments-table button {
+                margin: 0;
+                min-height: 30px;
+                min-width: 0;
+                padding: 5px 9px;
+                font-size: 11px;
+            }
+
+            .appointments-card > div[style] {
+                display: grid !important;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px !important;
+                align-items: stretch !important;
+            }
+
+            .appointments-card > div[style] input,
+            .appointments-card > div[style] select {
+                width: 100% !important;
+                min-width: 0 !important;
+            }
+
+            .appointments-card > div[style] > input[type="search"],
+            .appointments-card > div[style] > span {
+                grid-column: 1 / -1;
+            }
+
+            .appointments-card > div[style] > span {
+                margin-left: 0 !important;
+                text-align: right;
+            }
+
+            body.dark-mode .admin-table tr,
+            body.dark-mode .appointments-table tr {
+                background: #2b141a;
+                border-color: rgba(250, 200, 83, 0.26);
+            }
+
+            body.dark-mode .admin-table td::before,
+            body.dark-mode .appointments-table td::before {
+                color: var(--gold);
+            }
+        }
+
+        @media (max-width: 600px) {
+            *,
+            *::before,
+            *::after {
+                max-width: 100%;
+            }
+
+            .admin-view,
+            .figma-group-69,
+            .appointments-view,
+            .employment-view,
+            .announcements-view {
+                width: 100%;
+                overflow-x: hidden;
+            }
+
+            .panel,
+            .admin-card,
+            .appointment-card,
+            .appointments-card,
+            .employment-card,
+            .post-form-card,
+            .recent-posts,
+            .recent-posts article,
+            .tracer-modal {
+                max-width: 100%;
+            }
+
+            .employment-table-wrap {
+                overflow-x: visible !important;
+                width: 100%;
+            }
+
+            .employment-table {
+                width: 100% !important;
+                min-width: 0 !important;
+                display: block;
+                table-layout: fixed;
+            }
+
+            .employment-table thead {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border: 0;
+            }
+
+            .employment-table tbody {
+                display: grid;
+                gap: 10px;
+                padding: 12px;
+            }
+
+            .employment-table tr {
+                display: grid;
+                border: 1px solid #ead7da;
+                border-radius: 8px;
+                background: #fff;
+                overflow: hidden;
+            }
+
+            .employment-table td {
+                display: grid;
+                grid-template-columns: 82px minmax(0, 1fr);
+                align-items: center;
+                gap: 12px;
+                width: 100%;
+                padding: 10px 12px !important;
+                border-bottom: 1px solid #f0e5e7;
+                white-space: normal !important;
+                word-break: normal;
+                overflow-wrap: anywhere;
+                text-align: left;
+                font-size: 12px !important;
+            }
+
+            .employment-table td:last-child {
+                border-bottom: 0;
+            }
+
+            .employment-table td::before {
+                content: attr(data-label);
+                color: var(--maroon);
+                font-weight: 800;
+                text-align: left;
+                overflow-wrap: normal;
+            }
+
+            .employment-table td[colspan] {
+                display: block !important;
+                text-align: center !important;
+            }
+
+            .employment-table td[colspan]::before {
+                content: "";
+                display: none;
+            }
+
+            .employment-table td[data-label="Actions"] {
+                justify-items: start;
+            }
+
+            .employment-table td[data-label="Actions"]::before {
+                justify-self: start;
+            }
+
+            .table-icon {
+                margin: 0 0 0 6px;
+            }
+
+            .emp-search-row,
+            .employment-actions,
+            .composer-tools,
+            .post-actions,
+            .post-viewer-actions,
+            .modal-actions {
+                max-width: 100%;
+                flex-wrap: wrap;
+            }
+
+            .emp-search,
+            .table-filter,
+            .see-toggle,
+            .maroon-action,
+            .composer-tools select,
+            .composer-tools button {
+                min-width: 0 !important;
+                max-width: 100%;
+            }
+
+            .post-viewer,
+            .create-post-modal,
+            .admin-entry-modal {
+                width: calc(100vw - 24px);
+            }
+
+            body.dark-mode .employment-table tr {
+                background: #2b141a;
+                border-color: rgba(250, 200, 83, 0.26);
+            }
+
+            body.dark-mode .employment-table td::before {
+                color: var(--gold);
+            }
+        }
+
+        @media (max-width: 360px) {
+            .stats,
+            .admin-kpis {
+                grid-template-columns: 1fr !important;
+            }
+
+            .admin-card-head > div,
+            .admin-card-head > .accounts-controls,
+            .appointments-card > div[style] {
+                grid-template-columns: 1fr !important;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .admin-table.account-table th,
+            .admin-table.account-table td,
+            .admin-table.partnership-table th,
+            .admin-table.partnership-table td,
+            .admin-table.announcement-table th,
+            .admin-table.announcement-table td {
+                width: auto !important;
+                max-width: none !important;
+            }
+
+            .admin-table.account-table td,
+            .admin-table.partnership-table td,
+            .admin-table.announcement-table td {
+                grid-template-columns: minmax(68px, 82px) minmax(0, 1fr) !important;
+            }
+
+            .admin-table.account-table td:last-child,
+            .admin-table.partnership-table td:last-child,
+            .admin-table.announcement-table td:last-child {
+                width: auto !important;
+                white-space: normal !important;
+            }
+
+            .admin-table.account-table td > *,
+            .admin-table.partnership-table td > *,
+            .admin-table.announcement-table td > * {
+                min-width: 0;
+            }
+        }

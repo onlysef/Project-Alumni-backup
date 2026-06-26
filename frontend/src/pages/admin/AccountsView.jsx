@@ -29,6 +29,15 @@ function mapUser(u) {
   };
 }
 
+function AccountStatusBadge({ status }) {
+  const cls = {
+    Active:    "active",
+    Pending:   "pending",
+    Suspended: "suspended",
+  }[status] || "pending";
+  return <span className={`status-badge account-status ${cls}`}>{status}</span>;
+}
+
 const COLLEGES = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
 const CCS_COURSES = ["BSIT", "BSCS", "BSIS"];
 const BATCH_YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
@@ -151,8 +160,20 @@ export default function AccountsView() {
   return (
     <section className={`content admin-view view active-view`}>
       <div className="admin-kpis">
-        <article><strong>{activeCount}</strong><span>Active Accounts</span></article>
-        <article><strong>{pendingCount}</strong><span>Pending Activation</span></article>
+        <article>
+          <div>
+            <strong>{activeCount}</strong>
+            <span>Active Accounts</span>
+          </div>
+          <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-11" /></span>
+        </article>
+        <article>
+          <div>
+            <strong>{pendingCount}</strong>
+            <span>Pending Activation</span>
+          </div>
+          <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-13" /></span>
+        </article>
       </div>
       <section className="admin-card">
         <div className="admin-card-head">
@@ -181,7 +202,7 @@ export default function AccountsView() {
                   <td>{r.name}</td>
                   <td>{r.email}</td>
                   <td>{r.role}</td>
-                  <td>{r.status}</td>
+                  <td><AccountStatusBadge status={r.status} /></td>
                    <td>
                     <ActionMenu
                       actions={accountActionList(r.status)}

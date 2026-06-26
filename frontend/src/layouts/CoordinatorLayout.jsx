@@ -11,6 +11,7 @@ const PATH_TITLES = {
   "/coordinator/employment":   "Employment Details",
   "/coordinator/contacts":     "Alumni Contacts",
   "/coordinator/about":        "Alumni Association Inc.",
+  "/coordinator/tsu":          "Tarlac State University",
 };
 
 export default function CoordinatorLayout() {

@@ -13,6 +13,7 @@ const PATH_TITLES = {
   "/admin/partnerships": "Partnerships",
   "/admin/aiassistant":  "AI Assistant",
   "/admin/about":        "About",
+  "/admin/tsu":          "Tarlac State University",
 };
 
 export default function AdminLayout() {

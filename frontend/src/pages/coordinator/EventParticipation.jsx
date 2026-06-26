@@ -15,13 +15,6 @@ function fmtTime(dt) {
   return new Date(dt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-const STATUS_COLORS = {
-  Present: "#0f6e56",
-  Late:    "#b95a22",
-  Excused: "#1a6fad",
-  Absent:  "#b91e1e",
-};
-
 export default function EventParticipation() {
   const { showToast } = useOutletContext();
   // ── Events list ──────────────────────────────────────────────
@@ -370,7 +363,7 @@ export default function EventParticipation() {
                     <td data-label="Course">{r.course || "—"}</td>
                     <td data-label="Time In">{r.time_in}</td>
                     <td data-label="Status">
-                      <span className="coord-status-pill" style={{ color: STATUS_COLORS[r.status] ?? "#333" }}>
+                      <span className={`coord-status-pill attendance-status ${String(r.status || "").toLowerCase()}`}>
                         {r.status}
                       </span>
                     </td>
@@ -423,8 +416,8 @@ export default function EventParticipation() {
                 <span>Capacity</span><span>{viewEvent.capacity || "—"}</span>
                 <span>Total Attendees</span><span>{viewEvent.total_attendees ?? 0}</span>
                 <span>Attendance Rate</span><span>{viewEvent.capacity > 0 ? `${viewEvent.attendance_rate}%` : "—"}</span>
-                <span>College</span><span>{viewEvent.visibility === "Public" ? "All Colleges" : (viewEvent.visibility || "—")}</span>
-                <span>Feedback Responses</span><span>{stats?.feedbacks ?? 0}</span>
+                <span>Colleges</span><span>{viewEvent.visibility === "Public" ? "All Colleges" : (viewEvent.visibility || "—")}</span>
+                <span>Feedback Responses</span><span>{viewEvent.feedback_responses ?? 0}</span>
               </div>
             </div>
             <div className="coord-modal-foot">

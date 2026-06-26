@@ -5,6 +5,12 @@ import { downloadCsv } from "./CoordinatorShared.jsx";
 
 import { apiFetch } from "../../services/api.js";
 
+function CourseBadge({ course }) {
+  const value = course || "—";
+  const cls = String(course || "empty").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return <span className={`coord-course-pill ${cls}`}>{value}</span>;
+}
+
 export default function AlumniContacts() {
   const { showToast } = useOutletContext();
   const [contacts, setContacts] = useState([]);
@@ -47,7 +53,7 @@ export default function AlumniContacts() {
       });
       const all = data.contacts ?? [];
       downloadCsv("alumni-contacts.csv", [
-        ["Name", "Title", "Graduation Year", "Course", "Email", "Phone"],
+        ["Name", "Position", "Graduation Year", "Course", "Email", "Phone"],
         ...all.map((c) => [c.name, c.title, c.year, c.course, c.email, c.phone]),
       ]);
       showToast?.("Contacts exported.");
@@ -89,6 +95,7 @@ export default function AlumniContacts() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Position</th>
                 <th>Graduation Year</th>
                 <th>Course</th>
                 <th>Email</th>
@@ -98,17 +105,17 @@ export default function AlumniContacts() {
             <tbody>
               {contacts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="coord-employ-empty">No contacts found.</td>
+                  <td colSpan={6} className="coord-employ-empty">No contacts found.</td>
                 </tr>
               ) : (
                 contacts.map((c) => (
                   <tr key={String(c._id)}>
                     <td data-label="Name">
                       <strong>{c.name}</strong>
-                      {c.title && <small>{c.title}</small>}
                     </td>
+                    <td data-label="Position">{c.title || "—"}</td>
                     <td data-label="Graduation Year">{c.year || "—"}</td>
-                    <td data-label="Course">{c.course || "—"}</td>
+                    <td data-label="Course"><CourseBadge course={c.course} /></td>
                     <td data-label="Email">{c.email}</td>
                     <td data-label="Phone">{c.phone || "—"}</td>
                   </tr>

@@ -104,6 +104,9 @@ export const actionLabels = {
   suspend: "Suspend",
   activate: "Activate",
   view: "View",
+  print: "Print",
+  complete: "Complete",
+  cancel: "Cancel",
   resend: "Resend Credentials",
   archive: "Archive",
 };

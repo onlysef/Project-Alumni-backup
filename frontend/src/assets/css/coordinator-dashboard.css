@@ -134,6 +134,30 @@
         margin: 0 auto; 
     }
 
+    .tsu-brand-link,
+    .tsu-top-brand-link {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+        font: inherit;
+    }
+
+    .tsu-brand-link {
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        margin: 0 auto;
+        display: none;
+    }
+
+    .tsu-top-brand-link {
+        display: block;
+        width: 100%;
+        border-radius: 8px;
+        margin: 0 0 4px;
+    }
+
     .toptsu-logo { 
         width: 120%; 
         height: auto; 
@@ -417,6 +441,12 @@
         display: block; 
     }
 
+    .app.sidebar-collapsed .tsu-brand-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
     .app.sidebar-collapsed .brand { 
         padding-inline: 10px; 
     }
@@ -500,25 +530,26 @@
 
     .coord-stat,
     .coord-highlight {
-        min-height: 70px;
-        border: 1px solid #b56c77;
-        border-radius: 8px;
-        background: #fff;
-        color: var(--maroon);
-        padding: 14px 16px;
+        min-height: 96px;
+        border: 1px solid rgb(255 255 255 / 12%);
+        border-radius: 10px;
+        background: var(--maroon);
+        color: #fff;
+        padding: 18px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        box-shadow: none;
+        gap: 16px;
+        box-shadow: var(--panel-shadow);
     }
 
     .coord-stat strong {
-        color: var(--maroon);
+        color: #fff;
         display: block;
         font-size: 28px;
         line-height: 1;
-        font-weight: 700;
-        margin-bottom: 8px;
+        font-weight: 800;
+        margin-bottom: 6px;
     }
 
     .coord-stat span,
@@ -526,12 +557,18 @@
         display: block;
         font-size: 13px;
         font-weight: 800;
+        color: #fff;
     }
 
     .coord-stat .admin-svg-icon {
-        width: 31px;
-        height: 31px;
-        filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+        width: 48px;
+        height: 48px;
+        flex: 0 0 48px;
+        padding: 11px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: inset 0 0 0 1px rgba(87, 0, 19, 0.08);
+        filter: none;
     }
 
     .coord-stat-loading {
@@ -556,10 +593,14 @@
         align-content: center;
     }
     .coord-highlight .admin-svg-icon {
-        width: 31px;
-        height: 31px;
+        width: 48px;
+        height: 48px;
         flex: 0 0 auto;
-        filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+        padding: 11px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: inset 0 0 0 1px rgba(87, 0, 19, 0.08);
+        filter: none;
     }
 
             .coord-dashboard-grid,
@@ -610,7 +651,7 @@
 
             .coord-chart {
                 width: min(100%, 420px);
-                min-height: 180px;
+                min-height: 210px;
             }
 
             .coord-chart line {
@@ -629,6 +670,11 @@
             .coord-chart text {
                 fill: #35262a;
                 font-size: 11px;
+            }
+
+            .coord-chart .coord-chart-label {
+                font-size: 9.5px;
+                font-weight: 700;
             }
 
             .coord-activity h3 {
@@ -659,7 +705,7 @@
             }
 
             .coord-reports {
-                padding: 12px 14px;
+                padding: 12px 16px 16px;
             }
 
             .coord-reports h3 {
@@ -671,43 +717,51 @@
             }
 
             .coord-report-row {
-                min-height: 46px;
+                min-height: 64px;
                 display: grid;
-                grid-template-columns: 1fr auto;
+                grid-template-columns: minmax(120px, 0.9fr) minmax(210px, 1.4fr);
                 align-items: center;
-                gap: 8px;
-                padding: 0 8px;
-                font-size: 14px;
-                font-weight: 500;
+                gap: 14px;
+                padding: 10px 6px;
+                font-size: 13px;
+                font-weight: 700;
                 color: #4b3f42;
                 border-bottom: 1px solid #ead7da;
             }
+
+            .coord-report-row > span {
+                line-height: 1.25;
+            }
+
             .coord-report-row:last-child {
                 border-bottom: 0;
             }
 
             .coord-report-filters {
-                display: flex;
+                display: grid;
+                grid-template-columns: minmax(120px, 1fr) 68px 34px;
                 align-items: center;
-                gap: 6px;
+                gap: 8px;
+                justify-self: stretch;
             }
 
             .coord-report-select {
-                height: 29px;
+                width: 100%;
+                height: 34px;
                 border: 0;
-                border-radius: 5px;
+                border-radius: 6px;
                 background: var(--maroon);
                 color: #fff;
-                font-size: 10px;
-                font-weight: 600;
+                font-size: 11px;
+                font-weight: 700;
                 font-family: inherit;
-                padding: 0 8px;
+                padding: 0 10px;
                 cursor: pointer;
                 outline: none;
             }
 
             .coord-report-year {
-                width: 62px;
+                width: 100%;
             }
             .coord-record-actions button,
             .coord-contact-actions button {
@@ -726,8 +780,8 @@
 
             .coord-icon-button {
                 padding: 0;
-                width: 29px;
-                height: 29px;
+                width: 34px;
+                height: 34px;
                 border: 0;
                 border-radius: 5px;
                 display: inline-flex;
@@ -1240,6 +1294,44 @@
                     grid-template-columns: 1fr;
                 }
 
+                .coord-stats {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 10px;
+                    margin-bottom: 14px;
+                }
+
+                .coord-stat,
+                .coord-highlight {
+                    min-height: 82px;
+                    padding: 13px;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .coord-stat strong {
+                    font-size: 25px;
+                    margin-bottom: 5px;
+                }
+
+                .coord-stat span,
+                .coord-highlight span {
+                    font-size: 11px;
+                    line-height: 1.25;
+                }
+
+                .coord-stat .admin-svg-icon,
+                .coord-highlight .admin-svg-icon {
+                    width: 38px;
+                    height: 38px;
+                    flex: 0 0 38px;
+                    padding: 8px;
+                }
+
+                .coord-highlight {
+                    grid-column: 1 / -1;
+                    min-height: 76px;
+                }
+
                 .coord-attendance-card label,
                 .coord-attendance-card .coord-form-row label {
                     grid-template-columns: 1fr;
@@ -1248,6 +1340,26 @@
                 .coord-report-row {
                     grid-template-columns: 1fr;
                     align-items: start;
+                }
+
+                .coord-report-filters {
+                    width: 100%;
+                }
+            }
+
+            @media (max-width: 460px) {
+                .coord-report-filters {
+                    grid-template-columns: 1fr 74px 36px;
+                }
+            }
+
+            @media (max-width: 360px) {
+                .coord-stats {
+                    grid-template-columns: 1fr;
+                }
+
+                .coord-highlight {
+                    grid-column: auto;
                 }
             }
 
@@ -1486,6 +1598,11 @@
     font-size: 13px;
     line-height: 1.5;
 }
+
+.coord-post-card .coord-post-description {
+    text-transform: none !important;
+}
+
 .coord-post-card small {
     color: var(--muted);
     font-size: 11px;
@@ -1767,9 +1884,86 @@
 
 
 .coord-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 82px;
+    padding: 4px 12px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    line-height: 1.35;
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.coord-status-pill.coord-employment-status.employed,
+.coord-status-pill.attendance-status.present {
+    background: #d4f0de;
+    color: #1b5e3a;
+    border-color: #97d7af;
+}
+
+.coord-status-pill.coord-employment-status.unemployed {
+    background: #f7d9d9;
+    color: #8a1f2f;
+    border-color: #e3a4ab;
+}
+
+.coord-status-pill.coord-employment-status.self-employed {
+    background: #fdeec2;
+    color: #7a4e00;
+    border-color: #e6cf8a;
+}
+
+.coord-status-pill.coord-employment-status.not-yet-updated,
+.coord-status-pill.attendance-status.late,
+.coord-status-pill.attendance-status.excused,
+.coord-status-pill.attendance-status.absent {
+    background: #e8e8e8;
+    color: #555;
+    border-color: #cfcfcf;
+}
+
+.coord-course-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 4px 11px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.35;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.coord-course-pill.bsit {
+    background: #dcecff;
+    color: #14518f;
+    border-color: #9fc6f2;
+}
+
+.coord-course-pill.bscs {
+    background: #d4f0de;
+    color: #1b5e3a;
+    border-color: #97d7af;
+}
+
+.coord-course-pill.bsis {
+    background: #fdeec2;
+    color: #7a4e00;
+    border-color: #e6cf8a;
+}
+
+.coord-course-pill.empty,
+.coord-course-pill:not(.bsit):not(.bscs):not(.bsis) {
+    background: #e8e8e8;
+    color: #555;
+    border-color: #cfcfcf;
 }
 
 .coord-event-detail-grid {
@@ -1790,6 +1984,59 @@ body.dark-mode .coord-alumni-dropdown { background: #1e1215; border-color: #3a28
 body.dark-mode .coord-alumni-option   { border-color: #3a2830; }
 body.dark-mode .coord-alumni-option:hover { background: rgba(250, 200, 83, 0.08); }
 body.dark-mode .coord-alumni-option strong { color: var(--gold); }
+
+body.dark-mode .coord-status-pill.coord-employment-status.employed,
+body.dark-mode .coord-status-pill.attendance-status.present {
+    background: rgba(40, 122, 78, 0.22);
+    color: #7be0a6;
+    border-color: rgba(123, 224, 166, 0.4);
+}
+
+body.dark-mode .coord-status-pill.coord-employment-status.unemployed {
+    background: rgba(138, 31, 47, 0.28);
+    color: #f3a3ad;
+    border-color: rgba(243, 163, 173, 0.4);
+}
+
+body.dark-mode .coord-status-pill.coord-employment-status.self-employed {
+    background: rgba(137, 90, 0, 0.28);
+    color: #f0cf86;
+    border-color: rgba(240, 207, 134, 0.4);
+}
+
+body.dark-mode .coord-status-pill.coord-employment-status.not-yet-updated,
+body.dark-mode .coord-status-pill.attendance-status.late,
+body.dark-mode .coord-status-pill.attendance-status.excused,
+body.dark-mode .coord-status-pill.attendance-status.absent {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ccc;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.dark-mode .coord-course-pill.bsit {
+    background: rgba(65, 140, 220, 0.22);
+    color: #9dccff;
+    border-color: rgba(157, 204, 255, 0.4);
+}
+
+body.dark-mode .coord-course-pill.bscs {
+    background: rgba(40, 122, 78, 0.22);
+    color: #7be0a6;
+    border-color: rgba(123, 224, 166, 0.4);
+}
+
+body.dark-mode .coord-course-pill.bsis {
+    background: rgba(137, 90, 0, 0.28);
+    color: #f0cf86;
+    border-color: rgba(240, 207, 134, 0.4);
+}
+
+body.dark-mode .coord-course-pill.empty,
+body.dark-mode .coord-course-pill:not(.bsit):not(.bscs):not(.bsis) {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ccc;
+    border-color: rgba(255, 255, 255, 0.2);
+}
 
 .coord-events-layout {
     display: grid;
@@ -2633,6 +2880,20 @@ body.dark-mode .coord-create-card input::placeholder,
 body.dark-mode .coord-create-card textarea::placeholder {
     color: #9c868c !important;
 }
+
+body.dark-mode .coord-stat,
+body.dark-mode .coord-highlight {
+    background: linear-gradient(135deg, #2b1018 0%, #4b0618 55%, #6f0a25 100%) !important;
+    color: #fff7f8;
+    border-color: rgba(250, 200, 83, 0.22);
+}
+
+body.dark-mode .coord-stat .admin-svg-icon,
+body.dark-mode .coord-highlight .admin-svg-icon {
+    background: rgba(250, 200, 83, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.36);
+    filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
+}
 /* =====================================================================
    RESPONSIVE PASS — coordinator pages on tablets & phones
    ===================================================================== */
@@ -2902,5 +3163,195 @@ body.dark-mode .coord-create-card textarea::placeholder {
     .coord-notify-btn {
         flex: 1 1 100%;
         justify-content: center;
+    }
+}
+
+@media (max-width: 600px) {
+    *,
+    *::before,
+    *::after {
+        max-width: 100%;
+    }
+
+    html,
+    body,
+    #root,
+    .app,
+    .main,
+    .content,
+    .coordinator-content {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .coordinator-content {
+        padding-inline: 10px;
+    }
+
+    .coord-card,
+    .coord-stat,
+    .coord-highlight,
+    .coord-create-card,
+    .coord-post-card,
+    .coord-event-list,
+    .coord-attendance-card,
+    .coord-records-card,
+    .coord-contacts-table,
+    .coord-contact-form,
+    .coord-current-status,
+    .coord-modal {
+        max-width: 100%;
+    }
+
+    .coord-dashboard-grid,
+    .coord-events-layout,
+    .coord-participation-grid,
+    .coord-contact-grid,
+    .coord-form-row,
+    .coord-record-toolbar,
+    .coord-contact-toolbar,
+    .coord-employ-toolbar,
+    .coord-table-footer,
+    .coord-record-actions,
+    .coord-post-footer,
+    .coord-modal-foot {
+        grid-template-columns: 1fr !important;
+        max-width: 100%;
+    }
+
+    .coord-record-toolbar,
+    .coord-contact-toolbar,
+    .coord-employ-toolbar,
+    .coord-table-footer,
+    .coord-record-actions,
+    .coord-post-footer,
+    .coord-modal-foot {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .coord-record-toolbar > *,
+    .coord-contact-toolbar > *,
+    .coord-employ-toolbar > *,
+    .coord-table-footer > *,
+    .coord-record-actions > *,
+    .coord-post-footer > *,
+    .coord-modal-foot > * {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .coord-record-toolbar select,
+    .coord-record-toolbar input,
+    .coord-contact-toolbar select,
+    .coord-contact-toolbar input,
+    .coord-employ-toolbar select,
+    .coord-employ-toolbar input,
+    .coord-field input,
+    .coord-field select,
+    .coord-field textarea,
+    .coord-create-card input,
+    .coord-create-card select,
+    .coord-create-card textarea,
+    .coord-attendance-card input,
+    .coord-attendance-card select {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .coord-table-scroll,
+    .coord-contacts-table,
+    .coord-records-card {
+        overflow-x: visible !important;
+        width: 100%;
+    }
+
+    .coord-records-card table,
+    .coord-contacts-table table,
+    .coord-interested-table {
+        width: 100% !important;
+        min-width: 0 !important;
+        display: block;
+        table-layout: fixed;
+    }
+
+    .coord-interested-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .coord-interested-table tbody {
+        display: grid;
+        gap: 10px;
+    }
+
+    .coord-interested-table tr {
+        display: grid;
+        border: 1px solid #e3d3d6;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .coord-interested-table td {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 12px;
+        white-space: normal !important;
+        word-break: break-word;
+        text-align: right;
+    }
+
+    .coord-interested-table td:nth-child(1)::before { content: "Name"; }
+    .coord-interested-table td:nth-child(2)::before { content: "Email"; }
+    .coord-interested-table td:nth-child(3)::before { content: "Course"; }
+
+    .coord-interested-table td::before {
+        margin-right: auto;
+        color: var(--maroon);
+        font-weight: 800;
+        text-align: left;
+    }
+
+    .coord-status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .coord-chart {
+        width: 100%;
+        height: auto;
+    }
+
+    .coord-report-filters {
+        grid-template-columns: minmax(0, 1fr) 70px 34px !important;
+    }
+
+    .coord-modal {
+        width: calc(100vw - 24px) !important;
+    }
+
+    body.dark-mode .coord-interested-table tr {
+        background: #241116;
+        border-color: #50303a;
+    }
+
+    body.dark-mode .coord-interested-table td::before {
+        color: var(--gold);
+    }
+}
+
+@media (max-width: 360px) {
+    .coord-stats,
+    .coord-status-grid,
+    .coord-report-filters {
+        grid-template-columns: 1fr !important;
     }
 }

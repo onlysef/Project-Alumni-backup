@@ -17,6 +17,7 @@ const AnnouncementsView       = lazy(() => import("../pages/admin/AnnouncementsV
 const PartnershipsView        = lazy(() => import("../pages/admin/PartnershipsView"));
 const AiAssistantView         = lazy(() => import("../pages/admin/AiAssistantView"));
 const AboutView               = lazy(() => import("../pages/admin/AboutView"));
+const TsuLandingView          = lazy(() => import("../pages/shared/TsuLandingView"));
 
 // Coordinator pages
 const CoordinatorHome         = lazy(() => import("../pages/coordinator/CoordinatorHome"));
@@ -86,6 +87,7 @@ export default function AppRoutes() {
             <Route path="partnerships" element={<PartnershipsView />} />
             <Route path="aiassistant"  element={<AiAssistantView />} />
             <Route path="about"        element={<AboutView />} />
+            <Route path="tsu"          element={<TsuLandingView />} />
           </Route>
 
           {/* Coordinator routes */}
@@ -104,6 +106,7 @@ export default function AppRoutes() {
             <Route path="employment"   element={<CoordinatorEmploymentView />} />
             <Route path="contacts"     element={<AlumniContacts />} />
             <Route path="about"        element={<CoordinatorAboutView />} />
+            <Route path="tsu"          element={<TsuLandingView />} />
           </Route>
 
           {/* Alumni routes */}

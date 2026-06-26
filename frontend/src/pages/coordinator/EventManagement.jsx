@@ -255,12 +255,12 @@ export default function EventManagement() {
                   />
                 </label>
                 <label className="coord-labeled-field">
-                  <span>Visibility (College)</span>
+                  <span>Colleges</span>
                   <select
                     value={form.visibility}
                     onChange={e => setForm(p => ({ ...p, visibility: e.target.value }))}
                   >
-                    <option value="Public">Public (All Colleges)</option>
+                    <option value="Public">All Colleges</option>
                     {COLLEGES.map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
@@ -286,7 +286,7 @@ export default function EventManagement() {
                 {event.image && (
                   <img src={event.image} alt={event.title} className="coord-post-image" />
                 )}
-                <p>{event.description || "No description."}</p>
+                <p className="coord-post-description">{event.description || "No description."}</p>
                 <small>
                   Date: {fmtDate(event.event_datetime)} | Location: {event.location || "TBA"}
                 </small>
@@ -387,9 +387,9 @@ export default function EventManagement() {
                       onChange={e => setEditForm(p => ({ ...p, event_datetime: e.target.value }))}
                     />
                   </label>
-                  <label className="coord-field"><span>Visibility (College)</span>
+                  <label className="coord-field"><span>Colleges</span>
                     <select value={editForm.visibility} onChange={e => setEditForm(p => ({ ...p, visibility: e.target.value }))}>
-                      <option value="Public">Public (All Colleges)</option>
+                      <option value="Public">All Colleges</option>
                       {COLLEGES.map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}

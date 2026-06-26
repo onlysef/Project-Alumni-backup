@@ -10,6 +10,17 @@ function display(val) {
   return !val || EMPTY_VALS.has(String(val).trim()) ? "—" : val;
 }
 
+function CoordinatorStatusBadge({ status }) {
+  const value = display(status);
+  const cls = {
+    Employed:          "employed",
+    Unemployed:        "unemployed",
+    "Self-employed":   "self-employed",
+    "Not Yet Updated": "not-yet-updated",
+  }[value] || "not-yet-updated";
+  return <span className={`coord-status-pill coord-employment-status ${cls}`}>{value}</span>;
+}
+
 function timeAgo(date) {
   const diff = (Date.now() - new Date(date)) / 1000;
   if (diff < 60) return "just now";
@@ -214,7 +225,7 @@ export default function CoordinatorEmploymentView() {
                     <td data-label="Course">{display(row.course)}</td>
                     <td data-label="Company">{display(row.company_name)}</td>
                     <td data-label="Position">{display(row.job_title)}</td>
-                    <td data-label="Status">{display(row.employment_status)}</td>
+                    <td data-label="Status"><CoordinatorStatusBadge status={row.employment_status} /></td>
                   </tr>
                 ))
               )}
