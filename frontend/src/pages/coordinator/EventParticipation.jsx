@@ -283,9 +283,6 @@ export default function EventParticipation() {
               Status:
               <select value={status} onChange={e => setStatus(e.target.value)}>
                 <option>Present</option>
-                <option>Late</option>
-                <option>Excused</option>
-                <option>Absent</option>
               </select>
             </label>
           </div>
@@ -341,9 +338,6 @@ export default function EventParticipation() {
           >
             <option value="">All Status</option>
             <option>Present</option>
-            <option>Late</option>
-            <option>Excused</option>
-            <option>Absent</option>
           </select>
           <input
             className="coord-employ-search"
@@ -429,7 +423,8 @@ export default function EventParticipation() {
                 <span>Capacity</span><span>{viewEvent.capacity || "—"}</span>
                 <span>Total Attendees</span><span>{viewEvent.total_attendees ?? 0}</span>
                 <span>Attendance Rate</span><span>{viewEvent.capacity > 0 ? `${viewEvent.attendance_rate}%` : "—"}</span>
-                <span>Visibility</span><span>{viewEvent.visibility}</span>
+                <span>College</span><span>{viewEvent.visibility === "Public" ? "All Colleges" : (viewEvent.visibility || "—")}</span>
+                <span>Feedback Responses</span><span>{stats?.feedbacks ?? 0}</span>
               </div>
             </div>
             <div className="coord-modal-foot">
