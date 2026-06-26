@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 
@@ -10,6 +10,11 @@ const apiPut    = (path, body) => apiFetch(path, { method: "PUT",    body });
 const apiDelete = (path)       => apiFetch(path, { method: "DELETE" });
 
 const STATUS_ORDER = { "On Going": 0, "Coming Soon": 1, "Ended": 2 };
+
+const COLLEGES = [
+  "CPAG", "CCS", "COS", "CIT", "COE",
+  "CBA", "COED", "CASS", "CCJE", "CAFA",
+];
 
 function computeStatus(event_datetime) {
   const now = new Date();
@@ -34,7 +39,7 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const BLANK = { title: "", description: "", location: "", event_datetime: "", visibility: "Public", capacity: "" };
+const BLANK = { title: "", description: "", location: "", event_datetime: "", visibility: "Public", capacity: "", image: "" };
 
 export default function EventManagement() {
   const { showToast } = useOutletContext();
@@ -52,6 +57,29 @@ export default function EventManagement() {
   const [interestedModal, setInterestedModal] = useState(null);
   const [interestedList, setInterestedList] = useState([]);
   const [interestedLoading, setInterestedLoading] = useState(false);
+
+  const fileInputRef = useRef(null);
+
+  function handleImagePick(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast?.("Please choose an image file.");
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      showToast?.("Image must be 3MB or smaller.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setForm(p => ({ ...p, image: reader.result }));
+    reader.readAsDataURL(file);
+  }
+
+  function clearImage() {
+    setForm(p => ({ ...p, image: "" }));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   const loadEvents = useCallback(async () => {
     setLoading(true);
@@ -85,6 +113,7 @@ export default function EventManagement() {
       if (data.event) {
         setEvents(prev => [data.event, ...prev]);
         setForm(BLANK);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         showToast?.("Event created successfully.");
       } else {
         showToast?.(data.message || "Failed to create event.");
@@ -188,22 +217,55 @@ export default function EventManagement() {
                 value={form.capacity}
                 onChange={e => setForm(p => ({ ...p, capacity: e.target.value }))}
               />
-              <div className="coord-form-row">
+
+              <div className="coord-image-field">
+                <span className="coord-image-label">Event Image (optional)</span>
+                {form.image ? (
+                  <div className="coord-image-preview-wrap">
+                    <img src={form.image} alt="Event preview" className="coord-image-preview" />
+                    <button type="button" className="coord-image-remove" onClick={clearImage}>
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className="coord-image-dropzone"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Icon name="icon-add" /> Click to upload a picture for this post
+                  </div>
+                )}
                 <input
-                  type="datetime-local"
-                  className="coord-datetime-input"
-                  value={form.event_datetime}
-                  onChange={e => setForm(p => ({ ...p, event_datetime: e.target.value }))}
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleImagePick}
                 />
-                <select
-                  value={form.visibility}
-                  onChange={e => setForm(p => ({ ...p, visibility: e.target.value }))}
-                >
-                  <option value="Public">Public</option>
-                  <option value="CCS Alumni">CCS Alumni</option>
-                  <option value="All Alumni">All Alumni</option>
-                  <option value="Private">Private</option>
-                </select>
+              </div>
+
+              <div className="coord-form-row">
+                <label className="coord-labeled-field">
+                  <span>Date &amp; Time</span>
+                  <input
+                    type="datetime-local"
+                    className="coord-datetime-input"
+                    value={form.event_datetime}
+                    onChange={e => setForm(p => ({ ...p, event_datetime: e.target.value }))}
+                  />
+                </label>
+                <label className="coord-labeled-field">
+                  <span>Visibility (College)</span>
+                  <select
+                    value={form.visibility}
+                    onChange={e => setForm(p => ({ ...p, visibility: e.target.value }))}
+                  >
+                    <option value="Public">Public (All Colleges)</option>
+                    {COLLEGES.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
               <button type="submit" className="btn btn-primary" disabled={submitting}>
                 <Icon name="icon-add" /> {submitting ? "Creating…" : "Create"}
@@ -221,6 +283,9 @@ export default function EventManagement() {
             recentEvents.map(event => (
               <article className="coord-post-card" key={event._id}>
                 <h4>{event.title}</h4>
+                {event.image && (
+                  <img src={event.image} alt={event.title} className="coord-post-image" />
+                )}
                 <p>{event.description || "No description."}</p>
                 <small>
                   Date: {fmtDate(event.event_datetime)} | Location: {event.location || "TBA"}
@@ -322,12 +387,12 @@ export default function EventManagement() {
                       onChange={e => setEditForm(p => ({ ...p, event_datetime: e.target.value }))}
                     />
                   </label>
-                  <label className="coord-field"><span>Visibility</span>
+                  <label className="coord-field"><span>Visibility (College)</span>
                     <select value={editForm.visibility} onChange={e => setEditForm(p => ({ ...p, visibility: e.target.value }))}>
-                      <option value="Public">Public</option>
-                      <option value="CCS Alumni">CCS Alumni</option>
-                      <option value="All Alumni">All Alumni</option>
-                      <option value="Private">Private</option>
+                      <option value="Public">Public (All Colleges)</option>
+                      {COLLEGES.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
                     </select>
                   </label>
                 </div>
