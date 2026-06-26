@@ -110,12 +110,12 @@
     flex-direction: column;
     background: linear-gradient(180deg, #570013 72%, #945025 93%, #bf8931 100%);
     color: #fff;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
     }
 
     .brand { 
         padding: 0 24px 20px; 
+        flex: 0 0 auto;
     }
 
     .brand h1 {
@@ -177,6 +177,7 @@
             flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
+            overflow-x: hidden;
         }
 
         .nav a {
@@ -264,7 +265,9 @@
     }
 
     .sidebar-footer { 
-        padding: 18px 16px 0; 
+        padding: 18px 16px; 
+        flex: 0 0 auto;
+        margin-top: auto;
     }
     .sidebar-logout {
         width: 100%;
@@ -283,6 +286,8 @@
         text-align: left;
         text-transform: uppercase;
     }
+
+    .sidebar-backdrop { display: none; }
 
     .main { 
         min-width: 0; 
@@ -358,9 +363,10 @@
         }
 
     .content { 
-        height: calc(100vh - 58px); 
+        height: calc(100vh - 70px); 
         overflow-y: auto; 
         overflow-x: hidden; 
+        -webkit-overflow-scrolling: touch;
     }
     .view { 
         display: none; 
@@ -459,8 +465,8 @@
             box-shadow: none;
         }
 
-        .app:not(.sidebar-collapsed)::after {
-            content: "";
+        .app:not(.sidebar-collapsed) .sidebar-backdrop {
+            display: block;
             position: fixed;
             inset: 0;
             background: rgba(0, 0, 0, 0.4);
@@ -2659,4 +2665,182 @@ body.dark-mode .coord-create-card select {
 body.dark-mode .coord-create-card input::placeholder,
 body.dark-mode .coord-create-card textarea::placeholder {
     color: #9c868c !important;
+}
+/* =====================================================================
+   RESPONSIVE PASS — coordinator pages on tablets & phones
+   ===================================================================== */
+
+/* Tables: never let them break the layout; allow horizontal scroll */
+.coord-records-card table,
+.coord-contacts-table table {
+    display: table;
+    width: 100%;
+}
+.coord-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 760px) {
+    /* toolbars stack and go full width */
+    .coord-record-toolbar,
+    .coord-employ-toolbar {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .coord-employ-toolbar select,
+    .coord-record-toolbar select {
+        flex: 1 1 100% !important;
+        width: 100% !important;
+    }
+    .coord-employ-search {
+        flex: 1 1 100% !important;
+        width: 100%;
+    }
+    /* keep tables readable; let them scroll sideways instead of squashing */
+    .coord-records-card table,
+    .coord-contacts-table table {
+        min-width: 560px;
+    }
+    .coord-record-actions {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .coord-record-actions .btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 600px) {
+    .coord-records-card th,
+    .coord-records-card td,
+    .coord-contacts-table th,
+    .coord-contacts-table td {
+        padding: 12px 10px;
+        font-size: 12.5px;
+    }
+    .coord-status-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    /* modals fit the viewport */
+    .coord-modal {
+        width: calc(100vw - 24px);
+        max-width: calc(100vw - 24px);
+    }
+}
+
+/* ===== Event Management — image upload preview ===== */
+.coord-image-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.coord-image-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--maroon);
+}
+.coord-image-dropzone {
+    border: 1.5px dashed #b56c77;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    background: #fff;
+    color: var(--muted);
+    font-size: 12px;
+    transition: border-color 160ms ease, background 160ms ease;
+}
+.coord-image-dropzone:hover {
+    border-color: var(--maroon);
+    background: rgba(87, 0, 19, 0.03);
+}
+.coord-image-preview-wrap {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.coord-image-preview {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+}
+.coord-image-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+.coord-image-remove:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+.coord-post-image {
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin: 8px 0;
+    display: block;
+}
+
+.coord-labeled-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.coord-labeled-field > span {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--maroon);
+}
+
+.coord-employ-notify-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.coord-employ-notify-row .coord-employ-hint {
+    font-size: 12px;
+    color: var(--muted);
+    flex: 1 1 200px;
+    min-width: 0;
+}
+.coord-notify-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    background: var(--maroon);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 160ms ease, transform 160ms ease;
+    white-space: nowrap;
+}
+.coord-notify-btn:hover {
+    background: #76162a;
+    transform: translateY(-1px);
+}
+@media (max-width: 600px) {
+    .coord-notify-btn {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
 }

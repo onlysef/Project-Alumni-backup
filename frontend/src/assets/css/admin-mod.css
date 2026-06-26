@@ -255,8 +255,8 @@
                 box-shadow: none;
             }
 
-            .app:not(.sidebar-collapsed)::after {
-                content: "";
+            .app:not(.sidebar-collapsed) .sidebar-backdrop {
+                display: block;
                 position: fixed;
                 inset: 0;
                 background: rgba(0, 0, 0, 0.4);
@@ -272,6 +272,8 @@
             display: none;
         }
 
+        .sidebar-backdrop { display: none; }
+
         .sidebar {
             height: 100vh;
             padding: 24px 0;
@@ -284,8 +286,7 @@
             background:
                 linear-gradient(180deg, #570013 72.12%, #945025 93.28%, #bf8931 100%), #800020;
             color: #fff;
-            overflow-x: hidden;
-            overflow-y: auto;
+            overflow: hidden;
         }
 
         .brand {
@@ -348,6 +349,7 @@
             flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
+            overflow-x: hidden;
         }
 
         .nav a {
@@ -502,7 +504,7 @@
         .sidebar-footer {
             margin-top: auto;
             flex: 0 0 auto;
-            padding: 18px 16px 0;
+            padding: 18px 16px;
         }
 
         .sidebar-logout {
@@ -1390,6 +1392,8 @@
         .employment-actions {
             display: flex;
             gap: 12px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .maroon-action,
@@ -3804,8 +3808,8 @@
             }
 
             /* Backdrop when drawer is open */
-            .app:not(.sidebar-collapsed)::after {
-                content: "";
+            .app:not(.sidebar-collapsed) .sidebar-backdrop {
+                display: block;
                 position: fixed;
                 inset: 0;
                 background: rgba(0, 0, 0, 0.4);
@@ -3913,12 +3917,12 @@
 
             .employment-actions {
                 width: 100%;
-                flex-wrap: nowrap;
+                flex-wrap: wrap;
             }
 
             .maroon-action {
                 white-space: nowrap;
-                flex: 1 1 auto;
+                flex: 1 1 140px;
                 justify-content: center;
                 font-size: 12px;
                 padding: 0 10px;
