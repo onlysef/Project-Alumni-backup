@@ -339,7 +339,7 @@
         color: inherit; 
         cursor: pointer;
     }
-    /* white topbar icons on maroon bar */
+    
     .topbar .hamburger .admin-svg-icon,
     .topbar .icon-btn .admin-svg-icon {
         width: 20px;
@@ -403,7 +403,6 @@
     .sidebar-logout .admin-svg-icon {
         width: 20px;
         height: 20px;
-        /* white icons on maroon sidebar */
         filter: brightness(0) invert(1);
     }
 
@@ -1253,9 +1252,7 @@
             }
 
 
-    /* ===== transitions (admin-style) ===== */
 
-    /* dashboard view fade-in on load/switch */
     .view.active-view {
         animation: coordViewFadeIn 220ms ease both;
     }
@@ -1264,7 +1261,6 @@
         to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* cards: hover lift + deeper shadow */
     .coord-card,
     .coord-stat,
     .coord-highlight,
@@ -1290,7 +1286,6 @@
         border-color: var(--maroon);
     }
 
-    /* buttons: hover background + slight lift */
     .coord-report-row button,
     .coord-record-actions button,
     .coord-contact-actions button,
@@ -1312,18 +1307,15 @@
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
     }
 
-    /* icon buttons (print/download): subtle scale on hover */
     .coord-icon-button:hover {
         transform: scale(1.12);
     }
 
-    /* sidebar logout hover */
     .sidebar-logout:hover {
         background: rgba(255, 255, 255, 0.2);
         transform: translateY(-1px);
     }
 
-    /* respect reduced-motion */
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             animation-duration: 1ms !important;
@@ -1331,7 +1323,6 @@
             scroll-behavior: auto !important;
         }
     }
-/* ===== welcome hero banner (admin-style) ===== */
 .coord-hero {
     background: linear-gradient(135deg, var(--maroon-deep) 0%, #7a0a24 55%, var(--maroon) 100%);
     color: #fff;
@@ -1381,11 +1372,6 @@
     color: var(--maroon-deep);
 }
 
-/* ===================================================================
-   Event Management — admin-card style (clean white, maroon headers)
-   =================================================================== */
-
-/* Card shells: maroon header bar + white body, like .admin-card */
 .coord-create-card,
 .coord-post-card,
 .coord-event-list {
@@ -1398,7 +1384,6 @@
     padding: 0 !important;
 }
 
-/* Maroon header bar (h3 = the card head) */
 .coord-create-card > h3,
 .coord-event-list > h3 {
     margin: 0 !important;
@@ -1413,7 +1398,6 @@
     border-radius: 10px 10px 0 0;
 }
 
-/* Body padding under the header */
 .coord-create-body {
     padding: 18px;
     display: grid;
@@ -1425,7 +1409,6 @@
     gap: 12px;
 }
 
-/* Inputs — clean admin style */
 .coord-create-card input,
 .coord-create-card textarea,
 .coord-create-card select {
@@ -1462,7 +1445,6 @@
     gap: 12px;
 }
 
-/* Submit button — maroon */
 .coord-create-card button[type="submit"] {
     justify-self: end;
     border: 0;
@@ -1482,7 +1464,6 @@
     transform: translateY(-1px);
 }
 
-/* Section kicker */
 .coord-section-kicker {
     margin: 0 0 12px;
     color: var(--maroon);
@@ -1490,7 +1471,6 @@
     font-weight: 900;
 }
 
-/* Recent post card */
 .coord-post-card {
     padding: 18px !important;
 }
@@ -1547,7 +1527,6 @@
     background: #76162a;
 }
 
-/* Event list items */
 .coord-event-list-inner article {
     background: #faf7f8;
     border: 1px solid #ecdfe2;
@@ -1570,7 +1549,6 @@
     color: var(--muted);
 }
 
-/* Status pills */
 .coord-event-status {
     width: fit-content;
     padding: 3px 11px;
@@ -1597,7 +1575,6 @@
     border: 1px solid rgba(100, 100, 100, 0.25);
 }
 
-/* datetime-local input */
 .coord-datetime-input {
     width: 100%;
     min-height: 34px;
@@ -1612,7 +1589,6 @@
 }
 .coord-datetime-input::-webkit-calendar-picker-indicator { cursor: pointer; }
 
-/* Post card action buttons */
 .coord-post-edit-btn,
 .coord-post-delete-btn {
     padding: 4px 8px !important;
@@ -1738,7 +1714,6 @@
     gap: 10px;
 }
 
-/* Interested alumni table */
 .coord-interested-table {
     width: 100%;
     border-collapse: collapse;
@@ -1757,10 +1732,8 @@
     text-transform: uppercase;
 }
 
-/* Unread notification dot */
 .topbar-notif-unread { background: rgba(87, 0, 19, 0.05); border-left: 3px solid var(--maroon); }
 
-/* Alumni search autocomplete */
 .coord-alumni-dropdown {
     position: absolute;
     top: calc(100% + 2px);
@@ -1792,14 +1765,13 @@
     text-align: center;
 }
 
-/* Status pill in records table */
+
 .coord-status-pill {
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
 }
 
-/* Event detail grid in View Event modal */
 .coord-event-detail-grid {
     display: grid;
     grid-template-columns: 130px 1fr;
@@ -1819,7 +1791,6 @@ body.dark-mode .coord-alumni-option   { border-color: #3a2830; }
 body.dark-mode .coord-alumni-option:hover { background: rgba(250, 200, 83, 0.08); }
 body.dark-mode .coord-alumni-option strong { color: var(--gold); }
 
-/* Two-column layout */
 .coord-events-layout {
     display: grid;
     grid-template-columns: 1.3fr 1fr;
@@ -1911,7 +1882,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
         text-align: center;
     }
 }
-/* ===== Alumni Contacts — 3-dot action menu + add button ===== */
 .coord-add-btn {
     margin-left: auto;
     border: 0;
@@ -1928,7 +1898,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
 }
 .coord-add-btn:hover { background: #76162a; }
 
-/* kebab (3-dot) button */
 .coord-action-menu {
     position: relative;
     display: flex;
@@ -1977,7 +1946,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
 .coord-action-dropdown .coord-action-delete { color: #b00020; }
 .coord-action-dropdown .coord-action-delete:hover { background: rgba(176, 0, 32, 0.08); }
 
-/* cancel/ghost button in the form */
 .coord-contact-actions .coord-btn-ghost {
     background: #fff !important;
     color: var(--maroon) !important;
@@ -1987,7 +1955,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
     background: rgba(87, 0, 19, 0.06) !important;
 }
 
-/* Alumni Contacts — table footer buttons (Add + Export) */
 .coord-table-footer {
     display: flex;
     justify-content: flex-end;
@@ -2020,7 +1987,7 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
     letter-spacing: 0.3px;
 }
 
-/* ===== Form field labels (Alumni Contacts) ===== */
+
 .coord-field {
     display: grid;
     gap: 5px;
@@ -2698,10 +2665,10 @@ body.dark-mode .coord-create-card textarea::placeholder {
         flex: 1 1 100% !important;
         width: 100%;
     }
-    /* keep tables readable; let them scroll sideways instead of squashing */
+    /* tablet range: table can scroll sideways if needed */
     .coord-records-card table,
     .coord-contacts-table table {
-        min-width: 560px;
+        min-width: 520px;
     }
     .coord-record-actions {
         flex-wrap: wrap;
@@ -2714,13 +2681,104 @@ body.dark-mode .coord-create-card textarea::placeholder {
 }
 
 @media (max-width: 600px) {
-    .coord-records-card th,
-    .coord-records-card td,
-    .coord-contacts-table th,
-    .coord-contacts-table td {
-        padding: 12px 10px;
-        font-size: 12.5px;
+    
+    .coord-table-scroll {
+        overflow-x: visible;
     }
+    .coord-records-card table,
+    .coord-contacts-table table {
+        min-width: 0;
+        width: 100%;
+        display: block;
+    }
+    .coord-records-card thead,
+    .coord-contacts-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+    .coord-records-card tbody,
+    .coord-contacts-table tbody {
+        display: block;
+    }
+    .coord-records-card tbody tr,
+    .coord-contacts-table tbody tr {
+        display: block;
+        margin: 0 0 12px;
+        padding: 6px 4px;
+        border: 1px solid #e3d3d6;
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .coord-records-card tbody td,
+    .coord-contacts-table tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        width: auto;
+        padding: 9px 12px;
+        border: 0;
+        border-bottom: 1px solid #f0e7e9;
+        text-align: right;
+        font-size: 13px;
+        white-space: normal;
+        word-break: break-word;
+    }
+    .coord-records-card tbody td:last-child,
+    .coord-contacts-table tbody td:last-child {
+        border-bottom: 0;
+    }
+    /* the label, pulled from data-label on each cell */
+    .coord-records-card tbody td::before,
+    .coord-contacts-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        margin-right: auto;
+        font-weight: 700;
+        color: var(--maroon);
+        text-align: left;
+        text-transform: none;
+    }
+    /* the "empty" / full-width rows shouldn't show a label */
+    .coord-records-card tbody td.coord-employ-empty,
+    .coord-contacts-table tbody td.coord-employ-empty {
+        display: block;
+        text-align: center;
+    }
+    .coord-records-card tbody td.coord-employ-empty::before,
+    .coord-contacts-table tbody td.coord-employ-empty::before {
+        content: "";
+        margin: 0;
+    }
+    .coord-records-card tbody td strong,
+    .coord-contacts-table tbody td strong {
+        display: block;
+    }
+    .coord-records-card tbody td small,
+    .coord-contacts-table tbody td small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    body.dark-mode .coord-records-card tbody tr,
+    body.dark-mode .coord-contacts-table tbody tr {
+        background: #241116;
+        border-color: #50303a;
+    }
+    body.dark-mode .coord-records-card tbody td,
+    body.dark-mode .coord-contacts-table tbody td {
+        border-bottom-color: #3a2228;
+    }
+
     .coord-status-grid {
         grid-template-columns: repeat(2, 1fr) !important;
     }
@@ -2794,6 +2852,7 @@ body.dark-mode .coord-create-card textarea::placeholder {
     display: block;
 }
 
+/* ===== labelled date/time + visibility fields ===== */
 .coord-labeled-field {
     display: flex;
     flex-direction: column;
@@ -2805,6 +2864,7 @@ body.dark-mode .coord-create-card textarea::placeholder {
     color: var(--maroon);
 }
 
+/* ===== Employment — notify + filter row ===== */
 .coord-employ-notify-row {
     display: flex;
     flex-wrap: wrap;

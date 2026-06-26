@@ -210,11 +210,11 @@ export default function CoordinatorEmploymentView() {
               ) : (
                 rows.map((row) => (
                   <tr key={row._id}>
-                    <td>{display(row.name)}</td>
-                    <td>{display(row.course)}</td>
-                    <td>{display(row.company_name)}</td>
-                    <td>{display(row.job_title)}</td>
-                    <td>{display(row.employment_status)}</td>
+                    <td data-label="Name">{display(row.name)}</td>
+                    <td data-label="Course">{display(row.course)}</td>
+                    <td data-label="Company">{display(row.company_name)}</td>
+                    <td data-label="Position">{display(row.job_title)}</td>
+                    <td data-label="Status">{display(row.employment_status)}</td>
                   </tr>
                 ))
               )}

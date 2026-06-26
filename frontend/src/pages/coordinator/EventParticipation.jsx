@@ -366,15 +366,15 @@ export default function EventParticipation() {
               ) : (
                 records.map(r => (
                   <tr key={String(r._id)}>
-                    <td>{r.name}</td>
-                    <td>{r.course || "—"}</td>
-                    <td>{r.time_in}</td>
-                    <td>
+                    <td data-label="Name">{r.name}</td>
+                    <td data-label="Course">{r.course || "—"}</td>
+                    <td data-label="Time In">{r.time_in}</td>
+                    <td data-label="Status">
                       <span className="coord-status-pill" style={{ color: STATUS_COLORS[r.status] ?? "#333" }}>
                         {r.status}
                       </span>
                     </td>
-                    <td>{r.feedback ? "Yes" : ""}</td>
+                    <td data-label="Feedback">{r.feedback ? "Yes" : ""}</td>
                   </tr>
                 ))
               )}

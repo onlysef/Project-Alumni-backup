@@ -103,14 +103,14 @@ export default function AlumniContacts() {
               ) : (
                 contacts.map((c) => (
                   <tr key={String(c._id)}>
-                    <td>
+                    <td data-label="Name">
                       <strong>{c.name}</strong>
                       {c.title && <small>{c.title}</small>}
                     </td>
-                    <td>{c.year || "—"}</td>
-                    <td>{c.course || "—"}</td>
-                    <td>{c.email}</td>
-                    <td>{c.phone || "—"}</td>
+                    <td data-label="Graduation Year">{c.year || "—"}</td>
+                    <td data-label="Course">{c.course || "—"}</td>
+                    <td data-label="Email">{c.email}</td>
+                    <td data-label="Phone">{c.phone || "—"}</td>
                   </tr>
                 ))
               )}

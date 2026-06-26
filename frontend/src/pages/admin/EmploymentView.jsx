@@ -586,13 +586,13 @@ export default function EmploymentView() {
                 <tr><td colSpan={7} className="emp-empty">No employment records found.</td></tr>
               ) : records.map(r => (
                 <tr key={r._id}>
-                  <td>{r.name}</td>
-                  <td>{r.college || "—"}</td>
-                  <td>{r.course || "—"}</td>
-                  <td>{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") ? "—" : fmtField(r.company_name)}</td>
-                  <td><StatusBadge status={r.employment_status} /></td>
-                  <td>{fmtDate(r.last_updated)}</td>
-                  <td>
+                  <td data-label="Name">{r.name}</td>
+                  <td data-label="College">{r.college || "—"}</td>
+                  <td data-label="Course">{r.course || "—"}</td>
+                  <td data-label="Company">{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") ? "—" : fmtField(r.company_name)}</td>
+                  <td data-label="Status"><StatusBadge status={r.employment_status} /></td>
+                  <td data-label="Last Updated">{fmtDate(r.last_updated)}</td>
+                  <td data-label="Actions">
                     <button
                       type="button"
                       className="table-icon table-print"
