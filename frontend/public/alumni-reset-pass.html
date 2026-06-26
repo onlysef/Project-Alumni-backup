@@ -6,6 +6,7 @@
 <title>Alumni Portal — Reset Password</title>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/reset-style.css">
+<script src="/config.js"></script>
 </head>
 <body>
 
@@ -205,8 +206,7 @@
 <footer class="login-footer">&copy; 2026 Alumni Portal &middot; Tarlac State University | College of Computer Studies</footer>
 
 <script>
-  const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const API = IS_LOCAL ? 'http://localhost:5000/api' : 'https://project-alumni-eight.vercel.app/api';
+  const API = window.APP_CONFIG.API;
   let resetEmail = '';
   let resetToken = '';
 

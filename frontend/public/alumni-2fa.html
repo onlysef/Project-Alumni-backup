@@ -6,6 +6,7 @@
 <title>Alumni Portal — Two-Factor Authentication</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/reset-style.css">
+<script src="/config.js"></script>
 </head>
 <body>
 
@@ -63,9 +64,8 @@
 <footer>© 2026 Alumni Portal &nbsp;·&nbsp; Tarlac State University</footer>
 
 <script>
-  const IS_LOCAL = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const API = IS_LOCAL ? 'http://localhost:5000/api' : 'https://project-alumni-eight.vercel.app/api';
-  const APP = IS_LOCAL ? 'http://localhost:5173' : 'https://project-alumni-rrxj.vercel.app';
+  const API = window.APP_CONFIG.API;
+  const APP = window.APP_CONFIG.APP;
   const tempToken = sessionStorage.getItem('tfa_temp_token');
 
   if (!tempToken) window.location.href = 'alumni-login.html';
