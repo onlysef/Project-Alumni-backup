@@ -2,6 +2,7 @@
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
+import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import TracerFormEditor from "./TracerFormEditor.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
@@ -593,26 +594,44 @@ export default function EmploymentView() {
                   <td data-label="Status"><StatusBadge status={r.employment_status} /></td>
                   <td data-label="Last Updated">{fmtDate(r.last_updated)}</td>
                   <td data-label="Actions">
-                    <button
-                      type="button"
-                      className="table-icon table-print"
-                      aria-label="Print record"
-                      onClick={() => setConfirm({
-                        open: true,
-                        message: `Print employment record for ${r.name}?`,
-                        onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
-                      })}
-                    >
-                      <span><Icon name="icon-19" /></span>
-                    </button>
-                    <button
-                      type="button"
-                      className="table-icon table-view"
-                      aria-label="View record"
-                      onClick={() => setViewRecord(r)}
-                    >
-                      <span><Icon name="icon-20" /></span>
-                    </button>
+                    <div className="desktop-row-actions">
+                      <button
+                        type="button"
+                        className="table-icon table-print"
+                        aria-label="Print record"
+                        onClick={() => setConfirm({
+                          open: true,
+                          message: `Print employment record for ${r.name}?`,
+                          onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
+                        })}
+                      >
+                        <span><Icon name="icon-19" /></span>
+                      </button>
+                      <button
+                        type="button"
+                        className="table-icon table-view"
+                        aria-label="View record"
+                        onClick={() => setViewRecord(r)}
+                      >
+                        <span><Icon name="icon-20" /></span>
+                      </button>
+                    </div>
+                    <div className="mobile-row-actions">
+                      <ActionMenu
+                        actions={["print", "view"]}
+                        onSelect={(action) => {
+                          if (action === "view") {
+                            setViewRecord(r);
+                            return;
+                          }
+                          setConfirm({
+                            open: true,
+                            message: `Print employment record for ${r.name}?`,
+                            onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
+                          });
+                        }}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

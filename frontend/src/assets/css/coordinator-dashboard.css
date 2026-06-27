@@ -530,6 +530,7 @@
 
     .coord-stat,
     .coord-highlight {
+        position: relative;
         min-height: 96px;
         border: 1px solid rgb(255 255 255 / 12%);
         border-radius: 10px;
@@ -541,6 +542,12 @@
         justify-content: space-between;
         gap: 16px;
         box-shadow: var(--panel-shadow);
+    }
+
+    .coord-stat > div,
+    .coord-highlight > div {
+        min-width: 0;
+        padding-right: 62px;
     }
 
     .coord-stat strong {
@@ -561,6 +568,14 @@
     }
 
     .coord-stat .admin-svg-icon {
+        position: absolute;
+        top: 50%;
+        right: 18px;
+        transform: translateY(-50%);
+        z-index: 1;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
         width: 48px;
         height: 48px;
         flex: 0 0 48px;
@@ -593,6 +608,14 @@
         align-content: center;
     }
     .coord-highlight .admin-svg-icon {
+        position: absolute;
+        top: 50%;
+        right: 18px;
+        transform: translateY(-50%);
+        z-index: 1;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
         width: 48px;
         height: 48px;
         flex: 0 0 auto;
@@ -719,9 +742,9 @@
             .coord-report-row {
                 min-height: 64px;
                 display: grid;
-                grid-template-columns: minmax(120px, 0.9fr) minmax(210px, 1.4fr);
+                grid-template-columns: minmax(105px, 0.75fr) minmax(0, 1.5fr);
                 align-items: center;
-                gap: 14px;
+                gap: 8px;
                 padding: 10px 6px;
                 font-size: 13px;
                 font-weight: 700;
@@ -739,10 +762,11 @@
 
             .coord-report-filters {
                 display: grid;
-                grid-template-columns: minmax(120px, 1fr) 68px 34px;
+                grid-template-columns: minmax(0, 1fr) 62px 34px;
                 align-items: center;
-                gap: 8px;
+                gap: 6px;
                 justify-self: stretch;
+                min-width: 0;
             }
 
             .coord-report-select {
@@ -781,7 +805,10 @@
             .coord-icon-button {
                 padding: 0;
                 width: 34px;
+                min-width: 34px;
+                max-width: 34px;
                 height: 34px;
+                flex: 0 0 34px;
                 border: 0;
                 border-radius: 5px;
                 display: inline-flex;
@@ -1369,8 +1396,8 @@
         animation: coordViewFadeIn 220ms ease both;
     }
     @keyframes coordViewFadeIn {
-        from { opacity: 0; transform: translateY(8px); }
-        to   { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; }
+        to   { opacity: 1; }
     }
 
     .coord-card,
@@ -1743,13 +1770,15 @@
     align-items: center;
     justify-content: center;
     padding: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 .coord-modal {
     background: #fff;
     border-radius: 10px;
     width: 100%;
     max-width: 520px;
-    max-height: 90vh;
+    max-height: calc(100dvh - 32px);
     overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0,0,0,0.28);
     display: flex;
@@ -3334,6 +3363,43 @@ body.dark-mode .coord-highlight .admin-svg-icon {
         grid-template-columns: minmax(0, 1fr) 70px 34px !important;
     }
 
+    .coord-reports {
+        padding-inline: 12px;
+        overflow: visible;
+    }
+
+    .coord-report-row {
+        width: 100%;
+        min-width: 0;
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px;
+        align-items: stretch;
+        padding-inline: 0;
+    }
+
+    .coord-report-row > span {
+        width: 100%;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .coord-report-filters {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        justify-self: stretch;
+    }
+
+    .coord-report-filters > * {
+        min-width: 0 !important;
+    }
+
+    .coord-report-select {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+    }
+
     .coord-modal {
         width: calc(100vw - 24px) !important;
     }
@@ -3350,8 +3416,158 @@ body.dark-mode .coord-highlight .admin-svg-icon {
 
 @media (max-width: 360px) {
     .coord-stats,
-    .coord-status-grid,
-    .coord-report-filters {
+    .coord-status-grid {
         grid-template-columns: 1fr !important;
     }
+
+    .coord-report-filters {
+        grid-template-columns: minmax(0, 1fr) 62px 34px !important;
+        gap: 5px;
+    }
+
+    .coord-report-select {
+        padding-inline: 7px;
+        font-size: 10px;
+    }
+}
+
+
+@media (min-width: 901px) {
+    .app,
+    .app:not(.sidebar-collapsed) {
+        grid-template-columns: 200px minmax(0, 1fr);
+    }
+
+    .app.sidebar-collapsed {
+        grid-template-columns: 72px minmax(0, 1fr);
+    }
+
+    .sidebar {
+        padding-block: 18px;
+    }
+
+    .brand {
+        padding: 0 20px 16px;
+    }
+
+    .nav a {
+        min-height: 46px;
+        padding: 9px 22px;
+        gap: 9px;
+    }
+
+    .nav a:hover {
+        padding-left: 27px;
+    }
+
+    .nav a.active {
+        width: 190px;
+        height: 44px;
+        min-height: 44px;
+        padding-left: 14px;
+    }
+
+    .nav a.active:hover {
+        padding-left: 14px;
+    }
+
+    .nav-sub a {
+        min-height: 34px;
+        height: 34px;
+        padding-block: 7px;
+        padding-left: 46px;
+    }
+
+    .sidebar-footer {
+        padding: 12px 14px;
+    }
+
+    .sidebar-logout {
+        min-height: 40px;
+        padding-block: 8px;
+    }
+
+    .topbar,
+    .coordinator-app .topbar {
+        height: 58px;
+        padding-inline: 18px;
+    }
+
+    .topbar h2 {
+        font-size: 16px;
+    }
+
+    .content,
+    .coordinator-app .content {
+        height: calc(100vh - 58px);
+        padding: 18px 24px 26px;
+    }
+
+    .admin-hero,
+    .coord-hero {
+        padding: 18px 22px;
+        margin-bottom: 14px;
+        border-radius: 12px;
+    }
+
+    .admin-hero-title,
+    .coord-hero-title {
+        font-size: 22px;
+    }
+
+    .admin-hero-subtitle,
+    .coord-hero-subtitle {
+        margin-top: 6px;
+        font-size: 13px;
+    }
+
+    .admin-hero-pills,
+    .coord-hero-pills {
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .hero-pill,
+    .coord-hero-pill {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .stats,
+    .coord-stats {
+        gap: 14px;
+        margin-bottom: 18px;
+    }
+
+    .stat-card,
+    .coord-stat,
+    .coord-highlight {
+        min-height: 82px;
+        padding: 14px;
+    }
+
+    .stat-value,
+    .coord-stat strong {
+        font-size: 25px;
+    }
+
+    .grid,
+    .coord-dashboard-grid,
+    .coord-left-stack,
+    .coord-right-stack {
+        gap: 14px;
+    }
+
+    .panel-head,
+    .coord-card h3 {
+        min-height: 38px;
+    }
+}
+
+body:not(.dark-mode) .coordinator-app .coord-stat .admin-svg-icon,
+body:not(.dark-mode) .coordinator-app .coord-highlight .admin-svg-icon {
+    filter: brightness(0) invert(1) !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }

@@ -786,17 +786,38 @@
         }
 
         .stat-card {
+            position: relative;
             border: 1px solid rgb(255 255 255 / 12% 12%);
-            min-height: 135px;
+            min-height: 96px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 24px 18px 19px 26px;
-            border-radius: 20px;
+            padding: 18px;
+            border-radius: 10px;
             background: var(--maroon);
             color: #fff;
             box-shadow: var(--panel-shadow);
             transition: background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+        }
+
+        .stat-card > div {
+            min-width: 0;
+            padding-right: 62px;
+        }
+
+        .stat-card > span {
+            position: absolute;
+            top: 50%;
+            right: 18px;
+            width: 48px;
+            height: 48px;
+            transform: translateY(-50%);
+            display: grid;
+            place-items: center;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.94);
+            box-shadow: inset 0 0 0 1px rgba(87, 0, 19, 0.08);
+            overflow: hidden;
         }
 
         .stat-card:hover {
@@ -806,10 +827,10 @@
         }
 
         .stat-value {
-            margin: 0 0 12px;
-            font-size: 40px;
-            line-height: 140%;
-            font-weight: 700;
+            margin: 0 0 6px;
+            font-size: 28px;
+            line-height: 1;
+            font-weight: 800;
             letter-spacing: 0;
         }
 
@@ -4430,6 +4451,22 @@
             }
         }
 
+        @media (max-width: 760px) {
+            .figma-group-69 .stats {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 10px;
+            }
+
+            .figma-group-69 .stats .stat-card {
+                grid-column: auto !important;
+                width: 100%;
+            }
+
+            .figma-group-69 .stats .stat-card:last-child {
+                grid-column: 1 / -1 !important;
+            }
+        }
+
         body.dark-mode .section-title h3,
         body.dark-mode .panel,
         body.dark-mode .panel p,
@@ -4531,8 +4568,16 @@
         }
 
         .stat-card .admin-svg-icon {
-            width: 64px;
-            height: 64px;
+            width: 30px;
+            height: 30px;
+            max-width: 30px;
+            max-height: 30px;
+            display: block;
+            position: static !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            transform: none !important;
+            object-fit: contain;
         }
 
         .composer-icon-action .admin-svg-icon {
@@ -5675,7 +5720,76 @@
         body.dark-mode .action-menu-item { color: #f3e7ea; }
         body.dark-mode .action-menu-item:hover { background: #3a1f27; }
 
+        body:not(.dark-mode) .figma-group-69 .stat-card .admin-svg-icon {
+            filter: brightness(0) saturate(100%) invert(11%) sepia(73%) saturate(3884%) hue-rotate(330deg) brightness(70%) contrast(105%);
+        }
+
+        body.dark-mode .figma-group-69 .stat-card {
+            background: linear-gradient(135deg, #2b1018 0%, #4b0618 55%, #6f0a25 100%) !important;
+            color: #fff7f8;
+            border-color: rgba(250, 200, 83, 0.22);
+        }
+
+        body.dark-mode .figma-group-69 .stat-value {
+            color: var(--gold);
+        }
+
+        body.dark-mode .figma-group-69 .stat-label {
+            color: #f3e7ea;
+        }
+
+        body.dark-mode .figma-group-69 .stat-card > span {
+            background: rgba(250, 200, 83, 0.16);
+            box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.36);
+        }
+
+        body.dark-mode .figma-group-69 .stat-card .admin-svg-icon {
+            filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
+        }
+
+        .desktop-row-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mobile-row-actions {
+            display: none;
+        }
+
         @media (max-width: 600px) {
+            .desktop-row-actions {
+                display: none !important;
+            }
+
+            .mobile-row-actions {
+                display: block;
+                min-width: 34px !important;
+                width: auto !important;
+                max-width: none !important;
+                justify-self: start;
+            }
+
+            .mobile-row-actions .action-menu,
+            .mobile-row-actions .action-menu-trigger {
+                min-width: 34px !important;
+                width: 34px !important;
+                max-width: 34px !important;
+            }
+
+            .mobile-row-actions .action-menu-list {
+                width: 168px !important;
+                min-width: 168px !important;
+                max-width: min(168px, calc(100vw - 28px)) !important;
+            }
+
+            .mobile-row-actions .action-menu-item {
+                width: 100% !important;
+                min-width: 0 !important;
+                max-width: none !important;
+                white-space: nowrap;
+            }
+
             html,
             body,
             #root,
@@ -5701,9 +5815,21 @@
                 padding: 14px;
             }
 
-            .stat-card .admin-svg-icon {
+            .stat-card > div {
+                padding-right: 46px;
+            }
+
+            .stat-card > span {
+                right: 12px;
                 width: 38px;
                 height: 38px;
+            }
+
+            .stat-card .admin-svg-icon {
+                width: 24px;
+                height: 24px;
+                max-width: 24px;
+                max-height: 24px;
             }
 
             .stat-value {
@@ -6093,7 +6219,6 @@
         }
 
         @media (max-width: 360px) {
-            .stats,
             .admin-kpis {
                 grid-template-columns: 1fr !important;
             }
