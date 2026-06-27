@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { MiniBarChart, downloadCsv } from "./CoordinatorShared.jsx";
 
@@ -21,6 +21,7 @@ const REPORTS = [
 
 export default function CoordinatorHome() {
   const { showToast } = useOutletContext();
+  const navigate = useNavigate();
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
@@ -125,7 +126,15 @@ export default function CoordinatorHome() {
             ) : data?.activity?.length ? (
               <div className="activity-list">
                 {data.activity.map((a, i) => (
-                  <div className="activity" key={a._id ?? i}>
+                  <div
+                    className="activity"
+                    key={a._id ?? i}
+                    onClick={() => {
+                      const dest = a.type === "attendance" ? "/coordinator/participation" : "/coordinator/events";
+                      navigate(dest, { state: { eventId: a.event_id ?? null } });
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
                     <p>
                       {a.name ? (
                         <>

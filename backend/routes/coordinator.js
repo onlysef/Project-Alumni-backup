@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { getEmploymentRecords, getEmploymentActivity } = require('../controllers/employmentController');
+const { getEmploymentRecords, getEmploymentActivity, notifyAlumniToUpdate } = require('../controllers/employmentController');
 const {
   getEvents, createEvent, updateEvent, deleteEvent,
   getInterestedAlumni, getCoordinatorNotifications, markNotificationsRead,
@@ -100,12 +100,12 @@ router.get('/dashboard', async (req, res) => {
       ...recentLogs.map(l => {
         const name = l.alumni_id ? `${l.alumni_id.firstName} ${l.alumni_id.lastName}` : 'An alumni';
         const detail = `was recorded ${l.status || 'Present'} at "${l.event_id?.title || 'an event'}"`;
-        return { name, detail, text: `${name} ${detail}`, time: l.createdAt };
+        return { name, detail, text: `${name} ${detail}`, time: l.createdAt, type: 'attendance', event_id: l.event_id?._id ?? null };
       }),
       ...recentFeedbackDocs.map(f => {
         const name = f.alumni_id ? `${f.alumni_id.firstName} ${f.alumni_id.lastName}` : 'An alumni';
         const detail = `submitted feedback for "${f.event_id?.title || 'an event'}"`;
-        return { name, detail, text: `${name} ${detail}`, time: f.createdAt };
+        return { name, detail, text: `${name} ${detail}`, time: f.createdAt, type: 'feedback', event_id: f.event_id?._id ?? null };
       }),
     ]
       .sort((a, b) => new Date(b.time) - new Date(a.time))
@@ -246,6 +246,12 @@ router.patch('/notifications/read', markNotificationsRead);
 // Employment (must declare /activity before plain /employment)
 router.get('/employment/activity', getEmploymentActivity);
 router.get('/employment',          getEmploymentRecords);
+router.post('/employment/notify',  (req, res) => {
+  // Force the coordinator's assigned college — ignore any body.college
+  req.body.college = req.user.college || '';
+  req.body.course  = '';
+  return notifyAlumniToUpdate(req, res);
+});
 
 // Attendance — must declare specific paths before /:eventId param routes
 router.get('/attendance/events',                   getAttendanceEvents);

@@ -1,9 +1,11 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
+import { Modal } from "../../components/common/Primitives.jsx";
 import { downloadCsv } from "./CoordinatorShared.jsx";
+import { useAuth } from "../../context/AuthContext.jsx";
 
-import { apiFetch } from "../../services/api.js";
+import { apiFetch, API, authHeaders } from "../../services/api.js";
 
 const EMPTY_VALS = new Set(["N/A", "n/a", "None", "none", "null", "undefined", ""]);
 function display(val) {
@@ -51,6 +53,7 @@ const COURSES_BY_COLLEGE = {
 
 export default function CoordinatorEmploymentView() {
   const { showToast } = useOutletContext();
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [activities, setActivities] = useState([]);
   const [college, setCollege] = useState("");
@@ -61,6 +64,7 @@ export default function CoordinatorEmploymentView() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
   const [notifying, setNotifying] = useState(false);
+  const [confirm, setConfirm] = useState({ open: false, message: "", onConfirm: null });
   const debounceRef = useRef(null);
 
   // Courses available for the currently selected college
@@ -99,22 +103,31 @@ export default function CoordinatorEmploymentView() {
     setCourse("");
   }
 
-  async function handleNotify() {
-    const scope = college
-      ? `${college}${course ? " · " + course : ""} alumni`
-      : "all alumni";
-    const ok = window.confirm(
-      `Send a reminder to ${scope} to update their employment details for accreditation?`
-    );
-    if (!ok) return;
-    setNotifying(true);
-    try {
-      // Visual-only for now: simulate dispatch.
-      await new Promise((r) => setTimeout(r, 600));
-      showToast?.(`Reminder sent to ${scope} to update employment details.`);
-    } finally {
-      setNotifying(false);
-    }
+  function handleNotify() {
+    const assignedCollege = user?.college || "";
+    const scope = assignedCollege ? `${assignedCollege} alumni` : "all alumni";
+    setConfirm({
+      open: true,
+      message: `Send a reminder to ${scope} to update their employment details for accreditation?`,
+      onConfirm: async () => {
+        setConfirm(c => ({ ...c, open: false }));
+        setNotifying(true);
+        try {
+          const res  = await fetch(`${API}/coordinator/employment/notify`, {
+            method:  "POST",
+            headers: authHeaders(),
+            body:    JSON.stringify({}),
+          });
+          const data = await res.json();
+          if (!res.ok) { showToast?.(data.message || "Failed to send notifications."); return; }
+          showToast?.(data.message);
+        } catch {
+          showToast?.("Could not connect to server.");
+        } finally {
+          setNotifying(false);
+        }
+      },
+    });
   }
 
   function handleSearchChange(e) {
@@ -163,7 +176,7 @@ export default function CoordinatorEmploymentView() {
             onClick={handleNotify}
             disabled={notifying}
           >
-            <Icon name="icon-update" />
+            <Icon name="icon-update-white" />
             {notifying ? "Sending…" : "Notify Alumni to Update"}
           </button>
         </div>
@@ -284,6 +297,24 @@ export default function CoordinatorEmploymentView() {
           )}
         </div>
       </section>
+
+      {confirm.open && (
+        <Modal open onClose={() => setConfirm(c => ({ ...c, open: false }))}>
+          <div className="confirm-dialog">
+            <div className="modal-head">
+              <h3>Confirm Action</h3>
+              <button type="button" onClick={() => setConfirm(c => ({ ...c, open: false }))}>×</button>
+            </div>
+            <div className="confirm-dialog-body">{confirm.message}</div>
+            <div className="modal-actions" style={{ padding: "0 20px 18px" }}>
+              <button type="button" onClick={() => setConfirm(c => ({ ...c, open: false }))}>Cancel</button>
+              <button type="button" style={{ background: "var(--maroon)", color: "#fff" }} onClick={confirm.onConfirm}>
+                Confirm
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </section>
   );
 }

@@ -53,12 +53,27 @@ const recordAttendance = async (req, res) => {
     if (!event_id)  return res.status(400).json({ message: 'Event is required.' });
     if (!alumni_id) return res.status(400).json({ message: 'Alumni is required.' });
 
+    // Time-window validation
+    const eventDoc = await Event.findById(event_id, 'title event_datetime end_datetime created_by').lean();
+    if (!eventDoc) return res.status(404).json({ message: 'Event not found.' });
+
+    const now   = new Date();
+    const start = new Date(eventDoc.event_datetime);
+    if (now < start) {
+      return res.status(400).json({ message: 'Attendance is not yet open. This event has not started yet.' });
+    }
+    const end = eventDoc.end_datetime
+      ? new Date(eventDoc.end_datetime)
+      : (() => { const d = new Date(eventDoc.event_datetime); d.setHours(23, 59, 59, 999); return d; })();
+    if (now > end) {
+      return res.status(400).json({ message: 'Attendance is already closed. This event has ended.' });
+    }
+
     const existing = await AttendanceLog.findOne({ event_id, alumni_id });
     if (existing) {
       return res.status(409).json({ message: 'Attendance already recorded for this alumni at this event.' });
     }
 
-    const now = new Date();
     const autoTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
     const log = await AttendanceLog.create({
@@ -69,19 +84,16 @@ const recordAttendance = async (req, res) => {
       recorded_by: req.user.id,
     });
 
-    const [alumni, event] = await Promise.all([
-      User.findById(alumni_id, 'firstName lastName course email').lean(),
-      Event.findById(event_id, 'title created_by').lean(),
-    ]);
+    const alumni = await User.findById(alumni_id, 'firstName lastName course email').lean();
 
     // Notify the coordinator who created the event (skip if they recorded it themselves)
-    if (event?.created_by && String(event.created_by) !== String(req.user.id)) {
+    if (eventDoc.created_by && String(eventDoc.created_by) !== String(req.user.id)) {
       await Notification.create({
-        user_id:  event.created_by,
+        user_id:  eventDoc.created_by,
         title:    'Attendance Recorded',
-        message:  `${alumni ? `${alumni.firstName} ${alumni.lastName}` : 'An alumni'} was recorded as ${status || 'Present'} at "${event.title}"`,
+        message:  `${alumni ? `${alumni.firstName} ${alumni.lastName}` : 'An alumni'} was recorded as ${status || 'Present'} at "${eventDoc.title}"`,
         is_read:  false,
-        event_id: event._id,
+        event_id: eventDoc._id,
         type:     'attendance',
       });
     }
