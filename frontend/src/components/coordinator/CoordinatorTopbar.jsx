@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
-import { API } from "../../services/api.js";
+import { API, authHeaders } from "../../services/api.js";
 
 function timeAgo(date) {
   const diff = (Date.now() - new Date(date)) / 1000;
@@ -55,11 +55,14 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
 
   const notifCount = settings?.dashboardNotifications ? unread : 0;
 
-  function applyTheme(theme) {
-    const next = { ...settings, theme };
-    setSettings(next);
-    localStorage.setItem("aptmsCoordinatorSettings", JSON.stringify(next));
-    showToast(`${theme === "dark" ? "Dark" : "Light"} mode applied.`);
+  function previewTheme(theme) {
+    document.body.classList.toggle("dark-mode", theme === "dark");
+  }
+
+  function closeSettings() {
+    document.body.classList.toggle("dark-mode", settings.theme === "dark");
+    document.body.classList.toggle("compact-admin", settings.compactTables ?? false);
+    setPanel(null);
   }
 
   return (
@@ -127,24 +130,24 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
         </section>
       </Modal>
 
-      <Modal open={panel === "settings"} onClose={() => setPanel(null)} className="topbar-popover settings-popover">
+      <Modal open={panel === "settings"} onClose={closeSettings} className="topbar-popover settings-popover">
         <SettingsForm
           settings={settings}
           onSave={(s) => {
             setSettings(s);
-            localStorage.setItem("aptmsCoordinatorSettings", JSON.stringify(s));
             setPanel(null);
             showToast("Settings saved.");
           }}
-          onChangeTheme={applyTheme}
-          onClose={() => setPanel(null)}
+          onChangeTheme={previewTheme}
+          onClose={closeSettings}
+          showToast={showToast}
         />
       </Modal>
     </>
   );
 }
 
-function SettingsForm({ settings, onSave, onChangeTheme, onClose }) {
+function SettingsForm({ settings, onSave, onChangeTheme, onClose, showToast }) {
   const [local, setLocal] = useState(settings);
   useEffect(() => setLocal(settings), [settings]);
   return (
@@ -197,11 +200,120 @@ function SettingsForm({ settings, onSave, onChangeTheme, onClose }) {
             onChange={(e) => setLocal((p) => ({ ...p, dashboardNotifications: e.target.checked }))}
           />
         </label>
+        <ChangePasswordSection showToast={showToast} />
         <div className="modal-actions">
           <button type="button" onClick={onClose}>Cancel</button>
           <button type="submit">Save Settings</button>
         </div>
       </form>
     </section>
+  );
+}
+
+function EyeIcon({ visible }) {
+  return visible ? (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="16" height="16">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  );
+}
+
+function ChangePasswordSection({ showToast }) {
+  const [open, setOpen]               = useState(false);
+  const [current, setCurrent]         = useState("");
+  const [newPw, setNewPw]             = useState("");
+  const [confirm, setConfirm]         = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew]         = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [error, setError]             = useState("");
+  const [saving, setSaving]           = useState(false);
+
+  function reset() {
+    setCurrent(""); setNewPw(""); setConfirm("");
+    setShowCurrent(false); setShowNew(false); setShowConfirm(false);
+    setError("");
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (!current || !newPw || !confirm) { setError("All fields are required."); return; }
+    if (newPw.length < 8)              { setError("New password must be at least 8 characters."); return; }
+    if (newPw !== confirm)             { setError("Passwords do not match."); return; }
+    setSaving(true);
+    try {
+      const res  = await fetch(`${API}/auth/change-password`, {
+        method:  "POST",
+        headers: authHeaders(),
+        body:    JSON.stringify({ currentPassword: current, newPassword: newPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || "Failed to change password."); return; }
+      reset();
+      setOpen(false);
+      showToast("Password changed successfully.");
+    } catch {
+      setError("Could not connect to server.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="setting-row pw-change-row">
+      <div className="pw-change-header">
+        <span>
+          <strong>Change Password</strong>
+          <small>Update your account password.</small>
+        </span>
+        <button
+          type="button"
+          className="pw-change-toggle"
+          onClick={() => { setOpen((o) => !o); reset(); }}
+        >
+          {open ? "Cancel" : "Change Password"}
+        </button>
+      </div>
+      {open && (
+        <div className="pw-change-form">
+          {[
+            { label: "Current Password", value: current, set: setCurrent, show: showCurrent, toggle: () => setShowCurrent(v => !v) },
+            { label: "New Password",     value: newPw,   set: setNewPw,   show: showNew,     toggle: () => setShowNew(v => !v) },
+            { label: "Confirm Password", value: confirm, set: setConfirm, show: showConfirm,  toggle: () => setShowConfirm(v => !v) },
+          ].map(({ label, value, set, show, toggle }) => (
+            <div key={label} className="pw-field-wrap">
+              <label className="pw-field-label">{label}</label>
+              <div className="pw-input-wrap">
+                <input
+                  type={show ? "text" : "password"}
+                  value={value}
+                  onChange={(e) => { set(e.target.value); setError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSubmit(e); } }}
+                  placeholder={label}
+                  autoComplete="new-password"
+                />
+                <button type="button" className="pw-eye" onClick={toggle} tabIndex={-1}>
+                  <EyeIcon visible={show} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {error && <span className="field-error pw-error">{error}</span>}
+          <button
+            type="button"
+            className="pw-submit"
+            disabled={saving}
+            onClick={handleSubmit}
+          >
+            {saving ? "Saving…" : "Update Password"}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
