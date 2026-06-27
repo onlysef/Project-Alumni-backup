@@ -163,14 +163,14 @@ export default function AccountsView() {
         <article>
           <div>
             <strong>{activeCount}</strong>
-            <span>Active Accounts</span>
+            <span>All Active Accounts</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-11" /></span>
         </article>
         <article>
           <div>
             <strong>{pendingCount}</strong>
-            <span>Pending Activation</span>
+            <span>All Pending Activation</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-13" /></span>
         </article>
