@@ -18,9 +18,10 @@ function mapProgramToCourse(programsCompleted) {
 }
 
 // Resolves company_name, work_location, and graduation_year from extra_answers by label matching
-async function resolveExtraFromTracer(extraAnswers) {
+async function resolveExtraFromTracer(extraAnswers, college = 'CCS') {
   try {
-    const cfg = await TracerFormConfig.findOne().sort({ updatedAt: -1 }).lean();
+    let cfg = await TracerFormConfig.findOne({ college }).lean();
+    if (!cfg) cfg = await TracerFormConfig.findOne({ college: 'CCS' }).lean();
     if (!cfg?.config?.pages) return {};
     const result = {};
     for (const page of cfg.config.pages) {

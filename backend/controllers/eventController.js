@@ -8,7 +8,9 @@ const User           = require('../models/User');
 // GET /coordinator/events
 const getEvents = async (req, res) => {
   try {
-    const events = await Event.find().sort({ event_datetime: -1 }).lean();
+    // Coordinators only see events for their college; admins see all
+    const filter = req.user.college ? { college: req.user.college } : {};
+    const events = await Event.find(filter).sort({ event_datetime: -1 }).lean();
 
     const eventIds = events.map(e => e._id);
     const counts = await EventInterested.aggregate([
@@ -46,6 +48,7 @@ const createEvent = async (req, res) => {
       end_datetime:   end_datetime ? new Date(end_datetime) : null,
       visibility:     visibility || 'Public',
       capacity:       Number(capacity) || 0,
+      college:        req.user.college || '',
       created_by:     req.user.id,
     });
 
@@ -74,13 +77,24 @@ const createEvent = async (req, res) => {
 // PUT /coordinator/events/:id
 const updateEvent = async (req, res) => {
   try {
-    const { title, description, image, location, event_datetime, visibility, capacity } = req.body;
+    const { title, description, image, location, event_datetime, end_datetime, visibility, capacity } = req.body;
+
+    // Coordinators can only edit events belonging to their college
+    if (req.user.college) {
+      const existing = await Event.findById(req.params.id, 'college').lean();
+      if (!existing) return res.status(404).json({ message: 'Event not found.' });
+      if (existing.college !== req.user.college) {
+        return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+      }
+    }
+
     const updates = {};
     if (title          !== undefined) updates.title          = title.trim();
     if (description    !== undefined) updates.description    = description.trim();
     if (image          !== undefined) updates.image          = image || '';
     if (location       !== undefined) updates.location       = location.trim();
     if (event_datetime !== undefined) updates.event_datetime = new Date(event_datetime);
+    if (end_datetime   !== undefined) updates.end_datetime   = end_datetime ? new Date(end_datetime) : null;
     if (visibility     !== undefined) updates.visibility     = visibility;
     if (capacity       !== undefined) updates.capacity       = Number(capacity) || 0;
 
@@ -98,6 +112,15 @@ const updateEvent = async (req, res) => {
 // DELETE /coordinator/events/:id
 const deleteEvent = async (req, res) => {
   try {
+    // Coordinators can only delete events belonging to their college
+    if (req.user.college) {
+      const existing = await Event.findById(req.params.id, 'college').lean();
+      if (!existing) return res.status(404).json({ message: 'Event not found.' });
+      if (existing.college !== req.user.college) {
+        return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+      }
+    }
+
     const event = await Event.findByIdAndDelete(req.params.id);
     if (!event) return res.status(404).json({ message: 'Event not found.' });
     await EventInterested.deleteMany({ event_id: req.params.id });

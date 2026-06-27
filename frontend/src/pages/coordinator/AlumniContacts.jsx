@@ -15,7 +15,6 @@ export default function AlumniContacts() {
   const { showToast } = useOutletContext();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [course, setCourse] = useState("");
   const [year, setYear] = useState("");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -26,7 +25,7 @@ export default function AlumniContacts() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await apiFetch("/coordinator/alumni", { params: { course, year, search: appliedSearch, page, limit: 10 } });
+      const data = await apiFetch("/coordinator/alumni", { params: { year, search: appliedSearch, page, limit: 10 } });
       setContacts(data.contacts ?? []);
       setPagination(data.pagination ?? null);
     } catch {
@@ -34,10 +33,10 @@ export default function AlumniContacts() {
     } finally {
       setLoading(false);
     }
-  }, [course, year, appliedSearch, page]);
+  }, [year, appliedSearch, page]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [course, year, appliedSearch]);
+  useEffect(() => { setPage(1); }, [year, appliedSearch]);
 
   function handleSearchChange(e) {
     const val = e.target.value;
@@ -49,7 +48,7 @@ export default function AlumniContacts() {
   async function handleExport() {
     try {
       const data = await apiFetch("/coordinator/alumni", {
-        params: { course, year, search: appliedSearch, page: 1, limit: 99999 },
+        params: { year, search: appliedSearch, page: 1, limit: 99999 },
       });
       const all = data.contacts ?? [];
       downloadCsv("alumni-contacts.csv", [
@@ -68,12 +67,6 @@ export default function AlumniContacts() {
         <div className="coord-contact-toolbar">
           <h3>Manage Contacts</h3>
           <span>Filter by</span>
-          <select value={course} onChange={(e) => setCourse(e.target.value)}>
-            <option value="">Course</option>
-            <option value="BSIT">BSIT</option>
-            <option value="BSCS">BSCS</option>
-            <option value="BSIS">BSIS</option>
-          </select>
           <select value={year} onChange={(e) => setYear(e.target.value)}>
             <option value="">Year</option>
             <option value="2022">2022</option>

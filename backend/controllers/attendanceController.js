@@ -8,7 +8,9 @@ const User          = require('../models/User');
 // GET /coordinator/attendance/events
 const getAttendanceEvents = async (req, res) => {
   try {
-    const events = await Event.find().sort({ event_datetime: -1 }).lean();
+    // Coordinators only see events for their college; admins see all
+    const filter = req.user.college ? { college: req.user.college } : {};
+    const events = await Event.find(filter).sort({ event_datetime: -1 }).lean();
     res.json({ events });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
@@ -21,8 +23,12 @@ const searchAlumni = async (req, res) => {
     const { q } = req.query;
     if (!q || q.trim().length < 2) return res.json({ alumni: [] });
 
+    // Coordinators can only search alumni from their college
+    const baseMatch = { role: 'alumni' };
+    if (req.user.college) baseMatch.college = req.user.college;
+
     const alumni = await User.aggregate([
-      { $match: { role: 'alumni' } },
+      { $match: baseMatch },
       {
         $addFields: {
           fullName: { $concat: ['$firstName', ' ', '$lastName'] },
@@ -53,9 +59,14 @@ const recordAttendance = async (req, res) => {
     if (!event_id)  return res.status(400).json({ message: 'Event is required.' });
     if (!alumni_id) return res.status(400).json({ message: 'Alumni is required.' });
 
-    // Time-window validation
-    const eventDoc = await Event.findById(event_id, 'title event_datetime end_datetime created_by').lean();
+    // Time-window validation + college enforcement
+    const eventDoc = await Event.findById(event_id, 'title event_datetime end_datetime college created_by').lean();
     if (!eventDoc) return res.status(404).json({ message: 'Event not found.' });
+
+    // Coordinator can only record attendance for their college's events
+    if (req.user.college && eventDoc.college && eventDoc.college !== req.user.college) {
+      return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+    }
 
     const now   = new Date();
     const start = new Date(eventDoc.event_datetime);

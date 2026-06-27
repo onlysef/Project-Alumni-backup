@@ -8,7 +8,7 @@ const protect = (req, res, next) => {
   const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = { id: decoded.id, role: decoded.role };
+    req.user = { id: decoded.id, role: decoded.role, college: decoded.college || '' };
     next();
   } catch {
     res.status(401).json({ message: 'Invalid or expired token.' });

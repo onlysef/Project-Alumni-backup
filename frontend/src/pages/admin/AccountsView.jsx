@@ -394,6 +394,9 @@ export default function AccountsView() {
                 role:      data.role.toLowerCase(),
                 status:    data.status.toLowerCase(),
               };
+              if (data.role.toLowerCase() === "coordinator") {
+                payload.college = data.college || "";
+              }
               if (data.role.toLowerCase() === "alumni") {
                 if (data.college)        payload.college        = data.college;
                 if (data.course)         payload.course         = data.course;
@@ -422,6 +425,9 @@ export default function AccountsView() {
                 email:     data.email,
                 role:      data.role.toLowerCase(),
               };
+              if (data.role.toLowerCase() === "coordinator") {
+                payload.college = data.college || "";
+              }
               if (data.role.toLowerCase() === "alumni") {
                 if (data.college)        payload.college        = data.college;
                 if (data.course)         payload.course         = data.course;
@@ -495,10 +501,51 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
 
         {!result ? (
           <form className="admin-entry-form" onSubmit={handleSubmit}>
-            <p style={{ color: "var(--text-muted, #666)", fontSize: 13, margin: "0 0 12px" }}>
-              Upload an <strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong> file.
-              Required columns: <code>firstName</code>, <code>lastName</code>, <code>email</code>.
+            <p style={{ color: "var(--text-muted, #666)", fontSize: 13, margin: "0 0 8px" }}>
+              Upload an <strong>.xlsx</strong>, <strong>.xls</strong>, or <strong>.csv</strong> file
+              with the following columns:
             </p>
+            <table style={{ fontSize: 12, borderCollapse: "collapse", width: "100%", marginBottom: 12 }}>
+              <thead>
+                <tr style={{ background: "#f5eaed" }}>
+                  <th style={{ padding: "4px 8px", textAlign: "left", borderBottom: "1px solid #e0c8cc" }}>Column</th>
+                  <th style={{ padding: "4px 8px", textAlign: "left", borderBottom: "1px solid #e0c8cc" }}>Required?</th>
+                  <th style={{ padding: "4px 8px", textAlign: "left", borderBottom: "1px solid #e0c8cc" }}>Example</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  ["firstName",      "Required", "Juan"],
+                  ["lastName",       "Required", "dela Cruz"],
+                  ["email",          "Required", "juan@email.com"],
+                  ["college",        "Required", "CCS"],
+                  ["course",         "Required", "BSIT"],
+                  ["graduationYear", "Required", "2024"],
+                  ["role",           "Optional", "alumni (default)"],
+                ].map(([col, req, ex]) => (
+                  <tr key={col}>
+                    <td style={{ padding: "3px 8px" }}><code>{col}</code></td>
+                    <td style={{ padding: "3px 8px", color: req === "Required" ? "#c53030" : "#888" }}>{req}</td>
+                    <td style={{ padding: "3px 8px", color: "#555" }}>{ex}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button
+              type="button"
+              style={{ fontSize: 12, marginBottom: 14, color: "#6b1a2a", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}
+              onClick={() => {
+                const header = "firstName,lastName,email,college,course,graduationYear,role";
+                const sample = "Juan,dela Cruz,juan@email.com,CCS,BSIT,2024,alumni";
+                const blob = new Blob([header + "\n" + sample], { type: "text/csv" });
+                const url  = URL.createObjectURL(blob);
+                const a    = document.createElement("a");
+                a.href = url; a.download = "alumni-import-template.csv"; a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              ↓ Download CSV Template
+            </button>
             <label style={{ display: "block", marginBottom: 16 }}>
               Spreadsheet file
               <input
@@ -620,21 +667,21 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
                 <option>Employer</option>
               </select>
             </label>
+            {(role === "Alumni" || role === "Coordinator") && (
+              <label>College
+                <select name="college" value={college} onChange={(e) => setCollege(e.target.value)} required={role === "Coordinator"}>
+                  <option value="">— Select college —</option>
+                  {COLLEGES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </label>
+            )}
             {role === "Alumni" && (
-              <>
-                <label>College
-                  <select name="college" value={college} onChange={(e) => setCollege(e.target.value)}>
-                    <option value="">— Select college —</option>
-                    {COLLEGES.map((c) => <option key={c}>{c}</option>)}
-                  </select>
-                </label>
-                <label>Graduation Year
-                  <select name="graduationYear" defaultValue={row?.graduationYear || ""}>
-                    <option value="">— Select year —</option>
-                    {BATCH_YEARS.map((y) => <option key={y}>{y}</option>)}
-                  </select>
-                </label>
-              </>
+              <label>Graduation Year
+                <select name="graduationYear" defaultValue={row?.graduationYear || ""}>
+                  <option value="">— Select year —</option>
+                  {BATCH_YEARS.map((y) => <option key={y}>{y}</option>)}
+                </select>
+              </label>
             )}
             {isEdit && (
               <label>Status

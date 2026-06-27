@@ -340,37 +340,62 @@ const DEFAULT_CONFIG = {
   ],
 };
 
-// GET /api/admin/tracer-form-config  or  GET /api/alumni/tracer-form-config
+// Blank form returned for colleges with no saved config yet
+const BLANK_CONFIG = { version: 1, pages: [] };
+
+// Resolve which college's config to load:
+//   - Admin: uses ?college= query param
+//   - Alumni: uses their own college from req.user.college
+function resolveCollege(req) {
+  if (req.user?.role === 'alumni') return req.user.college || 'CCS';
+  return (req.query.college || '').trim().toUpperCase() || 'CCS';
+}
+
+// GET /api/admin/tracer-form-config?college=CCS
+// GET /api/alumni/tracer-form-config   (college auto-detected from token)
 const getTracerFormConfig = async (req, res) => {
   try {
-    let cfg = await TracerFormConfig.findOne().sort({ updatedAt: -1 });
-    if (!cfg) {
-      cfg = await TracerFormConfig.create({ config: DEFAULT_CONFIG });
+    const college = resolveCollege(req);
+    let cfg = await TracerFormConfig.findOne({ college });
+
+    if (!cfg && college === 'CCS') {
+      // Migrate legacy document (saved before per-college was implemented, college field = '')
+      const legacy = await TracerFormConfig.findOne({ college: '' });
+      if (legacy) {
+        legacy.college = 'CCS';
+        await legacy.save();
+        cfg = legacy;
+      } else {
+        cfg = await TracerFormConfig.create({ college: 'CCS', config: DEFAULT_CONFIG });
+      }
     }
-    res.json({ config: cfg.config });
+
+    res.json({ config: cfg ? cfg.config : BLANK_CONFIG, college });
   } catch (err) {
     console.error('getTracerFormConfig error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
 
-// PUT /api/admin/tracer-form-config
+// PUT /api/admin/tracer-form-config?college=CCS
 const updateTracerFormConfig = async (req, res) => {
   try {
     const { config } = req.body;
     if (!config || !Array.isArray(config.pages)) {
       return res.status(400).json({ message: 'Invalid config: pages array is required.' });
     }
-    let cfg = await TracerFormConfig.findOne().sort({ updatedAt: -1 });
+    const college = resolveCollege(req);
+
+    let cfg = await TracerFormConfig.findOne({ college });
     if (cfg) {
       cfg.config    = config;
       cfg.updatedBy = req.user.id;
       cfg.markModified('config');
       await cfg.save();
     } else {
-      cfg = await TracerFormConfig.create({ config, updatedBy: req.user.id });
+      cfg = await TracerFormConfig.create({ college, config, updatedBy: req.user.id });
     }
-    res.json({ config: cfg.config, message: 'Tracer form config saved.' });
+    res.json({ config: cfg.config, college, message: `Tracer form for ${college} saved.` });
   } catch (err) {
     console.error('updateTracerFormConfig error:', err);
     res.status(500).json({ message: 'Server error.' });

@@ -81,7 +81,8 @@ function mapProgramToTrack(programsCompleted) {
 // tracer questions by matching question labels — no hardcoded IDs.
 async function resolveExtraEmploymentFields(extraAnswers) {
   try {
-    const cfg = await TracerFormConfig.findOne().sort({ updatedAt: -1 }).lean();
+    const cfg = await TracerFormConfig.findOne({ college: 'CCS' }).lean()
+              || await TracerFormConfig.findOne().sort({ updatedAt: -1 }).lean();
     if (!cfg?.config?.pages) return {};
     const result = {};
     for (const page of cfg.config.pages) {
