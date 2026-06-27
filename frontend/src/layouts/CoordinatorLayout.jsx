@@ -11,11 +11,12 @@ const PATH_TITLES = {
   "/coordinator/employment":   "Employment Details",
   "/coordinator/contacts":     "Alumni Contacts",
   "/coordinator/about":        "Alumni Association Inc.",
+  "/coordinator/tsu":          "Tarlac State University",
 };
 
 export default function CoordinatorLayout() {
   const location = useLocation();
-  const { collapsed, toggleSidebar } = useSidebarCoordinator();
+  const { collapsed, toggleSidebar, collapseOnMobile } = useSidebarCoordinator();
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
@@ -24,10 +25,11 @@ export default function CoordinatorLayout() {
       return {
         theme: saved.theme ?? "light",
         compactTables: true,
+        emailAlerts: saved.emailAlerts ?? true,
         dashboardNotifications: true,
       };
     } catch {
-      return { theme: "light", dashboardNotifications: true, compactTables: true };
+      return { theme: "light", dashboardNotifications: true, compactTables: true, emailAlerts: true };
     }
   });
 
@@ -70,7 +72,14 @@ export default function CoordinatorLayout() {
 
   return (
     <div className={`app coordinator-app${collapsed ? " sidebar-collapsed" : ""}`}>
-      <CoordinatorSidebar collapsed={collapsed} />
+      <CoordinatorSidebar collapsed={collapsed} onNavigate={collapseOnMobile} />
+      {!collapsed && (
+        <div
+          className="sidebar-backdrop"
+          onClick={collapseOnMobile}
+          aria-hidden="true"
+        />
+      )}
       <main className="main">
         <CoordinatorTopbar
           title={title}

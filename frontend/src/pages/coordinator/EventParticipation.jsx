@@ -15,13 +15,6 @@ function fmtTime(dt) {
   return new Date(dt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-const STATUS_COLORS = {
-  Present: "#0f6e56",
-  Late:    "#b95a22",
-  Excused: "#1a6fad",
-  Absent:  "#b91e1e",
-};
-
 export default function EventParticipation() {
   const { showToast } = useOutletContext();
   // ── Events list ──────────────────────────────────────────────
@@ -283,9 +276,6 @@ export default function EventParticipation() {
               Status:
               <select value={status} onChange={e => setStatus(e.target.value)}>
                 <option>Present</option>
-                <option>Late</option>
-                <option>Excused</option>
-                <option>Absent</option>
               </select>
             </label>
           </div>
@@ -341,9 +331,6 @@ export default function EventParticipation() {
           >
             <option value="">All Status</option>
             <option>Present</option>
-            <option>Late</option>
-            <option>Excused</option>
-            <option>Absent</option>
           </select>
           <input
             className="coord-employ-search"
@@ -372,15 +359,15 @@ export default function EventParticipation() {
               ) : (
                 records.map(r => (
                   <tr key={String(r._id)}>
-                    <td>{r.name}</td>
-                    <td>{r.course || "—"}</td>
-                    <td>{r.time_in}</td>
-                    <td>
-                      <span className="coord-status-pill" style={{ color: STATUS_COLORS[r.status] ?? "#333" }}>
+                    <td data-label="Name">{r.name}</td>
+                    <td data-label="Course">{r.course || "—"}</td>
+                    <td data-label="Time In">{r.time_in}</td>
+                    <td data-label="Status">
+                      <span className={`coord-status-pill attendance-status ${String(r.status || "").toLowerCase()}`}>
                         {r.status}
                       </span>
                     </td>
-                    <td>{r.feedback ? "Yes" : ""}</td>
+                    <td data-label="Feedback">{r.feedback ? "Yes" : ""}</td>
                   </tr>
                 ))
               )}
@@ -429,7 +416,8 @@ export default function EventParticipation() {
                 <span>Capacity</span><span>{viewEvent.capacity || "—"}</span>
                 <span>Total Attendees</span><span>{viewEvent.total_attendees ?? 0}</span>
                 <span>Attendance Rate</span><span>{viewEvent.capacity > 0 ? `${viewEvent.attendance_rate}%` : "—"}</span>
-                <span>Visibility</span><span>{viewEvent.visibility}</span>
+                <span>Colleges</span><span>{viewEvent.visibility === "Public" ? "All Colleges" : (viewEvent.visibility || "—")}</span>
+                <span>Feedback Responses</span><span>{viewEvent.feedback_responses ?? 0}</span>
               </div>
             </div>
             <div className="coord-modal-foot">

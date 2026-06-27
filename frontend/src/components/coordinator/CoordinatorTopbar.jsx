@@ -165,26 +165,32 @@ function SettingsForm({ settings, onSave, onChangeTheme, onClose }) {
             <strong>Theme</strong>
             <small>Switch the dashboard between light and dark mode.</small>
           </span>
-          <div className="theme-options" role="radiogroup" aria-label="Theme">
+          <div className="theme-options">
             {["light", "dark"].map((t) => (
-              <label key={t}>
-                <input
-                  type="radio"
-                  name="theme"
-                  value={t}
-                  checked={local.theme === t}
-                  onChange={() => {
-                    setLocal((p) => ({ ...p, theme: t }));
-                    onChangeTheme(t);
-                  }}
-                />
-                <span>{t === "light" ? "Light" : "Dark"}</span>
-              </label>
+              <button
+                key={t}
+                type="button"
+                className={`theme-chip${local.theme === t ? " active" : ""}`}
+                onClick={() => {
+                  setLocal((p) => ({ ...p, theme: t }));
+                  onChangeTheme(t);
+                }}
+              >
+                {t === "light" ? "Light" : "Dark"}
+              </button>
             ))}
           </div>
         </div>
         <label className="setting-row">
-          <span><strong>Dashboard Notifications</strong><small>Show the notification badge.</small></span>
+          <span><strong>Email alerts</strong><small>Send account and tracer updates to admin email.</small></span>
+          <input
+            type="checkbox"
+            checked={!!local.emailAlerts}
+            onChange={(e) => setLocal((p) => ({ ...p, emailAlerts: e.target.checked }))}
+          />
+        </label>
+        <label className="setting-row">
+          <span><strong>Dashboard notifications</strong><small>Show badges for pending reviews and new posts.</small></span>
           <input
             type="checkbox"
             checked={!!local.dashboardNotifications}

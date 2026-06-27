@@ -10,6 +10,17 @@ function display(val) {
   return !val || EMPTY_VALS.has(String(val).trim()) ? "—" : val;
 }
 
+function CoordinatorStatusBadge({ status }) {
+  const value = display(status);
+  const cls = {
+    Employed:          "employed",
+    Unemployed:        "unemployed",
+    "Self-employed":   "self-employed",
+    "Not Yet Updated": "not-yet-updated",
+  }[value] || "not-yet-updated";
+  return <span className={`coord-status-pill coord-employment-status ${cls}`}>{value}</span>;
+}
+
 function timeAgo(date) {
   const diff = (Date.now() - new Date(date)) / 1000;
   if (diff < 60) return "just now";
@@ -18,24 +29,49 @@ function timeAgo(date) {
   return `${Math.floor(diff / 86400)}d`;
 }
 
+const COLLEGES = [
+  "CPAG", "CCS", "COS", "CIT", "COE",
+  "CBA", "COED", "CASS", "CCJE", "CAFA",
+];
+
+// Courses grouped per college (used to populate the course filter after a
+// college is chosen). CCS is the primary one with seeded data.
+const COURSES_BY_COLLEGE = {
+  CCS:  ["BSIT", "BSCS", "BSIS"],
+  COE:  ["BSCE", "BSEE", "BSME", "BSECE"],
+  CBA:  ["BSBA", "BSA", "BSME-Mgt"],
+  COED: ["BEED", "BSED"],
+  COS:  ["BSBio", "BSChem", "BSMath"],
+  CIT:  ["BSIT-Tech", "BSAuto"],
+  CASS: ["ABComm", "ABPolSci"],
+  CCJE: ["BSCrim"],
+  CAFA: ["BSArch", "BFA"],
+  CPAG: ["BPA"],
+};
+
 export default function CoordinatorEmploymentView() {
   const { showToast } = useOutletContext();
   const [rows, setRows] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [college, setCollege] = useState("");
   const [course, setCourse] = useState("");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
+  const [notifying, setNotifying] = useState(false);
   const debounceRef = useRef(null);
+
+  // Courses available for the currently selected college
+  const courseOptions = college ? (COURSES_BY_COLLEGE[college] || []) : [];
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [emp, act] = await Promise.all([
         apiFetch("/coordinator/employment", {
-          params: { course, search: appliedSearch, page, limit: 10 },
+          params: { college, course, search: appliedSearch, page, limit: 10 },
         }),
         apiFetch("/coordinator/employment/activity", { params: { limit: 10 } }),
       ]);
@@ -47,7 +83,7 @@ export default function CoordinatorEmploymentView() {
     } finally {
       setLoading(false);
     }
-  }, [course, appliedSearch, page]);
+  }, [college, course, appliedSearch, page]);
 
   useEffect(() => {
     load();
@@ -55,7 +91,31 @@ export default function CoordinatorEmploymentView() {
 
   useEffect(() => {
     setPage(1);
-  }, [course, appliedSearch]);
+  }, [college, course, appliedSearch]);
+
+  // Reset course whenever the college changes (course list depends on it)
+  function handleCollegeChange(e) {
+    setCollege(e.target.value);
+    setCourse("");
+  }
+
+  async function handleNotify() {
+    const scope = college
+      ? `${college}${course ? " · " + course : ""} alumni`
+      : "all alumni";
+    const ok = window.confirm(
+      `Send a reminder to ${scope} to update their employment details for accreditation?`
+    );
+    if (!ok) return;
+    setNotifying(true);
+    try {
+      // Visual-only for now: simulate dispatch.
+      await new Promise((r) => setTimeout(r, 600));
+      showToast?.(`Reminder sent to ${scope} to update employment details.`);
+    } finally {
+      setNotifying(false);
+    }
+  }
 
   function handleSearchChange(e) {
     const val = e.target.value;
@@ -67,7 +127,7 @@ export default function CoordinatorEmploymentView() {
   async function handleExport() {
     try {
       const data = await apiFetch("/coordinator/employment", {
-        params: { course, search: appliedSearch, page: 1, limit: 99999 },
+        params: { college, course, search: appliedSearch, page: 1, limit: 99999 },
       });
       const all = data.records ?? [];
       downloadCsv("coordinator-employment-details.csv", [
@@ -92,15 +152,41 @@ export default function CoordinatorEmploymentView() {
     >
       <section className="coord-records-card">
         <h3>Employment Details</h3>
+
+        <div className="coord-employ-notify-row">
+          <span className="coord-employ-hint">
+            Remind alumni to update their employment details during accreditation.
+          </span>
+          <button
+            type="button"
+            className="coord-notify-btn"
+            onClick={handleNotify}
+            disabled={notifying}
+          >
+            <Icon name="icon-update" />
+            {notifying ? "Sending…" : "Notify Alumni to Update"}
+          </button>
+        </div>
+
         <div className="coord-record-toolbar coord-employ-toolbar">
+          <select value={college} onChange={handleCollegeChange}>
+            <option value="">All Colleges</option>
+            {COLLEGES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
           <select
             value={course}
             onChange={(e) => setCourse(e.target.value)}
+            disabled={!college}
+            title={!college ? "Select a college first" : "Filter by course"}
           >
-            <option value="">All Courses</option>
-            <option value="BSIT">BSIT</option>
-            <option value="BSCS">BSCS</option>
-            <option value="BSIS">BSIS</option>
+            <option value="">
+              {college ? "All Courses" : "All Courses (pick a college)"}
+            </option>
+            {courseOptions.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
           <input
             type="search"
@@ -114,6 +200,7 @@ export default function CoordinatorEmploymentView() {
         {loading ? (
           <p className="coord-employ-empty">Loading…</p>
         ) : (
+          <div className="coord-table-scroll">
           <table>
             <thead>
               <tr>
@@ -134,16 +221,17 @@ export default function CoordinatorEmploymentView() {
               ) : (
                 rows.map((row) => (
                   <tr key={row._id}>
-                    <td>{display(row.name)}</td>
-                    <td>{display(row.course)}</td>
-                    <td>{display(row.company_name)}</td>
-                    <td>{display(row.job_title)}</td>
-                    <td>{display(row.employment_status)}</td>
+                    <td data-label="Name">{display(row.name)}</td>
+                    <td data-label="Course">{display(row.course)}</td>
+                    <td data-label="Company">{display(row.company_name)}</td>
+                    <td data-label="Position">{display(row.job_title)}</td>
+                    <td data-label="Status"><CoordinatorStatusBadge status={row.employment_status} /></td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
+          </div>
         )}
 
         {pagination && (

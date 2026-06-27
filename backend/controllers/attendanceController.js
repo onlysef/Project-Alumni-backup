@@ -184,11 +184,21 @@ const getEventDetails = async (req, res) => {
     const event = await Event.findById(req.params.eventId).lean();
     if (!event) return res.status(404).json({ message: 'Event not found.' });
 
-    const total    = await AttendanceLog.countDocuments({ event_id: req.params.eventId });
+    const [total, feedbackResponses] = await Promise.all([
+      AttendanceLog.countDocuments({ event_id: req.params.eventId }),
+      EventFeedback.countDocuments({ event_id: req.params.eventId }),
+    ]);
     const capacity = event.capacity || 0;
     const rate     = capacity > 0 ? Math.round((total / capacity) * 100) : 0;
 
-    res.json({ event: { ...event, total_attendees: total, attendance_rate: rate } });
+    res.json({
+      event: {
+        ...event,
+        total_attendees: total,
+        attendance_rate: rate,
+        feedback_responses: feedbackResponses,
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
   }

@@ -110,12 +110,12 @@
     flex-direction: column;
     background: linear-gradient(180deg, #570013 72%, #945025 93%, #bf8931 100%);
     color: #fff;
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow: hidden;
     }
 
     .brand { 
         padding: 0 24px 20px; 
+        flex: 0 0 auto;
     }
 
     .brand h1 {
@@ -132,6 +132,30 @@
         height: 50px; 
         object-fit: contain; 
         margin: 0 auto; 
+    }
+
+    .tsu-brand-link,
+    .tsu-top-brand-link {
+        border: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+        font: inherit;
+    }
+
+    .tsu-brand-link {
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        margin: 0 auto;
+        display: none;
+    }
+
+    .tsu-top-brand-link {
+        display: block;
+        width: 100%;
+        border-radius: 8px;
+        margin: 0 0 4px;
     }
 
     .toptsu-logo { 
@@ -177,6 +201,7 @@
             flex: 1 1 auto;
             min-height: 0;
             overflow-y: auto;
+            overflow-x: hidden;
         }
 
         .nav a {
@@ -264,7 +289,9 @@
     }
 
     .sidebar-footer { 
-        padding: 18px 16px 0; 
+        padding: 18px 16px; 
+        flex: 0 0 auto;
+        margin-top: auto;
     }
     .sidebar-logout {
         width: 100%;
@@ -283,6 +310,8 @@
         text-align: left;
         text-transform: uppercase;
     }
+
+    .sidebar-backdrop { display: none; }
 
     .main { 
         min-width: 0; 
@@ -334,7 +363,7 @@
         color: inherit; 
         cursor: pointer;
     }
-    /* white topbar icons on maroon bar */
+    
     .topbar .hamburger .admin-svg-icon,
     .topbar .icon-btn .admin-svg-icon {
         width: 20px;
@@ -358,9 +387,10 @@
         }
 
     .content { 
-        height: calc(100vh - 58px); 
+        height: calc(100vh - 70px); 
         overflow-y: auto; 
         overflow-x: hidden; 
+        -webkit-overflow-scrolling: touch;
     }
     .view { 
         display: none; 
@@ -397,7 +427,6 @@
     .sidebar-logout .admin-svg-icon {
         width: 20px;
         height: 20px;
-        /* white icons on maroon sidebar */
         filter: brightness(0) invert(1);
     }
 
@@ -410,6 +439,12 @@
 
     .app.sidebar-collapsed .sidebar-logo { 
         display: block; 
+    }
+
+    .app.sidebar-collapsed .tsu-brand-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .app.sidebar-collapsed .brand { 
@@ -459,8 +494,8 @@
             box-shadow: none;
         }
 
-        .app:not(.sidebar-collapsed)::after {
-            content: "";
+        .app:not(.sidebar-collapsed) .sidebar-backdrop {
+            display: block;
             position: fixed;
             inset: 0;
             background: rgba(0, 0, 0, 0.4);
@@ -495,25 +530,33 @@
 
     .coord-stat,
     .coord-highlight {
-        min-height: 70px;
-        border: 1px solid #b56c77;
-        border-radius: 8px;
-        background: #fff;
-        color: var(--maroon);
-        padding: 14px 16px;
+        position: relative;
+        min-height: 96px;
+        border: 1px solid rgb(255 255 255 / 12%);
+        border-radius: 10px;
+        background: var(--maroon);
+        color: #fff;
+        padding: 18px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        box-shadow: none;
+        gap: 16px;
+        box-shadow: var(--panel-shadow);
+    }
+
+    .coord-stat > div,
+    .coord-highlight > div {
+        min-width: 0;
+        padding-right: 62px;
     }
 
     .coord-stat strong {
-        color: var(--maroon);
+        color: #fff;
         display: block;
         font-size: 28px;
         line-height: 1;
-        font-weight: 700;
-        margin-bottom: 8px;
+        font-weight: 800;
+        margin-bottom: 6px;
     }
 
     .coord-stat span,
@@ -521,12 +564,26 @@
         display: block;
         font-size: 13px;
         font-weight: 800;
+        color: #fff;
     }
 
     .coord-stat .admin-svg-icon {
-        width: 31px;
-        height: 31px;
-        filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+        position: absolute;
+        top: 50%;
+        right: 18px;
+        transform: translateY(-50%);
+        z-index: 1;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        width: 48px;
+        height: 48px;
+        flex: 0 0 48px;
+        padding: 11px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: inset 0 0 0 1px rgba(87, 0, 19, 0.08);
+        filter: none;
     }
 
     .coord-stat-loading {
@@ -551,10 +608,22 @@
         align-content: center;
     }
     .coord-highlight .admin-svg-icon {
-        width: 31px;
-        height: 31px;
+        position: absolute;
+        top: 50%;
+        right: 18px;
+        transform: translateY(-50%);
+        z-index: 1;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        width: 48px;
+        height: 48px;
         flex: 0 0 auto;
-        filter: brightness(0) saturate(100%) invert(11%) sepia(75%) saturate(2244%) hue-rotate(328deg) brightness(83%);
+        padding: 11px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: inset 0 0 0 1px rgba(87, 0, 19, 0.08);
+        filter: none;
     }
 
             .coord-dashboard-grid,
@@ -605,7 +674,7 @@
 
             .coord-chart {
                 width: min(100%, 420px);
-                min-height: 180px;
+                min-height: 210px;
             }
 
             .coord-chart line {
@@ -624,6 +693,11 @@
             .coord-chart text {
                 fill: #35262a;
                 font-size: 11px;
+            }
+
+            .coord-chart .coord-chart-label {
+                font-size: 9.5px;
+                font-weight: 700;
             }
 
             .coord-activity h3 {
@@ -654,7 +728,7 @@
             }
 
             .coord-reports {
-                padding: 12px 14px;
+                padding: 12px 16px 16px;
             }
 
             .coord-reports h3 {
@@ -666,43 +740,52 @@
             }
 
             .coord-report-row {
-                min-height: 46px;
+                min-height: 64px;
                 display: grid;
-                grid-template-columns: 1fr auto;
+                grid-template-columns: minmax(105px, 0.75fr) minmax(0, 1.5fr);
                 align-items: center;
                 gap: 8px;
-                padding: 0 8px;
-                font-size: 14px;
-                font-weight: 500;
+                padding: 10px 6px;
+                font-size: 13px;
+                font-weight: 700;
                 color: #4b3f42;
                 border-bottom: 1px solid #ead7da;
             }
+
+            .coord-report-row > span {
+                line-height: 1.25;
+            }
+
             .coord-report-row:last-child {
                 border-bottom: 0;
             }
 
             .coord-report-filters {
-                display: flex;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) 62px 34px;
                 align-items: center;
                 gap: 6px;
+                justify-self: stretch;
+                min-width: 0;
             }
 
             .coord-report-select {
-                height: 29px;
+                width: 100%;
+                height: 34px;
                 border: 0;
-                border-radius: 5px;
+                border-radius: 6px;
                 background: var(--maroon);
                 color: #fff;
-                font-size: 10px;
-                font-weight: 600;
+                font-size: 11px;
+                font-weight: 700;
                 font-family: inherit;
-                padding: 0 8px;
+                padding: 0 10px;
                 cursor: pointer;
                 outline: none;
             }
 
             .coord-report-year {
-                width: 62px;
+                width: 100%;
             }
             .coord-record-actions button,
             .coord-contact-actions button {
@@ -721,8 +804,11 @@
 
             .coord-icon-button {
                 padding: 0;
-                width: 29px;
-                height: 29px;
+                width: 34px;
+                min-width: 34px;
+                max-width: 34px;
+                height: 34px;
+                flex: 0 0 34px;
                 border: 0;
                 border-radius: 5px;
                 display: inline-flex;
@@ -1235,6 +1321,44 @@
                     grid-template-columns: 1fr;
                 }
 
+                .coord-stats {
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
+                    gap: 10px;
+                    margin-bottom: 14px;
+                }
+
+                .coord-stat,
+                .coord-highlight {
+                    min-height: 82px;
+                    padding: 13px;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .coord-stat strong {
+                    font-size: 25px;
+                    margin-bottom: 5px;
+                }
+
+                .coord-stat span,
+                .coord-highlight span {
+                    font-size: 11px;
+                    line-height: 1.25;
+                }
+
+                .coord-stat .admin-svg-icon,
+                .coord-highlight .admin-svg-icon {
+                    width: 38px;
+                    height: 38px;
+                    flex: 0 0 38px;
+                    padding: 8px;
+                }
+
+                .coord-highlight {
+                    grid-column: 1 / -1;
+                    min-height: 76px;
+                }
+
                 .coord-attendance-card label,
                 .coord-attendance-card .coord-form-row label {
                     grid-template-columns: 1fr;
@@ -1244,21 +1368,38 @@
                     grid-template-columns: 1fr;
                     align-items: start;
                 }
+
+                .coord-report-filters {
+                    width: 100%;
+                }
+            }
+
+            @media (max-width: 460px) {
+                .coord-report-filters {
+                    grid-template-columns: 1fr 74px 36px;
+                }
+            }
+
+            @media (max-width: 360px) {
+                .coord-stats {
+                    grid-template-columns: 1fr;
+                }
+
+                .coord-highlight {
+                    grid-column: auto;
+                }
             }
 
 
-    /* ===== transitions (admin-style) ===== */
 
-    /* dashboard view fade-in on load/switch */
     .view.active-view {
         animation: coordViewFadeIn 220ms ease both;
     }
     @keyframes coordViewFadeIn {
-        from { opacity: 0; transform: translateY(8px); }
-        to   { opacity: 1; transform: translateY(0); }
+        from { opacity: 0; }
+        to   { opacity: 1; }
     }
 
-    /* cards: hover lift + deeper shadow */
     .coord-card,
     .coord-stat,
     .coord-highlight,
@@ -1284,7 +1425,6 @@
         border-color: var(--maroon);
     }
 
-    /* buttons: hover background + slight lift */
     .coord-report-row button,
     .coord-record-actions button,
     .coord-contact-actions button,
@@ -1306,18 +1446,15 @@
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
     }
 
-    /* icon buttons (print/download): subtle scale on hover */
     .coord-icon-button:hover {
         transform: scale(1.12);
     }
 
-    /* sidebar logout hover */
     .sidebar-logout:hover {
         background: rgba(255, 255, 255, 0.2);
         transform: translateY(-1px);
     }
 
-    /* respect reduced-motion */
     @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after {
             animation-duration: 1ms !important;
@@ -1325,7 +1462,6 @@
             scroll-behavior: auto !important;
         }
     }
-/* ===== welcome hero banner (admin-style) ===== */
 .coord-hero {
     background: linear-gradient(135deg, var(--maroon-deep) 0%, #7a0a24 55%, var(--maroon) 100%);
     color: #fff;
@@ -1375,11 +1511,6 @@
     color: var(--maroon-deep);
 }
 
-/* ===================================================================
-   Event Management — admin-card style (clean white, maroon headers)
-   =================================================================== */
-
-/* Card shells: maroon header bar + white body, like .admin-card */
 .coord-create-card,
 .coord-post-card,
 .coord-event-list {
@@ -1392,7 +1523,6 @@
     padding: 0 !important;
 }
 
-/* Maroon header bar (h3 = the card head) */
 .coord-create-card > h3,
 .coord-event-list > h3 {
     margin: 0 !important;
@@ -1407,7 +1537,6 @@
     border-radius: 10px 10px 0 0;
 }
 
-/* Body padding under the header */
 .coord-create-body {
     padding: 18px;
     display: grid;
@@ -1419,7 +1548,6 @@
     gap: 12px;
 }
 
-/* Inputs — clean admin style */
 .coord-create-card input,
 .coord-create-card textarea,
 .coord-create-card select {
@@ -1456,7 +1584,6 @@
     gap: 12px;
 }
 
-/* Submit button — maroon */
 .coord-create-card button[type="submit"] {
     justify-self: end;
     border: 0;
@@ -1476,7 +1603,6 @@
     transform: translateY(-1px);
 }
 
-/* Section kicker */
 .coord-section-kicker {
     margin: 0 0 12px;
     color: var(--maroon);
@@ -1484,7 +1610,6 @@
     font-weight: 900;
 }
 
-/* Recent post card */
 .coord-post-card {
     padding: 18px !important;
 }
@@ -1500,6 +1625,11 @@
     font-size: 13px;
     line-height: 1.5;
 }
+
+.coord-post-card .coord-post-description {
+    text-transform: none !important;
+}
+
 .coord-post-card small {
     color: var(--muted);
     font-size: 11px;
@@ -1541,7 +1671,6 @@
     background: #76162a;
 }
 
-/* Event list items */
 .coord-event-list-inner article {
     background: #faf7f8;
     border: 1px solid #ecdfe2;
@@ -1564,7 +1693,6 @@
     color: var(--muted);
 }
 
-/* Status pills */
 .coord-event-status {
     width: fit-content;
     padding: 3px 11px;
@@ -1591,7 +1719,6 @@
     border: 1px solid rgba(100, 100, 100, 0.25);
 }
 
-/* datetime-local input */
 .coord-datetime-input {
     width: 100%;
     min-height: 34px;
@@ -1606,7 +1733,6 @@
 }
 .coord-datetime-input::-webkit-calendar-picker-indicator { cursor: pointer; }
 
-/* Post card action buttons */
 .coord-post-edit-btn,
 .coord-post-delete-btn {
     padding: 4px 8px !important;
@@ -1644,13 +1770,15 @@
     align-items: center;
     justify-content: center;
     padding: 16px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 .coord-modal {
     background: #fff;
     border-radius: 10px;
     width: 100%;
     max-width: 520px;
-    max-height: 90vh;
+    max-height: calc(100dvh - 32px);
     overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0,0,0,0.28);
     display: flex;
@@ -1732,7 +1860,6 @@
     gap: 10px;
 }
 
-/* Interested alumni table */
 .coord-interested-table {
     width: 100%;
     border-collapse: collapse;
@@ -1751,10 +1878,8 @@
     text-transform: uppercase;
 }
 
-/* Unread notification dot */
 .topbar-notif-unread { background: rgba(87, 0, 19, 0.05); border-left: 3px solid var(--maroon); }
 
-/* Alumni search autocomplete */
 .coord-alumni-dropdown {
     position: absolute;
     top: calc(100% + 2px);
@@ -1786,14 +1911,90 @@
     text-align: center;
 }
 
-/* Status pill in records table */
+
 .coord-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 82px;
+    padding: 4px 12px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    line-height: 1.35;
     font-size: 11px;
     font-weight: 800;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
-/* Event detail grid in View Event modal */
+.coord-status-pill.coord-employment-status.employed,
+.coord-status-pill.attendance-status.present {
+    background: #d4f0de;
+    color: #1b5e3a;
+    border-color: #97d7af;
+}
+
+.coord-status-pill.coord-employment-status.unemployed {
+    background: #f7d9d9;
+    color: #8a1f2f;
+    border-color: #e3a4ab;
+}
+
+.coord-status-pill.coord-employment-status.self-employed {
+    background: #fdeec2;
+    color: #7a4e00;
+    border-color: #e6cf8a;
+}
+
+.coord-status-pill.coord-employment-status.not-yet-updated,
+.coord-status-pill.attendance-status.late,
+.coord-status-pill.attendance-status.excused,
+.coord-status-pill.attendance-status.absent {
+    background: #e8e8e8;
+    color: #555;
+    border-color: #cfcfcf;
+}
+
+.coord-course-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 4px 11px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.35;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.coord-course-pill.bsit {
+    background: #dcecff;
+    color: #14518f;
+    border-color: #9fc6f2;
+}
+
+.coord-course-pill.bscs {
+    background: #d4f0de;
+    color: #1b5e3a;
+    border-color: #97d7af;
+}
+
+.coord-course-pill.bsis {
+    background: #fdeec2;
+    color: #7a4e00;
+    border-color: #e6cf8a;
+}
+
+.coord-course-pill.empty,
+.coord-course-pill:not(.bsit):not(.bscs):not(.bsis) {
+    background: #e8e8e8;
+    color: #555;
+    border-color: #cfcfcf;
+}
+
 .coord-event-detail-grid {
     display: grid;
     grid-template-columns: 130px 1fr;
@@ -1813,7 +2014,59 @@ body.dark-mode .coord-alumni-option   { border-color: #3a2830; }
 body.dark-mode .coord-alumni-option:hover { background: rgba(250, 200, 83, 0.08); }
 body.dark-mode .coord-alumni-option strong { color: var(--gold); }
 
-/* Two-column layout */
+body.dark-mode .coord-status-pill.coord-employment-status.employed,
+body.dark-mode .coord-status-pill.attendance-status.present {
+    background: rgba(40, 122, 78, 0.22);
+    color: #7be0a6;
+    border-color: rgba(123, 224, 166, 0.4);
+}
+
+body.dark-mode .coord-status-pill.coord-employment-status.unemployed {
+    background: rgba(138, 31, 47, 0.28);
+    color: #f3a3ad;
+    border-color: rgba(243, 163, 173, 0.4);
+}
+
+body.dark-mode .coord-status-pill.coord-employment-status.self-employed {
+    background: rgba(137, 90, 0, 0.28);
+    color: #f0cf86;
+    border-color: rgba(240, 207, 134, 0.4);
+}
+
+body.dark-mode .coord-status-pill.coord-employment-status.not-yet-updated,
+body.dark-mode .coord-status-pill.attendance-status.late,
+body.dark-mode .coord-status-pill.attendance-status.excused,
+body.dark-mode .coord-status-pill.attendance-status.absent {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ccc;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.dark-mode .coord-course-pill.bsit {
+    background: rgba(65, 140, 220, 0.22);
+    color: #9dccff;
+    border-color: rgba(157, 204, 255, 0.4);
+}
+
+body.dark-mode .coord-course-pill.bscs {
+    background: rgba(40, 122, 78, 0.22);
+    color: #7be0a6;
+    border-color: rgba(123, 224, 166, 0.4);
+}
+
+body.dark-mode .coord-course-pill.bsis {
+    background: rgba(137, 90, 0, 0.28);
+    color: #f0cf86;
+    border-color: rgba(240, 207, 134, 0.4);
+}
+
+body.dark-mode .coord-course-pill.empty,
+body.dark-mode .coord-course-pill:not(.bsit):not(.bscs):not(.bsis) {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ccc;
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
 .coord-events-layout {
     display: grid;
     grid-template-columns: 1.3fr 1fr;
@@ -1905,7 +2158,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
         text-align: center;
     }
 }
-/* ===== Alumni Contacts — 3-dot action menu + add button ===== */
 .coord-add-btn {
     margin-left: auto;
     border: 0;
@@ -1922,7 +2174,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
 }
 .coord-add-btn:hover { background: #76162a; }
 
-/* kebab (3-dot) button */
 .coord-action-menu {
     position: relative;
     display: flex;
@@ -1971,7 +2222,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
 .coord-action-dropdown .coord-action-delete { color: #b00020; }
 .coord-action-dropdown .coord-action-delete:hover { background: rgba(176, 0, 32, 0.08); }
 
-/* cancel/ghost button in the form */
 .coord-contact-actions .coord-btn-ghost {
     background: #fff !important;
     color: var(--maroon) !important;
@@ -1981,7 +2231,6 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
     background: rgba(87, 0, 19, 0.06) !important;
 }
 
-/* Alumni Contacts — table footer buttons (Add + Export) */
 .coord-table-footer {
     display: flex;
     justify-content: flex-end;
@@ -2014,7 +2263,7 @@ body.dark-mode .coord-alumni-option strong { color: var(--gold); }
     letter-spacing: 0.3px;
 }
 
-/* ===== Form field labels (Alumni Contacts) ===== */
+
 .coord-field {
     display: grid;
     gap: 5px;
@@ -2659,4 +2908,666 @@ body.dark-mode .coord-create-card select {
 body.dark-mode .coord-create-card input::placeholder,
 body.dark-mode .coord-create-card textarea::placeholder {
     color: #9c868c !important;
+}
+
+body.dark-mode .coord-stat,
+body.dark-mode .coord-highlight {
+    background: linear-gradient(135deg, #2b1018 0%, #4b0618 55%, #6f0a25 100%) !important;
+    color: #fff7f8;
+    border-color: rgba(250, 200, 83, 0.22);
+}
+
+body.dark-mode .coord-stat .admin-svg-icon,
+body.dark-mode .coord-highlight .admin-svg-icon {
+    background: rgba(250, 200, 83, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.36);
+    filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
+}
+/* =====================================================================
+   RESPONSIVE PASS — coordinator pages on tablets & phones
+   ===================================================================== */
+
+/* Tables: never let them break the layout; allow horizontal scroll */
+.coord-records-card table,
+.coord-contacts-table table {
+    display: table;
+    width: 100%;
+}
+.coord-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 760px) {
+    /* toolbars stack and go full width */
+    .coord-record-toolbar,
+    .coord-employ-toolbar {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .coord-employ-toolbar select,
+    .coord-record-toolbar select {
+        flex: 1 1 100% !important;
+        width: 100% !important;
+    }
+    .coord-employ-search {
+        flex: 1 1 100% !important;
+        width: 100%;
+    }
+    /* tablet range: table can scroll sideways if needed */
+    .coord-records-card table,
+    .coord-contacts-table table {
+        min-width: 520px;
+    }
+    .coord-record-actions {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .coord-record-actions .btn {
+        flex: 1 1 auto;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 600px) {
+    
+    .coord-table-scroll {
+        overflow-x: visible;
+    }
+    .coord-records-card table,
+    .coord-contacts-table table {
+        min-width: 0;
+        width: 100%;
+        display: block;
+    }
+    .coord-records-card thead,
+    .coord-contacts-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+    .coord-records-card tbody,
+    .coord-contacts-table tbody {
+        display: block;
+    }
+    .coord-records-card tbody tr,
+    .coord-contacts-table tbody tr {
+        display: block;
+        margin: 0 0 12px;
+        padding: 6px 4px;
+        border: 1px solid #e3d3d6;
+        border-radius: 10px;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .coord-records-card tbody td,
+    .coord-contacts-table tbody td {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        width: auto;
+        padding: 9px 12px;
+        border: 0;
+        border-bottom: 1px solid #f0e7e9;
+        text-align: right;
+        font-size: 13px;
+        white-space: normal;
+        word-break: break-word;
+    }
+    .coord-records-card tbody td:last-child,
+    .coord-contacts-table tbody td:last-child {
+        border-bottom: 0;
+    }
+    /* the label, pulled from data-label on each cell */
+    .coord-records-card tbody td::before,
+    .coord-contacts-table tbody td::before {
+        content: attr(data-label);
+        flex: 0 0 auto;
+        margin-right: auto;
+        font-weight: 700;
+        color: var(--maroon);
+        text-align: left;
+        text-transform: none;
+    }
+    /* the "empty" / full-width rows shouldn't show a label */
+    .coord-records-card tbody td.coord-employ-empty,
+    .coord-contacts-table tbody td.coord-employ-empty {
+        display: block;
+        text-align: center;
+    }
+    .coord-records-card tbody td.coord-employ-empty::before,
+    .coord-contacts-table tbody td.coord-employ-empty::before {
+        content: "";
+        margin: 0;
+    }
+    .coord-records-card tbody td strong,
+    .coord-contacts-table tbody td strong {
+        display: block;
+    }
+    .coord-records-card tbody td small,
+    .coord-contacts-table tbody td small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+    }
+
+    body.dark-mode .coord-records-card tbody tr,
+    body.dark-mode .coord-contacts-table tbody tr {
+        background: #241116;
+        border-color: #50303a;
+    }
+    body.dark-mode .coord-records-card tbody td,
+    body.dark-mode .coord-contacts-table tbody td {
+        border-bottom-color: #3a2228;
+    }
+
+    .coord-status-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+    /* modals fit the viewport */
+    .coord-modal {
+        width: calc(100vw - 24px);
+        max-width: calc(100vw - 24px);
+    }
+}
+
+/* ===== Event Management — image upload preview ===== */
+.coord-image-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.coord-image-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--maroon);
+}
+.coord-image-dropzone {
+    border: 1.5px dashed #b56c77;
+    border-radius: 8px;
+    padding: 14px;
+    text-align: center;
+    cursor: pointer;
+    background: #fff;
+    color: var(--muted);
+    font-size: 12px;
+    transition: border-color 160ms ease, background 160ms ease;
+}
+.coord-image-dropzone:hover {
+    border-color: var(--maroon);
+    background: rgba(87, 0, 19, 0.03);
+}
+.coord-image-preview-wrap {
+    position: relative;
+    border-radius: 8px;
+    overflow: hidden;
+}
+.coord-image-preview {
+    width: 100%;
+    max-height: 200px;
+    object-fit: cover;
+    display: block;
+    border-radius: 8px;
+}
+.coord-image-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+.coord-image-remove:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+.coord-post-image {
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin: 8px 0;
+    display: block;
+}
+
+/* ===== labelled date/time + visibility fields ===== */
+.coord-labeled-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.coord-labeled-field > span {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--maroon);
+}
+
+/* ===== Employment — notify + filter row ===== */
+.coord-employ-notify-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.coord-employ-notify-row .coord-employ-hint {
+    font-size: 12px;
+    color: var(--muted);
+    flex: 1 1 200px;
+    min-width: 0;
+}
+.coord-notify-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    border-radius: 6px;
+    padding: 8px 14px;
+    background: var(--maroon);
+    color: #fff;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 160ms ease, transform 160ms ease;
+    white-space: nowrap;
+}
+.coord-notify-btn:hover {
+    background: #76162a;
+    transform: translateY(-1px);
+}
+@media (max-width: 600px) {
+    .coord-notify-btn {
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+}
+
+@media (max-width: 600px) {
+    *,
+    *::before,
+    *::after {
+        max-width: 100%;
+    }
+
+    html,
+    body,
+    #root,
+    .app,
+    .main,
+    .content,
+    .coordinator-content {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .coordinator-content {
+        padding-inline: 10px;
+    }
+
+    .coord-card,
+    .coord-stat,
+    .coord-highlight,
+    .coord-create-card,
+    .coord-post-card,
+    .coord-event-list,
+    .coord-attendance-card,
+    .coord-records-card,
+    .coord-contacts-table,
+    .coord-contact-form,
+    .coord-current-status,
+    .coord-modal {
+        max-width: 100%;
+    }
+
+    .coord-dashboard-grid,
+    .coord-events-layout,
+    .coord-participation-grid,
+    .coord-contact-grid,
+    .coord-form-row,
+    .coord-record-toolbar,
+    .coord-contact-toolbar,
+    .coord-employ-toolbar,
+    .coord-table-footer,
+    .coord-record-actions,
+    .coord-post-footer,
+    .coord-modal-foot {
+        grid-template-columns: 1fr !important;
+        max-width: 100%;
+    }
+
+    .coord-record-toolbar,
+    .coord-contact-toolbar,
+    .coord-employ-toolbar,
+    .coord-table-footer,
+    .coord-record-actions,
+    .coord-post-footer,
+    .coord-modal-foot {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: stretch;
+    }
+
+    .coord-record-toolbar > *,
+    .coord-contact-toolbar > *,
+    .coord-employ-toolbar > *,
+    .coord-table-footer > *,
+    .coord-record-actions > *,
+    .coord-post-footer > *,
+    .coord-modal-foot > * {
+        min-width: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .coord-record-toolbar select,
+    .coord-record-toolbar input,
+    .coord-contact-toolbar select,
+    .coord-contact-toolbar input,
+    .coord-employ-toolbar select,
+    .coord-employ-toolbar input,
+    .coord-field input,
+    .coord-field select,
+    .coord-field textarea,
+    .coord-create-card input,
+    .coord-create-card select,
+    .coord-create-card textarea,
+    .coord-attendance-card input,
+    .coord-attendance-card select {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .coord-table-scroll,
+    .coord-contacts-table,
+    .coord-records-card {
+        overflow-x: visible !important;
+        width: 100%;
+    }
+
+    .coord-records-card table,
+    .coord-contacts-table table,
+    .coord-interested-table {
+        width: 100% !important;
+        min-width: 0 !important;
+        display: block;
+        table-layout: fixed;
+    }
+
+    .coord-interested-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    .coord-interested-table tbody {
+        display: grid;
+        gap: 10px;
+    }
+
+    .coord-interested-table tr {
+        display: grid;
+        border: 1px solid #e3d3d6;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .coord-interested-table td {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 9px 12px;
+        white-space: normal !important;
+        word-break: break-word;
+        text-align: right;
+    }
+
+    .coord-interested-table td:nth-child(1)::before { content: "Name"; }
+    .coord-interested-table td:nth-child(2)::before { content: "Email"; }
+    .coord-interested-table td:nth-child(3)::before { content: "Course"; }
+
+    .coord-interested-table td::before {
+        margin-right: auto;
+        color: var(--maroon);
+        font-weight: 800;
+        text-align: left;
+    }
+
+    .coord-status-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .coord-chart {
+        width: 100%;
+        height: auto;
+    }
+
+    .coord-report-filters {
+        grid-template-columns: minmax(0, 1fr) 70px 34px !important;
+    }
+
+    .coord-reports {
+        padding-inline: 12px;
+        overflow: visible;
+    }
+
+    .coord-report-row {
+        width: 100%;
+        min-width: 0;
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 8px;
+        align-items: stretch;
+        padding-inline: 0;
+    }
+
+    .coord-report-row > span {
+        width: 100%;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .coord-report-filters {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        justify-self: stretch;
+    }
+
+    .coord-report-filters > * {
+        min-width: 0 !important;
+    }
+
+    .coord-report-select {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+    }
+
+    .coord-modal {
+        width: calc(100vw - 24px) !important;
+    }
+
+    body.dark-mode .coord-interested-table tr {
+        background: #241116;
+        border-color: #50303a;
+    }
+
+    body.dark-mode .coord-interested-table td::before {
+        color: var(--gold);
+    }
+}
+
+@media (max-width: 360px) {
+    .coord-stats,
+    .coord-status-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .coord-report-filters {
+        grid-template-columns: minmax(0, 1fr) 62px 34px !important;
+        gap: 5px;
+    }
+
+    .coord-report-select {
+        padding-inline: 7px;
+        font-size: 10px;
+    }
+}
+
+
+@media (min-width: 901px) {
+    .app,
+    .app:not(.sidebar-collapsed) {
+        grid-template-columns: 200px minmax(0, 1fr);
+    }
+
+    .app.sidebar-collapsed {
+        grid-template-columns: 72px minmax(0, 1fr);
+    }
+
+    .sidebar {
+        padding-block: 18px;
+    }
+
+    .brand {
+        padding: 0 20px 16px;
+    }
+
+    .nav a {
+        min-height: 46px;
+        padding: 9px 22px;
+        gap: 9px;
+    }
+
+    .nav a:hover {
+        padding-left: 27px;
+    }
+
+    .nav a.active {
+        width: 190px;
+        height: 44px;
+        min-height: 44px;
+        padding-left: 14px;
+    }
+
+    .nav a.active:hover {
+        padding-left: 14px;
+    }
+
+    .nav-sub a {
+        min-height: 34px;
+        height: 34px;
+        padding-block: 7px;
+        padding-left: 46px;
+    }
+
+    .sidebar-footer {
+        padding: 12px 14px;
+    }
+
+    .sidebar-logout {
+        min-height: 40px;
+        padding-block: 8px;
+    }
+
+    .topbar,
+    .coordinator-app .topbar {
+        height: 58px;
+        padding-inline: 18px;
+    }
+
+    .topbar h2 {
+        font-size: 16px;
+    }
+
+    .content,
+    .coordinator-app .content {
+        height: calc(100vh - 58px);
+        padding: 18px 24px 26px;
+    }
+
+    .admin-hero,
+    .coord-hero {
+        padding: 18px 22px;
+        margin-bottom: 14px;
+        border-radius: 12px;
+    }
+
+    .admin-hero-title,
+    .coord-hero-title {
+        font-size: 22px;
+    }
+
+    .admin-hero-subtitle,
+    .coord-hero-subtitle {
+        margin-top: 6px;
+        font-size: 13px;
+    }
+
+    .admin-hero-pills,
+    .coord-hero-pills {
+        gap: 8px;
+        margin-top: 12px;
+    }
+
+    .hero-pill,
+    .coord-hero-pill {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    .stats,
+    .coord-stats {
+        gap: 14px;
+        margin-bottom: 18px;
+    }
+
+    .stat-card,
+    .coord-stat,
+    .coord-highlight {
+        min-height: 82px;
+        padding: 14px;
+    }
+
+    .stat-value,
+    .coord-stat strong {
+        font-size: 25px;
+    }
+
+    .grid,
+    .coord-dashboard-grid,
+    .coord-left-stack,
+    .coord-right-stack {
+        gap: 14px;
+    }
+
+    .panel-head,
+    .coord-card h3 {
+        min-height: 38px;
+    }
+}
+
+body:not(.dark-mode) .coordinator-app .coord-stat .admin-svg-icon,
+body:not(.dark-mode) .coordinator-app .coord-highlight .admin-svg-icon {
+    filter: brightness(0) invert(1) !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }

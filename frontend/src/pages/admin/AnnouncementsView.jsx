@@ -3,6 +3,7 @@ import { useOutletContext, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
+import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
 
 import { API, authHeaders } from "../../services/api.js";
@@ -263,13 +264,28 @@ export default function AnnouncementsView() {
                 <td>{r.type}</td>
                 <td>{r.description}</td>
                 <td>
-                  <button
-                    type="button"
-                    onClick={() => { setComposer({ row: r }); showToast("Post loaded in composer."); }}
-                  >
-                    Edit
-                  </button>
-                  <button type="button" onClick={() => handleDelete(r)}>Delete</button>
+                  <div className="desktop-row-actions">
+                    <button
+                      type="button"
+                      onClick={() => { setComposer({ row: r }); showToast("Post loaded in composer."); }}
+                    >
+                      Edit
+                    </button>
+                    <button type="button" onClick={() => handleDelete(r)}>Delete</button>
+                  </div>
+                  <div className="mobile-row-actions">
+                    <ActionMenu
+                      actions={["edit", "delete"]}
+                      onSelect={(action) => {
+                        if (action === "edit") {
+                          setComposer({ row: r });
+                          showToast("Post loaded in composer.");
+                        } else {
+                          handleDelete(r);
+                        }
+                      }}
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

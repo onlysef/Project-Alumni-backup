@@ -2,6 +2,7 @@
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
+import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import TracerFormEditor from "./TracerFormEditor.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
@@ -37,6 +38,18 @@ function groupActivities(acts) {
 
 const COLLEGES   = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
 const COURSES    = ["BSIT", "BSCS", "BSIS"];
+const COURSES_BY_COLLEGE = {
+  CCS:  ["BSIT", "BSCS", "BSIS"],
+  COE:  ["BSCE", "BSEE", "BSME", "BSECE"],
+  CBA:  ["BSBA", "BSA", "BSME-Mgt"],
+  COED: ["BEED", "BSED"],
+  COS:  ["BSBio", "BSChem", "BSMath"],
+  CIT:  ["BSIT-Tech", "BSAuto"],
+  CASS: ["ABComm", "ABPolSci"],
+  CCJE: ["BSCrim"],
+  CAFA: ["BSArch", "BFA"],
+  CPAG: ["BPA"],
+};
 const STATUSES   = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
 const ADD_STATUSES = ["Employed", "Unemployed", "Self-employed"];
 const LIMITS     = [10, 25, 50, 100];
@@ -141,6 +154,31 @@ export default function EmploymentView() {
 
   // ─── confirm dialog ─────────────────────────────────────────────────────────
   const [confirm, setConfirm] = useState({ open: false, message: "", onConfirm: null });
+
+  // ─── notify alumni (accreditation reminder) ──────────────────────────────────
+  const [notifying, setNotifying] = useState(false);
+
+  function handleNotifyAlumni() {
+    const parts = [];
+    if (appliedFilters.college) parts.push(appliedFilters.college);
+    if (appliedFilters.course)  parts.push(appliedFilters.course);
+    const scope = parts.length ? `${parts.join(" · ")} alumni` : "all alumni";
+    setConfirm({
+      open: true,
+      message: `Send a reminder to ${scope} to update their employment details for accreditation?`,
+      onConfirm: async () => {
+        setConfirm(c => ({ ...c, open: false }));
+        setNotifying(true);
+        try {
+          // Visual-only for now: simulate dispatch.
+          await new Promise(r => setTimeout(r, 600));
+          showToast(`Reminder sent to ${scope} to update employment details.`);
+        } finally {
+          setNotifying(false);
+        }
+      },
+    });
+  }
 
   // ─── add record modal ────────────────────────────────────────────────────────
   const [addOpen, setAddOpen]       = useState(false);
@@ -460,6 +498,15 @@ export default function EmploymentView() {
           <span />
         </div>
         <div className="employment-actions">
+          <button
+            type="button"
+            className="maroon-action"
+            disabled={notifying}
+            onClick={handleNotifyAlumni}
+          >
+            <span><Icon name="icon-18" /></span>
+            <span>{notifying ? "Sending…" : "Notify Alumni to Update"}</span>
+          </button>
           <div className="emp-export-wrap" ref={exportRef}>
             <button
               type="button"
@@ -540,33 +587,51 @@ export default function EmploymentView() {
                 <tr><td colSpan={7} className="emp-empty">No employment records found.</td></tr>
               ) : records.map(r => (
                 <tr key={r._id}>
-                  <td>{r.name}</td>
-                  <td>{r.college || "—"}</td>
-                  <td>{r.course || "—"}</td>
-                  <td>{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") ? "—" : fmtField(r.company_name)}</td>
-                  <td><StatusBadge status={r.employment_status} /></td>
-                  <td>{fmtDate(r.last_updated)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="table-icon table-print"
-                      aria-label="Print record"
-                      onClick={() => setConfirm({
-                        open: true,
-                        message: `Print employment record for ${r.name}?`,
-                        onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
-                      })}
-                    >
-                      <span><Icon name="icon-19" /></span>
-                    </button>
-                    <button
-                      type="button"
-                      className="table-icon table-view"
-                      aria-label="View record"
-                      onClick={() => setViewRecord(r)}
-                    >
-                      <span><Icon name="icon-20" /></span>
-                    </button>
+                  <td data-label="Name">{r.name}</td>
+                  <td data-label="College">{r.college || "—"}</td>
+                  <td data-label="Course">{r.course || "—"}</td>
+                  <td data-label="Company">{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") ? "—" : fmtField(r.company_name)}</td>
+                  <td data-label="Status"><StatusBadge status={r.employment_status} /></td>
+                  <td data-label="Last Updated">{fmtDate(r.last_updated)}</td>
+                  <td data-label="Actions">
+                    <div className="desktop-row-actions">
+                      <button
+                        type="button"
+                        className="table-icon table-print"
+                        aria-label="Print record"
+                        onClick={() => setConfirm({
+                          open: true,
+                          message: `Print employment record for ${r.name}?`,
+                          onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
+                        })}
+                      >
+                        <span><Icon name="icon-19" /></span>
+                      </button>
+                      <button
+                        type="button"
+                        className="table-icon table-view"
+                        aria-label="View record"
+                        onClick={() => setViewRecord(r)}
+                      >
+                        <span><Icon name="icon-20" /></span>
+                      </button>
+                    </div>
+                    <div className="mobile-row-actions">
+                      <ActionMenu
+                        actions={["print", "view"]}
+                        onSelect={(action) => {
+                          if (action === "view") {
+                            setViewRecord(r);
+                            return;
+                          }
+                          setConfirm({
+                            open: true,
+                            message: `Print employment record for ${r.name}?`,
+                            onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
+                          });
+                        }}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -645,16 +710,22 @@ export default function EmploymentView() {
             </label>
             <label>
               College
-              <select value={pendingFilters.college} onChange={e => setPendingFilters(f => ({ ...f, college: e.target.value }))}>
+              <select value={pendingFilters.college} onChange={e => setPendingFilters(f => ({ ...f, college: e.target.value, course: "" }))}>
                 <option value="">All colleges</option>
                 {COLLEGES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </label>
             <label>
-              Course (CCS)
-              <select value={pendingFilters.course} onChange={e => setPendingFilters(f => ({ ...f, course: e.target.value }))}>
-                <option value="">All courses</option>
-                {COURSES.map(c => <option key={c} value={c}>{c}</option>)}
+              Course
+              <select
+                value={pendingFilters.course}
+                onChange={e => setPendingFilters(f => ({ ...f, course: e.target.value }))}
+                disabled={!pendingFilters.college}
+              >
+                <option value="">
+                  {pendingFilters.college ? "All courses" : "All courses (pick a college)"}
+                </option>
+                {(COURSES_BY_COLLEGE[pendingFilters.college] || []).map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </label>
             <label>

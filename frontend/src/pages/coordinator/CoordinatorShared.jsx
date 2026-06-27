@@ -60,12 +60,39 @@ export function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+function wrapChartLabel(label = "") {
+  const words = String(label).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let current = "";
+
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > 14 && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  });
+  if (current) lines.push(current);
+
+  if (lines.length <= 2) return lines;
+  return [lines[0], `${lines[1].slice(0, 12).trim()}...`];
+}
+
 export function MiniBarChart({ title, values, labels }) {
   const max = Math.max(...values, 1);
+  const count = Math.max(values.length, 1);
+  const plotLeft = 50;
+  const plotRight = 390;
+  const plotWidth = plotRight - plotLeft;
+  const slot = plotWidth / count;
+  const barWidth = Math.min(38, Math.max(24, slot * 0.48));
+
   return (
     <div className="coord-chart-box" role="img" aria-label={title}>
       <p>{title}</p>
-      <svg viewBox="0 0 420 220" className="coord-chart">
+      <svg viewBox="0 0 420 245" className="coord-chart">
         <line x1="50" y1="18" x2="50" y2="176" />
         <line x1="50" y1="176" x2="390" y2="176" />
         {[0, 1, 2, 3].map((n) => {
@@ -74,12 +101,18 @@ export function MiniBarChart({ title, values, labels }) {
         })}
         {values.map((value, index) => {
           const h = Math.round((value / max) * 140);
-          const x = 82 + index * 62;
+          const x = plotLeft + slot * index + (slot - barWidth) / 2;
+          const labelLines = wrapChartLabel(labels[index]);
           return (
             <g key={labels[index]}>
-              <rect x={x} y={176 - h} width="38" height={h} rx="2" />
-              <text x={x + 19} y={176 - h - 5} textAnchor="middle" fontWeight="700">{value}</text>
-              <text x={x + 19} y="202" textAnchor="middle">{labels[index]}</text>
+              <title>{labels[index]}</title>
+              <rect x={x} y={176 - h} width={barWidth} height={h} rx="2" />
+              <text x={x + barWidth / 2} y={176 - h - 5} textAnchor="middle" fontWeight="700">{value}</text>
+              <text x={x + barWidth / 2} y="202" textAnchor="middle" className="coord-chart-label">
+                {labelLines.map((line, lineIndex) => (
+                  <tspan key={line} x={x + barWidth / 2} dy={lineIndex === 0 ? 0 : 13}>{line}</tspan>
+                ))}
+              </text>
             </g>
           );
         })}

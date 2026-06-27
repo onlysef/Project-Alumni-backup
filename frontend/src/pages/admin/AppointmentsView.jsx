@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
+import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
 // "HH:MM" (24-h) → "8:00 AM"
@@ -764,7 +765,7 @@ export default function AppointmentsView() {
                       <span style={statusStyle(a.status)}>{a.status}</span>
                     </td>
                     <td>
-                      <div className="appt-actions">
+                      <div className="appt-actions desktop-row-actions">
                         {a.status === "Pending" && (
                           <>
                             <button type="button" onClick={() => confirmStatusChange(a, "Approve")}>
@@ -789,6 +790,22 @@ export default function AppointmentsView() {
                           <span style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
                         )}
                       </div>
+                      {["Pending", "Approved"].includes(a.status) && (
+                        <div className="mobile-row-actions">
+                          <ActionMenu
+                            actions={a.status === "Pending"
+                              ? ["approve", "reject"]
+                              : ["complete", "cancel"]}
+                            onSelect={(action) => confirmStatusChange(
+                              a,
+                              action.charAt(0).toUpperCase() + action.slice(1),
+                            )}
+                          />
+                        </div>
+                      )}
+                      {!["Pending", "Approved"].includes(a.status) && (
+                        <span className="mobile-row-actions" style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

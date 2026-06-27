@@ -6,8 +6,12 @@ import { actionLabels } from "../../data.js";
 const ACTION_ICONS = {
   view:     "icon-20",
   edit:     "icon-18",
+  delete:   "icon-delete",
+  print:    "icon-19",
   approve:  "icon-13",
   reject:   "icon-9",
+  complete: "icon-13",
+  cancel:   "icon-9",
   suspend:  "icon-9",
   activate: "icon-13",
   archive:  "icon-26",
