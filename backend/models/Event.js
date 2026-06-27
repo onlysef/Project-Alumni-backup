@@ -6,6 +6,7 @@ const eventSchema = new mongoose.Schema({
   image:          { type: String, default: '' },
   location:       { type: String, default: '' },
   event_datetime: { type: Date, required: true },
+  end_datetime:   { type: Date, default: null },
   visibility:     {
     type: String,
     enum: ['Public', 'Private', 'CCS Alumni', 'All Alumni', 'CPAG', 'CCS', 'COS', 'CIT', 'COE', 'CBA', 'COED', 'CASS', 'CCJE', 'CAFA'],

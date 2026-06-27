@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useLocation } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 
 import { apiFetch } from "../../services/api.js";
@@ -39,12 +39,15 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const BLANK = { title: "", description: "", location: "", event_datetime: "", visibility: "Public", capacity: "", image: "" };
+const BLANK = { title: "", description: "", location: "", event_datetime: "", end_datetime: "", visibility: "Public", capacity: "", image: "" };
 
 export default function EventManagement() {
   const { showToast } = useOutletContext();
+  const location = useLocation();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [highlightId, setHighlightId] = useState(null);
+  const highlightRef = useRef(null);
   const [form, setForm] = useState(BLANK);
   const [submitting, setSubmitting] = useState(false);
 
@@ -95,6 +98,19 @@ export default function EventManagement() {
 
   useEffect(() => { loadEvents(); }, [loadEvents]);
 
+  // Pre-highlight event when navigated from activity feed
+  useEffect(() => {
+    const id = location.state?.eventId;
+    if (id) setHighlightId(String(id));
+  }, [location.state]);
+
+  // Scroll highlighted event into view once rendered
+  useEffect(() => {
+    if (highlightRef.current) {
+      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightId, events]);
+
   // sorted copy for List of Events panel
   const sortedEvents = [...events].sort((a, b) =>
     STATUS_ORDER[computeStatus(a.event_datetime)] - STATUS_ORDER[computeStatus(b.event_datetime)]
@@ -132,6 +148,7 @@ export default function EventManagement() {
       description:    event.description || "",
       location:       event.location || "",
       event_datetime: toDatetimeLocal(event.event_datetime),
+      end_datetime:   event.end_datetime ? toDatetimeLocal(event.end_datetime) : "",
       visibility:     event.visibility || "Public",
       capacity:       event.capacity ?? "",
     });
@@ -246,7 +263,7 @@ export default function EventManagement() {
 
               <div className="coord-form-row">
                 <label className="coord-labeled-field">
-                  <span>Date &amp; Time</span>
+                  <span>Start Date &amp; Time</span>
                   <input
                     type="datetime-local"
                     className="coord-datetime-input"
@@ -254,6 +271,17 @@ export default function EventManagement() {
                     onChange={e => setForm(p => ({ ...p, event_datetime: e.target.value }))}
                   />
                 </label>
+                <label className="coord-labeled-field">
+                  <span>End Date &amp; Time</span>
+                  <input
+                    type="datetime-local"
+                    className="coord-datetime-input"
+                    value={form.end_datetime}
+                    onChange={e => setForm(p => ({ ...p, end_datetime: e.target.value }))}
+                  />
+                </label>
+              </div>
+              <div className="coord-form-row">
                 <label className="coord-labeled-field">
                   <span>Colleges</span>
                   <select
@@ -335,8 +363,13 @@ export default function EventManagement() {
               sortedEvents.map(event => {
                 const status = computeStatus(event.event_datetime);
                 const slug = status.toLowerCase().replace(/\s+/g, "-");
+                const isHighlighted = String(event._id) === highlightId;
                 return (
-                  <article key={event._id}>
+                  <article
+                    key={event._id}
+                    ref={isHighlighted ? highlightRef : null}
+                    style={isHighlighted ? { outline: `2px solid #570013`, borderRadius: 6, background: "rgba(87,0,19,0.06)" } : undefined}
+                  >
                     <span className={`coord-event-status status-${slug}`}>{status}</span>
                     <strong>Title: {event.title}</strong>
                     <span>Date: {fmtDate(event.event_datetime)}</span>
@@ -379,7 +412,7 @@ export default function EventManagement() {
                   />
                 </label>
                 <div className="coord-form-row">
-                  <label className="coord-field"><span>Date & Time</span>
+                  <label className="coord-field"><span>Start Date &amp; Time</span>
                     <input
                       type="datetime-local"
                       className="coord-datetime-input"
@@ -387,6 +420,16 @@ export default function EventManagement() {
                       onChange={e => setEditForm(p => ({ ...p, event_datetime: e.target.value }))}
                     />
                   </label>
+                  <label className="coord-field"><span>End Date &amp; Time</span>
+                    <input
+                      type="datetime-local"
+                      className="coord-datetime-input"
+                      value={editForm.end_datetime}
+                      onChange={e => setEditForm(p => ({ ...p, end_datetime: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                <div className="coord-form-row">
                   <label className="coord-field"><span>Colleges</span>
                     <select value={editForm.visibility} onChange={e => setEditForm(p => ({ ...p, visibility: e.target.value }))}>
                       <option value="Public">All Colleges</option>

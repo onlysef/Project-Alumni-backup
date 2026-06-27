@@ -4,6 +4,7 @@ import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import TracerFormEditor from "./TracerFormEditor.jsx";
+import TracerResponsesViewer from "./TracerResponsesViewer.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
 
@@ -140,7 +141,8 @@ export default function EmploymentView() {
   const [editSaving, setEditSaving]   = useState(false);
 
   // ─── tracer form editor ─────────────────────────────────────────────────────
-  const [tracerOpen, setTracerOpen] = useState(false);
+  const [tracerOpen, setTracerOpen]         = useState(false);
+  const [responsesOpen, setResponsesOpen]   = useState(false);
 
   // ─── activities ─────────────────────────────────────────────────────────────
   const [activities, setActivities]             = useState([]);
@@ -517,7 +519,7 @@ export default function EmploymentView() {
             disabled={notifying}
             onClick={handleNotifyAlumni}
           >
-            <span><Icon name="icon-18" /></span>
+            <span><Icon name="icon-18w" /></span>
             <span>{notifying ? "Sending…" : "Notify Alumni to Update"}</span>
           </button>
           <div className="emp-export-wrap" ref={exportRef}>
@@ -535,6 +537,10 @@ export default function EmploymentView() {
               <button type="button" onClick={() => handleExport("excel")}>Export as Excel</button>
             </div>
           </div>
+          <button type="button" className="maroon-action" onClick={() => setResponsesOpen(true)}>
+            <span><Icon name="icon-20" /></span>
+            <span>View Responses</span>
+          </button>
           <button type="button" className="maroon-action" onClick={() => setTracerOpen(true)}>
             <span><Icon name="icon-18" /></span>
             <span>Edit Tracer Form</span>
@@ -972,6 +978,13 @@ export default function EmploymentView() {
       <TracerFormEditor
         open={tracerOpen}
         onClose={() => setTracerOpen(false)}
+        showToast={showToast}
+      />
+
+      {/* ── Tracer Responses Viewer ──────────────────────────────────────────── */}
+      <TracerResponsesViewer
+        open={responsesOpen}
+        onClose={() => setResponsesOpen(false)}
         showToast={showToast}
       />
 

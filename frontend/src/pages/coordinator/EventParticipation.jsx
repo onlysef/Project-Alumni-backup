@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useLocation } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 
 import { API, authHeaders, apiFetch } from "../../services/api.js";
@@ -17,6 +17,7 @@ function fmtTime(dt) {
 
 export default function EventParticipation() {
   const { showToast } = useOutletContext();
+  const location = useLocation();
   // ── Events list ──────────────────────────────────────────────
   const [events, setEvents] = useState([]);
   const [selectedEventId, setSelectedEventId] = useState("");
@@ -41,7 +42,6 @@ export default function EventParticipation() {
   const [page, setPage] = useState(1);
   const [tableSearch, setTableSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [tableLoading, setTableLoading] = useState(false);
   const tableDebounceRef = useRef(null);
 
@@ -50,10 +50,15 @@ export default function EventParticipation() {
 
   // ── Load events on mount ─────────────────────────────────────
   useEffect(() => {
-      authGet("/coordinator/attendance/events").then(data => {
+    const targetId = location.state?.eventId ? String(location.state.eventId) : null;
+    authGet("/coordinator/attendance/events").then(data => {
       const evts = data.events ?? [];
       setEvents(evts);
-      if (evts.length > 0 && !selectedEventId) setSelectedEventId(String(evts[0]._id));
+      if (targetId && evts.some(e => String(e._id) === targetId)) {
+        setSelectedEventId(targetId);
+      } else if (evts.length > 0 && !selectedEventId) {
+        setSelectedEventId(String(evts[0]._id));
+      }
     });
   }, []);
 
@@ -67,13 +72,12 @@ export default function EventParticipation() {
   }, []);
 
   // ── Load records ─────────────────────────────────────────────
-  const loadRecords = useCallback(async (eventId, pg, search, stFilter) => {
+  const loadRecords = useCallback(async (eventId, pg, search) => {
     if (!eventId) return;
     setTableLoading(true);
     try {
       const params = new URLSearchParams({ page: pg, limit: 10 });
-      if (search)   params.set("search", search);
-      if (stFilter) params.set("status", stFilter);
+      if (search) params.set("search", search);
       const data = await authGet(`/coordinator/attendance/${eventId}/records?${params}`);
       setRecords(data.records ?? []);
       setPagination(data.pagination ?? null);
@@ -84,17 +88,16 @@ export default function EventParticipation() {
   useEffect(() => {
     if (selectedEventId) {
       loadStats(selectedEventId);
-      loadRecords(selectedEventId, 1, "", "");
+      loadRecords(selectedEventId, 1, "");
       setPage(1);
       setTableSearch("");
       setAppliedSearch("");
-      setStatusFilter("");
     }
   }, [selectedEventId]);
 
   useEffect(() => {
-    loadRecords(selectedEventId, page, appliedSearch, statusFilter);
-  }, [page, appliedSearch, statusFilter]);
+    loadRecords(selectedEventId, page, appliedSearch);
+  }, [page, appliedSearch]);
 
   // ── Alumni search debounce ───────────────────────────────────
   useEffect(() => {
@@ -154,7 +157,7 @@ export default function EventParticipation() {
       setTimeIn(nowTime());
       setStatus("Present");
       loadStats(selectedEventId);
-      loadRecords(selectedEventId, page, appliedSearch, statusFilter);
+      loadRecords(selectedEventId, page, appliedSearch);
     } catch {
       showToast?.("Failed to record attendance.");
     } finally {
@@ -167,11 +170,6 @@ export default function EventParticipation() {
     setTableSearch(val);
     clearTimeout(tableDebounceRef.current);
     tableDebounceRef.current = setTimeout(() => { setAppliedSearch(val); setPage(1); }, 400);
-  }
-
-  function handleStatusFilter(e) {
-    setStatusFilter(e.target.value);
-    setPage(1);
   }
 
   async function handleViewEvent() {
@@ -200,8 +198,31 @@ export default function EventParticipation() {
   }
 
   const selectedEvent = events.find(e => String(e._id) === selectedEventId);
-  const idNo = selectedAlumni ? String(selectedAlumni._id).slice(-8).toUpperCase() : "";
+  const idNo   = selectedAlumni ? String(selectedAlumni._id).slice(-8).toUpperCase() : "";
   const course = selectedAlumni?.course || "";
+
+  // Attendance window status
+  const attendanceStatus = (() => {
+    if (!selectedEvent) return "no_event";
+    const now   = new Date();
+    const start = new Date(selectedEvent.event_datetime);
+    if (now < start) return "not_started";
+    const end = selectedEvent.end_datetime
+      ? new Date(selectedEvent.end_datetime)
+      : (() => { const d = new Date(selectedEvent.event_datetime); d.setHours(23, 59, 59, 999); return d; })();
+    if (now > end) return "ended";
+    return "open";
+  })();
+
+  // Schedule display string
+  const scheduleLabel = selectedEvent
+    ? (() => {
+        const start = fmtDate(selectedEvent.event_datetime) + " | " + fmtTime(selectedEvent.event_datetime);
+        return selectedEvent.end_datetime
+          ? start + " – " + fmtTime(selectedEvent.end_datetime)
+          : start;
+      })()
+    : null;
 
   return (
     <section className={`content coordinator-content view active-view`}>
@@ -224,6 +245,23 @@ export default function EventParticipation() {
               }
             </select>
           </label>
+
+          {scheduleLabel && (
+            <p className="coord-event-schedule">
+              {scheduleLabel}
+            </p>
+          )}
+
+          {attendanceStatus === "not_started" && (
+            <p className="coord-attendance-notice coord-notice-warn">
+              Attendance is not yet open. This event has not started yet.
+            </p>
+          )}
+          {attendanceStatus === "ended" && (
+            <p className="coord-attendance-notice coord-notice-error">
+              Attendance is already closed. This event has ended.
+            </p>
+          )}
 
           <label ref={searchRef} style={{ position: "relative" }}>
             Name:
@@ -280,7 +318,11 @@ export default function EventParticipation() {
             </label>
           </div>
 
-          <button type="submit" className="btn btn-primary" disabled={submitting}>
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={submitting || attendanceStatus !== "open"}
+          >
             <Icon name="icon-save" /> {submitting ? "Recording…" : "Record"}
           </button>
         </form>
@@ -302,7 +344,7 @@ export default function EventParticipation() {
             type="button"
             className="btn btn-secondary"
             style={{ marginTop: 10, fontSize: 12 }}
-            onClick={() => { loadStats(selectedEventId); loadRecords(selectedEventId, page, appliedSearch, statusFilter); }}
+            onClick={() => { loadStats(selectedEventId); loadRecords(selectedEventId, page, appliedSearch); }}
           >
             <Icon name="icon-update" /> Refresh
           </button>
@@ -323,14 +365,6 @@ export default function EventParticipation() {
                 {ev.title} ({ev.event_datetime ? fmtDate(ev.event_datetime) : ""})
               </option>
             ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={handleStatusFilter}
-            style={{ flex: "0 0 auto", width: 120 }}
-          >
-            <option value="">All Status</option>
-            <option>Present</option>
           </select>
           <input
             className="coord-employ-search"

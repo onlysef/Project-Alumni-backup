@@ -18,6 +18,7 @@ const {
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
   deleteTracerQuestion, reorderTracerQuestions, notifyAlumniToUpdate,
+  getTracerResponseColleges, getTracerResponses, getTracerResponseDetail,
 } = require('../controllers/employmentController');
 const {
   getOfficeSettings,  updateOfficeSettings,
@@ -73,6 +74,9 @@ router.post('/employment/sync-tracer',               syncTracerToEmployment);
 router.post('/employment/backfill',                  backfillEmploymentRecords);
 router.post('/employment/log-print',                 logPrintActivity);
 router.post('/employment/notify',                    notifyAlumniToUpdate);
+router.get('/employment/responses/colleges',         getTracerResponseColleges);
+router.get('/employment/responses',                  getTracerResponses);
+router.get('/employment/responses/:alumni_id',       getTracerResponseDetail);
 
 // Tracer form config (integrated 6-page form)
 router.get('/tracer-form-config',  getTracerFormConfig);

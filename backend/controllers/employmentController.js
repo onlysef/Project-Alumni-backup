@@ -952,6 +952,143 @@ const notifyAlumniToUpdate = async (req, res) => {
   }
 };
 
+// ── TRACER RESPONSES (read-only, admin view) ──────────────────────────────────
+
+// GET /api/admin/employment/responses/colleges
+const getTracerResponseColleges = async (req, res) => {
+  try {
+    const result = await TracerStudyResponse.aggregate([
+      {
+        $lookup: {
+          from:         'users',
+          localField:   'alumni_id',
+          foreignField: '_id',
+          as:           'alumni',
+        },
+      },
+      { $unwind: { path: '$alumni', preserveNullAndEmptyArrays: false } },
+      { $match: { 'alumni.role': 'alumni', 'alumni.college': { $exists: true, $ne: '' } } },
+      { $group: { _id: '$alumni.college' } },
+      { $sort: { _id: 1 } },
+    ]);
+    res.json({ colleges: result.map(r => r._id).filter(Boolean) });
+  } catch (err) {
+    console.error('getTracerResponseColleges error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/admin/employment/responses
+const getTracerResponses = async (req, res) => {
+  try {
+    const {
+      search = '', college = '', employment_status = '',
+      date_from = '', date_to = '',
+      page = 1, limit = 10,
+    } = req.query;
+
+    const pageNum  = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const rootMatch = {};
+    if (employment_status) rootMatch.employmentStatus = employment_status;
+    if (date_from || date_to) {
+      rootMatch.submittedAt = {};
+      if (date_from) { const d = new Date(date_from); d.setHours(0,0,0,0);   rootMatch.submittedAt.$gte = d; }
+      if (date_to)   { const d = new Date(date_to);   d.setHours(23,59,59,999); rootMatch.submittedAt.$lte = d; }
+    }
+
+    const base = [
+      { $match: rootMatch },
+      {
+        $lookup: {
+          from:         'users',
+          localField:   'alumni_id',
+          foreignField: '_id',
+          as:           'alumni',
+        },
+      },
+      { $unwind: { path: '$alumni', preserveNullAndEmptyArrays: false } },
+      { $match: { 'alumni.role': 'alumni' } },
+    ];
+
+    if (college) base.push({ $match: { 'alumni.college': college } });
+    if (search) {
+      base.push({
+        $match: {
+          $expr: {
+            $regexMatch: {
+              input:   { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
+              regex:   search,
+              options: 'i',
+            },
+          },
+        },
+      });
+    }
+
+    const [countResult] = await TracerStudyResponse.aggregate([...base, { $count: 'total' }]);
+    const total = countResult?.total ?? 0;
+    const pages = Math.ceil(total / limitNum) || 1;
+
+    const responses = await TracerStudyResponse.aggregate([
+      ...base,
+      { $sort: { submittedAt: -1 } },
+      { $skip: skip },
+      { $limit: limitNum },
+      {
+        $project: {
+          _id:              1,
+          alumni_id:        1,
+          name:             { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
+          college:          '$alumni.college',
+          course:           '$alumni.course',
+          employmentStatus: 1,
+          occupationTitle:  1,
+          placeOfWork:      1,
+          submittedAt:      1,
+        },
+      },
+    ]);
+
+    res.json({ responses, pagination: { total, pages, page: pageNum, limit: limitNum } });
+  } catch (err) {
+    console.error('getTracerResponses error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/admin/employment/responses/:alumni_id
+const getTracerResponseDetail = async (req, res) => {
+  try {
+    const { alumni_id } = req.params;
+
+    const [response, user] = await Promise.all([
+      TracerStudyResponse.findOne({ alumni_id }).lean(),
+      User.findById(alumni_id).select('firstName lastName college course graduationYear email').lean(),
+    ]);
+
+    if (!response) return res.status(404).json({ message: 'No tracer response found for this alumni.' });
+    if (!user)     return res.status(404).json({ message: 'Alumni not found.' });
+
+    // Normalize extra_answers (Mongoose Map → plain object)
+    let extra = {};
+    if (response.extra_answers) {
+      if (response.extra_answers instanceof Map) {
+        response.extra_answers.forEach((v, k) => { extra[k] = v; });
+      } else {
+        extra = { ...response.extra_answers };
+      }
+    }
+
+    res.json({ response: { ...response, extra_answers: extra, alumni: user } });
+  } catch (err) {
+    console.error('getTracerResponseDetail error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getAlumniWithoutRecord,
   createEmploymentRecord,
@@ -973,4 +1110,7 @@ module.exports = {
   deleteTracerQuestion,
   reorderTracerQuestions,
   notifyAlumniToUpdate,
+  getTracerResponseColleges,
+  getTracerResponses,
+  getTracerResponseDetail,
 };
