@@ -149,6 +149,7 @@ export default function AnnouncementsView() {
           const json = await safeJson(res);
           if (!res.ok) { showToast(json.message || "Failed to delete."); return; }
           setRows((prev) => prev.filter((r) => r.id !== row.id));
+          setRecentPosts((prev) => prev.filter((r) => r.id !== row.id));
           showToast(`${row.title} deleted.`);
         } catch {
           showToast("Could not connect to server.");
