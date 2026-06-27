@@ -68,13 +68,19 @@ export default function AnnouncementsView() {
   }, []);
 
   useEffect(() => {
-    if (!openPostId || rows.length === 0) return;
-    const target = rows.find((r) => r.id === String(openPostId) || r.id === openPostId);
-    if (target) {
-      setCommentTarget(target);
-      onPostOpened?.();
-    }
-  }, [openPostId, rows]);
+    if (!openPostId) return;
+    onPostOpened();
+    fetch(`${API}/admin/announcements/${openPostId}`, { headers: authHeaders() })
+      .then(safeJson)
+      .then(data => {
+        if (data.announcement) {
+          setCommentTarget(mapRow(data.announcement));
+        } else {
+          showToast("This announcement is no longer available.");
+        }
+      })
+      .catch(() => showToast("This announcement is no longer available."));
+  }, [openPostId]);
 
   async function fetchAnnouncements(p = 1) {
     setLoading(true);
@@ -143,6 +149,7 @@ export default function AnnouncementsView() {
           const json = await safeJson(res);
           if (!res.ok) { showToast(json.message || "Failed to delete."); return; }
           setRows((prev) => prev.filter((r) => r.id !== row.id));
+          setRecentPosts((prev) => prev.filter((r) => r.id !== row.id));
           showToast(`${row.title} deleted.`);
         } catch {
           showToast("Could not connect to server.");
@@ -460,6 +467,7 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
   const [fullPost, setFullPost]   = useState(null);
   const [comments, setComments]   = useState([]);
   const [loading, setLoading]     = useState(true);
+  const [notFound, setNotFound]   = useState(false);
   const [text, setText]           = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -469,16 +477,18 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
     setComments([]);
     setText("");
     setLoading(true);
+    setNotFound(false);
     fetch(`${API}/admin/announcements/${postId}`, { headers: authHeaders() })
-      .then(safeJson)
-      .then(data => {
+      .then(async res => {
+        const data = await safeJson(res);
+        if (!res.ok) { setNotFound(true); setLoading(false); return; }
         if (data.announcement) {
           setFullPost(data.announcement);
           setComments(data.announcement.comments || []);
         }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => { setNotFound(true); setLoading(false); });
   }, [postId]);
 
   const display = fullPost ? { ...post, imageUrl: fullPost.imageUrl || "", description: fullPost.description } : post;
@@ -515,59 +525,69 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
         </div>
 
         <div className="post-viewer-scroll">
-          <div className="post-viewer-body">
-            {display.type && <span className="post-meta-type">{display.type}</span>}
-            {display.imageUrl && (
-              <img className="post-viewer-img" src={display.imageUrl} alt={display.title} />
-            )}
-            {display.description && <p className="post-viewer-text">{display.description}</p>}
-          </div>
-
-          <div className="post-viewer-actions">
-            <button type="button" className={display.liked ? "liked" : ""} onClick={() => onLike?.(display.id)}>
-              <span><Icon name="icon-25" /></span>
-              <span>{display.likesCount} {display.liked ? "Liked" : "Like"}</span>
-            </button>
-            <button type="button">
-              <span><Icon name="icon-26" /></span>
-              <span>{comments.length} Comment{comments.length === 1 ? "" : "s"}</span>
-            </button>
-            <button type="button" className={display.shared ? "shared" : ""} onClick={() => onShare?.(display.id)}>
-              <span><Icon name="icon-27" /></span>
-              <span>{display.sharesCount} {display.shared ? "Shared" : "Share"}</span>
-            </button>
-          </div>
-
-          <div className="comment-list">
-            {loading && <p className="comment-empty">Loading…</p>}
-            {!loading && comments.length === 0 && (
-              <p className="comment-empty">No comments yet. Be the first!</p>
-            )}
-            {comments.map((c, i) => (
-              <div key={c._id || i} className="comment-item">
-                <div className="comment-avatar">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
-                <div className="comment-bubble">
-                  <strong>{c.userName}</strong>
-                  <p>{c.text}</p>
-                  <time>{new Date(c.createdAt).toLocaleString()}</time>
-                </div>
+          {notFound ? (
+            <p className="comment-empty" style={{ padding: "32px 16px", textAlign: "center" }}>
+              This announcement is no longer available.
+            </p>
+          ) : (
+            <>
+              <div className="post-viewer-body">
+                {display.type && <span className="post-meta-type">{display.type}</span>}
+                {display.imageUrl && (
+                  <img className="post-viewer-img" src={display.imageUrl} alt={display.title} />
+                )}
+                {display.description && <p className="post-viewer-text">{display.description}</p>}
               </div>
-            ))}
-          </div>
+
+              <div className="post-viewer-actions">
+                <button type="button" className={display.liked ? "liked" : ""} onClick={() => onLike?.(display.id)}>
+                  <span><Icon name="icon-25" /></span>
+                  <span>{display.likesCount} {display.liked ? "Liked" : "Like"}</span>
+                </button>
+                <button type="button">
+                  <span><Icon name="icon-26" /></span>
+                  <span>{comments.length} Comment{comments.length === 1 ? "" : "s"}</span>
+                </button>
+                <button type="button" className={display.shared ? "shared" : ""} onClick={() => onShare?.(display.id)}>
+                  <span><Icon name="icon-27" /></span>
+                  <span>{display.sharesCount} {display.shared ? "Shared" : "Share"}</span>
+                </button>
+              </div>
+
+              <div className="comment-list">
+                {loading && <p className="comment-empty">Loading…</p>}
+                {!loading && comments.length === 0 && (
+                  <p className="comment-empty">No comments yet. Be the first!</p>
+                )}
+                {comments.map((c, i) => (
+                  <div key={c._id || i} className="comment-item">
+                    <div className="comment-avatar">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
+                    <div className="comment-bubble">
+                      <strong>{c.userName}</strong>
+                      <p>{c.text}</p>
+                      <time>{new Date(c.createdAt).toLocaleString()}</time>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
-        <form className="comment-form" onSubmit={handleSubmit}>
-          <input
-            type="text"
-            placeholder="Write a comment…"
-            value={text}
-            onChange={e => setText(e.target.value)}
-            autoFocus
-          />
-          <button type="submit" disabled={submitting || !text.trim()}>
-            {submitting ? "…" : "Post"}
-          </button>
-        </form>
+        {!notFound && (
+          <form className="comment-form" onSubmit={handleSubmit}>
+            <input
+              type="text"
+              placeholder="Write a comment…"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              autoFocus
+            />
+            <button type="submit" disabled={submitting || !text.trim()}>
+              {submitting ? "…" : "Post"}
+            </button>
+          </form>
+        )}
       </section>
     </Modal>
   );

@@ -68,7 +68,7 @@ const INDUSTRIES = [
   "Non-Profit/NGO",
   "Other",
 ];
-const BATCH_YEARS = Array.from({ length: new Date().getFullYear() - 2019 + 1 }, (_, i) => 2019 + i);
+const BATCH_YEARS = [2020, 2021, 2022, 2023, 2024];
 
 const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "", company: "" };
 const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
@@ -170,9 +170,22 @@ export default function EmploymentView() {
         setConfirm(c => ({ ...c, open: false }));
         setNotifying(true);
         try {
-          // Visual-only for now: simulate dispatch.
-          await new Promise(r => setTimeout(r, 600));
-          showToast(`Reminder sent to ${scope} to update employment details.`);
+          const body = {};
+          if (appliedFilters.college) body.college = appliedFilters.college;
+          if (appliedFilters.course)  body.course  = appliedFilters.course;
+          const res  = await fetch(`${API}/admin/employment/notify`, {
+            method:  'POST',
+            headers: authHeaders(),
+            body:    JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (!res.ok) { showToast(data.message || 'Failed to send notifications.'); return; }
+          showToast(data.message);
+          if (data.failedEmails?.length) {
+            console.warn('Failed to deliver to:', data.failedEmails);
+          }
+        } catch {
+          showToast('Could not connect to server.');
         } finally {
           setNotifying(false);
         }

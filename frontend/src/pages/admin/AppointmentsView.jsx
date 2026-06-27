@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
@@ -126,8 +126,25 @@ function ConfirmDialog({ open, message, confirmLabel = "Confirm", danger = false
   );
 }
 
+function validateStaffName(val) {
+  const trimmed = val.trim();
+  if (!trimmed) return "Please enter the full name.";
+  if (/[^a-zA-Z\s.'`-]/.test(trimmed)) return "Please enter the full name.";
+  if (trimmed.split(/\s+/).length < 2) return "Please enter the full name.";
+  return "";
+}
+
 function StaffModal({ mode, item, saving, onClose, onSubmit }) {
   const isEdit = mode === "edit";
+  const [name, setName]           = useState(item?.name || "");
+  const [nameError, setNameError] = useState("");
+
+  function handleNameChange(e) {
+    const val = e.target.value;
+    setName(val);
+    if (nameError) setNameError(validateStaffName(val));
+  }
+
   return (
     <Modal open onClose={onClose}>
       <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
@@ -139,9 +156,11 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
           className="admin-entry-form"
           onSubmit={(e) => {
             e.preventDefault();
+            const err = validateStaffName(name);
+            if (err) { setNameError(err); return; }
             const f = e.currentTarget.elements;
             onSubmit({
-              name:   f.name.value.trim(),
+              name:   name.trim(),
               role:   f.role.value,
               email:  f.email.value.trim(),
               status: f.status.value,
@@ -151,7 +170,15 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
           <div className="admin-entry-fields">
             <label>
               Name
-              <input type="text" name="name" defaultValue={item?.name || ""} required />
+              <input
+                type="text"
+                name="name"
+                value={name}
+                onChange={handleNameChange}
+                onBlur={() => setNameError(validateStaffName(name))}
+                required
+              />
+              {nameError && <span className="field-error">{nameError}</span>}
             </label>
             <label>
               Role
@@ -179,7 +206,7 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving}>
+            <button type="submit" disabled={saving || !!validateStaffName(name)}>
               {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Staff"}
             </button>
           </div>
@@ -196,6 +223,61 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
   );
   const slots = timeSlots.length ? timeSlots : TIME_OPTIONS;
 
+  const [alumniName, setAlumniName]       = useState("");
+  const [alumniId, setAlumniId]           = useState(null);
+  const [alumniError, setAlumniError]     = useState("");
+  const [alumniList, setAlumniList]       = useState([]);
+  const [suggestions, setSuggestions]     = useState([]);
+  const [showDrop, setShowDrop]           = useState(false);
+  const dropRef = useRef(null);
+
+  useEffect(() => {
+    fetch(`${API}/admin/users`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(data => {
+        const list = (data.users || [])
+          .filter(u => u.role === "alumni" && u.status !== "suspended")
+          .map(u => ({
+            id:    u._id,
+            name:  `${u.firstName} ${u.lastName}`.trim(),
+            email: u.email,
+          }));
+        setAlumniList(list);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!showDrop) return;
+    function onDoc(e) {
+      if (dropRef.current && !dropRef.current.contains(e.target)) setShowDrop(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showDrop]);
+
+  function handleAlumniInput(e) {
+    const val = e.target.value;
+    setAlumniName(val);
+    setAlumniId(null);
+    setAlumniError("");
+    if (!val.trim()) { setSuggestions([]); setShowDrop(false); return; }
+    const q = val.toLowerCase();
+    const filtered = alumniList.filter(a =>
+      a.name.toLowerCase().split(/\s+/).some(w => w.startsWith(q))
+    );
+    setSuggestions(filtered);
+    setShowDrop(true);
+  }
+
+  function selectAlumni(a) {
+    setAlumniName(a.name);
+    setAlumniId(a.id);
+    setAlumniError("");
+    setSuggestions([]);
+    setShowDrop(false);
+  }
+
   return (
     <Modal open onClose={onClose}>
       <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
@@ -207,9 +289,11 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
           className="admin-entry-form"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!alumniId) { setAlumniError("Please select an alumni from the list."); return; }
             const f = e.currentTarget.elements;
             onSubmit({
-              alumni_name:      f.alumni_name.value.trim(),
+              alumni_name:      alumniName.trim(),
+              alumni_id:        alumniId,
               staff_id:         f.staff_id.value,
               appointment_date: f.appointment_date.value,
               appointment_time: f.appointment_time.value,
@@ -221,7 +305,34 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
           <div className="admin-entry-fields">
             <label>
               Alumni Name
-              <input type="text" name="alumni_name" required placeholder="Full name" />
+              <div className="alumni-suggest-wrap" ref={dropRef}>
+                <input
+                  type="text"
+                  name="alumni_name"
+                  value={alumniName}
+                  onChange={handleAlumniInput}
+                  onFocus={() => { if (suggestions.length) setShowDrop(true); }}
+                  onBlur={() => { if (!alumniId && alumniName.trim()) setAlumniError("Please select an alumni from the list."); }}
+                  placeholder="Search alumni…"
+                  autoComplete="off"
+                />
+                {showDrop && (
+                  <div className="alumni-suggest-dropdown">
+                    {suggestions.length === 0 ? (
+                      <div className="alumni-suggest-empty">No alumni found</div>
+                    ) : suggestions.map(a => (
+                      <div
+                        key={a.id}
+                        className="alumni-suggest-item"
+                        onMouseDown={(e) => { e.preventDefault(); selectAlumni(a); }}
+                      >
+                        {a.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {alumniError && <span className="field-error">{alumniError}</span>}
             </label>
             <label>
               Staff
@@ -276,7 +387,7 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
 
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving || !staffList.length}>
+            <button type="submit" disabled={saving || !staffList.length || !alumniId}>
               {saving ? "Saving…" : "Add Appointment"}
             </button>
           </div>

@@ -40,7 +40,7 @@ function AccountStatusBadge({ status }) {
 
 const COLLEGES = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
 const CCS_COURSES = ["BSIT", "BSCS", "BSIS"];
-const BATCH_YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
+const BATCH_YEARS = [2024, 2023, 2022, 2021, 2020];
 
 export default function AccountsView() {
   const { showToast } = useOutletContext();
@@ -54,6 +54,8 @@ export default function AccountsView() {
   const [importOpen, setImportOpen]   = useState(false);
   const [openMenuId, setOpenMenuId]   = useState(null);
   const [confirm, setConfirm]         = useState(null);
+  const [selected, setSelected]       = useState(new Set());
+  const [bulkBusy, setBulkBusy]       = useState(false);
 
   useEffect(() => {
       fetchUsers();
@@ -154,6 +156,89 @@ export default function AccountsView() {
     } catch { showToast("Could not connect to server."); }
   }
 
+  function handleBulkAction(action) {
+    const label    = action === "activate" ? "activate" : action === "suspend" ? "suspend" : "reject";
+    const status   = action === "activate" ? "active" : "suspended";
+    const capLabel = label.charAt(0).toUpperCase() + label.slice(1);
+
+    const ids  = [...selected].filter((id) => {
+      const row = rows.find((r) => r.id === id);
+      return row && row.status.toLowerCase() !== status;
+    });
+
+    if (ids.length === 0) {
+      showToast(`All selected accounts are already ${status}.`);
+      return;
+    }
+
+    const count = ids.length;
+    const skipped = selected.size - count;
+
+    setConfirm({
+      message:      `Are you sure you want to ${label} ${count} account${count === 1 ? "" : "s"}?${skipped > 0 ? ` (${skipped} already ${status}, skipped)` : ""}`,
+      confirmLabel: `${capLabel} ${count}`,
+      danger:       action !== "activate",
+      onConfirm:    async () => {
+        setConfirm(null);
+        setBulkBusy(true);
+        try {
+          const res  = await fetch(`${API}/admin/users/bulk-status`, {
+            method:  "PATCH",
+            headers: authHeaders(),
+            body:    JSON.stringify({ ids, status }),
+          });
+          const data = await res.json();
+          if (!res.ok) { showToast(data.message || "Bulk update failed."); return; }
+
+          const updatedSet = new Set(data.updated || ids);
+          setRows((prev) => prev.map((r) =>
+            updatedSet.has(r.id) ? { ...r, status: capitalize(status) } : r
+          ));
+          setSelected(new Set());
+
+          const failed = ids.length - (data.modified ?? updatedSet.size);
+          if (failed > 0) {
+            showToast(`${data.modified ?? updatedSet.size} updated, ${failed} failed.`);
+          } else {
+            showToast(data.message || `${count} account${count === 1 ? "" : "s"} ${label}d.`);
+          }
+        } catch {
+          showToast("Could not connect to server.");
+        } finally {
+          setBulkBusy(false);
+        }
+      },
+    });
+  }
+
+  const visibleRows    = rows.filter(visible);
+  const allVisSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
+  const someSelected   = visibleRows.some((r) => selected.has(r.id));
+
+  function toggleRow(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (allVisSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        visibleRows.forEach((r) => next.delete(r.id));
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        visibleRows.forEach((r) => next.add(r.id));
+        return next;
+      });
+    }
+  }
+
   const activeCount    = rows.filter((r) => r.status === "Active").length;
   const pendingCount   = rows.filter((r) => r.status === "Pending").length;
 
@@ -163,14 +248,14 @@ export default function AccountsView() {
         <article>
           <div>
             <strong>{activeCount}</strong>
-            <span>Active Accounts</span>
+            <span>All Active Accounts</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-11" /></span>
         </article>
         <article>
           <div>
             <strong>{pendingCount}</strong>
-            <span>Pending Activation</span>
+            <span>All Pending Activation</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-13" /></span>
         </article>
@@ -186,6 +271,44 @@ export default function AccountsView() {
           </div>
         </div>
 
+        {selected.size > 0 && (
+          <div className="bulk-toolbar">
+            <span className="bulk-count">{selected.size} selected</span>
+            <button
+              type="button"
+              className="bulk-btn bulk-activate"
+              disabled={bulkBusy}
+              onClick={() => handleBulkAction("activate")}
+            >
+              Activate Selected
+            </button>
+            <button
+              type="button"
+              className="bulk-btn bulk-suspend"
+              disabled={bulkBusy}
+              onClick={() => handleBulkAction("suspend")}
+            >
+              Suspend Selected
+            </button>
+            <button
+              type="button"
+              className="bulk-btn bulk-reject"
+              disabled={bulkBusy}
+              onClick={() => handleBulkAction("reject")}
+            >
+              Reject Selected
+            </button>
+            <button
+              type="button"
+              className="bulk-btn bulk-clear"
+              disabled={bulkBusy}
+              onClick={() => setSelected(new Set())}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {loading ? (
           <p style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted, #888)" }}>
             Loading accounts…
@@ -193,17 +316,40 @@ export default function AccountsView() {
         ) : (
           <div className="table-scroll">
           <table className="admin-table account-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead>
+              <tr>
+                <th style={{ width: 36 }}>
+                  <input
+                    type="checkbox"
+                    className="bulk-checkbox"
+                    checked={allVisSelected}
+                    ref={(el) => { if (el) el.indeterminate = someSelected && !allVisSelected; }}
+                    onChange={toggleAll}
+                    aria-label="Select all"
+                  />
+                </th>
+                <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th>
+              </tr>
+            </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan="5" style={{ textAlign: "center", padding: "1.5rem" }}>No accounts found.</td></tr>
+                <tr><td colSpan="6" style={{ textAlign: "center", padding: "1.5rem" }}>No accounts found.</td></tr>
               ) : rows.map((r) => (
-                <tr key={r.id} className={visible(r) ? "" : "is-hidden"}>
+                <tr key={r.id} className={`${visible(r) ? "" : "is-hidden"}${selected.has(r.id) ? " row-selected" : ""}`}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      className="bulk-checkbox"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleRow(r.id)}
+                      aria-label={`Select ${r.name}`}
+                    />
+                  </td>
                   <td>{r.name}</td>
                   <td>{r.email}</td>
                   <td>{r.role}</td>
                   <td><AccountStatusBadge status={r.status} /></td>
-                   <td>
+                  <td>
                     <ActionMenu
                       actions={accountActionList(r.status)}
                       onSelect={(a) => { setOpenMenuId(null); handleAction(r, a); }}

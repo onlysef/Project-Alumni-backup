@@ -924,6 +924,34 @@ const deleteTracerQuestion = async (req, res) => {
   }
 };
 
+// POST /api/admin/employment/notify
+const { sendEmploymentReminderBulk } = require('../utils/emailService');
+
+const notifyAlumniToUpdate = async (req, res) => {
+  try {
+    const { college, course } = req.body;
+    const query = { role: 'alumni', status: 'active' };
+    if (college) query.college = college;
+    if (course)  query.course  = course;
+
+    const alumni = await User.find(query).select('email');
+    if (alumni.length === 0)
+      return res.status(404).json({ message: 'No active alumni found matching the filters.' });
+
+    const emails = alumni.map(a => a.email);
+    await sendEmploymentReminderBulk(emails);
+
+    res.json({
+      message: `Reminder sent to ${emails.length} alumni.`,
+      sent:  emails.length,
+      total: emails.length,
+    });
+  } catch (err) {
+    console.error('notifyAlumniToUpdate error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   getAlumniWithoutRecord,
   createEmploymentRecord,
@@ -944,4 +972,5 @@ module.exports = {
   updateTracerQuestion,
   deleteTracerQuestion,
   reorderTracerQuestions,
+  notifyAlumniToUpdate,
 };

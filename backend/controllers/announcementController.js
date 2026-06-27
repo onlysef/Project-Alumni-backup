@@ -224,7 +224,7 @@ const getRecentActivity = async (req, res) => {
     const activities = await ActivityLog.find()
       .sort({ createdAt: -1 })
       .limit(limit)
-      .select('user_name action announcement_title createdAt');
+      .select('user_name action announcement_title announcement_id createdAt');
     res.json({ activities });
   } catch (err) {
     console.error('getRecentActivity error:', err);
