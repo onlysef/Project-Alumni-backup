@@ -40,7 +40,7 @@ function AccountStatusBadge({ status }) {
 
 const COLLEGES = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
 const CCS_COURSES = ["BSIT", "BSCS", "BSIS"];
-const BATCH_YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
+const BATCH_YEARS = [2024, 2023, 2022, 2021, 2020];
 
 export default function AccountsView() {
   const { showToast } = useOutletContext();
