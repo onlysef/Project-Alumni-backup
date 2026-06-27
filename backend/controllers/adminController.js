@@ -76,6 +76,9 @@ const createUser = async (req, res) => {
       status:     'pending',
       firstLogin: true,
     };
+    if (role.toLowerCase() === 'coordinator') {
+      if (college) userData.college = college.trim().toUpperCase();
+    }
     if (role.toLowerCase() === 'alumni') {
       if (college)        userData.college        = college.trim().toUpperCase();
       if (course)         userData.course         = course.trim().toUpperCase();
@@ -216,6 +219,11 @@ const importUsers = async (req, res) => {
 
       if (!firstName || !lastName || !email) {
         failed.push({ email: email || '(blank)', reason: 'Missing firstName, lastName, or email.' });
+        continue;
+      }
+
+      if (rawRole === 'alumni' && (!college || !course || !graduationYear)) {
+        failed.push({ email, name: `${firstName} ${lastName}`, reason: 'Missing college, course, or graduationYear.' });
         continue;
       }
 

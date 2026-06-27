@@ -24,21 +24,41 @@ router.get('/dashboard', async (req, res) => {
   try {
     const now = new Date();
     const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const college = req.user.college || '';
+
+    // Filters scoped to coordinator's college (admins have no college, see all)
+    const alumniFilter  = college ? { role: 'alumni', college } : { role: 'alumni' };
+    const eventFilter   = college ? { college }                 : {};
 
     const [
       totalAlumni,
       completedEvents,
-      recentFeedbacks,
+    ] = await Promise.all([
+      User.countDocuments(alumniFilter),
+      Event.countDocuments({ ...eventFilter, event_datetime: { $lt: now, $gte: startOfYear } }),
+    ]);
+
+    // Get IDs of events scoped to this coordinator's college
+    const scopedEvents = await Event.find(eventFilter, '_id').lean();
+    const scopedEventIds = scopedEvents.map(e => e._id);
+
+    const [
+      recentFeedbackCount,
       avgRatingResult,
       recentEvents,
     ] = await Promise.all([
-      User.countDocuments({ role: 'alumni' }),
-      Event.countDocuments({ event_datetime: { $lt: now, $gte: startOfYear } }),
-      EventFeedback.countDocuments({ createdAt: { $gte: new Date(now - 30 * 24 * 60 * 60 * 1000) } }),
-      EventFeedback.aggregate([{ $group: { _id: null, avg: { $avg: '$rating' } } }]),
-      Event.find().sort({ event_datetime: -1 }).limit(5).lean(),
+      EventFeedback.countDocuments({
+        event_id: { $in: scopedEventIds },
+        createdAt: { $gte: new Date(now - 30 * 24 * 60 * 60 * 1000) },
+      }),
+      EventFeedback.aggregate([
+        { $match: { event_id: { $in: scopedEventIds } } },
+        { $group: { _id: null, avg: { $avg: '$rating' } } },
+      ]),
+      Event.find(eventFilter).sort({ event_datetime: -1 }).limit(5).lean(),
     ]);
 
+    const recentFeedbacks = recentFeedbackCount;
     const avgRating = avgRatingResult[0] ? Math.round(avgRatingResult[0].avg * 10) / 10 : 0;
 
     // Attendance count per recent event
@@ -65,8 +85,9 @@ router.get('/dashboard', async (req, res) => {
       feedbacks: fbMap[String(e._id)] || 0,
     })).reverse();
 
-    // Top and lowest event by attendance
+    // Top and lowest event by attendance (scoped to college)
     const allAttendance = await AttendanceLog.aggregate([
+      ...(scopedEventIds.length ? [{ $match: { event_id: { $in: scopedEventIds } } }] : []),
       { $group: { _id: '$event_id', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
     ]);
@@ -80,15 +101,15 @@ router.get('/dashboard', async (req, res) => {
       lowEvent = allAttendance.length > 1 ? (lowDoc?.title || '—') : '—';
     }
 
-    // Recent activity: merge attendance logs + feedback submissions, newest first
+    // Recent activity scoped to this college's events
     const [recentLogs, recentFeedbackDocs] = await Promise.all([
-      AttendanceLog.find()
+      AttendanceLog.find({ event_id: { $in: scopedEventIds } })
         .sort({ createdAt: -1 })
         .limit(10)
         .populate('alumni_id', 'firstName lastName')
         .populate('event_id', 'title')
         .lean(),
-      EventFeedback.find()
+      EventFeedback.find({ event_id: { $in: scopedEventIds } })
         .sort({ createdAt: -1 })
         .limit(10)
         .populate('alumni_id', 'firstName lastName')
@@ -111,8 +132,6 @@ router.get('/dashboard', async (req, res) => {
       .sort((a, b) => new Date(b.time) - new Date(a.time))
       .slice(0, 8);
 
-    const activity = activityItems;
-
     res.json({
       totalAlumni,
       completedEvents,
@@ -121,7 +140,7 @@ router.get('/dashboard', async (req, res) => {
       topEvent,
       lowEvent,
       chartEvents,
-      activity,
+      activity: activityItems,
     });
   } catch (err) {
     console.error('dashboard error:', err);
@@ -137,15 +156,21 @@ router.get('/reports/:type', async (req, res) => {
     const eventId = req.query.eventId || null;
     const format  = req.query.format === 'xlsx' ? 'xlsx' : 'csv';
     const xlsx    = require('xlsx');
+    const college = req.user.college || '';
+    const eventFilter = college ? { college } : {};
 
     let events;
     if (eventId) {
       const single = await Event.findById(eventId).lean();
+      // Coordinators cannot export events from another college
+      if (single && college && single.college && single.college !== college) {
+        return res.status(403).json({ message: 'Access denied.' });
+      }
       events = single ? [single] : [];
     } else {
       const start = new Date(year, 0, 1);
       const end   = new Date(year + 1, 0, 1);
-      events = await Event.find({ event_datetime: { $gte: start, $lt: end } })
+      events = await Event.find({ ...eventFilter, event_datetime: { $gte: start, $lt: end } })
         .sort({ event_datetime: -1 }).lean();
     }
 
@@ -245,7 +270,11 @@ router.patch('/notifications/read', markNotificationsRead);
 
 // Employment (must declare /activity before plain /employment)
 router.get('/employment/activity', getEmploymentActivity);
-router.get('/employment',          getEmploymentRecords);
+router.get('/employment', (req, res, next) => {
+  // Force coordinator's college — cannot be overridden by query param
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, getEmploymentRecords);
 router.post('/employment/notify',  (req, res) => {
   // Force the coordinator's assigned college — ignore any body.college
   req.body.college = req.user.college || '';
@@ -276,7 +305,9 @@ router.get('/alumni', async (req, res) => {
     const page  = Math.max(1, parseInt(req.query.page)  || 1);
     const limit = Math.max(1, parseInt(req.query.limit) || 10);
 
+    // Coordinators can only view alumni from their assigned college
     const match = { role: 'alumni' };
+    if (req.user.college) match.college = req.user.college;
     if (course) match.course = course;
     if (year)   match.graduationYear = Number(year);
 

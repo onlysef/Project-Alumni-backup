@@ -589,8 +589,11 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
   );
 }
 
+const COLLEGES = ["CCS","CIT","CAFA","COED","CCJE","CPAG","CBA","CASS","COS","COE"];
+
 // ── TracerFormEditor (main export) ────────────────────────────────────────────
 export default function TracerFormEditor({ open, onClose, showToast }) {
+  const [college, setCollege] = useState("CCS");
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -598,17 +601,21 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
   const [confirmDelete, setConfirmDelete] = useState(null); // { pageIdx, qIdx }
   const [confirmDeletePage, setConfirmDeletePage] = useState(null); // pageIdx
 
-  // Load config each time the modal opens
-  useEffect(() => {
-    if (!open) return;
+  function loadConfig(col) {
     setCurrentPage(0);
     setLoading(true);
-    fetch(`${API}/admin/tracer-form-config`, { headers: authHeaders() })
+    fetch(`${API}/admin/tracer-form-config?college=${col}`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => setConfig(d.config || null))
+      .then((d) => setConfig(d.config || { version: 1, pages: [] }))
       .catch(() => setConfig(null))
       .finally(() => setLoading(false));
-  }, [open]);
+  }
+
+  // Load config each time the modal opens or college changes
+  useEffect(() => {
+    if (!open) return;
+    loadConfig(college);
+  }, [open, college]);
 
   // ── config mutators ──────────────────────────────────────────────────────────
   const updatePageTitle = useCallback((pageIdx, title) => {
@@ -712,14 +719,14 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
     if (!config) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API}/admin/tracer-form-config`, {
+      const res = await fetch(`${API}/admin/tracer-form-config?college=${college}`, {
         method: "PUT",
         headers: authHeaders(),
         body: JSON.stringify({ config }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Save failed.");
-      showToast("Tracer form saved. Alumni will see the updated form immediately.");
+      showToast(`${college} tracer form saved. Alumni will see the updated form immediately.`);
       onClose();
     } catch (err) {
       showToast(err.message || "Save failed. Please try again.");
@@ -756,13 +763,31 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
         <div style={s.header}>
           <div>
             <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", marginBottom: 2 }}>
-              TSU – CCS · Alumni Portal
+              TSU · Alumni Portal
             </div>
             <div style={s.headerTitle}>Edit Tracer Form</div>
           </div>
-          <button type="button" style={s.closeBtn} onClick={onClose} aria-label="Close">
-            ×
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <select
+              value={college}
+              onChange={(e) => setCollege(e.target.value)}
+              style={{
+                background: "rgba(255,255,255,0.15)",
+                color: "#fff",
+                border: "1px solid rgba(255,255,255,0.35)",
+                borderRadius: 6,
+                padding: "5px 10px",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {COLLEGES.map((c) => <option key={c} value={c} style={{ color: "#000" }}>{c}</option>)}
+            </select>
+            <button type="button" style={s.closeBtn} onClick={onClose} aria-label="Close">
+              ×
+            </button>
+          </div>
         </div>
 
         {loading ? (
