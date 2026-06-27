@@ -33,7 +33,7 @@ const getEvents = async (req, res) => {
 // POST /coordinator/events
 const createEvent = async (req, res) => {
   try {
-    const { title, description, image, location, event_datetime, visibility, capacity } = req.body;
+    const { title, description, image, location, event_datetime, end_datetime, visibility, capacity } = req.body;
     if (!title?.trim())    return res.status(400).json({ message: 'Title is required.' });
     if (!event_datetime)   return res.status(400).json({ message: 'Date & time is required.' });
 
@@ -43,27 +43,28 @@ const createEvent = async (req, res) => {
       image:          image || '',
       location:       location?.trim()    || '',
       event_datetime: new Date(event_datetime),
+      end_datetime:   end_datetime ? new Date(end_datetime) : null,
       visibility:     visibility || 'Public',
       capacity:       Number(capacity) || 0,
       created_by:     req.user.id,
     });
 
-    // Notify all active alumni
-    const alumni = await User.find({ role: 'alumni', status: 'active' }, '_id').lean();
-    if (alumni.length > 0) {
-      await Notification.insertMany(
-        alumni.map(a => ({
+    // Respond immediately — notifications run in background
+    res.status(201).json({ event: { ...event.toObject(), interested_count: 0 } });
+
+    User.find({ role: 'alumni', status: 'active' }, '_id').lean()
+      .then(alumni => {
+        if (!alumni.length) return;
+        return Notification.insertMany(alumni.map(a => ({
           user_id:  a._id,
           title:    'New Event',
           message:  `A new event has been posted: "${event.title}"`,
           is_read:  false,
           event_id: event._id,
           type:     'event',
-        }))
-      );
-    }
-
-    res.status(201).json({ event: { ...event.toObject(), interested_count: 0 } });
+        })));
+      })
+      .catch(() => {});
   } catch (err) {
     console.error('createEvent error:', err);
     res.status(500).json({ message: 'Server error.' });

@@ -42,7 +42,6 @@ export default function EventParticipation() {
   const [page, setPage] = useState(1);
   const [tableSearch, setTableSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
   const [tableLoading, setTableLoading] = useState(false);
   const tableDebounceRef = useRef(null);
 
@@ -73,13 +72,12 @@ export default function EventParticipation() {
   }, []);
 
   // ── Load records ─────────────────────────────────────────────
-  const loadRecords = useCallback(async (eventId, pg, search, stFilter) => {
+  const loadRecords = useCallback(async (eventId, pg, search) => {
     if (!eventId) return;
     setTableLoading(true);
     try {
       const params = new URLSearchParams({ page: pg, limit: 10 });
-      if (search)   params.set("search", search);
-      if (stFilter) params.set("status", stFilter);
+      if (search) params.set("search", search);
       const data = await authGet(`/coordinator/attendance/${eventId}/records?${params}`);
       setRecords(data.records ?? []);
       setPagination(data.pagination ?? null);
@@ -90,17 +88,16 @@ export default function EventParticipation() {
   useEffect(() => {
     if (selectedEventId) {
       loadStats(selectedEventId);
-      loadRecords(selectedEventId, 1, "", "");
+      loadRecords(selectedEventId, 1, "");
       setPage(1);
       setTableSearch("");
       setAppliedSearch("");
-      setStatusFilter("");
     }
   }, [selectedEventId]);
 
   useEffect(() => {
-    loadRecords(selectedEventId, page, appliedSearch, statusFilter);
-  }, [page, appliedSearch, statusFilter]);
+    loadRecords(selectedEventId, page, appliedSearch);
+  }, [page, appliedSearch]);
 
   // ── Alumni search debounce ───────────────────────────────────
   useEffect(() => {
@@ -160,7 +157,7 @@ export default function EventParticipation() {
       setTimeIn(nowTime());
       setStatus("Present");
       loadStats(selectedEventId);
-      loadRecords(selectedEventId, page, appliedSearch, statusFilter);
+      loadRecords(selectedEventId, page, appliedSearch);
     } catch {
       showToast?.("Failed to record attendance.");
     } finally {
@@ -173,11 +170,6 @@ export default function EventParticipation() {
     setTableSearch(val);
     clearTimeout(tableDebounceRef.current);
     tableDebounceRef.current = setTimeout(() => { setAppliedSearch(val); setPage(1); }, 400);
-  }
-
-  function handleStatusFilter(e) {
-    setStatusFilter(e.target.value);
-    setPage(1);
   }
 
   async function handleViewEvent() {
@@ -352,7 +344,7 @@ export default function EventParticipation() {
             type="button"
             className="btn btn-secondary"
             style={{ marginTop: 10, fontSize: 12 }}
-            onClick={() => { loadStats(selectedEventId); loadRecords(selectedEventId, page, appliedSearch, statusFilter); }}
+            onClick={() => { loadStats(selectedEventId); loadRecords(selectedEventId, page, appliedSearch); }}
           >
             <Icon name="icon-update" /> Refresh
           </button>
@@ -373,14 +365,6 @@ export default function EventParticipation() {
                 {ev.title} ({ev.event_datetime ? fmtDate(ev.event_datetime) : ""})
               </option>
             ))}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={handleStatusFilter}
-            style={{ flex: "0 0 auto", width: 120 }}
-          >
-            <option value="">All Status</option>
-            <option>Present</option>
           </select>
           <input
             className="coord-employ-search"
