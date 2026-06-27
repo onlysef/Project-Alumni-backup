@@ -385,4 +385,25 @@ const getNotifications = async (req, res) => {
   }
 };
 
-module.exports = { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications };
+// PATCH /api/admin/users/bulk-status
+const bulkUpdateStatus = async (req, res) => {
+  try {
+    const { ids, status } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0)
+      return res.status(400).json({ message: 'No user IDs provided.' });
+    if (!['active', 'suspended'].includes(status))
+      return res.status(400).json({ message: 'Invalid status.' });
+
+    const result = await User.updateMany({ _id: { $in: ids } }, { status });
+    res.json({
+      message:  `${result.modifiedCount} account(s) updated.`,
+      updated:  ids,
+      modified: result.modifiedCount,
+    });
+  } catch (err) {
+    console.error('bulkUpdateStatus error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications, bulkUpdateStatus };

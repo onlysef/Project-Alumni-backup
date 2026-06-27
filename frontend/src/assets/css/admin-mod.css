@@ -2163,6 +2163,114 @@
             filter: var(--kpi-icon-filter);
         }
 
+        /* ── Bulk selection ── */
+        .bulk-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: #fdf5f6;
+            border-bottom: 1px solid #e8d4d8;
+            flex-wrap: wrap;
+        }
+
+        body.dark-mode .bulk-toolbar {
+            background: #2a1a1e;
+            border-bottom-color: #3e2830;
+        }
+
+        .bulk-count {
+            font-size: 13px;
+            font-weight: 600;
+            color: #570013;
+            margin-right: 4px;
+        }
+
+        body.dark-mode .bulk-count {
+            color: #fac853;
+        }
+
+        .bulk-btn {
+            padding: 5px 14px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: opacity 120ms ease, background 120ms ease;
+        }
+
+        .bulk-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .bulk-activate {
+            background: #276749;
+            color: #fff;
+            border-color: #276749;
+        }
+
+        .bulk-activate:hover:not(:disabled) {
+            background: #1f5239;
+        }
+
+        .bulk-suspend {
+            background: #570013;
+            color: #fff;
+            border-color: #570013;
+        }
+
+        .bulk-suspend:hover:not(:disabled) {
+            background: #3d000e;
+        }
+
+        .bulk-reject {
+            background: #c53030;
+            color: #fff;
+            border-color: #c53030;
+        }
+
+        .bulk-reject:hover:not(:disabled) {
+            background: #9b2424;
+        }
+
+        .bulk-clear {
+            background: transparent;
+            color: #76656a;
+            border-color: #d0bfc2;
+        }
+
+        .bulk-clear:hover:not(:disabled) {
+            background: #f0e8e8;
+            color: #570013;
+        }
+
+        body.dark-mode .bulk-clear {
+            color: #a08898;
+            border-color: #4a3040;
+        }
+
+        body.dark-mode .bulk-clear:hover:not(:disabled) {
+            background: rgba(250, 200, 83, 0.08);
+            color: #fac853;
+        }
+
+        .bulk-checkbox {
+            width: 15px;
+            height: 15px;
+            accent-color: #570013;
+            cursor: pointer;
+        }
+
+        tr.row-selected td {
+            background: rgba(87, 0, 19, 0.04);
+        }
+
+        body.dark-mode tr.row-selected td {
+            background: rgba(250, 200, 83, 0.06);
+        }
+
         .admin-card,
         .post-form-card,
         .recent-posts article {

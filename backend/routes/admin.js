@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications } = require('../controllers/adminController');
+const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications, bulkUpdateStatus } = require('../controllers/adminController');
 const {
   getAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
@@ -34,11 +34,12 @@ router.use(protect, authorize('admin'));
 
 router.get('/notifications', getNotifications);
 
-router.post('/users',                      createUser);
-router.post('/users/import',               upload.single('file'), importUsers);
-router.get('/users',                       getUsers);
-router.patch('/users/:id',                 updateUser);
-router.delete('/users/:id',               deleteUser);
+router.post('/users',                        createUser);
+router.post('/users/import',                 upload.single('file'), importUsers);
+router.patch('/users/bulk-status',           bulkUpdateStatus);
+router.get('/users',                         getUsers);
+router.patch('/users/:id',                   updateUser);
+router.delete('/users/:id',                  deleteUser);
 router.post('/users/:id/resend-credentials', resendCredentials);
 
 router.get('/announcements',                    getAnnouncements);
