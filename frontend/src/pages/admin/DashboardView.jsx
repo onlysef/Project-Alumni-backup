@@ -330,8 +330,8 @@ export default function DashboardView() {
                   key={a._id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => onOpenPost?.(a.announcement_id)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenPost?.(a.announcement_id); } }}
+                  onClick={() => a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } })}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } }); } }}
                 >
                   <p>
                     <strong>{a.user_name}</strong>{" "}
