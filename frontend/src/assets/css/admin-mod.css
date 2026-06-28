@@ -3581,6 +3581,8 @@
 
         .modal-backdrop.topbar-popover .topbar-modal .modal-head {
             flex: 0 0 auto;
+            border-top-left-radius: 10px;
+            border-top-right-radius: 10px;
         }
 
         .modal-backdrop.topbar-popover .topbar-modal-actions {
@@ -5894,6 +5896,31 @@
             padding: 0 12px;
             gap: 6px;
             white-space: nowrap;
+            background: rgba(255, 255, 255, 0.12) !important;
+            color: #fff !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
+        }
+
+        .accounts-controls .account-toolbar-action:hover {
+            background: rgba(255, 255, 255, 0.22) !important;
+        }
+
+        .accounts-controls .account-toolbar-action span {
+            color: #fff !important;
+        }
+
+        body.dark-mode .accounts-controls .account-toolbar-action {
+            background: rgba(255, 255, 255, 0.12) !important;
+            color: #fff !important;
+            border: 1.5px solid rgba(255, 255, 255, 0.55) !important;
+        }
+
+        body.dark-mode .accounts-controls .account-toolbar-action:hover {
+            background: rgba(255, 255, 255, 0.22) !important;
+        }
+
+        body.dark-mode .accounts-controls .account-toolbar-action span {
+            color: #fff !important;
         }
 
         .account-toolbar-action > span:first-child {
@@ -6478,6 +6505,35 @@
             .admin-table.announcement-table td > * {
                 min-width: 0;
             }
+
+            .recent-card {
+                padding: 14px 14px 20px;
+            }
+
+            .recent-row {
+                grid-template-columns: 1fr;
+                gap: 2px;
+                padding: 10px 0;
+                border-bottom: 1px solid rgba(87, 0, 19, 0.12);
+            }
+
+            .recent-row > span {
+                min-width: 0;
+                overflow-wrap: anywhere;
+                word-break: break-word;
+            }
+
+            .recent-row > span:first-child {
+                font-weight: 700;
+            }
+
+            .recent-row time {
+                text-align: left;
+            }
+
+            body.dark-mode .recent-row {
+                border-bottom-color: rgba(250, 200, 83, 0.14);
+            }
         }
 
         /* ── Alumni autocomplete ── */
@@ -6558,6 +6614,19 @@
 
         .post-launcher-icon:hover { background: #f1edef; }
         .post-launcher-icon .admin-svg-icon { width: 22px; height: 22px; }
+
+        body.dark-mode .post-launcher-card {
+            background: #2b141a;
+            border-color: rgba(250, 200, 83, 0.22);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+        }
+
+        body.dark-mode .post-launcher-prompt {
+            background: #3a1f27;
+            color: #cbb9bd;
+        }
+
+        body.dark-mode .post-launcher-icon:hover { background: #3a1f27; }
 
         @media (min-width: 601px) {
             .announcement-table th:nth-child(1),
