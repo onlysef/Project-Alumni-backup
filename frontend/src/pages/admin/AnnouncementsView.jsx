@@ -5,6 +5,7 @@ import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
+import alumniLogo from "../../assets/images/alumni-removebg.png";
 
 import { API, authHeaders } from "../../services/api.js";
 const TYPE_ART_CLASS = { News: "", Event: "event", Career: "career", Scholarship: "scholarship" };
@@ -271,16 +272,7 @@ export default function AnnouncementsView() {
                 <td>{r.type}</td>
                 <td>{r.description}</td>
                 <td>
-                  <div className="desktop-row-actions">
-                    <button
-                      type="button"
-                      onClick={() => { setComposer({ row: r }); showToast("Post loaded in composer."); }}
-                    >
-                      Edit
-                    </button>
-                    <button type="button" onClick={() => handleDelete(r)}>Delete</button>
-                  </div>
-                  <div className="mobile-row-actions">
+                  <div className="announcement-action-menu">
                     <ActionMenu
                       actions={["edit", "delete"]}
                       onSelect={(action) => {
@@ -330,48 +322,23 @@ export default function AnnouncementsView() {
       </section>
 
       <div className="announcement-grid">
-        <section className="post-form-card post-launcher-card">
-          <div className="post-composer-head">
-            <div className="composer-avatar">TSU</div>
-            <div>
-              <h3>Create Announcement</h3>
-              <span>TSU Alumni Office</span>
-            </div>
-          </div>
-          <input
-            className="composer-title"
-            type="text"
-            placeholder="Title (optional — auto-filled from content)"
-            value={quickTitle}
-            onChange={(e) => setQuickTitle(e.target.value)}
-          />
-          <textarea
-            className="composer-body"
-            rows="3"
-            placeholder="What's new for alumni?"
-            value={quickDesc}
-            onChange={(e) => setQuickDesc(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleQuickPost(); }}
-          />
-          <div className="composer-tools" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-            <select
-              value={quickCategory}
-              onChange={(e) => setQuickCategory(e.target.value)}
-              style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid #ccc", fontSize: 13 }}
-            >
-              {["News","Event","Career","Scholarship"].map(c => <option key={c}>{c}</option>)}
-            </select>
-            <button type="button" className="post-submit" disabled={quickSaving} onClick={handleQuickPost}>
-              {quickSaving ? "Posting…" : "Post"}
-            </button>
-            <button
-              type="button"
-              style={{ fontSize: 12, color: "#fff", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
-              onClick={() => setComposer({})}
-            >
-              More options
-            </button>
-          </div>
+        <section
+          className="post-launcher-card"
+          role="button"
+          tabIndex={0}
+          aria-label="Create announcement"
+          onClick={() => setComposer({})}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setComposer({});
+            }
+          }}
+        >
+          <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
+          <span className="post-launcher-prompt">What's new for alumni?</span>
+          <span className="post-launcher-icon" title="Add photo"><Icon name="icon-21" /></span>
+          <span className="post-launcher-icon" title="Add emoji"><Icon name="icon-22" /></span>
         </section>
 
         <aside className="recent-posts">
@@ -680,7 +647,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
           <button type="button" aria-label="Close" onClick={onClose}>×</button>
         </div>
         <div className="create-post-profile">
-          <div className="composer-avatar">TSU</div>
+          <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
           <div>
             <strong>TSU Alumni Office</strong>
             <span style={{ position: "relative" }}>

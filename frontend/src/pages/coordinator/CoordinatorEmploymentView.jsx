@@ -73,6 +73,8 @@ export default function CoordinatorEmploymentView() {
     setPage(1);
   }, [appliedSearch]);
 
+  const [notifySent, setNotifySent] = useState(false);
+
   function handleNotify() {
     const assignedCollege = user?.college || "";
     const scope = assignedCollege ? `${assignedCollege} alumni` : "all alumni";
@@ -90,6 +92,8 @@ export default function CoordinatorEmploymentView() {
           });
           const data = await res.json();
           if (!res.ok) { showToast?.(data.message || "Failed to send notifications."); return; }
+          setNotifySent(true);
+          setTimeout(() => setNotifySent(false), 2500);
           showToast?.(data.message);
         } catch {
           showToast?.("Could not connect to server.");
@@ -146,7 +150,7 @@ export default function CoordinatorEmploymentView() {
             onClick={handleNotify}
             disabled={notifying}
           >
-            <Icon name="icon-update-white" />
+            <Icon name={notifySent ? "icon-13" : "icon-9"} />
             {notifying ? "Sending…" : "Notify Alumni to Update"}
           </button>
         </div>
