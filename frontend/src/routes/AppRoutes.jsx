@@ -25,6 +25,7 @@ const EventManagement         = lazy(() => import("../pages/coordinator/EventMan
 const EventParticipation      = lazy(() => import("../pages/coordinator/EventParticipation"));
 const CoordinatorEmploymentView = lazy(() => import("../pages/coordinator/CoordinatorEmploymentView"));
 const AlumniContacts          = lazy(() => import("../pages/coordinator/AlumniContacts"));
+const CoordinatorAiAssistantView = lazy(() => import("../pages/admin/AiAssistantView"));
 const CoordinatorAboutView    = lazy(() => import("../pages/admin/AboutView"));
 
 // Alumni pages
@@ -105,6 +106,7 @@ export default function AppRoutes() {
             <Route path="participation"element={<EventParticipation />} />
             <Route path="employment"   element={<CoordinatorEmploymentView />} />
             <Route path="contacts"     element={<AlumniContacts />} />
+            <Route path="aiassistant"  element={<CoordinatorAiAssistantView />} />
             <Route path="about"        element={<CoordinatorAboutView />} />
             <Route path="tsu"          element={<TsuLandingView />} />
           </Route>
