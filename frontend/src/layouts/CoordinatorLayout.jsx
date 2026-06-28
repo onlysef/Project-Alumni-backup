@@ -10,6 +10,7 @@ const PATH_TITLES = {
   "/coordinator/participation":"Event Participation",
   "/coordinator/employment":   "Employment Details",
   "/coordinator/contacts":     "Alumni Contacts",
+  "/coordinator/aiassistant":  "AI Assistant",
   "/coordinator/about":        "Alumni Association Inc.",
   "/coordinator/tsu":          "Tarlac State University",
 };
