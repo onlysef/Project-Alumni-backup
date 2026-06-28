@@ -523,7 +523,7 @@ export default function EmploymentView() {
             onClick={handleNotifyAlumni}
           >
             <span><Icon name={notifySent ? "icon-13" : "icon-9"} /></span>
-            <span>{notifying ? "Sending…" : "Notify Alumni to Update"}</span>
+            <span>{notifying ? "Sending…" : "Notify Alumni"}</span>
           </button>
           <div className="emp-export-wrap" ref={exportRef}>
             <button
