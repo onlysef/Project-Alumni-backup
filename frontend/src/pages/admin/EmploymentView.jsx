@@ -159,6 +159,7 @@ export default function EmploymentView() {
 
   // ─── notify alumni (accreditation reminder) ──────────────────────────────────
   const [notifying, setNotifying] = useState(false);
+  const [notifySent, setNotifySent] = useState(false);
 
   function handleNotifyAlumni() {
     const parts = [];
@@ -182,6 +183,8 @@ export default function EmploymentView() {
           });
           const data = await res.json();
           if (!res.ok) { showToast(data.message || 'Failed to send notifications.'); return; }
+          setNotifySent(true);
+          setTimeout(() => setNotifySent(false), 2500);
           showToast(data.message);
           if (data.failedEmails?.length) {
             console.warn('Failed to deliver to:', data.failedEmails);
@@ -519,8 +522,8 @@ export default function EmploymentView() {
             disabled={notifying}
             onClick={handleNotifyAlumni}
           >
-            <span><Icon name="icon-18w" /></span>
-            <span>{notifying ? "Sending…" : "Notify Alumni to Update"}</span>
+            <span><Icon name={notifySent ? "icon-13" : "icon-9"} /></span>
+            <span>{notifying ? "Sending…" : "Notify Alumni"}</span>
           </button>
           <div className="emp-export-wrap" ref={exportRef}>
             <button

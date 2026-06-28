@@ -52,6 +52,7 @@ export default function AccountsView() {
   const [statusFilter, setStatusFilter] = useState("Status");
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [openMenuId, setOpenMenuId]   = useState(null);
   const [confirm, setConfirm]         = useState(null);
   const [selected, setSelected]       = useState(new Set());
@@ -263,11 +264,29 @@ export default function AccountsView() {
       <section className="admin-card">
         <div className="admin-card-head">
           <h3>Manage Accounts</h3>
-          <div className="accounts-controls">
-            <AdminMenu menuKey="accounts-role"   label={roleFilter}   onSelect={(c) => applyFilter(c, "role")} />
-            <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
-            <button type="button" className="add-button import-button" onClick={() => setImportOpen(true)}>Import</button>
-            <button type="button" className="add-button" onClick={() => setEntry({})}>Add Account</button>
+          <div className={`accounts-controls${filtersOpen ? " filters-open" : ""}`}>
+            <button
+              type="button"
+              className="accounts-filter-toggle"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              Filter by{filtersOpen ? ":" : ""}
+            </button>
+            {filtersOpen && (
+              <>
+                <AdminMenu menuKey="accounts-role" label={roleFilter} onSelect={(c) => applyFilter(c, "role")} />
+                <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
+              </>
+            )}
+            <button type="button" className="add-button import-button account-toolbar-action" onClick={() => setImportOpen(true)}>
+              <span aria-hidden="true">⇩</span>
+              <span>Import</span>
+            </button>
+            <button type="button" className="add-button account-toolbar-action" onClick={() => setEntry({})}>
+              <span aria-hidden="true">+</span>
+              <span>Add Account</span>
+            </button>
           </div>
         </div>
 

@@ -39,6 +39,7 @@ export default function CoordinatorEmploymentView() {
   const [activities, setActivities] = useState([]);
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
+  const [course, setCourse] = useState("");
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
@@ -51,7 +52,7 @@ export default function CoordinatorEmploymentView() {
     try {
       const [emp, act] = await Promise.all([
         apiFetch("/coordinator/employment", {
-          params: { search: appliedSearch, page, limit: 10 },
+          params: { search: appliedSearch, course, page, limit: 10 },
         }),
         apiFetch("/coordinator/employment/activity", { params: { limit: 10 } }),
       ]);
@@ -63,7 +64,7 @@ export default function CoordinatorEmploymentView() {
     } finally {
       setLoading(false);
     }
-  }, [appliedSearch, page]);
+  }, [appliedSearch, course, page]);
 
   useEffect(() => {
     load();
@@ -71,7 +72,9 @@ export default function CoordinatorEmploymentView() {
 
   useEffect(() => {
     setPage(1);
-  }, [appliedSearch]);
+  }, [appliedSearch, course]);
+
+  const [notifySent, setNotifySent] = useState(false);
 
   function handleNotify() {
     const assignedCollege = user?.college || "";
@@ -90,6 +93,8 @@ export default function CoordinatorEmploymentView() {
           });
           const data = await res.json();
           if (!res.ok) { showToast?.(data.message || "Failed to send notifications."); return; }
+          setNotifySent(true);
+          setTimeout(() => setNotifySent(false), 2500);
           showToast?.(data.message);
         } catch {
           showToast?.("Could not connect to server.");
@@ -110,7 +115,7 @@ export default function CoordinatorEmploymentView() {
   async function handleExport() {
     try {
       const data = await apiFetch("/coordinator/employment", {
-        params: { search: appliedSearch, page: 1, limit: 99999 },
+        params: { search: appliedSearch, course, page: 1, limit: 99999 },
       });
       const all = data.records ?? [];
       downloadCsv("coordinator-employment-details.csv", [
@@ -146,8 +151,8 @@ export default function CoordinatorEmploymentView() {
             onClick={handleNotify}
             disabled={notifying}
           >
-            <Icon name="icon-update-white" />
-            {notifying ? "Sending…" : "Notify Alumni to Update"}
+            <Icon name={notifySent ? "icon-13" : "icon-9"} />
+            {notifying ? "Sending…" : "Notify Alumni"}
           </button>
         </div>
 
@@ -159,6 +164,17 @@ export default function CoordinatorEmploymentView() {
             value={search}
             onChange={handleSearchChange}
           />
+          <select
+            className="coord-employ-course-filter"
+            value={course}
+            onChange={(e) => setCourse(e.target.value)}
+            aria-label="Filter by course"
+          >
+            <option value="">All Courses</option>
+            <option value="BSIT">BSIT</option>
+            <option value="BSCS">BSCS</option>
+            <option value="BSIS">BSIS</option>
+          </select>
         </div>
 
         {loading ? (
@@ -237,7 +253,8 @@ export default function CoordinatorEmploymentView() {
                 key={`${a._id ?? i}`}
               >
                 <span>
-                  {a.user_name} {a.action}
+                  <strong className="coord-activity-name">{a.user_name}</strong>{" "}
+                  {a.action}
                   {a.target_name ? ` — ${a.target_name}` : ""}
                 </span>
                 <span className="coord-activity-time">

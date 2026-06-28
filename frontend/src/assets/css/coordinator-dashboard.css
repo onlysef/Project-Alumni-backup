@@ -718,7 +718,6 @@
 
             .coord-activity-row span::first-line {
                 color: var(--maroon);
-                font-weight: 800;
             }
 
             .coord-activity-row time {
@@ -1114,6 +1113,23 @@
                 border-color: var(--maroon);
             }
 
+            .coord-employ-course-filter {
+                height: 34px;
+                border: 1px solid var(--line);
+                border-radius: 6px;
+                padding: 0 10px;
+                font: inherit;
+                font-size: 13px;
+                color: var(--text);
+                background: #fff;
+                outline: none;
+                cursor: pointer;
+            }
+
+            .coord-employ-course-filter:focus {
+                border-color: var(--maroon);
+            }
+
             .coord-employ-pagination {
                 display: flex;
                 align-items: center;
@@ -1294,6 +1310,7 @@
             body.dark-mode .coord-attendance-card select,
             body.dark-mode .coord-record-toolbar select,
             body.dark-mode .coord-employ-search,
+            body.dark-mode .coord-employ-course-filter,
             body.dark-mode .coord-contact-form input,
             body.dark-mode .coord-contact-toolbar input,
             body.dark-mode .coord-contact-toolbar select {
@@ -2097,7 +2114,10 @@ body.dark-mode .coord-course-pill:not(.bsit):not(.bscs):not(.bsis) {
 }
 .coord-activity-row span:first-child {
     color: var(--maroon);
-    font-weight: 700;
+    font-weight: 400;
+}
+.coord-activity-row .coord-activity-name {
+    font-weight: 800;
 }
 
 .about-view {
@@ -2685,10 +2705,11 @@ body.dark-mode .coord-activity-row time {
     color: #f3e7ea !important;
 }
 body.dark-mode .coord-activity-row span:first-child {
+    color: #f3e7ea !important;
+}
+body.dark-mode .coord-activity-row .coord-activity-name {
     color: var(--gold) !important;
 }
-
-/* report rows */
 body.dark-mode .coord-report-row,
 body.dark-mode .coord-report-row span {
     color: #f3e7ea;
@@ -2815,7 +2836,7 @@ body.dark-mode .coord-event-list > h3,
 body.dark-mode .coord-event-list-inner article strong,
 body.dark-mode .coord-field > span,
 body.dark-mode table th,
-body.dark-mode .coord-activity-row span:first-child {
+body.dark-mode .coord-activity-row .coord-activity-name {
     color: var(--gold) !important;
 }
 /* muted labels (Filter by, "Time In", etc.) -> soft light */

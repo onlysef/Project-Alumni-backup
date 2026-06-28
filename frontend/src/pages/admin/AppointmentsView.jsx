@@ -2,6 +2,7 @@
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
+import Icon from "../../components/common/Icon.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
 // "HH:MM" (24-h) → "8:00 AM"
@@ -415,6 +416,7 @@ export default function AppointmentsView() {
   const [staffLoading,     setStaffLoading]      = useState(true);
   const [staffModal,       setStaffModal]        = useState(null); // null | { mode, item }
   const [staffSaving,      setStaffSaving]       = useState(false);
+  const [editingStaff,     setEditingStaff]      = useState(false);
 
   // Appointments
   const [appointments,     setAppointments]      = useState([]);
@@ -685,14 +687,17 @@ export default function AppointmentsView() {
               </div>
 
               <div className="office-actions">
-                <button
-                  type="button"
-                  className="save-office"
-                  disabled={!editingSettings || settingsSaving}
-                  onClick={saveSettings}
-                >
-                  {settingsSaving ? "Saving…" : "Save"}
-                </button>
+                {editingSettings && (
+                  <button
+                    type="button"
+                    className="save-office"
+                    disabled={settingsSaving}
+                    onClick={saveSettings}
+                  >
+                    <Icon name="icon-13" />
+                    {settingsSaving ? "Saving…" : "Save"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="edit-office"
@@ -706,6 +711,7 @@ export default function AppointmentsView() {
                     }
                   }}
                 >
+                  <Icon name={editingSettings ? "icon-9" : "icon-18"} />
                   {editingSettings ? "Cancel" : "Edit"}
                 </button>
               </div>
@@ -722,7 +728,14 @@ export default function AppointmentsView() {
           {staffLoading ? (
             <p style={loadingText}>Loading…</p>
           ) : (
-            <div className="staff-list is-editing">
+            <>
+            <div className="staff-list-head" aria-hidden="true">
+              <span>Name</span>
+              <span>Role</span>
+              <span>Status</span>
+              {editingStaff && <span>Actions</span>}
+            </div>
+            <div className={`staff-list${editingStaff ? " is-editing" : ""}`}>
               {staff.length === 0 ? (
                 <p style={{ fontSize: 13, color: "var(--muted, #76656a)" }}>
                   No staff members found.
@@ -732,7 +745,7 @@ export default function AppointmentsView() {
                   <strong>{s.name}</strong>
                   <span style={{ alignItems: "center", fontSize: 12, color: "var(--muted)" }}>{s.role}</span>
                   <em style={statusStyle(s.status)}>{s.status}</em>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  {editingStaff && <div className="staff-row-actions">
                     <button
                       type="button"
                       className="edit-staff"
@@ -747,18 +760,24 @@ export default function AppointmentsView() {
                     >
                       ✕
                     </button>
-                  </div>
+                  </div>}
                 </div>
               ))}
             </div>
+            </>
           )}
 
           <div className="staff-actions">
+            <button type="button" className="edit-office" onClick={() => setEditingStaff((value) => !value)}>
+              <Icon name={editingStaff ? "icon-13" : "icon-18"} />
+              {editingStaff ? "Done" : "Edit"}
+            </button>
             <button
               type="button"
               className="add-button"
               onClick={() => setStaffModal({ mode: "add", item: null })}
             >
+              <span className="button-symbol" aria-hidden="true">+</span>
               Add Staff
             </button>
           </div>
@@ -902,7 +921,7 @@ export default function AppointmentsView() {
                         )}
                       </div>
                       {["Pending", "Approved"].includes(a.status) && (
-                        <div className="mobile-row-actions">
+                        <div className="appointment-action-menu">
                           <ActionMenu
                             actions={a.status === "Pending"
                               ? ["approve", "reject"]
@@ -915,7 +934,7 @@ export default function AppointmentsView() {
                         </div>
                       )}
                       {!["Pending", "Approved"].includes(a.status) && (
-                        <span className="mobile-row-actions" style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
+                        <span className="appointment-action-empty" style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
                       )}
                     </td>
                   </tr>
@@ -931,6 +950,7 @@ export default function AppointmentsView() {
             className="add-button"
             onClick={() => setApptModal(true)}
           >
+            <span className="button-symbol" aria-hidden="true">+</span>
             Add Appointment
           </button>
         </div>
