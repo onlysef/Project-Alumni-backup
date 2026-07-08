@@ -168,8 +168,9 @@ const deleteUser = async (req, res) => {
     const user = await User.findByIdAndDelete(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    // Cascade delete all records linked to this user
-    await Promise.all([
+    // Cascade delete all records linked to this user.
+    // allSettled so one failing delete never blocks the rest.
+    const cascadeResults = await Promise.allSettled([
       AlumniEmployment.deleteOne({ alumni_id: req.params.id }),
       TracerStudyResponse.deleteOne({ alumni_id: req.params.id }),
       Appointment.deleteMany({ alumni_id: req.params.id }),
@@ -180,6 +181,9 @@ const deleteUser = async (req, res) => {
       EmploymentActivity.deleteMany({ user_id: req.params.id }),
       Notification.deleteMany({ user_id: req.params.id }),
     ]);
+    cascadeResults.forEach((r, i) => {
+      if (r.status === 'rejected') console.error(`deleteUser cascade[${i}] error:`, r.reason);
+    });
 
     res.json({ message: 'User deleted.' });
   } catch (err) {

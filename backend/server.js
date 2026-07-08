@@ -9,6 +9,7 @@ const adminRoutes       = require('./routes/admin');
 const alumniRoutes      = require('./routes/alumni');
 const employerRoutes    = require('./routes/employer');
 const coordinatorRoutes = require('./routes/coordinator');
+const aiRoutes          = require('./routes/ai');
 
 connectDB();
 
@@ -38,6 +39,7 @@ app.use('/api/admin',       adminRoutes);
 app.use('/api/alumni',      alumniRoutes);
 app.use('/api/employer',    employerRoutes);
 app.use('/api/coordinator', coordinatorRoutes);
+app.use('/api/ai',          aiRoutes);
 
 
 app.get('/api/health', (req, res) => {
