@@ -7267,6 +7267,116 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             top: 6px;
             right: 6px;
             z-index: 20;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .ac-clear-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            background: #fff;
+            color: #6b7280;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+
+        .ac-clear-btn:hover {
+            background: #fff1f2;
+            color: #be123c;
+            border-color: #fda4af;
+        }
+
+        /* ── Sources & suggestions ── */
+        .ac-sources {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 5px;
+            margin-top: 8px;
+        }
+
+        .ac-sources-label {
+            font-size: 11px;
+            color: #9ca3af;
+            font-weight: 500;
+        }
+
+        .ac-source-chip {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 99px;
+            background: #f3f4f6;
+            color: #6b7280;
+            border: 1px solid #e5e7eb;
+        }
+
+        .ac-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .ac-suggestion-chip {
+            font-size: 12px;
+            padding: 5px 12px;
+            border-radius: 99px;
+            background: #fff;
+            color: #6b2737;
+            border: 1px solid #6b2737;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            text-align: left;
+        }
+
+        .ac-suggestion-chip:hover {
+            background: #6b2737;
+            color: #fff;
+        }
+
+        /* ── Upload button ── */
+        .ac-upload-btn {
+            display: inline-grid;
+            place-items: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            color: #6b7280;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: background 0.15s, color 0.15s;
+        }
+
+        .ac-upload-btn:hover:not(:disabled) {
+            background: #f3f4f6;
+            color: #6b2737;
+        }
+
+        .ac-upload-btn:disabled { opacity: 0.5; cursor: default; }
+
+        /* ── Upload toast ── */
+        .ac-upload-toast {
+            font-size: 12px;
+            padding: 7px 14px;
+            border-radius: 8px;
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+            margin-bottom: 6px;
+        }
+
+        .ac-upload-toast-err {
+            background: #fff1f2;
+            color: #be123c;
+            border-color: #fda4af;
         }
 
         .ac-menu-wrap { position: relative; }
@@ -7339,6 +7449,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             background: #fff;
             box-shadow: -8px 0 28px rgba(0, 0, 0, 0.25);
             animation: ac-slide-in 160ms ease;
+            overflow-x: hidden;
         }
 
         @keyframes ac-slide-in {
@@ -7382,6 +7493,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
         .ac-history-list {
             flex: 1 1 auto;
             overflow-y: auto;
+            overflow-x: hidden;
             list-style: none;
             margin: 0;
             padding: 8px;
@@ -7415,9 +7527,8 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             font-size: 13px;
             font-weight: 700;
             color: var(--text);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            white-space: normal;
+            word-break: break-word;
         }
         .ac-history-date {
             font-size: 11px;
@@ -7504,3 +7615,356 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             .ac-ac-text { max-width: 100%; }
             .ac-welcome-title { font-size: 26px; }
         }
+
+        /* ── Manage Files drawer ─────────────────────────────────────────────── */
+        .ac-files-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            display: flex;
+            justify-content: flex-end;
+            background: rgba(0, 0, 0, 0.35);
+        }
+
+        .ac-files-panel {
+            width: min(420px, 92vw);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: #fff;
+            box-shadow: -8px 0 28px rgba(0, 0, 0, 0.25);
+            animation: ac-slide-in 160ms ease;
+            overflow: hidden;
+        }
+
+        .ac-files-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 18px;
+            background: var(--maroon);
+            color: #fff;
+            flex-shrink: 0;
+        }
+
+        .ac-files-head-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+            font-weight: 900;
+        }
+
+        .ac-files-close {
+            width: 30px;
+            height: 30px;
+            border: 0;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.14);
+            color: #fff;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+        }
+
+        .ac-files-close:hover { background: rgba(255, 255, 255, 0.28); }
+
+        .ac-files-body {
+            flex: 1 1 auto;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* Upload zone */
+        .ac-files-upload-zone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 22px 16px;
+            border: 2px dashed var(--line);
+            border-radius: 12px;
+            background: #fff;
+            cursor: pointer;
+            text-align: center;
+            width: 100%;
+            transition: background 120ms ease, border-color 120ms ease;
+        }
+
+        .ac-files-upload-zone:hover:not(:disabled) {
+            border-color: var(--maroon);
+            background: #fdf8f8;
+        }
+
+        .ac-files-upload-zone:disabled { opacity: 0.6; cursor: not-allowed; }
+
+        .ac-files-upload-icon {
+            width: 40px;
+            height: 40px;
+            display: grid;
+            place-items: center;
+            border-radius: 10px;
+            background: #f4eeee;
+            color: var(--maroon);
+            margin-bottom: 2px;
+        }
+
+        .ac-files-upload-label {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--maroon);
+        }
+
+        .ac-files-upload-hint {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        /* Toast */
+        .ac-files-toast {
+            font-size: 12px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            background: #ecfdf5;
+            color: #065f46;
+            border: 1px solid #a7f3d0;
+        }
+
+        .ac-files-toast-err {
+            background: #fff1f2;
+            color: #be123c;
+            border-color: #fda4af;
+        }
+
+        /* Count label */
+        .ac-files-count {
+            margin: 0;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        /* File list */
+        .ac-files-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* Individual file row */
+        .ac-file-row {
+            display: grid;
+            grid-template-columns: 40px 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #fff;
+            transition: background 100ms ease, border-color 100ms ease;
+        }
+
+        .ac-file-row:hover {
+            background: #fdf8f8;
+            border-color: #e0cbcb;
+        }
+
+        /* File type badge */
+        .ac-file-type-badge {
+            display: inline-grid;
+            place-items: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            font-size: 10px;
+            font-weight: 900;
+            flex-shrink: 0;
+        }
+
+        .ac-file-type-excel   { background: #dcfce7; color: #166534; }
+        .ac-file-type-pdf     { background: #fee2e2; color: #991b1b; }
+        .ac-file-type-docx    { background: #dbeafe; color: #1e40af; }
+        .ac-file-type-csv     { background: #fef3c7; color: #92400e; }
+        .ac-file-type-unknown { background: #f3f4f6; color: #374151; }
+
+        /* File name + meta */
+        .ac-file-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+        }
+
+        .ac-file-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ac-file-meta {
+            font-size: 11px;
+            color: var(--muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Status badge */
+        .ac-file-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .ac-file-status::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            flex-shrink: 0;
+        }
+
+        .ac-file-status-done       { background: #dcfce7; color: #166534; }
+        .ac-file-status-processing { background: #fef3c7; color: #92400e; }
+        .ac-file-status-failed     { background: #fee2e2; color: #991b1b; }
+        .ac-file-status-unknown    { background: #f3f4f6; color: #374151; }
+
+        /* Per-file delete */
+        .ac-file-del {
+            width: 30px;
+            height: 30px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1;
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+            transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+        }
+
+        .ac-file-del:hover:not(:disabled) {
+            background: #b3261e;
+            border-color: #b3261e;
+            color: #fff;
+        }
+
+        .ac-file-del:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Empty state */
+        .ac-files-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            padding: 32px 16px;
+            text-align: center;
+            color: var(--muted);
+        }
+
+        .ac-files-empty-icon {
+            width: 52px;
+            height: 52px;
+            display: grid;
+            place-items: center;
+            border-radius: 14px;
+            background: #f4eeee;
+            color: var(--maroon);
+            opacity: 0.55;
+            margin-bottom: 4px;
+        }
+
+        .ac-files-empty p {
+            margin: 0;
+            font-size: 13px;
+        }
+
+        .ac-files-empty p:last-child { font-size: 12px; }
+
+        /* Loading spinner */
+        .ac-files-loading {
+            display: flex;
+            justify-content: center;
+            padding: 28px;
+            color: var(--muted);
+        }
+
+        @keyframes ac-spin {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+
+        /* Delete all */
+        .ac-files-delete-all {
+            margin-top: 6px;
+            padding: 10px;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            background: #fff;
+            color: #b3261e;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+        }
+
+        .ac-files-delete-all:hover {
+            background: #b3261e;
+            border-color: #b3261e;
+            color: #fff;
+        }
+
+        /* Dark mode */
+        body.dark-mode .ac-files-panel      { background: #2b141a; }
+        body.dark-mode .ac-files-upload-zone {
+            background: #321820;
+            border-color: rgba(250, 200, 83, 0.22);
+        }
+        body.dark-mode .ac-files-upload-zone:hover:not(:disabled) {
+            background: #3a1f27;
+            border-color: var(--gold);
+        }
+        body.dark-mode .ac-files-upload-icon { background: #3a1f27; }
+        body.dark-mode .ac-files-upload-label { color: var(--gold); }
+        body.dark-mode .ac-file-row {
+            background: #321820;
+            border-color: rgba(250, 200, 83, 0.15);
+        }
+        body.dark-mode .ac-file-row:hover {
+            background: #3a1f27;
+            border-color: rgba(250, 200, 83, 0.3);
+        }
+        body.dark-mode .ac-file-name { color: #f3e7ea; }
+        body.dark-mode .ac-file-del {
+            background: #3a1f27;
+            border-color: rgba(250, 200, 83, 0.18);
+            color: #cbb9bd;
+        }
+        body.dark-mode .ac-files-delete-all {
+            background: #321820;
+            border-color: rgba(250, 200, 83, 0.18);
+        }
+        body.dark-mode .ac-files-empty-icon { background: #3a1f27; }
