@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
+import { marked } from "marked";
+
+marked.setOptions({ breaks: true, gfm: true });
 
 const QUICK_PROMPTS = [
   { label: "Alumni records", text: "How many alumni records are there?" },
@@ -58,6 +61,7 @@ export default function AiAssistantView() {
   const [deletingId, setDeletingId] = useState(null);
 
   const scrollRef = useRef(null);
+  const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const abortRef = useRef(null);
   const menuRef = useRef(null);
@@ -65,11 +69,18 @@ export default function AiAssistantView() {
 
   const started = messages.length > 0;
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const scrollToBottom = useCallback(() => {
+    if (bottomRef.current) {
+      const container = bottomRef.current.closest('.content');
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      } else {
+        bottomRef.current.scrollIntoView({ behavior: 'instant' });
+      }
     }
-  }, [messages, thinking]);
+  }, []);
+
+  useEffect(() => { scrollToBottom(); }, [messages, thinking, scrollToBottom]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -570,11 +581,10 @@ export default function AiAssistantView() {
                   </div>
                 ) : (
                   <div key={m.id} className="ac-row ac-row-ac">
-                    <div className="ac-ac-text">
-                      {m.text.split("\n").map((line, i) => (
-                        <p key={i}>{line}</p>
-                      ))}
-                    </div>
+                    <div
+                      className="ac-ac-text ac-markdown"
+                      dangerouslySetInnerHTML={{ __html: marked.parse(m.text || "") }}
+                    />
                     <div className="ac-msg-tools ac-msg-tools-ac">
                       <button
                         type="button"
@@ -597,6 +607,18 @@ export default function AiAssistantView() {
                   </div>
                 </div>
               )}
+              <div ref={bottomRef} />
+            </div>
+
+            <div className="ac-scroll-top-wrap">
+              <button
+                type="button"
+                className="ac-scroll-top-btn"
+                title="Scroll to top"
+                onClick={() => scrollRef.current?.closest('.content')?.scrollTo({ top: 0, behavior: 'smooth' })}
+              >
+                ↑ Top
+              </button>
             </div>
 
             <div className="ac-composer-wrap">
@@ -647,7 +669,6 @@ export default function AiAssistantView() {
                   </svg>
                 </button>
               </form>
-              <p className="ac-disclaimer">AC is under development.</p>
             </div>
           </>
         )}

@@ -7063,6 +7063,43 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
         }
         .ac-ac-text p:last-child { margin-bottom: 0; }
 
+        /* Markdown rendered output */
+        .ac-markdown p        { margin: 0 0 8px; }
+        .ac-markdown p:last-child { margin-bottom: 0; }
+        .ac-markdown strong   { font-weight: 700; }
+        .ac-markdown em       { font-style: italic; }
+        .ac-markdown ul, .ac-markdown ol { margin: 4px 0 8px 18px; padding: 0; }
+        .ac-markdown li       { margin-bottom: 3px; }
+        .ac-markdown h1, .ac-markdown h2, .ac-markdown h3 {
+            font-size: 14px; font-weight: 700; margin: 10px 0 4px;
+        }
+        .ac-markdown blockquote {
+            border-left: 3px solid #7b1c2e; margin: 6px 0; padding-left: 10px;
+            color: #666; font-style: italic;
+        }
+        .ac-markdown code {
+            background: #f3e7ea; border-radius: 3px; padding: 1px 4px;
+            font-family: monospace; font-size: 12px;
+        }
+
+        /* ── Scroll to top ── */
+        .ac-scroll-top-wrap {
+            display: flex;
+            justify-content: center;
+            padding: 8px 0 4px;
+        }
+        .ac-scroll-top-btn {
+            background: none;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            padding: 4px 14px;
+            font-size: 12px;
+            color: #888;
+            cursor: pointer;
+            transition: border-color .2s, color .2s;
+        }
+        .ac-scroll-top-btn:hover { border-color: #7b1c2e; color: #7b1c2e; }
+
         /* ── Per-message tools (copy / edit) ── */
         .ac-msg-tools {
             display: flex;
