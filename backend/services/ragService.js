@@ -337,7 +337,17 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   if (queryType === 'statistical' || queryType === 'mixed') {
     const aggResult = await aggregationService.query(question);
     if (aggResult) {
-      const context  = `=== TRACER STUDY DATA (from structured records) ===\n${aggResult}`;
+      // Names queries: bypass LLM and stream the formatted list directly
+      if (aggResult.direct) {
+        const text = aggResult.text;
+        if (onToken) {
+          for (const line of text.split('\n')) onToken(line + '\n');
+        }
+        return { answer: text, sources: ['graduate_records'] };
+      }
+
+      const aggText  = typeof aggResult === 'string' ? aggResult : aggResult.text;
+      const context  = `=== TRACER STUDY DATA (from structured records) ===\n${aggText}`;
       const messages = [
         { role: 'system', content: `${SYSTEM_PROMPT}\n\nContext:\n${context}` },
         ...chatHistory.slice(-2),
