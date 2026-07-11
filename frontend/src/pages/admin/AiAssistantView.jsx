@@ -12,6 +12,126 @@ const QUICK_PROMPTS = [
   { label: "Job opportunities", text: "What job opportunities are available?" },
 ];
 
+function getSuggestions(text) {
+  const t = (text || "").toLowerCase();
+
+  if (/employment breakdown|employed|unemployed|employment rate|employment status|self.?employ|never employ/.test(t))
+    return [
+      "What industries do alumni work in?",
+      "Show employment breakdown by program",
+      "Show employment by graduation year",
+      "Who are the employed alumni?",
+      "How many work locally?",
+      "How many work abroad?",
+      "What is the employment type breakdown?",
+    ];
+
+  if (/industr/.test(t))
+    return [
+      "What is the employment rate?",
+      "Who works in the IT industry?",
+      "Who works in the education industry?",
+      "How many work locally?",
+      "How many work abroad?",
+      "Show employment breakdown by program",
+    ];
+
+  if (/board.?exam|licensure|prc/.test(t))
+    return [
+      "How many passed the board exam?",
+      "What percentage passed the board exam?",
+      "Who passed the board exam?",
+      "Who failed the board exam?",
+      "How many did not take the board exam?",
+      "Who did not take the board exam?",
+    ];
+
+  if (/competenc|skill|self.?assess/.test(t))
+    return [
+      "How do alumni rate their technical skills?",
+      "How do alumni rate their communication skills?",
+      "How do alumni rate their problem-solving skills?",
+      "How do alumni rate their teamwork?",
+      "How do alumni rate their adaptability?",
+      "How do alumni rate their critical thinking?",
+    ];
+
+  if (/further (education|studies)|graduate studies|masters|phd|post.?grad/.test(t))
+    return [
+      "Who pursued further studies?",
+      "What percentage pursued further education?",
+      "What is the employment rate?",
+      "How many took the board exam?",
+      "What industries do alumni work in?",
+    ];
+
+  if (/program|specialization|course|tsm|bscs|bsit|wma|\bna\b|\bis\b|\bim\b/.test(t))
+    return [
+      "How many TSM graduates are there?",
+      "How many IT graduates are there?",
+      "How many BSCS graduates are there?",
+      "How many WMA graduates are there?",
+      "Show employment breakdown by program",
+      "What is the overall employment rate?",
+      "Show employment by graduation year",
+    ];
+
+  if (/batch|year|graduation|graduated/.test(t))
+    return [
+      "Show employment by graduation year",
+      "Who are the alumni from batch 2020?",
+      "How many alumni are from batch 2019?",
+      "What is the employment rate?",
+      "Show employment breakdown by program",
+    ];
+
+  if (/locally|abroad|work location|overseas/.test(t))
+    return [
+      "How many work locally?",
+      "How many work abroad?",
+      "What industries do alumni work in?",
+      "What is the employment rate?",
+      "Show employment breakdown by program",
+    ];
+
+  if (/related|relevance|relevant.*course|job.*course/.test(t))
+    return [
+      "How many have jobs directly related to their course?",
+      "How many have jobs somewhat related to their course?",
+      "How many have jobs not related to their course?",
+      "What is the employment rate?",
+      "What industries do alumni work in?",
+    ];
+
+  if (/employment type|regular|permanent|contractual|government|private/.test(t))
+    return [
+      "What is the employment type breakdown?",
+      "How many are regular or permanent employees?",
+      "How many are contractual?",
+      "What is the employment rate?",
+      "What industries do alumni work in?",
+    ];
+
+  if (/respondents|tracer|survey|overview/.test(t))
+    return [
+      "What is the employment rate?",
+      "What industries do alumni work in?",
+      "Show employment breakdown by program",
+      "How many took the board exam?",
+      "How many pursued further studies?",
+      "How do alumni rate their competencies?",
+    ];
+
+  return [
+    "What is the employment rate?",
+    "What industries do alumni work in?",
+    "How many took the board exam?",
+    "Show employment breakdown by program",
+    "How many pursued further studies?",
+    "How do alumni rate their competencies?",
+  ];
+}
+
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
@@ -46,6 +166,7 @@ export default function AiAssistantView() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [copiedId, setCopiedId] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -241,6 +362,17 @@ export default function AiAssistantView() {
       }
     } finally {
       setThinking(false);
+      // Compute follow-up suggestions from the completed answer
+      setMessages((prev) => {
+        const lastAc = [...prev].reverse().find((m) => m.role === "ac");
+        if (lastAc?.text) {
+          const filtered = getSuggestions(lastAc.text)
+            .filter((s) => s.toLowerCase() !== fullAnswer.toLowerCase() && s.toLowerCase() !== question.toLowerCase())
+            .slice(0, 3);
+          setSuggestions(filtered);
+        }
+        return prev;
+      });
     }
 
   }, []);
@@ -249,6 +381,7 @@ export default function AiAssistantView() {
     const text = (raw ?? "").trim();
     if (!text || thinking) return;
 
+    setSuggestions([]);
     abortRef.current?.abort();
     const userMsg = { id: `u-${Date.now()}`, role: "user", text, time: nowTime() };
     const next = [...messages, userMsg];
@@ -609,6 +742,19 @@ export default function AiAssistantView() {
               )}
               <div ref={bottomRef} />
             </div>
+
+            {suggestions.length > 0 && !thinking && (
+              <div className="ac-suggestions-wrap">
+                <span className="ac-suggestions-label">You might also ask:</span>
+                <div className="ac-suggestions">
+                  {suggestions.map((s) => (
+                    <button key={s} type="button" className="ac-suggestion-chip" onClick={() => send(s)}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="ac-scroll-top-wrap">
               <button

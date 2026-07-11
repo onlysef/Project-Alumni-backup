@@ -830,6 +830,14 @@ async function hasData() {
 async function query(question) {
   if (!(await hasData())) return null;
 
+  // Questions the AI can recognize but cannot yet answer from available data
+  if (/\b(job (openings?|listings?|vacancies|opportunities|postings?)|available (jobs?|positions?|roles?))\b/i.test(question)) {
+    return {
+      text: `The Job Opportunities section is part of this system, but no job listings have been posted yet. Please check back later or contact the university's career services office for available opportunities.`,
+      direct: true,
+    };
+  }
+
   const topic   = detectTopic(question);
   const filters = extractFilters(question);
 
@@ -865,7 +873,10 @@ async function query(question) {
       : filters.jobRelated
       ? querySimpleRate(filters, { jobRelated: { $regex: '^yes', $options: 'i' } }, 'have jobs related to their course')
       : queryRate(filters),
-    overview:        () => /\bemployment\s+(breakdown|data|statistic)/i.test(question) ? queryEmployment(filters) : queryOverview(filters),
+    overview:        () => /\bby\s+(program|course)\b/i.test(question) ? queryByProgram(filters)
+      : /\bby\s+(batch|year|graduation)\b/i.test(question) ? queryByYear(filters)
+      : /\bemployment\s+(breakdown|data|statistic)/i.test(question) ? queryEmployment(filters)
+      : queryOverview(filters),
     industry:        () => queryIndustry(filters),
     work_type:       () => isSectorQuestion ? querySector(filters) : queryWorkType(filters),
     job_relevance:   () => filters.jobRelated ? queryCount(filters) : queryJobRelevance(filters),
