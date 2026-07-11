@@ -11,11 +11,18 @@ const LIST_ALL_PATTERN        = /\b(list|show|give|display|enumerate|who are|nam
 const STATS_QUERY_PATTERN     = /\b(how many|count|total|number of|statistics|stat|how much|tally|breakdown|per year|by year|annually)\b/i;
 const EMPLOYMENT_STATS_PATTERN = /\b(employment status|employment rate|employed|unemployed|self.?employed|employment breakdown|employment data|tracer survey|tracer study|tracer result)\b/i;
 
-const SYSTEM_PROMPT = `You are an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. You help administrators and coordinators understand alumni employment data, tracer study results, graduate statistics, and institutional programs.
+const SYSTEM_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. You help administrators and coordinators understand alumni tracer study results and institutional programs.
 
-Answer questions only based on the provided context. If the context does not contain enough information to answer accurately, say so clearly. Do not invent statistics, names, or data. Keep answers concise and factual.
+STRICT RULES — follow these exactly:
+1. Answer ONLY using information explicitly present in the provided context. Do not use your training knowledge to fill gaps.
+2. If the context does not contain enough information to answer the question, respond with: "I don't have enough data in the tracer study records to answer that accurately."
+3. NEVER invent or estimate statistics, percentages, counts, names, company names, or any specific facts.
+4. NEVER say things like "approximately", "around", or "typically" when referring to alumni data — only state what the context explicitly says.
+5. For qualitative questions (challenges, reasons, opinions, feedback), only summarize what alumni actually said in the provided context. Do not add general knowledge or assumptions.
+6. Keep answers concise and factual. If the context mentions the topic but lacks detail, say so.
+7. When answering questions about graduate counts or statistics by year or program, use only the pre-computed totals from the context — do not count individual records.`;
 
-IMPORTANT: When answering questions about graduate counts, totals, or statistics by year or program, always use the data from the "TSU College of Computer Studies (CCS) Graduate Statistics" section. Do not count individual graduate records — use the pre-computed totals only.`;
+const NO_CONTEXT_RESPONSE = `I don't have enough information in the tracer study records to answer that accurately. You may try rephrasing your question, or ask about employment rates, industries, board exams, competency ratings, or program breakdowns — those I can answer directly.`;
 
 function assembleContext(chunks) {
   const groups = {
@@ -362,13 +369,9 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   if (EMPLOYMENT_STATS_PATTERN.test(question)) {
     const statsContext = await buildEmploymentStatsContext();
     if (statsContext) {
-      const messages = [
-        { role: 'system', content: `${SYSTEM_PROMPT}\n\nContext:\n${statsContext}` },
-        ...chatHistory.slice(-2),
-        { role: 'user', content: question },
-      ];
-      const fullAnswer = await streamHF(messages, onToken);
-      return { answer: fullAnswer, sources: ['imported_file'] };
+      // Stream the stats directly without sending to LLM — avoids hallucination
+      if (onToken) onToken(statsContext);
+      return { answer: statsContext, sources: ['imported_file'] };
     }
   }
 
@@ -415,6 +418,13 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     : chunks;
 
   const context = assembleContext(allChunks);
+
+  // If the retrieved context is empty or too thin, don't call the LLM —
+  // it will hallucinate rather than admit it doesn't know.
+  if (!context || context.replace(/=+[^=]+=+/g, '').trim().length < 80) {
+    if (onToken) onToken(NO_CONTEXT_RESPONSE);
+    return { answer: NO_CONTEXT_RESPONSE, sources: [] };
+  }
 
   const MAX_HISTORY_CHARS = 300;
   const trimmedHistory = chatHistory.slice(-4).map(m => ({
