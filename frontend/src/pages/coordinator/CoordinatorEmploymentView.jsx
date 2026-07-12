@@ -7,6 +7,10 @@ import { useAuth } from "../../context/AuthContext.jsx";
 
 import { apiFetch, API, authHeaders } from "../../services/api.js";
 
+// Temporary: the 254 bulk-migrated alumni accounts must not be emailed until
+// explicitly authorized. Flip back to false once that permission is granted.
+const NOTIFY_ALUMNI_DISABLED = true;
+
 const EMPTY_VALS = new Set(["N/A", "n/a", "None", "none", "null", "undefined", ""]);
 function display(val) {
   return !val || EMPTY_VALS.has(String(val).trim()) ? "—" : val;
@@ -149,7 +153,8 @@ export default function CoordinatorEmploymentView() {
             type="button"
             className="coord-notify-btn"
             onClick={handleNotify}
-            disabled={notifying}
+            disabled={NOTIFY_ALUMNI_DISABLED || notifying}
+            title={NOTIFY_ALUMNI_DISABLED ? "Disabled — email permission not yet granted for the migrated alumni batch" : undefined}
           >
             <Icon name={notifySent ? "icon-13" : "icon-9"} />
             {notifying ? "Sending…" : "Notify Alumni"}

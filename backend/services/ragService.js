@@ -3,9 +3,86 @@ const { retrieveContext } = require('./retrievalService');
 const EmbeddingDocument  = require('../models/EmbeddingDocument');
 const { classify }       = require('./queryClassifier');
 const aggregationService = require('./aggregationService');
+const logger              = require('../utils/logger');
+const { correctTypos }    = require('../utils/typoCorrect');
 
 const hf = new HfInference(process.env.HF_API_KEY);
 const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+
+// Minimum vector similarity score (0-1) a retrieved chunk must clear to be trusted.
+// Below this, the context is considered too weak to answer from and we refuse
+// rather than let the LLM stretch a loosely-related chunk into an answer.
+// 0.60 is a realistic bar for BAAI/bge-base-en-v1.5 cosine similarity on short
+// domain-specific text (0.80 rejected genuinely relevant chunks in practice —
+// check the `rag_retrieval` log's topScore field if answers still get refused
+// and tune via RAG_SIMILARITY_THRESHOLD rather than editing this default).
+const SIMILARITY_THRESHOLD = Number(process.env.RAG_SIMILARITY_THRESHOLD) || 0.60;
+
+const GREETING_RESPONSE = `Hello! I'm AC, your Graduate Tracer Study assistant. Ask me about employment rates, industries, board exam results, competency ratings, program breakdowns, or anything else in the tracer study records.`;
+
+const HELP_RESPONSE = `I can answer questions about the Graduate Tracer Study records, such as:
+- Statistics: "How many graduates are employed?", "Average salary", "Graduates per program"
+- Descriptive info: "What skills do graduates commonly use?", "What companies hire graduates?"
+- Demographics: employment status, industries, board exam results, further studies, competencies
+
+I only answer using data in the tracer study records — I can't answer questions unrelated to graduate records.`;
+
+const UNKNOWN_RESPONSE = `I'm designed to answer questions related to the Graduate Tracer Study records. I can't answer unrelated questions.`;
+
+const LOW_SIMILARITY_RESPONSE = `I couldn't find relevant information in the graduate records.`;
+
+// Used only for narrating pre-computed MongoDB stats (the "mixed" classification
+// path). Unlike SYSTEM_PROMPT, this never tells the model a refusal phrase exists
+// to fall back on — the data here is guaranteed complete, so there is nothing to
+// refuse. Reusing the RAG-oriented SYSTEM_PROMPT here caused small Llama models to
+// occasionally parrot its "not enough data" refusal verbatim despite valid data.
+const STATS_NARRATIVE_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. The user asked a statistics question, and the exact answer has ALREADY been computed from the database — it is given below as complete, verified data.
+
+Your ONLY task is to rewrite that data as a short, natural-language explanation (2-5 sentences).
+
+STRICT RULES:
+1. The data below is complete and sufficient — do NOT say you lack information or cannot answer.
+2. Use ONLY the numbers given below. Never add, omit, round differently, or recalculate any figure.
+3. Do not add outside knowledge, opinions, or assumptions.
+4. Write flowing prose, not a bullet list — narrate the data, don't just repeat its formatting.`;
+
+// Detects the small model falling back to a refusal template despite guaranteed
+// data being present, so we can serve the raw (still-accurate) figures instead.
+const REFUSAL_PATTERN = /don'?t have enough (data|information)|couldn'?t find (relevant )?information/i;
+
+// Follow-ups like "how about his email?" carry no name at all — vector search
+// has no way to resolve "his" to a specific person, since it only compares
+// the literal query text. Only trigger the extra LLM call when a pronoun is
+// actually present and there's prior conversation to resolve it against —
+// standalone questions (the common case) skip this entirely, no added cost.
+const PRONOUN_REFERENT_PATTERN = /\b(his|her|their|him|she|he|them|that person|this person|theirs)\b/i;
+
+async function condenseQuestion(question, chatHistory) {
+  if (!chatHistory.length || !PRONOUN_REFERENT_PATTERN.test(question)) return question;
+
+  const recentTurns = chatHistory.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
+  const messages = [
+    {
+      role: 'system',
+      content: 'Rewrite the user\'s latest message into a fully self-contained question that does not rely on pronouns or prior conversation context — substitute in the actual name/subject from the conversation. Return ONLY the rewritten question, no explanation, no quotes.',
+    },
+    { role: 'user', content: `Conversation so far:\n${recentTurns}\n\nLatest message: ${question}\n\nRewritten standalone question:` },
+  ];
+
+  try {
+    const completion = await hf.chatCompletion({
+      model: CHAT_MODEL,
+      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      messages,
+      max_tokens: 60,
+    });
+    const rewritten = completion.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, '');
+    return rewritten || question;
+  } catch (err) {
+    logger.warn('question_condense_failed', { question, error: err.message });
+    return question; // fall back to the original question on any failure
+  }
+}
 
 const LIST_ALL_PATTERN        = /\b(list|show|give|display|enumerate|who are|names of)\b.*\b(all|every|complete|full)\b.*\b(alumni|graduates?)\b|\b(all|every|complete|full)\b.*\b(alumni|graduates?)\b/i;
 const STATS_QUERY_PATTERN     = /\b(how many|count|total|number of|statistics|stat|how much|tally|breakdown|per year|by year|annually)\b/i;
@@ -339,44 +416,112 @@ async function streamHF(messages, onToken, retries = 3) {
 }
 
 async function generateAnswer(question, chatHistory = [], filters = {}, onToken = null) {
+  const startedAt  = Date.now();
+
+  // Correct typos in domain keywords ONCE, upstream of everything — classify(),
+  // detectTopic(), extractFilters(), and vector search all key off exact
+  // spellings, so a single typo'd trigger word ("gradutes") used to silently
+  // break routing for the rest of the pipeline. Reassigning `question` here
+  // means every downstream use (including the final LLM prompt) sees the
+  // corrected text; the original is kept only for logging.
+  const rawQuestion = question;
+  question = correctTypos(question);
+
+  const queryType  = classify(question);
+  logger.info('chat_question', {
+    question,
+    rawQuestion: rawQuestion !== question ? rawQuestion : undefined,
+    classification: queryType,
+  });
+
+  const finish = (result) => {
+    logger.info('chat_answered', {
+      question,
+      classification: queryType,
+      type:           result.type,
+      sources:        result.sources,
+      latencyMs:      Date.now() - startedAt,
+    });
+    return result;
+  };
+
+  // ── Greeting / help / unknown: answer directly, no DB or LLM call needed ──────
+  if (queryType === 'greeting') {
+    if (onToken) onToken(GREETING_RESPONSE);
+    return finish({ answer: GREETING_RESPONSE, sources: [], type: 'greeting' });
+  }
+  if (queryType === 'help') {
+    if (onToken) onToken(HELP_RESPONSE);
+    return finish({ answer: HELP_RESPONSE, sources: [], type: 'help' });
+  }
+  if (queryType === 'unknown') {
+    if (onToken) onToken(UNKNOWN_RESPONSE);
+    return finish({ answer: UNKNOWN_RESPONSE, sources: [], type: 'unknown' });
+  }
+
   // ── Hybrid path: try MongoDB aggregation first for statistical questions ──────
-  const queryType = classify(question);
   if (queryType === 'statistical' || queryType === 'mixed') {
     const aggResult = await aggregationService.query(question);
     if (aggResult) {
-      // Names queries: bypass LLM and stream the formatted list directly
-      if (aggResult.direct) {
-        const text = aggResult.text;
+      const aggText     = typeof aggResult === 'string' ? aggResult : aggResult.text;
+      // Context-aware, guaranteed-answerable suggestions — built from the same
+      // topic dispatch table aggregationService just used to answer this question.
+      const suggestions = aggregationService.suggestFollowUps(aggResult.topic, aggResult.filters);
+
+      // Plain counting questions ("how many X") get the pre-computed MongoDB
+      // text verbatim — instant, free, and zero risk of the LLM touching a number.
+      // "mixed" questions (explain/describe/summarize + statistical intent)
+      // signal the user wants a written explanation, not a raw table — those get
+      // phrased by Llama, but strictly from this same pre-computed text, under
+      // the SYSTEM_PROMPT rule that forbids inventing or recalculating any figure.
+      if (queryType === 'statistical' && aggResult.direct) {
         if (onToken) {
-          for (const line of text.split('\n')) onToken(line + '\n');
+          for (const line of aggText.split('\n')) onToken(line + '\n');
         }
-        return { answer: text, sources: ['graduate_records'] };
+        return finish({ answer: aggText, sources: ['graduate_records'], type: 'statistics', suggestions });
       }
 
-      const aggText  = typeof aggResult === 'string' ? aggResult : aggResult.text;
       const context  = `=== TRACER STUDY DATA (from structured records) ===\n${aggText}`;
       const messages = [
-        { role: 'system', content: `${SYSTEM_PROMPT}\n\nContext:\n${context}` },
+        { role: 'system', content: `${STATS_NARRATIVE_PROMPT}\n\nContext:\n${context}` },
         ...chatHistory.slice(-2),
         { role: 'user', content: question },
       ];
-      const fullAnswer = await streamHF(messages, onToken);
-      return { answer: fullAnswer, sources: ['graduate_records'] };
+
+      // Buffer the narrative (no onToken yet): if the model still refuses despite
+      // guaranteed-valid data, fall back to the raw MongoDB text instead of
+      // streaming a false "no data" refusal to the user.
+      const narrativeAnswer = await streamHF(messages, null);
+      const finalAnswer = REFUSAL_PATTERN.test(narrativeAnswer.trim()) ? aggText : narrativeAnswer;
+
+      if (onToken) {
+        for (const line of finalAnswer.split('\n')) onToken(line + '\n');
+      }
+      return finish({ answer: finalAnswer, sources: ['graduate_records'], type: 'statistics', suggestions });
     }
   }
 
   // ── Fallback: chunk-scanning for employment stats (legacy / when no Graduate records) ──
-  if (EMPLOYMENT_STATS_PATTERN.test(question)) {
+  // Gated to statistical/mixed only — this used to fire on ANY question containing an
+  // employment keyword regardless of classification, which intercepted genuinely
+  // qualitative questions ("Why are some graduates unemployed?") before they ever
+  // reached vector search, answering with an unrelated raw stats dump instead.
+  if ((queryType === 'statistical' || queryType === 'mixed') && EMPLOYMENT_STATS_PATTERN.test(question)) {
     const statsContext = await buildEmploymentStatsContext();
     if (statsContext) {
       // Stream the stats directly without sending to LLM — avoids hallucination
       if (onToken) onToken(statsContext);
-      return { answer: statsContext, sources: ['imported_file'] };
+      return finish({ answer: statsContext, sources: ['imported_file'], type: 'statistics' });
     }
   }
 
-  // Special case: "list all alumni" — fetch names directly
-  if (LIST_ALL_PATTERN.test(question)) {
+  // Special case: "list all alumni" — fetch names directly.
+  // Gated the same way as the EMPLOYMENT_STATS_PATTERN fallback above: the
+  // second half of LIST_ALL_PATTERN (`all|every|...` + `alumni|graduates`) is
+  // broad enough to match genuinely qualitative questions like "Describe the
+  // challenges all graduates face" — without this gate, those got redirected
+  // to a raw alumni name roster instead of reaching real RAG/vector search.
+  if ((queryType === 'statistical' || queryType === 'mixed') && LIST_ALL_PATTERN.test(question)) {
     const { names, total } = await buildListAllContext();
     if (total > 0) {
       const MAX_NAMES = 80;
@@ -394,7 +539,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       ];
 
       const fullAnswer = await streamHF(messages, onToken);
-      return { answer: fullAnswer, sources: ['imported_file'] };
+      return finish({ answer: fullAnswer, sources: ['imported_file'], type: 'statistics' });
     }
   }
 
@@ -407,15 +552,37 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     }).select('content source_type').lean();
   }
 
+  // Resolve pronoun-only follow-ups ("how about his email?") into a
+  // self-contained query before embedding — otherwise vector search has no
+  // way to know who "his" refers to and matches on generic textual similarity.
+  const searchQuestion = await condenseQuestion(question, chatHistory);
+
   // Retrieve relevant chunks via vector search
-  const chunks = await retrieveContext(question, {
+  const chunks = await retrieveContext(searchQuestion, {
     topK:        filters.topK        || 10,
     sourceTypes: filters.sourceTypes || [],
   });
 
+  // Similarity gate: drop chunks that don't clear the confidence threshold —
+  // a loosely-related chunk is worse than no chunk, since the LLM will try to use it.
+  const confidentChunks = chunks.filter(c => (c.score ?? 0) >= SIMILARITY_THRESHOLD);
+  logger.info('rag_retrieval', {
+    question,
+    searchQuestion: searchQuestion !== question ? searchQuestion : undefined,
+    retrieved:  chunks.length,
+    confident:  confidentChunks.length,
+    topScore:   chunks[0]?.score ?? null,
+    threshold:  SIMILARITY_THRESHOLD,
+  });
+
+  if (chunks.length > 0 && confidentChunks.length === 0 && !statsDoc) {
+    if (onToken) onToken(LOW_SIMILARITY_RESPONSE);
+    return finish({ answer: LOW_SIMILARITY_RESPONSE, sources: [], type: 'rag' });
+  }
+
   const allChunks = statsDoc
-    ? [{ content: statsDoc.content, source_type: 'imported_file' }, ...chunks]
-    : chunks;
+    ? [{ content: statsDoc.content, source_type: 'imported_file' }, ...confidentChunks]
+    : confidentChunks;
 
   const context = assembleContext(allChunks);
 
@@ -423,7 +590,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // it will hallucinate rather than admit it doesn't know.
   if (!context || context.replace(/=+[^=]+=+/g, '').trim().length < 80) {
     if (onToken) onToken(NO_CONTEXT_RESPONSE);
-    return { answer: NO_CONTEXT_RESPONSE, sources: [] };
+    return finish({ answer: NO_CONTEXT_RESPONSE, sources: [], type: 'rag' });
   }
 
   const MAX_HISTORY_CHARS = 300;
@@ -435,12 +602,12 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   const messages = [
     { role: 'system', content: `${SYSTEM_PROMPT}\n\nContext:\n${context}` },
     ...trimmedHistory,
-    { role: 'user', content: question },
+    { role: 'user', content: searchQuestion },
   ];
 
   const fullAnswer = await streamHF(messages, onToken);
-  const sources = [...new Set(chunks.map(c => c.source_type))];
-  return { answer: fullAnswer, sources };
+  const sources = [...new Set(confidentChunks.map(c => c.source_type))];
+  return finish({ answer: fullAnswer, sources, type: 'rag' });
 }
 
 module.exports = { generateAnswer };

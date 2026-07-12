@@ -6,6 +6,7 @@ const Graduate      = require('../models/Graduate');
 const { generateAnswer }  = require('../services/ragService');
 const { getEmbedding }    = require('../services/embeddingService');
 const { parseFile }       = require('../utils/fileParser');
+const logger               = require('../utils/logger');
 
 const hf = new HfInference(process.env.HF_API_KEY);
 const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
@@ -16,6 +17,7 @@ function mapNormalizedToGraduate(n) {
   return {
     name:             n.full_name   || null,
     email:            n.email       || null,
+    contact:          n.contact     || null,
     gender:           n.sex         || null,
     program:          n.program     || null,
     yearGraduated:    isNaN(year)   ? null : year,
@@ -61,7 +63,7 @@ const chat = async (req, res) => {
   res.flushHeaders();
 
   try {
-    const { answer, sources } = await generateAnswer(
+    const { sources, type, suggestions } = await generateAnswer(
       question,
       history,
       {},
@@ -70,10 +72,11 @@ const chat = async (req, res) => {
       }
     );
 
-    // Final event with sources
-    res.write(`data: ${JSON.stringify({ done: true, sources })}\n\n`);
+    // Final event with sources, classification type, and (when available)
+    // backend-computed follow-up suggestions guaranteed answerable by aggregation.
+    res.write(`data: ${JSON.stringify({ done: true, sources, type, suggestions })}\n\n`);
   } catch (err) {
-    console.error('aiController.chat error:', err);
+    logger.error('chat_request_failed', { question, error: err });
     const isRateLimit = err?.status === 429 || err?.status === 413;
     const msg = isRateLimit
       ? 'Too many requests — please wait a few seconds and try again.'
@@ -142,17 +145,26 @@ const ingestFile = [
           }
         }
 
-        // Save structured Graduate records for aggregation queries
+        // Save structured Graduate records for aggregation queries.
+        // Only rows that actually identify a person (name or program present)
+        // are kept — sheet-type detection can misclassify summary/aggregate
+        // tables (e.g. "Employment Status: Employed, f: 104, %: 91%") as
+        // individual tracer rows, which would otherwise insert phantom
+        // "Unknown Graduate" records and inflate every aggregation statistic.
         if (rawRows && rawRows.length > 0) {
-          const gradDocs = rawRows.map((r, idx) => ({
-            fileId:    importedFile._id,
-            rowIndex:  idx + 1,
-            data:      r.raw,
-            ...mapNormalizedToGraduate(r.normalized),
-          }));
+          const gradDocs = rawRows
+            .map((r, idx) => ({
+              fileId:    importedFile._id,
+              rowIndex:  idx + 1,
+              data:      r.raw,
+              ...mapNormalizedToGraduate(r.normalized),
+            }))
+            .filter(g => g.name || g.program);
+          const skipped = rawRows.length - gradDocs.length;
+
           await Graduate.deleteMany({ fileId: importedFile._id });
-          await Graduate.insertMany(gradDocs, { ordered: false });
-          console.log(`[AI] Saved ${gradDocs.length} Graduate records for ${originalname}.`);
+          if (gradDocs.length > 0) await Graduate.insertMany(gradDocs, { ordered: false });
+          console.log(`[AI] Saved ${gradDocs.length} Graduate records for ${originalname}${skipped ? ` (skipped ${skipped} rows with no identifiable name/program)` : ''}.`);
         }
 
         await ImportedFile.findByIdAndUpdate(importedFile._id, {

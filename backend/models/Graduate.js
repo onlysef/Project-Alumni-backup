@@ -1,16 +1,20 @@
 const mongoose = require('mongoose');
 
-// One document per Excel row from an ingested tracer-study file.
+// One document per Excel row from an ingested tracer-study file, OR one per
+// live alumni portal tracer submission (fileId is null for the latter —
+// those are upserted by email from alumniController.submitTracerStudy so the
+// AI chatbot's stats/RAG stay in sync with real submissions automatically).
 // `data` holds the raw row; normalized fields are extracted for fast aggregation.
 const GraduateSchema = new mongoose.Schema(
   {
-    fileId:    { type: mongoose.Schema.Types.ObjectId, ref: 'ImportedFile', required: true, index: true },
+    fileId:    { type: mongoose.Schema.Types.ObjectId, ref: 'ImportedFile', default: null, index: true },
     rowIndex:  { type: Number },
     data:      { type: mongoose.Schema.Types.Mixed, required: true },
 
     // ─── Identity ──────────────────────────────────────────────────────────────
     name:          { type: String, trim: true, default: null },
     email:         { type: String, trim: true, default: null },
+    contact:       { type: String, trim: true, default: null },
     gender:        { type: String, trim: true, default: null },
 
     // ─── Academic ─────────────────────────────────────────────────────────────

@@ -50,7 +50,7 @@ function downloadReport(name, courseJobData, donutData, surveyStats, activeFilte
     const courseRows = courseJobData.byCourse  || [];
     const trackRows  = courseJobData.bsitByTrack || [];
 
-    if (["BSIT", "BSCS", "BSIS"].includes(filter)) {
+    if (["BSIT", "BSCS", "BSIS", "BSIM"].includes(filter)) {
       const row = courseRows.find((d) => d.course === filter);
       csv = row
         ? `Course,Employment Rate,Job-Related Rate,Employed,Total\n${row.course},${row.employmentRate}%,${row.jobRelatedRate}%,${row.employed},${row.total}`

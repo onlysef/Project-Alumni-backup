@@ -66,6 +66,7 @@ const TRACER_COLUMNS = {
   'present employment status':                          'employment_status',
   'current employment status':                          'employment_status',
   'employment status':                                  'employment_status',
+  'presently employed':                                 'employment_status',
 
   'what is your present employment status?':            'employment_type',
   'type of employment':                                 'employment_type',
@@ -93,8 +94,10 @@ const TRACER_COLUMNS = {
   'relevance to course':        'relevance',
   'job relevance':              'relevance',
   'related to course':          'relevance',
+  'job related to course':      'relevance',
 
   'how long have you been in your current job?':        'job_duration',
+  'years in current job':                               'job_duration',
 
   'if not currently employed or never been employed, please indicate the reason for not being employed yet (you may select more than one option):': 'reason_unemployed',
   'reason for not being employed':                      'reason_unemployed',
@@ -110,20 +113,24 @@ const TRACER_COLUMNS = {
   'professional exam':          'board_exam',
   'board exam':                 'board_exam',
   'licensure exam':             'board_exam',
+  'took professional exam':     'board_exam',
   'what professional examination did you take? please do not abbreviate.': 'board_exam_name',
 
   // Further studies
   'have you pursued any further education after graduating?':           'further_studies',
   'further studies':            'further_studies',
   'graduate studies':           'further_studies',
+  'pursued further studies':    'further_studies',
   'if yes, please specify the type of education you have pursued.':    'further_studies_details',
 
   // Trainings
   'have you pursued any trainings after graduating?':                  'trainings',
+  'pursued trainings':                                                 'trainings',
   'if yes, please specify the type of training you pursued.':          'trainings_details',
 
   // Promotion / Accomplishments
   'have you been promoted in your current job?':                       'promoted',
+  'promoted':                                                          'promoted',
   'have you achieved any significant accomplishments in your current job?': 'accomplishments',
   'have you received any professional certifications since graduation?': 'certifications',
 
@@ -211,6 +218,8 @@ function tracerRowToText(row, year) {
     || 'Unknown Graduate';
   const parts = [`Tracer study respondent: ${name}`];
   if (row.student_id)            parts.push(`Student ID: ${row.student_id}`);
+  if (row.contact)               parts.push(`Contact Number: ${row.contact}`);
+  if (row.email)                 parts.push(`Email: ${row.email}`);
   if (row.sex)                   parts.push(`Gender: ${row.sex}`);
   if (row.program)               parts.push(`Program: ${row.program}`);
   if (row.date_graduated)        parts.push(`Year of Graduation: ${row.date_graduated}`);
@@ -465,4 +474,4 @@ async function parseFile(buffer, fileName) {
   throw new Error(`Unsupported file type: .${ext}`);
 }
 
-module.exports = { parseFile };
+module.exports = { parseFile, tracerRowToText };

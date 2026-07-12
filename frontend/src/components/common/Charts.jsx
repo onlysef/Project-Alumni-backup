@@ -1,7 +1,8 @@
 import React, { useState, useRef } from "react";
 
-const COURSE_COLORS   = { BSIT: "#941527", BSCS: "#dea045", BSIS: "#eaaa63" };
-const COURSE_SWATCHES = { BSIT: "red",     BSCS: "gold",    BSIS: "peach"   };
+// BSIM temporarily included alongside the original 3 courses.
+const COURSE_COLORS   = { BSIT: "#941527", BSCS: "#dea045", BSIS: "#eaaa63", BSIM: "#6b4226" };
+const COURSE_SWATCHES = { BSIT: "red",     BSCS: "gold",    BSIS: "peach",   BSIM: "gray"     };
 const TRACK_COLORS    = { TSM: "#6b1020",  WMA: "#941527",  NA: "#bf2a40"   };
 const TRACK_SWATCHES  = { TSM: "red",      WMA: "gold",     NA: "peach"     };
 const AXIS_LABELS = ["100%", "80%", "60%", "40%", "20%", "0%"];
@@ -51,11 +52,15 @@ export function CourseJobChart({ data, metric }) {
 
   return (
     <div className="chart-body bar-layout" ref={chartRef} style={{ position: "relative" }}>
-      <div className="bars" aria-label="Course vs job bar chart">
+      <div
+        className="bars"
+        aria-label="Course vs job bar chart"
+        style={{ gridTemplateColumns: `38px repeat(${items.length}, 1fr)` }}
+      >
         <div className="axis">
           {AXIS_LABELS.map((p) => <span key={p}>{p}</span>)}
         </div>
-        {items.map((d, i) => (
+        {items.map((d) => (
           <div
             className="bar-wrap"
             key={getLabel(d)}
@@ -63,7 +68,7 @@ export function CourseJobChart({ data, metric }) {
             onMouseLeave={() => setTip(null)}
           >
             <div
-              className={`bar ${["bsit", "bscs", "bsis"][i] ?? "bsit"}`}
+              className={`bar ${getLabel(d).toLowerCase()}`}
               style={{ height: `${Math.max(d[activeMetric] * 1.4, 24)}px`, background: getColor(d) }}
             >
               {d[activeMetric]}%

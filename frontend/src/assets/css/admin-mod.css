@@ -1197,6 +1197,7 @@
         .bar-wrap:hover .bar.bsit { background: #b3263a; }
         .bar-wrap:hover .bar.bscs { background: #efb957; }
         .bar-wrap:hover .bar.bsis { background: #f5bd7a; }
+        .bar-wrap:hover .bar.bsim { background: #86532f; }
 
         .bar-label {
             color: var(--secondary-text);

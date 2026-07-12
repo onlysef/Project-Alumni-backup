@@ -290,6 +290,7 @@ export default function AiAssistantView() {
     setMessages((m) => [...m, { id: streamingId, role: "ac", text: "", time: nowTime() }]);
 
     let fullAnswer = "";
+    let serverSuggestions = null;
 
     try {
       const token = localStorage.getItem("auth_token");
@@ -340,6 +341,11 @@ export default function AiAssistantView() {
                   m.map((msg) => msg.id === streamingId ? { ...msg, sources } : msg)
                 );
               }
+              // Backend-computed suggestions (statistics answers) are context-aware
+              // and guaranteed answerable; prefer them over the static local heuristic.
+              if (Array.isArray(payload.suggestions) && payload.suggestions.length) {
+                serverSuggestions = payload.suggestions;
+              }
             } else if (payload.error) {
               setMessages((m) =>
                 m.map((msg) =>
@@ -362,11 +368,14 @@ export default function AiAssistantView() {
       }
     } finally {
       setThinking(false);
-      // Compute follow-up suggestions from the completed answer
+      // Prefer backend-computed suggestions (context-aware, guaranteed answerable
+      // via the same topic dispatch aggregationService just used); fall back to
+      // the static local heuristic for RAG-classified (non-statistics) answers.
       setMessages((prev) => {
         const lastAc = [...prev].reverse().find((m) => m.role === "ac");
         if (lastAc?.text) {
-          const filtered = getSuggestions(lastAc.text)
+          const base = serverSuggestions?.length ? serverSuggestions : getSuggestions(lastAc.text);
+          const filtered = base
             .filter((s) => s.toLowerCase() !== fullAnswer.toLowerCase() && s.toLowerCase() !== question.toLowerCase())
             .slice(0, 3);
           setSuggestions(filtered);

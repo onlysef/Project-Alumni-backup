@@ -1,6 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
+const sanitizePrompt = require('../middleware/sanitizePrompt');
 const {
   chat,
   suggestions,
@@ -13,7 +14,7 @@ const {
 
 router.use(protect, authorize('admin', 'coordinator'));
 
-router.post('/chat',                   chat);
+router.post('/chat',                   sanitizePrompt, chat);
 router.post('/suggestions',            suggestions);
 router.post('/reembed',                authorize('admin'), reembed);
 router.post('/ingest',                 ...ingestFile);
