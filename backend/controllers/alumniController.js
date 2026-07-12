@@ -3,7 +3,11 @@ const User                 = require('../models/User');
 const AlumniEmployment     = require('../models/AlumniEmployment');
 const TracerStudyResponse  = require('../models/TracerStudyResponse');
 const TracerFormConfig     = require('../models/TracerFormConfig');
+const Graduate             = require('../models/Graduate');
+const EmbeddingDocument    = require('../models/EmbeddingDocument');
 const { getTracerFormConfig } = require('./tracerFormConfigController');
+const { getEmbedding }        = require('../services/embeddingService');
+const { tracerRowToText }     = require('../utils/fileParser');
 
 // The set of keys that the TracerStudyResponse schema handles directly.
 // Everything else in the submitted answers object goes into extra_answers.
@@ -64,6 +68,7 @@ function mapProgramToCourse(programsCompleted) {
   if (combined.includes('information technology')) return 'BSIT';
   if (combined.includes('computer science'))       return 'BSCS';
   if (combined.includes('information systems'))    return 'BSIS';
+  if (combined.includes('information management')) return 'BSIM';
   return '';
 }
 
@@ -277,7 +282,89 @@ const submitTracerStudy = async (req, res) => {
     if (!currentUser?.graduationYear && extraFields.graduation_year) {
       userUpdates.graduationYear = extraFields.graduation_year;
     }
-    await User.findByIdAndUpdate(alumniId, userUpdates);
+    const updatedUser = await User.findByIdAndUpdate(alumniId, userUpdates, { new: true })
+      .select('firstName lastName email');
+
+    // Keep the AI chatbot's data in sync automatically — it only ever reads
+    // from the Graduate collection (never TracerStudyResponse/AlumniEmployment
+    // directly), so without this hook, live tracer submissions would be
+    // permanently invisible to it. Non-blocking: a sync failure here must never
+    // fail the alumni's actual tracer submission.
+    try {
+      if (updatedUser?.email) {
+        const graduatePatch = {
+          name:             `${updatedUser.firstName} ${updatedUser.lastName}`.trim(),
+          email:            updatedUser.email.toLowerCase().trim(),
+          contact:          body.contactNumber || null,
+          gender:           body.gender || null,
+          program:          Array.isArray(body.programsCompleted) ? body.programsCompleted.join(';') : null,
+          yearGraduated:    userUpdates.graduationYear ?? currentUser?.graduationYear ?? null,
+          employmentStatus: body.employmentStatus || null,
+          employmentType:   body.presentEmploymentType || null,
+          workLocation:     body.placeOfWork || null,
+          jobTitle:         body.occupationTitle || null,
+          industry:         body.industryField || null,
+          jobRelated:       body.jobRelatedToDegree || null,
+          yearsInJob:       body.yearsInCurrentJob || null,
+          tookExam:         body.professionalExam || null,
+          furtherEducation: body.furtherEducation || null,
+          furtherTraining:  body.pursuedTrainings || null,
+          hasPromotion:     body.promotedInJob || null,
+          competencies: {
+            technicalSkills:   body.personalGrowthRatings?.technicalSkills || null,
+            communication:     body.personalGrowthRatings?.communicationSkills || null,
+            problemSolving:    body.personalGrowthRatings?.problemSolvingSkills || null,
+            projectManagement: body.personalGrowthRatings?.projectManagement || null,
+            teamwork:          body.personalGrowthRatings?.teamworkCollaboration || null,
+            adaptability:      body.personalGrowthRatings?.adaptability || null,
+            workLifeBalance:   body.personalGrowthRatings?.workLifeBalance || null,
+            criticalThinking:  body.personalGrowthRatings?.criticalThinkingSkills || null,
+          },
+          data: body,
+        };
+
+        const graduateDoc = await Graduate.findOneAndUpdate(
+          { email: graduatePatch.email },
+          { $set: graduatePatch },
+          { upsert: true, new: true }
+        );
+
+        // Rebuild this person's RAG chunk so descriptive/RAG questions about
+        // them reflect the latest submission too, not just aggregation stats.
+        const text = tracerRowToText({
+          full_name:         graduatePatch.name,
+          contact:            graduatePatch.contact,
+          email:              graduatePatch.email,
+          sex:                graduatePatch.gender,
+          program:            graduatePatch.program,
+          date_graduated:     graduatePatch.yearGraduated,
+          employment_status:  graduatePatch.employmentStatus,
+          employment_type:    graduatePatch.employmentType,
+          job_title:          graduatePatch.jobTitle,
+          industry:           graduatePatch.industry,
+          work_location:      graduatePatch.workLocation,
+          relevance:          graduatePatch.jobRelated,
+          job_duration:       graduatePatch.yearsInJob,
+          board_exam:         graduatePatch.tookExam,
+          further_studies:    graduatePatch.furtherEducation,
+          trainings:          graduatePatch.furtherTraining,
+          promoted:           graduatePatch.hasPromotion,
+        }, graduatePatch.yearGraduated);
+
+        const embedding = await getEmbedding(text);
+        await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduateDoc._id) });
+        await EmbeddingDocument.create({
+          source_type: 'imported_file',
+          file_id:     null,
+          content:     text,
+          metadata:    { sheet_type: 'tracer', source: 'live_submission', graduate_id: String(graduateDoc._id) },
+          embedding,
+          chunk_index: 0,
+        });
+      }
+    } catch (syncErr) {
+      console.error('AI chatbot Graduate sync failed (non-blocking):', syncErr.message);
+    }
 
     res.status(200).json({ message: 'Tracer study submitted successfully.' });
   } catch (err) {

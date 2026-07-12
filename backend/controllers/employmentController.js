@@ -14,6 +14,7 @@ function mapProgramToCourse(programsCompleted) {
   if (combined.includes('information technology')) return 'BSIT';
   if (combined.includes('computer science'))       return 'BSCS';
   if (combined.includes('information systems'))    return 'BSIS';
+  if (combined.includes('information management')) return 'BSIM';
   return '';
 }
 
@@ -492,11 +493,12 @@ const getCourseJobStats = async (req, res) => {
           jobRelated:  { $sum: { $cond: [{ $eq: ['$job_related_to_course', true] }, 1, 0] } },
         },
       },
-      { $match: { _id: { $in: ['BSIT', 'BSCS', 'BSIS'] } } },
+      // BSIM temporarily included alongside the original 3 courses.
+      { $match: { _id: { $in: ['BSIT', 'BSCS', 'BSIS', 'BSIM'] } } },
       { $sort:  { _id: 1 } },
     ]);
 
-    const courses = ['BSIT', 'BSCS', 'BSIS'];
+    const courses = ['BSIT', 'BSCS', 'BSIS', 'BSIM'];
     const byCourse = courses.map((course) => {
       const row = rows.find((r) => r._id === course) || { total: 0, employed: 0, jobRelated: 0 };
       return {
@@ -698,6 +700,11 @@ const getEmploymentStats = async (req, res) => {
       else if (c._id === 'Self-employed')   stats.selfEmployed  = c.count;
       else if (c._id === 'Not Yet Updated') stats.notYetUpdated = c.count;
     }
+    // "employed" includes self-employed alumni — matches getDonutStats() and
+    // every AI-chatbot aggregation, which all treat self-employed as employed.
+    // Keeping this narrower here (literal "Employed" status only) made the
+    // dashboard's top tile silently disagree with its own donut chart below.
+    stats.employed += stats.selfEmployed;
     res.json(stats);
   } catch (err) {
     console.error('getEmploymentStats error:', err);

@@ -8,6 +8,10 @@ import TracerResponsesViewer from "./TracerResponsesViewer.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
 
+// Temporary: the 254 bulk-migrated alumni accounts must not be emailed until
+// explicitly authorized. Flip back to false once that permission is granted.
+const NOTIFY_ALUMNI_DISABLED = true;
+
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (diff < 60)      return `${diff}s ago`;
@@ -519,7 +523,8 @@ export default function EmploymentView() {
           <button
             type="button"
             className="maroon-action"
-            disabled={notifying}
+            disabled={NOTIFY_ALUMNI_DISABLED || notifying}
+            title={NOTIFY_ALUMNI_DISABLED ? "Disabled — email permission not yet granted for the migrated alumni batch" : undefined}
             onClick={handleNotifyAlumni}
           >
             <span><Icon name={notifySent ? "icon-13" : "icon-9"} /></span>
