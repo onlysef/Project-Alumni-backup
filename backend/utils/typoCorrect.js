@@ -16,10 +16,10 @@ const VOCABULARY = [
   // People / records
   'graduate', 'graduates', 'alumni', 'alumnus', 'respondent', 'respondents', 'people', 'records', 'name', 'names',
   // Employment
-  'employed', 'unemployed', 'employment', 'employee', 'employer', 'job', 'jobs', 'work', 'working',
+  'employed', 'unemployed', 'employment', 'unemployment', 'employee', 'employer', 'job', 'jobs', 'work', 'working',
   'status', 'situation', 'condition', 'position', 'occupation',
   // Stats vocabulary
-  'how', 'what', 'who', 'when', 'where', 'many', 'much', 'count', 'average', 'percentage', 'percent', 'rate', 'total', 'number',
+  'how', 'what', 'who', 'when', 'where', 'there', 'many', 'much', 'count', 'average', 'percentage', 'percent', 'rate', 'total', 'number',
   'common', 'highest', 'lowest', 'ranking', 'breakdown', 'distribution', 'statistics', 'statistic',
   'show', 'list', 'which', 'found', 'got',
   // Qualitative / conversational
@@ -33,7 +33,7 @@ const VOCABULARY = [
   // Industry / sector
   'industry', 'industries', 'government', 'private', 'sector', 'type',
   // Relevance / alignment
-  'related', 'relevance', 'relevant', 'align', 'aligned', 'alignment', 'aligns', 'field',
+  'related', 'unrelated', 'relevance', 'relevant', 'irrelevant', 'align', 'aligned', 'alignment', 'aligns', 'field',
   // Further studies
   'further', 'studies', 'study', 'education', 'masters', 'doctorate', 'postgrad',
   // Licensure
@@ -44,7 +44,7 @@ const VOCABULARY = [
   // Location
   'location', 'local', 'locally', 'abroad', 'overseas',
   // Program / academic
-  'program', 'programs', 'course', 'courses', 'degree', 'batch', 'year', 'graduation',
+  'program', 'programs', 'course', 'courses', 'degree', 'batch', 'year', 'years', 'graduation',
   // Demographics
   'gender', 'male', 'female', 'men', 'women',
   // Career events
@@ -54,7 +54,50 @@ const VOCABULARY = [
   'contact', 'mobile', 'phone', 'email',
   // Job relevance qualifiers
   'directly', 'somewhat', 'pursued',
+  // Portal-wide domains (announcements, jobs, staff, appointments, events,
+  // partnerships, office) — added alongside those features; without these,
+  // any typo in a trigger word for these domains ("evemt") silently fails
+  // to route at all and falls through to an unrelated Graduate/tracer-study
+  // default answer instead.
+  'announcement', 'announcements', 'news', 'posted',
+  'opening', 'openings', 'listing', 'listings', 'vacancy', 'vacancies', 'posting', 'postings',
+  'staff', 'available', 'role', 'roles',
+  'appointment', 'appointments', 'booking', 'bookings', 'schedule', 'scheduled', 'pending', 'approved', 'cancelled',
+  'event', 'events', 'attend', 'attended', 'attendance', 'upcoming', 'venue',
+  'partnership', 'partnerships', 'partner', 'partners', 'company', 'companies',
+  'office', 'hours', 'open', 'close', 'closed',
+  'profile', 'account', 'updated', 'edited', 'changed',
 ];
+
+// Common English function words (pronouns, articles, prepositions, auxiliary
+// verbs) — never spelling-corrected, no matter how close they land to a
+// VOCABULARY term by edit distance. These are among the most frequent words
+// in any English sentence, so when one appears it is essentially always
+// intentional, correctly-spelled, and NOT a typo of a domain term — but
+// several sit exactly 1 edit away from an unrelated vocabulary word ("there"
+// -> "where", "they" -> "hey", "these" -> "there"), and correcting them
+// silently rewrites the question's actual meaning before the user ever sees
+// it (e.g. "are there?" became "are where?", turning a count question into
+// a location question). Checked BEFORE the Levenshtein search entirely, so
+// no vocabulary addition can ever re-create this bug for these words.
+const STOPWORDS = new Set([
+  'a', 'an', 'the', 'this', 'that', 'these', 'those', 'it', 'its',
+  'i', 'me', 'my', 'we', 'us', 'our', 'ours', 'you', 'your', 'yours', 'he', 'him', 'his',
+  'she', 'her', 'they', 'them', 'their', 'there', 'here', 'near', 'then', 'than',
+  'is', 'am', 'are', 'was', 'were', 'be', 'been', 'being',
+  'do', 'does', 'did', 'have', 'has', 'had', 'make', 'made', 'into',
+  'will', 'would', 'can', 'could', 'shall', 'should', 'may', 'might', 'must',
+  'and', 'or', 'but', 'if', 'so', 'not', 'no', 'yes', 'nor', 'such', 'whom',
+  'thank', 'thanks', 'yeah', 'yep', 'nope', 'okay', 'ok',
+  'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'about',
+  'more', 'most', 'some', 'any', 'each', 'every', 'both', 'few', 'other', 'another', 'same', 'own', 'all',
+  'watch', 'watched', 'watching', 'iphone', 'android', 'game', 'games',
+  // Number words — always ordinary, correctly-spelled English, and easy
+  // targets for this exact bug class (see "three" -> "there": an adjacent-
+  // letter swap the Damerau-Levenshtein distance treats as a single edit).
+  'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'first', 'second', 'third', 'last',
+]);
 
 // Damerau-Levenshtein (optimal string alignment): like Levenshtein but also
 // treats two adjacent swapped letters ("hgihest" -> "highest") as a single
@@ -94,6 +137,7 @@ function maxDistanceFor(len) {
 
 function correctWord(word) {
   const lower = word.toLowerCase();
+  if (STOPWORDS.has(lower)) return word; // common function word — never a typo target
   if (VOCABULARY.includes(lower)) return word; // already correct, leave as-is (preserves original casing)
 
   let best = null;
@@ -103,6 +147,20 @@ function correctWord(word) {
     if (Math.abs(term.length - lower.length) > 2) continue;
     const dist = levenshtein(lower, term);
     if (dist < bestDist) { bestDist = dist; best = term; }
+  }
+
+  // Never accept a correction that adds/removes a leading negation prefix
+  // ("unemployment" -> "employment", "unrelated" -> "related") — a missing
+  // vocabulary entry should be fixed by adding the word above, not silently
+  // patched over here, because this exact edit shape inverts the question's
+  // meaning rather than fixing a spelling slip. This is a general guard
+  // (not just for the specific words above) so the same bug can't quietly
+  // reappear for any other un-/non-/in-/dis- prefixed domain term that
+  // hasn't been added to VOCABULARY yet.
+  if (best) {
+    const stripsPrefix = (p) => lower.startsWith(p) && lower.slice(p.length) === best;
+    const addsPrefix    = (p) => best.startsWith(p) && best.slice(p.length) === lower;
+    if (['un', 'non', 'in', 'dis'].some(p => stripsPrefix(p) || addsPrefix(p))) return word;
   }
 
   if (best && bestDist > 0 && bestDist <= maxDistanceFor(lower.length)) {
