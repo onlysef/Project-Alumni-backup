@@ -157,6 +157,13 @@
       }
     }
 
+    document.getElementById('email').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('password').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doLogin();
+    });
+
     document.querySelectorAll('.toggle-password').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var input = document.getElementById(btn.dataset.target);

@@ -44,11 +44,52 @@ STRICT RULES:
 1. The data below is complete and sufficient — do NOT say you lack information or cannot answer.
 2. Use ONLY the numbers given below. Never add, omit, round differently, or recalculate any figure.
 3. Do not add outside knowledge, opinions, or assumptions.
-4. Write flowing prose, not a bullet list — narrate the data, don't just repeat its formatting.`;
+4. Write flowing prose, not a bullet list — narrate the data, don't just repeat its formatting.
+5. Do NOT complain that the data is missing a detail the user never asked about (e.g. location, date, department) — the data below fully answers the question exactly as asked, nothing more is needed.
+6. Never start your answer with "Unfortunately" or any other hedge, and never use phrases like "does not specify/mention/provide" — state the answer directly and plainly, as a fact.
+7. Never rephrase a count into a normalized ratio like "X out of every 100/1000" — state the real counts and percentages exactly as given, do not invent a proportional restatement.`;
 
 // Detects the small model falling back to a refusal template despite guaranteed
 // data being present, so we can serve the raw (still-accurate) figures instead.
-const REFUSAL_PATTERN = /don'?t have enough (data|information)|couldn'?t find (relevant )?information/i;
+// Deliberately broad — a false-positive match just falls back to the still-
+// correct raw text, a harmless outcome, whereas a missed refusal phrase lets
+// a wrong/self-contradictory narration reach the user (e.g. "no data
+// provided for the number of BSIT graduates... however, 149..." — the model
+// contradicts its own refusal but still opens with one, which the original
+// narrow pattern didn't catch at all).
+const REFUSAL_PATTERN = /don'?t have (enough )?(data|information)|no data (is |was )?(provided|available)|not (provided|available)\b|couldn'?t find (relevant )?(data|information)|unable to (provide|find|answer)|cannot (provide|find|answer)|there (is|are)n'?t? (any )?data|no (specific )?(data|information) (on|for|about)|does\s*n'?t\s+(specify|mention|provide|include|indicate|state)|does\s+not\s+(specify|mention|provide|include|indicate|state)|^unfortunately\b|\bonly\s+(mentions?|states?|tells?|says?)\b/i;
+
+// Every aggregationService.js answer wraps its key figures in **bold**
+// markdown — this is the consistent output format across all ~20 query
+// functions. If NONE of those numbers survive into the narrated answer, the
+// model either refused in unrecognized wording or hallucinated a different
+// answer entirely ("locations" instead of a count) — either way, the
+// narration can't be trusted even without matching REFUSAL_PATTERN.
+function extractBoldNumbers(text) {
+  const nums = [];
+  const re = /\*\*([\d.,]+%?)\*\*/g;
+  let m;
+  while ((m = re.exec(text))) nums.push(m[1]);
+  return nums;
+}
+
+// queryByYear()'s output only bolds the "Batch NNNN" label, not the
+// count/percentage figures next to it — so extractBoldNumbers() has nothing
+// to check for these answers, and a small model narrating a multi-row
+// year-by-year breakdown was observed reliably INVENTING extra batch years
+// that never appeared in the source data at all (e.g. asked about only
+// Batch 2024-2025, the model fabricated a whole trend spanning 2009-2020).
+// This is a distinct failure mode from a dropped number — the model didn't
+// omit anything, it added years that don't exist in the verified data — so
+// it needs its own check: any year mentioned in the narration that isn't
+// also present in the source text is treated as fabricated.
+function extractYears(text) {
+  const years = new Set();
+  const re = /\b(19\d{2}|20\d{2})\b/g;
+  let m;
+  while ((m = re.exec(text))) years.add(m[1]);
+  return years;
+}
 
 // Follow-ups like "how about his email?" carry no name at all — vector search
 // has no way to resolve "his" to a specific person, since it only compares
@@ -388,7 +429,7 @@ async function buildListAllContext() {
   return { names, total: names.length };
 }
 
-async function streamHF(messages, onToken, retries = 3) {
+async function streamHF(messages, onToken, retries = 3, maxTokens = 512) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       let fullAnswer = '';
@@ -396,7 +437,7 @@ async function streamHF(messages, onToken, retries = 3) {
         model: CHAT_MODEL,
         provider: process.env.HF_PROVIDER || 'featherless-ai',
         messages,
-        max_tokens: 512,
+        max_tokens: maxTokens,
       });
       for await (const chunk of stream) {
         const token = chunk.choices[0]?.delta?.content || '';
@@ -407,7 +448,11 @@ async function streamHF(messages, onToken, retries = 3) {
     } catch (err) {
       const isRateLimit = err?.statusCode === 429 || err?.statusCode === 503 || /rate|limit|overload/i.test(err?.message || '');
       if (isRateLimit && attempt < retries) {
-        await new Promise(r => setTimeout(r, attempt * 2000));
+        // Was 2000ms/attempt (2s, 4s, 6s...) — a full round of retries could
+        // add 6+ seconds of pure backoff on top of the request time itself.
+        // 800ms/attempt keeps a real gap for the provider to recover from a
+        // rate limit without piling onto already-slow responses.
+        await new Promise(r => setTimeout(r, attempt * 800));
         continue;
       }
       throw err;
@@ -468,16 +513,24 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       // topic dispatch table aggregationService just used to answer this question.
       const suggestions = aggregationService.suggestFollowUps(aggResult.topic, aggResult.filters);
 
-      // Plain counting questions ("how many X") get the pre-computed MongoDB
-      // text verbatim — instant, free, and zero risk of the LLM touching a number.
-      // "mixed" questions (explain/describe/summarize + statistical intent)
-      // signal the user wants a written explanation, not a raw table — those get
-      // phrased by Llama, but strictly from this same pre-computed text, under
-      // the SYSTEM_PROMPT rule that forbids inventing or recalculating any figure.
-      if (queryType === 'statistical' && aggResult.direct) {
-        if (onToken) {
-          for (const line of aggText.split('\n')) onToken(line + '\n');
-        }
+      // A single-fact answer ("There are **149** graduates...") is already
+      // one readable sentence — sending it to the LLM just to get the same
+      // fact back in different words costs a full external API round trip
+      // (regularly 3-14s, sometimes a timeout) for no real readability gain.
+      // Only multi-line answers (breakdowns, rankings — several data points
+      // that read awkwardly as raw bullets) and "mixed" questions (explicit
+      // explain/describe/summarize intent) go through LLM narration; plain
+      // single-fact counts are served instantly, straight from MongoDB.
+      //
+      // 'names'/'jobs'/'announcements' answers are the exception: when they
+      // contain an actual enumerated list, that list IS the literal thing
+      // being asked for, not data that benefits from being turned into
+      // prose — narrating it collapses "28 alumni" or "5 job postings" down
+      // to a bare count, silently discarding the actual items requested.
+      const aggLineCount = aggText.split('\n').filter(l => l.trim()).length;
+      const isListTopic = ['names', 'jobs', 'announcements', 'staff', 'appointments', 'events', 'partnerships'].includes(aggResult.topic);
+      if (queryType === 'statistical' && (aggLineCount <= 1 || isListTopic)) {
+        if (onToken) onToken(aggText);
         return finish({ answer: aggText, sources: ['graduate_records'], type: 'statistics', suggestions });
       }
 
@@ -490,9 +543,38 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
 
       // Buffer the narrative (no onToken yet): if the model still refuses despite
       // guaranteed-valid data, fall back to the raw MongoDB text instead of
-      // streaming a false "no data" refusal to the user.
-      const narrativeAnswer = await streamHF(messages, null);
-      const finalAnswer = REFUSAL_PATTERN.test(narrativeAnswer.trim()) ? aggText : narrativeAnswer;
+      // streaming a false "no data" refusal to the user. The narration call
+      // is also wrapped in try/catch — every statistical answer now depends
+      // on this external LLM call succeeding, so a transient provider outage
+      // or timeout (which does happen on the HF inference API) must still
+      // resolve to the already-verified MongoDB text instead of a hard
+      // error, since that data was fully computed before the LLM was ever
+      // involved.
+      let finalAnswer;
+      try {
+        // STATS_NARRATIVE_PROMPT only asks for 2-5 sentences, but every
+        // streamHF() call defaulted to the same 512-token cap used for full
+        // open-ended RAG answers — letting the model generate far more than
+        // needed and directly inflating latency on every single statistical
+        // question. 200 tokens comfortably covers a short paragraph while
+        // cutting worst-case generation time well below the old cap.
+        const narrativeAnswer = await streamHF(messages, null, 3, 200);
+        const trimmed = narrativeAnswer.trim();
+        const aggNumbers = extractBoldNumbers(aggText);
+        // Only require the narration to carry over at least ONE of the
+        // source numbers — a multi-figure answer legitimately narrows to its
+        // main point in prose, but zero surviving numbers means the model
+        // dropped the actual answer entirely (refusal or hallucination).
+        const droppedTheAnswer = aggNumbers.length > 0 && !aggNumbers.some(n => trimmed.includes(n));
+        // Catches the opposite failure: the model didn't drop a number, it
+        // ADDED a year/batch that was never in the source data at all.
+        const aggYears = extractYears(aggText);
+        const fabricatedYear = aggYears.size > 0 && [...extractYears(trimmed)].some(y => !aggYears.has(y));
+        finalAnswer = (REFUSAL_PATTERN.test(trimmed) || droppedTheAnswer || fabricatedYear) ? aggText : trimmed;
+      } catch (err) {
+        logger.warn('stats_narration_failed', { question, error: err.message });
+        finalAnswer = aggText;
+      }
 
       if (onToken) {
         for (const line of finalAnswer.split('\n')) onToken(line + '\n');
@@ -501,12 +583,23 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     }
   }
 
+  // Both legacy fallbacks below only make sense when the Graduate collection
+  // itself is empty — they scan old imported-file chunks directly, bypassing
+  // every filter (gender/year/program/etc.) aggregationService.query() just
+  // correctly applied. Once real Graduate data exists, a null from query()
+  // means "this specific cohort/filter combo has no data" (e.g. batch 2026
+  // hasn't graduated yet) — a deliberate, filter-aware decision to defer to
+  // RAG — NOT "go dump an unrelated, unfiltered stats blob instead." Without
+  // this guard, any question merely containing "employed" got intercepted
+  // here and answered with numbers that ignored the actual question asked.
+  const hasGraduateData = await aggregationService.hasData();
+
   // ── Fallback: chunk-scanning for employment stats (legacy / when no Graduate records) ──
   // Gated to statistical/mixed only — this used to fire on ANY question containing an
   // employment keyword regardless of classification, which intercepted genuinely
   // qualitative questions ("Why are some graduates unemployed?") before they ever
   // reached vector search, answering with an unrelated raw stats dump instead.
-  if ((queryType === 'statistical' || queryType === 'mixed') && EMPLOYMENT_STATS_PATTERN.test(question)) {
+  if (!hasGraduateData && (queryType === 'statistical' || queryType === 'mixed') && EMPLOYMENT_STATS_PATTERN.test(question)) {
     const statsContext = await buildEmploymentStatsContext();
     if (statsContext) {
       // Stream the stats directly without sending to LLM — avoids hallucination
@@ -521,7 +614,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // broad enough to match genuinely qualitative questions like "Describe the
   // challenges all graduates face" — without this gate, those got redirected
   // to a raw alumni name roster instead of reaching real RAG/vector search.
-  if ((queryType === 'statistical' || queryType === 'mixed') && LIST_ALL_PATTERN.test(question)) {
+  if (!hasGraduateData && (queryType === 'statistical' || queryType === 'mixed') && LIST_ALL_PATTERN.test(question)) {
     const { names, total } = await buildListAllContext();
     if (total > 0) {
       const MAX_NAMES = 80;
@@ -605,7 +698,12 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     { role: 'user', content: searchQuestion },
   ];
 
-  const fullAnswer = await streamHF(messages, onToken);
+  // SYSTEM_PROMPT already instructs "keep answers concise," but nothing
+  // enforced that — the default 512-token cap let genuinely simple
+  // qualitative answers run far longer than needed. 350 still gives real
+  // room for summarizing multiple alumni's feedback in one answer, just
+  // without the extreme worst-case tail latency of the uncapped default.
+  const fullAnswer = await streamHF(messages, onToken, 3, 350);
   const sources = [...new Set(confidentChunks.map(c => c.source_type))];
   return finish({ answer: fullAnswer, sources, type: 'rag' });
 }

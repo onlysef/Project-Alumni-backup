@@ -58,10 +58,10 @@ function getSuggestions(text) {
 
   if (/further (education|studies)|graduate studies|masters|phd|post.?grad/.test(t))
     return [
-      "Who pursued further studies?",
-      "What percentage pursued further education?",
       "What is the employment rate?",
       "How many took the board exam?",
+      "Who pursued further studies?",
+      "What percentage pursued further education?",
       "What industries do alumni work in?",
     ];
 
@@ -96,20 +96,20 @@ function getSuggestions(text) {
 
   if (/related|relevance|relevant.*course|job.*course/.test(t))
     return [
+      "What is the employment rate?",
+      "What industries do alumni work in?",
       "How many have jobs directly related to their course?",
       "How many have jobs somewhat related to their course?",
       "How many have jobs not related to their course?",
-      "What is the employment rate?",
-      "What industries do alumni work in?",
     ];
 
   if (/employment type|regular|permanent|contractual|government|private/.test(t))
     return [
+      "What is the employment rate?",
+      "What industries do alumni work in?",
       "What is the employment type breakdown?",
       "How many are regular or permanent employees?",
       "How many are contractual?",
-      "What is the employment rate?",
-      "What industries do alumni work in?",
     ];
 
   if (/respondents|tracer|survey|overview/.test(t))
