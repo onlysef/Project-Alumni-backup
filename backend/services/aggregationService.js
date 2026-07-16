@@ -21,7 +21,16 @@ const TOPIC_PATTERNS = {
   // matching "name" and "alumni" anywhere in a long, unrelated sentence).
   names:           /\b(who are|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b/i,
   count:           /\b(how many (?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?|people)|how many (passed|failed|took|pursued|work\w*|did)|total (alumni|records?|graduates?|respondents?)|number of (alumni|records?|graduates?|respondents?)|how many are there|how many alumni are)\b/i,
-  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|employment\s+rate|percentage\s+of\s+(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job)\b/i,
+  // "percentage of (?:\w+\s+){0,3}(graduates?|alumni)" — was bare-adjacent
+  // only ("percentage of graduates"), so an informal, prefix-less phrasing
+  // like "percentage of BSIT graduates" (a program name sitting between "of"
+  // and "graduates") matched NOTHING here, fell through detectTopic() with
+  // no topic at all, and got swallowed whole by the bare-industry-noun-
+  // phrase heuristic near the end of query() — which then searched the
+  // industry field for the literal string "percentage of BSIT graduates",
+  // found nothing, and surfaced the generic "I don't have enough data"
+  // refusal for a question this app can answer perfectly well.
+  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|employment\s+rate|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job)\b/i,
   overview:        /\b(tracer survey activity|tracer study activity|overview|summary|overall|general (data|info|result|stat)|show.*tracer|tracer.*result|employment\s+breakdown|employment\s+data|employment\s+statistic)\b/i,
   industry:        /\bindustr/i,
   work_type:       /\b(government|private|sector|work type|type of (employment|work)|employment type)\b/i,
@@ -275,8 +284,20 @@ function extractFilters(question) {
   // with the TOTAL batch headcount instead of the unemployed count, while
   // the literal "unemployed" phrasing of the exact same question answered
   // correctly — two answers for one question, disagreeing by 9x.
-  const hasUnemployed    = /\bunemployed\b|\b(looking for (a )?(job|work)|job.?hunt(ing)?|seeking (a )?(job|employment|work)|searching for (a )?(job|work)|out of (a )?work|jobless|without (a )?job|haven'?t found (a )?job|no job yet)\b/i.test(question);
-  const hasPlainEmployed = (allEmployedCount - selfEmployedCount - neverEmployedCount) > 0;
+  const hasUnemployed    = /\bunemployed\b|\b(looking for (a )?(job|work)|job.?hunt(ing)?|seeking (a )?(job|employment|work)|searching for (a )?(job|work)|out of (a )?work|jobless|without (a )?job|haven'?t found (a )?job|(never|didn'?t|hasn'?t|hadn'?t)\s+(got|get|found|landed|secured)\s+(a\s+)?job|no job yet)\b/i.test(question);
+  // Natural paraphrases of "employed" ("found/got/landed a job") were the
+  // mirror-image gap of the unemployed-paraphrase fix above: these were only
+  // ever used to pick the 'rate' TOPIC_PATTERNS bucket, never to actually set
+  // an employmentStatus filter — so "How many alumni got a job in IT?" fell
+  // straight through to queryCount() with NO status filter at all, silently
+  // answering with the raw IT-program headcount (149) as if it had answered
+  // the employment question. The negative lookahead-style check right after
+  // excludes "haven't/hasn't/never/didn't found/got a job" (already correctly
+  // handled as UNemployed above) so the two signals can't both fire and
+  // produce a nonsensical two-status compound for a single-status question.
+  const employedPhrase = /\b(?:found|got|get|landed|secured)\s+(?:a\s+)?job\b/i.test(question)
+    && !/\b(?:haven'?t|hasn'?t|hadn'?t|never|didn'?t|doesn'?t|not)\s+(?:\w+\s+){0,2}(?:found|got|get|landed|secured)\b/i.test(question);
+  const hasPlainEmployed = (allEmployedCount - selfEmployedCount - neverEmployedCount) > 0 || employedPhrase;
 
   // "employed locally/abroad" is a location descriptor ("works locally"), not
   // an independent status claim on top of the location. Treating "employed"
@@ -2075,11 +2096,32 @@ async function query(question) {
     if (text) return { text, direct: true, topic: 'by_year', filters };
   }
 
+  // A bare program mention — "BSIT", "BSIT graduates", "IT graduates" —
+  // already has filters.program correctly set by extractFilters() above, but
+  // with no topic-specific keyword anywhere else in the question,
+  // detectTopic() found nothing and topic stayed null. Without this check,
+  // that fell straight into the bare-industry-noun-phrase heuristic just
+  // below, which (having no idea a program was already identified) treated
+  // the WHOLE phrase — literally including the word "graduates" — as an
+  // INDUSTRY name to search for, always matched zero rows, and silently
+  // deferred to a RAG refusal for what is actually the single most natural
+  // way to ask "how many graduates does this program have." Checked BEFORE
+  // the industry heuristic so a recognized program short-circuits it
+  // entirely rather than the two guesses fighting over the same phrase.
+  if (topic === null && filters.program &&
+      !filters.industry && !filters.excludeIndustry && !filters.employmentStatus && !filters.excludeEmploymentStatus
+      && !filters.workLocation && !filters.furtherEducation && !filters.employmentStatuses && !filters.jobTitle) {
+    topic = 'count';
+  }
+
   // If the question looks like a bare noun phrase (no WH-words, no verbs — e.g.
   // "Engineering", "IT"), treat it as an industry name to look up. This applies
   // whether detectTopic() found an employment signal or no topic at all, since a
   // bare term is its own distinct signal for "look this up as an industry."
-  if ((topic === 'employment' || topic === null) &&
+  // Excludes a question that already resolved to a recognized program (see
+  // above) — that phrase's "industry" candidate would just be the program
+  // name plus filler words like "graduates," which never matches anything.
+  if ((topic === 'employment' || topic === null) && !filters.program &&
       !filters.industry && !filters.excludeIndustry && !filters.employmentStatus && !filters.excludeEmploymentStatus
       && !filters.furtherEducation && !filters.employmentStatuses) {
     if (!/\b(how|what|who|which|when|where|why|is|are|do|does|show|list|give|tell|would|could|should|can|have|has|explain|describe|summarize|summarise|discuss|elaborate|outline)\b/i.test(question)) {
