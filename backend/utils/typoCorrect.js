@@ -92,6 +92,11 @@ const STOPWORDS = new Set([
   'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'as', 'about',
   'more', 'most', 'some', 'any', 'each', 'every', 'both', 'few', 'other', 'another', 'same', 'own', 'all',
   'watch', 'watched', 'watching', 'iphone', 'android', 'game', 'games',
+  // "named" -> "name" (1-edit deletion, within maxDistanceFor(5)=1) broke
+  // "is there an alumni NAMED vincent" into "...alumni NAME vincent" —
+  // harmless-looking, but it was the reason that question's real intent
+  // (search for a specific person) was never recognized at all.
+  'named', 'call', 'called', 'calling',
   // Number words — always ordinary, correctly-spelled English, and easy
   // targets for this exact bug class (see "three" -> "there": an adjacent-
   // letter swap the Damerau-Levenshtein distance treats as a single edit).
