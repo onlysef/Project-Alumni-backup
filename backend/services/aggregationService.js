@@ -1290,7 +1290,24 @@ const PERSON_LOOKUP_PATTERNS = [
   /\bwho\s+is\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+working\s+(?:for|with|at)\b/i,
 ];
 
+// "Is there an alumni/alumnus named vincent?" / "Do you have a graduate
+// called Vincent?" — a completely different question shape from the
+// patterns above (existence-check, not a job-detail request), and one where
+// real users commonly type the name in lowercase. The patterns above rely
+// on capitalization to tell a name apart from an ordinary word elsewhere in
+// the sentence, then re-extract case-sensitively for that exact reason —
+// but the trigger word "named"/"called" here is unambiguous on its own, so
+// this intentionally skips that capitalization requirement. Without this,
+// "is there alumni named vincent" matched the 'names' TOPIC_PATTERNS
+// ("alumni" ... "name" — "named" contains "name" as a prefix) with no name
+// filter ever extracted, silently dumping the entire unfiltered 50-alumni
+// roster as if it had answered the question.
+const NAMED_LOOKUP_PATTERN = /\b(?:alumni|alumnus|alumna|graduates?)\s+(?:named|called)\s+([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4})(?=[?,!.]|$)/i;
+
 function extractPersonName(question) {
+  const namedMatch = question.match(NAMED_LOOKUP_PATTERN);
+  if (namedMatch) return namedMatch[1].trim();
+
   for (const pat of PERSON_LOOKUP_PATTERNS) {
     const m = question.match(pat);
     if (m) {

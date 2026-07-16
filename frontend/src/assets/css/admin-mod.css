@@ -108,7 +108,14 @@
 
         body {
             margin: 0;
+            /* dvh tracks the actual visible viewport (shrinks when a mobile
+               on-screen keyboard opens); vh does not, and combined with
+               overflow:hidden here that used to trap content — like the AI
+               Assistant's message input — behind the keyboard with no way
+               to scroll it into view. vh kept first as a fallback for
+               browsers without dvh support. */
             height: 100vh;
+            height: 100dvh;
             font-family: Arial, Helvetica, sans-serif;
             color: var(--text);
             background: #fff;
@@ -118,6 +125,7 @@
         .app {
             width: 100vw;
             height: 100vh;
+            height: 100dvh;
             margin: 0;
             display: grid;
             grid-template-columns: 224px 1fr;
@@ -6955,7 +6963,16 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             display: flex;
             flex-direction: column;
             flex: 1 1 auto;
+            /* 100vh on mobile is the LARGEST possible viewport — it ignores
+               the on-screen keyboard, so once the keyboard opens, this
+               container still claims the same full height it had before,
+               pushing the composer input down below the visible area
+               (behind the keyboard) instead of shrinking to make room for
+               it. dvh ("dynamic viewport height") tracks the ACTUAL visible
+               viewport and updates live as the keyboard opens/closes; vh is
+               kept first as a fallback for browsers without dvh support. */
             min-height: calc(100vh - 150px);
+            min-height: calc(100dvh - 150px);
             max-width: 860px;
             width: 100%;
             margin: 0 auto;
@@ -7661,7 +7678,10 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
         }
 
         @media (max-width: 600px) {
-            .ac-chat { min-height: calc(100vh - 130px); }
+            .ac-chat {
+                min-height: calc(100vh - 130px);
+                min-height: calc(100dvh - 130px);
+            }
             .ac-bubble { max-width: 85%; }
             .ac-ac-text { max-width: 100%; }
             .ac-welcome-title { font-size: 26px; }
