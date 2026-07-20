@@ -46,10 +46,9 @@ function generateTimeSlots(start = "08:00", end = "17:00") {
 }
 
 const STATUS_COLORS = {
-  Available:  { color: "#276749", background: "#f0fff4" },
-  Busy:       { color: "#975a16", background: "#fffaf0" },
-  "On Leave": { color: "#c53030", background: "#fff5f5" },
-  Inactive:   { color: "#718096", background: "#f7fafc" },
+  Available:    { color: "#276749", background: "#f0fff4" },
+  Unavailable:  { color: "#975a16", background: "#fffaf0" },
+  "On Leave":   { color: "#c53030", background: "#fff5f5" },
   Pending:    { color: "#975a16", background: "#fffaf0" },
   Approved:   { color: "#276749", background: "#f0fff4" },
   Rejected:   { color: "#c53030", background: "#fff5f5" },
@@ -127,23 +126,56 @@ function ConfirmDialog({ open, message, confirmLabel = "Confirm", danger = false
   );
 }
 
-function validateStaffName(val) {
+function validateStaffNamePart(val) {
   const trimmed = val.trim();
-  if (!trimmed) return "Please enter the full name.";
-  if (/[^a-zA-Z\s.'`-]/.test(trimmed)) return "Please enter the full name.";
-  if (trimmed.split(/\s+/).length < 2) return "Please enter the full name.";
+  if (!trimmed) return "This field is required.";
+  if (/[^a-zA-Z\s.'`-]/.test(trimmed)) return "Please use letters only.";
   return "";
+}
+
+function validateStaffEmail(val) {
+  const trimmed = val.trim();
+  if (!trimmed) return "This field is required.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "Please enter a valid email address.";
+  return "";
+}
+
+function splitStaffName(fullName) {
+  const trimmed = (fullName || "").trim();
+  if (!trimmed) return { firstName: "", lastName: "" };
+  const parts = trimmed.split(/\s+/);
+  return {
+    firstName: parts[0],
+    lastName:  parts.slice(1).join(" "),
+  };
 }
 
 function StaffModal({ mode, item, saving, onClose, onSubmit }) {
   const isEdit = mode === "edit";
-  const [name, setName]           = useState(item?.name || "");
-  const [nameError, setNameError] = useState("");
+  const initial = splitStaffName(item?.name);
+  const [firstName, setFirstName]           = useState(initial.firstName);
+  const [lastName, setLastName]             = useState(initial.lastName);
+  const [email, setEmail]                   = useState(item?.email || "");
+  const [firstNameError, setFirstNameError] = useState("");
+  const [lastNameError, setLastNameError]   = useState("");
+  const [emailError, setEmailError]         = useState("");
 
-  function handleNameChange(e) {
+  function handleFirstNameChange(e) {
     const val = e.target.value;
-    setName(val);
-    if (nameError) setNameError(validateStaffName(val));
+    setFirstName(val);
+    if (firstNameError) setFirstNameError(validateStaffNamePart(val));
+  }
+
+  function handleLastNameChange(e) {
+    const val = e.target.value;
+    setLastName(val);
+    if (lastNameError) setLastNameError(validateStaffNamePart(val));
+  }
+
+  function handleEmailChange(e) {
+    const val = e.target.value;
+    setEmail(val);
+    if (emailError) setEmailError(validateStaffEmail(val));
   }
 
   return (
@@ -157,57 +189,90 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
           className="admin-entry-form"
           onSubmit={(e) => {
             e.preventDefault();
-            const err = validateStaffName(name);
-            if (err) { setNameError(err); return; }
+            const fErr = validateStaffNamePart(firstName);
+            const lErr = validateStaffNamePart(lastName);
+            const eErr = validateStaffEmail(email);
+            if (fErr || lErr || eErr) {
+              setFirstNameError(fErr);
+              setLastNameError(lErr);
+              setEmailError(eErr);
+              return;
+            }
             const f = e.currentTarget.elements;
             onSubmit({
-              name:   name.trim(),
+              name:   `${firstName.trim()} ${lastName.trim()}`,
               role:   f.role.value,
-              email:  f.email.value.trim(),
+              email:  email.trim(),
               status: f.status.value,
             });
           }}
         >
           <div className="admin-entry-fields">
             <label>
-              Name
+              First Name
               <input
                 type="text"
-                name="name"
-                value={name}
-                onChange={handleNameChange}
-                onBlur={() => setNameError(validateStaffName(name))}
+                name="firstName"
+                value={firstName}
+                onChange={handleFirstNameChange}
+                onBlur={() => setFirstNameError(validateStaffNamePart(firstName))}
                 required
               />
-              {nameError && <span className="field-error">{nameError}</span>}
+              {firstNameError && <span className="field-error">{firstNameError}</span>}
+            </label>
+            <label>
+              Last Name
+              <input
+                type="text"
+                name="lastName"
+                value={lastName}
+                onChange={handleLastNameChange}
+                onBlur={() => setLastNameError(validateStaffNamePart(lastName))}
+                required
+              />
+              {lastNameError && <span className="field-error">{lastNameError}</span>}
             </label>
             <label>
               Role
               <select name="role" defaultValue={item?.role || "Staff"} required>
                 <option value="Staff">Staff</option>
                 <option value="Admin">Admin</option>
-                <option value="Counselor">Counselor</option>
+                <option value="President">President</option>
                 <option value="Coordinator">Coordinator</option>
-                <option value="Registrar">Registrar</option>
               </select>
             </label>
             <label>
               Email
-              <input type="email" name="email" defaultValue={item?.email || ""} />
+              <input
+                type="email"
+                name="email"
+                value={email}
+                onChange={handleEmailChange}
+                onBlur={() => setEmailError(validateStaffEmail(email))}
+                required
+              />
+              {emailError && <span className="field-error">{emailError}</span>}
             </label>
             <label>
               Status
               <select name="status" defaultValue={item?.status || "Available"}>
                 <option>Available</option>
-                <option>Busy</option>
+                <option>Unavailable</option>
                 <option>On Leave</option>
-                <option>Inactive</option>
               </select>
             </label>
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving || !!validateStaffName(name)}>
+            <button
+              type="submit"
+              disabled={
+                saving ||
+                !!validateStaffNamePart(firstName) ||
+                !!validateStaffNamePart(lastName) ||
+                !!validateStaffEmail(email)
+              }
+            >
               {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Staff"}
             </button>
           </div>
@@ -572,6 +637,26 @@ export default function AppointmentsView() {
     finally { setApptSaving(false); }
   }
 
+  function confirmDeleteAppointment(appt) {
+    setConfirm({
+      message:      `Delete the appointment for ${appt.alumni_name}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      danger:       true,
+      onConfirm:    async () => {
+        setConfirm(null);
+        try {
+          const res  = await fetch(`${API}/admin/appointments/${appt._id}`, {
+            method: "DELETE", headers: authHeaders(),
+          });
+          const data = await res.json();
+          if (!res.ok) { showToast(data.message || "Delete failed."); return; }
+          setAppointments((prev) => prev.filter((a) => a._id !== appt._id));
+          showToast(data.message || "Appointment deleted.");
+        } catch { showToast("Could not connect to server."); }
+      },
+    });
+  }
+
   function confirmStatusChange(appt, action) {
     const statusMap = { Approve: "Approved", Reject: "Rejected", Complete: "Completed", Cancel: "Cancelled" };
     const newStatus = statusMap[action];
@@ -599,7 +684,7 @@ export default function AppointmentsView() {
 
   // ── Client-side filtering ────────────────────────────────────
 
-  const activeStaff = staff.filter((s) => s.status !== "Inactive");
+  const activeStaff = staff.filter((s) => s.status !== "Unavailable");
 
   const filtered = appointments.filter((a) => {
     const nameOk   = !search      || a.alumni_name.toLowerCase().includes(search.toLowerCase());
@@ -916,26 +1001,22 @@ export default function AppointmentsView() {
                             </button>
                           </>
                         )}
-                        {!["Pending", "Approved"].includes(a.status) && (
-                          <span style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
-                        )}
+                        <button type="button" onClick={() => confirmDeleteAppointment(a)}>
+                          Delete
+                        </button>
                       </div>
-                      {["Pending", "Approved"].includes(a.status) && (
-                        <div className="appointment-action-menu">
+                      <div className="appointment-action-menu">
                           <ActionMenu
                             actions={a.status === "Pending"
-                              ? ["approve", "reject"]
-                              : ["complete", "cancel"]}
-                            onSelect={(action) => confirmStatusChange(
-                              a,
-                              action.charAt(0).toUpperCase() + action.slice(1),
-                            )}
+                              ? ["approve", "reject", "delete"]
+                              : a.status === "Approved"
+                              ? ["complete", "cancel", "delete"]
+                              : ["delete"]}
+                            onSelect={(action) => action === "delete"
+                              ? confirmDeleteAppointment(a)
+                              : confirmStatusChange(a, action.charAt(0).toUpperCase() + action.slice(1))}
                           />
-                        </div>
-                      )}
-                      {!["Pending", "Approved"].includes(a.status) && (
-                        <span className="appointment-action-empty" style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>—</span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}

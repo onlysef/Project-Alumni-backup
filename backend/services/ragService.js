@@ -29,6 +29,8 @@ I only answer using data in the tracer study records — I can't answer question
 
 const UNKNOWN_RESPONSE = `I'm designed to answer questions related to the Graduate Tracer Study records. I can't answer unrelated questions.`;
 
+const OFFENSIVE_RESPONSE = `Let's keep this conversation respectful. I'm here to help with Graduate Tracer Study questions — please rephrase without offensive language.`;
+
 const LOW_SIMILARITY_RESPONSE = `I couldn't find relevant information in the graduate records.`;
 
 // Used only for narrating pre-computed MongoDB stats (the "mixed" classification
@@ -96,7 +98,7 @@ function extractYears(text) {
 // the literal query text. Only trigger the extra LLM call when a pronoun is
 // actually present and there's prior conversation to resolve it against —
 // standalone questions (the common case) skip this entirely, no added cost.
-const PRONOUN_REFERENT_PATTERN = /\b(his|her|their|him|she|he|them|that person|this person|theirs)\b/i;
+const PRONOUN_REFERENT_PATTERN = /\b(his|her|their|him|she|he|they|them|those|that person|this person|theirs)\b/i;
 
 async function condenseQuestion(question, chatHistory) {
   if (!chatHistory.length || !PRONOUN_REFERENT_PATTERN.test(question)) return question;
@@ -472,6 +474,18 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   const rawQuestion = question;
   question = correctTypos(question);
 
+  // Resolve pronoun follow-ups ("How many are they?" right after a list of
+  // unemployed alumni was shown) into a self-contained question BEFORE
+  // classification/aggregation — not just before vector search as before.
+  // Without this, aggregationService.query() never sees the prior turn at
+  // all (it's a stateless per-question function), so "how many are they"
+  // matched no filter, no topic, nothing — and confidently refused with "I
+  // don't have enough data" even though the very list it should have
+  // counted was still on screen. condenseQuestion() itself no-ops (returns
+  // the question unchanged) unless a referent pronoun AND prior history are
+  // both present, so ordinary standalone questions pay no extra cost here.
+  question = await condenseQuestion(question, chatHistory);
+
   const queryType  = classify(question);
   logger.info('chat_question', {
     question,
@@ -490,7 +504,11 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     return result;
   };
 
-  // ── Greeting / help / unknown: answer directly, no DB or LLM call needed ──────
+  // ── Offensive / greeting / help / unknown: answer directly, no DB or LLM call needed ──
+  if (queryType === 'offensive') {
+    if (onToken) onToken(OFFENSIVE_RESPONSE);
+    return finish({ answer: OFFENSIVE_RESPONSE, sources: [], type: 'offensive' });
+  }
   if (queryType === 'greeting') {
     if (onToken) onToken(GREETING_RESPONSE);
     return finish({ answer: GREETING_RESPONSE, sources: [], type: 'greeting' });
@@ -517,19 +535,21 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       // one readable sentence — sending it to the LLM just to get the same
       // fact back in different words costs a full external API round trip
       // (regularly 3-14s, sometimes a timeout) for no real readability gain.
-      // Only multi-line answers (breakdowns, rankings — several data points
-      // that read awkwardly as raw bullets) and "mixed" questions (explicit
-      // explain/describe/summarize intent) go through LLM narration; plain
-      // single-fact counts are served instantly, straight from MongoDB.
+      // Plain single-fact counts are served instantly, straight from MongoDB.
       //
-      // 'names'/'jobs'/'announcements' answers are the exception: when they
-      // contain an actual enumerated list, that list IS the literal thing
-      // being asked for, not data that benefits from being turned into
-      // prose — narrating it collapses "28 alumni" or "5 job postings" down
-      // to a bare count, silently discarding the actual items requested.
-      const aggLineCount = aggText.split('\n').filter(l => l.trim()).length;
+      // Multi-line BULLETED breakdowns (by-program, by-year, rankings — one
+      // clearly-labeled data point per line) used to still get sent through
+      // LLM narration on the theory that raw bullets read "awkwardly" — in
+      // practice the model collapses them into one dense run-on paragraph
+      // ("Among the graduates, 37 out of 59 ... In contrast, 39 out of 54
+      // ... Similarly, 33 out of 48 ...") that's genuinely harder to read
+      // than the bullets it started from, not easier. The already-computed
+      // aggText is guaranteed complete and correctly formatted, so bulleted
+      // answers skip narration entirely now, the same as isListTopic below.
+      const aggLineCount   = aggText.split('\n').filter(l => l.trim()).length;
+      const bulletLineCount = (aggText.match(/^[-*]\s/gm) || []).length;
       const isListTopic = ['names', 'jobs', 'announcements', 'staff', 'appointments', 'events', 'partnerships'].includes(aggResult.topic);
-      if (queryType === 'statistical' && (aggLineCount <= 1 || isListTopic)) {
+      if (queryType === 'statistical' && (aggLineCount <= 1 || isListTopic || bulletLineCount >= 2)) {
         if (onToken) onToken(aggText);
         return finish({ answer: aggText, sources: ['graduate_records'], type: 'statistics', suggestions });
       }
@@ -645,10 +665,10 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     }).select('content source_type').lean();
   }
 
-  // Resolve pronoun-only follow-ups ("how about his email?") into a
-  // self-contained query before embedding — otherwise vector search has no
-  // way to know who "his" refers to and matches on generic textual similarity.
-  const searchQuestion = await condenseQuestion(question, chatHistory);
+  // `question` was already condensed (pronoun follow-ups resolved) near the
+  // top of this function — reused here under its old name so the rest of
+  // this vector-search block doesn't need touching.
+  const searchQuestion = question;
 
   // Retrieve relevant chunks via vector search
   const chunks = await retrieveContext(searchQuestion, {
@@ -684,6 +704,33 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   if (!context || context.replace(/=+[^=]+=+/g, '').trim().length < 80) {
     if (onToken) onToken(NO_CONTEXT_RESPONSE);
     return finish({ answer: NO_CONTEXT_RESPONSE, sources: [], type: 'rag' });
+  }
+
+  // A question naming ONE specific person ("what is Danica Manlapig's
+  // employment status") already failed aggregationService's own Graduate
+  // lookup by this point (that's why it fell through to vector search at
+  // all — see query()'s personName branch). The retrieved chunks above only
+  // cleared a generic topical similarity bar ("employment status" reads as
+  // similar to any tracer-study chunk), NOT relevance to this specific
+  // person — so the LLM, given context that never actually mentions them,
+  // reliably hallucinates a confident-sounding answer using the name from
+  // the question itself (e.g. inventing "Danica Manlapig is listed as an
+  // Alumni record" when no such record exists). Requiring every token of
+  // the named person to literally appear somewhere in the assembled context
+  // catches this before the LLM call, without touching ordinary aggregate
+  // questions (extractPersonName only fires on the "who is X" question
+  // shape, never on topic/statistic phrasing).
+  const namedPerson = aggregationService.extractPersonName(question);
+  if (namedPerson) {
+    const nameTokens = namedPerson.replace(/'s$/i, '').split(/\s+/).filter(Boolean);
+    const allTokensPresent = nameTokens.length > 0 && nameTokens.every(t =>
+      new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(context)
+    );
+    if (!allTokensPresent) {
+      const notFoundMsg = `I don't have any record of "${namedPerson.replace(/'s$/i, '')}" in the tracer study or alumni data.`;
+      if (onToken) onToken(notFoundMsg);
+      return finish({ answer: notFoundMsg, sources: [], type: 'rag' });
+    }
   }
 
   const MAX_HISTORY_CHARS = 300;

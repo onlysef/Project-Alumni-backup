@@ -13,11 +13,13 @@ function capitalize(str = "") {
 }
 
 function mapUser(u) {
+  const middle = u.middleInitial ? `${u.middleInitial} ` : "";
   return {
     id:             u._id,
     firstName:      u.firstName,
+    middleInitial:  u.middleInitial || "",
     lastName:       u.lastName,
-    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${u.lastName}`,
+    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${middle}${u.lastName}`,
     email:          u.email,
     role:           capitalize(u.role),
     status:         capitalize(u.status),
@@ -50,6 +52,7 @@ export default function AccountsView() {
   const [loading, setLoading]         = useState(true);
   const [roleFilter, setRoleFilter]   = useState("Role");
   const [statusFilter, setStatusFilter] = useState("Status");
+  const [search, setSearch]           = useState("");
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -85,7 +88,9 @@ export default function AccountsView() {
   function visible(r) {
     const roleMatch   = roleFilter === "Role"   || roleFilter === "All"   || r.role === roleFilter;
     const statusMatch = statusFilter === "Status" || statusFilter === "All" || r.status === statusFilter;
-    return roleMatch && statusMatch;
+    const q = search.trim().toLowerCase();
+    const searchMatch = !q || r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
+    return roleMatch && statusMatch && searchMatch;
   }
 
   function applyFilter(choice, which) {
@@ -265,6 +270,16 @@ export default function AccountsView() {
         <div className="admin-card-head">
           <h3>Manage Accounts</h3>
           <div className={`accounts-controls${filtersOpen ? " filters-open" : ""}`}>
+            <input
+              className="admin-search"
+              type="text"
+              name="accounts-search"
+              placeholder="Search name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search accounts by name or email"
+              autoComplete="off"
+            />
             <button
               type="button"
               className="accounts-filter-toggle"
@@ -407,11 +422,12 @@ export default function AccountsView() {
           if (entry.row) {
             try {
               const payload = {
-                firstName: data.firstName,
-                lastName:  data.lastName,
-                email:     data.email,
-                role:      data.role.toLowerCase(),
-                status:    data.status.toLowerCase(),
+                firstName:     data.firstName,
+                middleInitial: data.middleInitial,
+                lastName:      data.lastName,
+                email:         data.email,
+                role:          data.role.toLowerCase(),
+                status:        data.status.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -439,10 +455,11 @@ export default function AccountsView() {
           } else {
             try {
               const payload = {
-                firstName: data.firstName,
-                lastName:  data.lastName,
-                email:     data.email,
-                role:      data.role.toLowerCase(),
+                firstName:     data.firstName,
+                middleInitial: data.middleInitial,
+                lastName:      data.lastName,
+                email:         data.email,
+                role:          data.role.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -659,6 +676,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
             const f = e.currentTarget.elements;
             onSubmit({
               firstName:      f.firstName.value.trim(),
+              middleInitial:  f.middleInitial.value.trim(),
               lastName:       f.lastName.value.trim(),
               email:          f.email.value.trim(),
               role:           f.role.value,
@@ -671,6 +689,9 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
           <div className="admin-entry-fields">
             <label>First Name
               <input type="text" name="firstName" defaultValue={row?.firstName || ""} required />
+            </label>
+            <label>Middle Initial / Middle Name
+              <input type="text" name="middleInitial" defaultValue={row?.middleInitial || ""} maxLength={50} />
             </label>
             <label>Last Name
               <input type="text" name="lastName" defaultValue={row?.lastName || ""} required />

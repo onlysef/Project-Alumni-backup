@@ -1,13 +1,4 @@
 const Graduate = require('../models/Graduate');
-const Announcement = require('../models/Announcement');
-const Job = require('../models/Job');
-const User = require('../models/User');
-const Staff = require('../models/Staff');
-const Appointment = require('../models/Appointment');
-const Event = require('../models/Event');
-const AttendanceLog = require('../models/AttendanceLog');
-const Partnership = require('../models/Partnership');
-const OfficeSettings = require('../models/OfficeSettings');
 
 // ─── Intent Detection ─────────────────────────────────────────────────────────
 
@@ -1304,9 +1295,44 @@ const PERSON_LOOKUP_PATTERNS = [
 // roster as if it had answered the question.
 const NAMED_LOOKUP_PATTERN = /\b(?:alumni|alumnus|alumna|graduates?)\s+(?:named|called)\s+([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4})(?=[?,!.]|$)/i;
 
+// "what dani manlapig status" (casual, ungrammatical, lowercase — no "is",
+// no possessive) / "what is Dani Manlapig's status" — none of the
+// PERSON_LOOKUP_PATTERNS below list "status" as a trigger keyword, and all
+// of them require capitalization to identify a name. Real users routinely
+// type a name in lowercase and skip "is"/apostrophe-s entirely, so this
+// deliberately skips the capitalization requirement, the same tradeoff
+// NAMED_LOOKUP_PATTERN above already makes — "status" preceded by a genuine
+// 2-4 word span is a strong enough signal on its own. Without this, a
+// question about one specific (possibly nonexistent) person fell through to
+// the generic 'status' keyword match and silently answered with the
+// unrelated, unfiltered 254-respondent employment breakdown instead of
+// attempting a person lookup (or admitting no record was found). A leading
+// pronoun/determiner is excluded so ordinary aggregate questions ("what is
+// the employment status") aren't misread as a person lookup.
+//
+// The exclusion has to apply to EVERY word position, not just the first —
+// "what is Bryan Canlapan employment status" has a descriptor word
+// ("employment") sitting directly between the name and "status" with no
+// delimiter, so a plain greedy word-repetition swallowed it straight into
+// the captured name ("Bryan Canlapan Employment"), which then broke the
+// Graduate token-match AND fed a still-partly-correct-looking name into the
+// RAG hallucination guard downstream (ragService.js), letting a bogus
+// "employment"-only token match slip through. Known descriptor words
+// between the name and "status" are matched separately (and can repeat —
+// "current employment status") instead of being eligible for capture.
+const STATUS_EXCLUDE_WORDS = 'the|a|an|this|that|each|every|overall|current|general|my|our|your|his|her|its|their|employment|job|marital|civil|account|graduates?|alumni|alumnus|alumna|is|does|do|are|was|were|status';
+const STATUS_NAME_WORD = String.raw`(?!(?:${STATUS_EXCLUDE_WORDS})\b)[a-zA-Z][a-zA-Z.'-]*`;
+const STATUS_LOOKUP_PATTERN = new RegExp(
+  String.raw`\bwhat\s+(?:is\s+|does\s+)?(${STATUS_NAME_WORD}(?:\s+${STATUS_NAME_WORD}){1,3})(?:'s)?\s+(?:(?:employment|job|marital|civil|account|current)\s+)*status\b`,
+  'i'
+);
+
 function extractPersonName(question) {
   const namedMatch = question.match(NAMED_LOOKUP_PATTERN);
   if (namedMatch) return namedMatch[1].trim();
+
+  const statusMatch = question.match(STATUS_LOOKUP_PATTERN);
+  if (statusMatch) return statusMatch[1].replace(/'s$/i, '').trim();
 
   for (const pat of PERSON_LOOKUP_PATTERNS) {
     const m = question.match(pat);
@@ -1726,183 +1752,6 @@ async function queryOverview(filters) {
   return out;
 }
 
-// ─── Portal-wide queries (beyond tracer study data) ─────────────────────────────
-// The AI assistant was scoped only to the Graduate/tracer-study collection —
-// questions about announcements, job postings, or account activity fell
-// through to a hardcoded canned response (job postings) or a flat decline
-// (profile activity) regardless of what real data existed. These query real
-// collections directly, the same "compute first, never let the LLM guess
-// the number" principle used everywhere else in this file.
-
-async function queryJobs(question) {
-  const [openCount, totalCount] = await Promise.all([
-    Job.countDocuments({ status: 'open' }),
-    Job.countDocuments(),
-  ]);
-  if (/\bhow many\b/i.test(question)) {
-    const closedNote = totalCount !== openCount ? ` (${totalCount} total, including closed)` : '';
-    return `There are **${openCount}** open job posting${openCount !== 1 ? 's' : ''} currently listed${closedNote}.`;
-  }
-  if (openCount === 0) {
-    return `There are no open job postings at the moment. Please check back later or contact the university's career services office for available opportunities.`;
-  }
-  const jobs = await Job.find({ status: 'open' }).sort({ createdAt: -1 }).limit(20)
-    .select('title jobType location createdAt').lean();
-  let out = `**Open Job Postings (${openCount} total):**\n\n`;
-  jobs.forEach((j, i) => {
-    out += `${i + 1}. **${j.title}** — ${j.jobType}${j.location ? ` in ${j.location}` : ''}\n`;
-  });
-  return out;
-}
-
-async function queryAnnouncements(question) {
-  const total = await Announcement.countDocuments();
-  if (/\bhow many\b/i.test(question)) {
-    return `There are **${total}** announcement${total !== 1 ? 's' : ''} posted on the portal.`;
-  }
-  if (total === 0) {
-    return `There are no announcements posted on the portal yet.`;
-  }
-  const anns = await Announcement.find().sort({ createdAt: -1 }).limit(20)
-    .select('title type createdAt').lean();
-  let out = `**Recent Announcements (${total} total):**\n\n`;
-  anns.forEach((a, i) => { out += `${i + 1}. **${a.title}** (${a.type})\n`; });
-  return out;
-}
-
-// Mongoose's `updatedAt` bumps on ANY document write — settings changes, OTP
-// verification, password resets — not specifically "the alumni edited their
-// profile info." It's the closest real signal available, so it's used with
-// an explicit caveat rather than silently presenting it as more precise than
-// it actually is.
-async function queryProfileActivity(question) {
-  const now = new Date();
-  let start = new Date(now.getFullYear(), 0, 1);
-  const yearMatch = question.match(/\b((?:199\d|20[0-3]\d))\b/);
-  if (yearMatch) start = new Date(parseInt(yearMatch[1]), 0, 1);
-
-  const count = await User.countDocuments({ role: 'alumni', updatedAt: { $gte: start } });
-  const label = start.getFullYear() === now.getFullYear() ? 'this year' : `since ${start.getFullYear()}`;
-  return `**${count}** alumni account${count !== 1 ? 's have' : ' has'} had activity (profile edits, settings changes, etc.) ${label}. Note: this reflects general account activity, not specifically profile-info edits alone — the system doesn't track that distinction separately.`;
-}
-
-// "Who are the available staff for appointment?" — a STAFF DIRECTORY lookup,
-// a completely different domain from alumni/tracer data.
-async function queryStaffAvailability(question) {
-  const staff = await Staff.find({ deleted: { $ne: true } }).select('name role status').lean();
-  if (!staff.length) {
-    return `There are no staff members registered in the system yet.`;
-  }
-  const wantsAvailableOnly = /\bavailable\b/i.test(question);
-  const shown = wantsAvailableOnly ? staff.filter(s => s.status === 'Available') : staff;
-  if (wantsAvailableOnly && !shown.length) {
-    return `No staff members are currently marked as available for appointments. Please check back later.`;
-  }
-  const label = wantsAvailableOnly ? 'Available Staff' : 'Staff';
-  let out = `**${label} (${shown.length} total):**\n\n`;
-  shown.forEach((s, i) => { out += `${i + 1}. **${s.name}** — ${s.role}${wantsAvailableOnly ? '' : ` (${s.status})`}\n`; });
-  return out;
-}
-
-async function queryAppointments(question) {
-  const total = await Appointment.countDocuments();
-  if (/\bhow many\b/i.test(question)) {
-    if (total === 0) return `There are **0** appointments booked in the system.`;
-    const pending = await Appointment.countDocuments({ status: 'Pending' });
-    return `There are **${total}** appointment${total !== 1 ? 's' : ''} in total (**${pending}** pending).`;
-  }
-  if (total === 0) {
-    return `There are no appointments booked in the system yet.`;
-  }
-  const appts = await Appointment.find().sort({ createdAt: -1 }).limit(20)
-    .select('alumni_name appointment_date appointment_time status purpose').lean();
-  let out = `**Appointments (${total} total):**\n\n`;
-  appts.forEach((a, i) => {
-    out += `${i + 1}. **${a.alumni_name}** — ${a.appointment_date} ${a.appointment_time} (${a.status})${a.purpose ? ` — ${a.purpose}` : ''}\n`;
-  });
-  return out;
-}
-
-async function queryEvents(question) {
-  const total = await Event.countDocuments();
-  if (/\bhow many\b/i.test(question) && !/\bupcoming\b/i.test(question)) {
-    return `There are **${total}** event${total !== 1 ? 's' : ''} on record.`;
-  }
-  if (total === 0) {
-    return `There are no events posted yet.`;
-  }
-  const wantsUpcoming = /\bupcoming\b/i.test(question);
-  const match = wantsUpcoming ? { event_datetime: { $gte: new Date() } } : {};
-  const events = await Event.find(match).sort({ event_datetime: wantsUpcoming ? 1 : -1 }).limit(20)
-    .select('title location event_datetime visibility').lean();
-  if (wantsUpcoming && !events.length) {
-    return `There are no upcoming events scheduled at the moment.`;
-  }
-  const label = wantsUpcoming ? 'Upcoming Events' : `Events (${total} total)`;
-  let out = `**${label}:**\n\n`;
-  events.forEach((e, i) => {
-    const date = e.event_datetime ? new Date(e.event_datetime).toLocaleDateString() : 'TBD';
-    out += `${i + 1}. **${e.title}** — ${date}${e.location ? ` at ${e.location}` : ''} (${e.visibility})\n`;
-  });
-  return out;
-}
-
-// "How many alumni attended the event?" — a different question from "how
-// many events are there": this counts ATTENDANCE records (AttendanceLog),
-// grouped by event since more than one could exist. "Present" is the only
-// status counted as attended; Late/Excused/Absent are tracked separately
-// but not counted toward the headline number.
-async function queryAttendance(question) {
-  const total = await AttendanceLog.countDocuments();
-  if (total === 0) {
-    return `There are no event attendance records yet.`;
-  }
-  const rows = await AttendanceLog.aggregate([
-    { $lookup: { from: 'events', localField: 'event_id', foreignField: '_id', as: 'event' } },
-    { $unwind: { path: '$event', preserveNullAndEmptyArrays: true } },
-    {
-      $group: {
-        _id: '$event.title',
-        total: { $sum: 1 },
-        present: { $sum: { $cond: [{ $eq: ['$status', 'Present'] }, 1, 0] } },
-      },
-    },
-    { $sort: { total: -1 } },
-  ]);
-  if (rows.length === 1) {
-    const r = rows[0];
-    return `**${r.present}** alumni attended **${r._id || 'the event'}** (out of ${r.total} recorded, including late/excused/absent).`;
-  }
-  let out = `**Event Attendance:**\n\n`;
-  rows.forEach(r => { out += `- **${r._id || 'Untitled event'}**: ${r.present}/${r.total} present\n`; });
-  return out;
-}
-
-async function queryPartnerships(question) {
-  const total = await Partnership.countDocuments();
-  if (/\bhow many\b/i.test(question)) {
-    if (total === 0) return `There are **0** partnerships on record.`;
-    const active = await Partnership.countDocuments({ status: 'Active' });
-    return `There are **${total}** partnership${total !== 1 ? 's' : ''} on record (**${active}** active).`;
-  }
-  if (total === 0) {
-    return `There are no partnerships on record yet.`;
-  }
-  const partners = await Partnership.find().sort({ createdAt: -1 }).limit(20)
-    .select('name type status').lean();
-  let out = `**Partnerships (${total} total):**\n\n`;
-  partners.forEach((p, i) => { out += `${i + 1}. **${p.name}** — ${p.type} (${p.status})\n`; });
-  return out;
-}
-
-async function queryOfficeStatus() {
-  const settings = await OfficeSettings.findOne().lean();
-  if (!settings) return `Office status information isn't configured yet.`;
-  const DAY_NAMES = { M: 'Monday', T: 'Tuesday', W: 'Wednesday', TH: 'Thursday', F: 'Friday', S: 'Saturday', SU: 'Sunday' };
-  const days = (settings.working_days || []).map(d => DAY_NAMES[d] || d).join(', ');
-  return `The office is currently **${settings.office_status}**. Working hours: ${settings.start_time}–${settings.end_time}${days ? `, on ${days}` : ''}.`;
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 async function hasData() {
@@ -1923,96 +1772,43 @@ async function query(question) {
     return null;
   }
 
-  // "How many job openings/opportunities are there?" — routes to the REAL
-  // Job collection now instead of a hardcoded "none posted yet" string, so
-  // this answer stays accurate automatically once real postings exist.
-  if (/\b(job (openings?|listings?|vacancies|opportunities|postings?)|available (jobs?|positions?|roles?))\b/i.test(question)) {
-    const text = await queryJobs(question);
-    if (text) return { text, direct: true, topic: 'jobs', filters: {} };
-  }
-
-  // "How many announcements are there?" / "list announcements" — routes to
-  // the real Announcement collection.
-  if (/\bannouncements?\b/i.test(question) && !/\bemployment\b/i.test(question)) {
-    const text = await queryAnnouncements(question);
-    if (text) return { text, direct: true, topic: 'announcements', filters: {} };
-  }
-
-  // "How many alumni updated their profile this year?" — an ACCOUNT/portal
-  // activity question, not a tracer study statistic. This has no matching
-  // filter (no program/status/industry/etc. word), so without this check it
-  // used to fall to the default 'count' topic and confidently answer with
-  // the total respondent count — completely unrelated to what was asked.
-  // Routes to the real User collection now (with an explicit caveat baked
-  // into the answer — see queryProfileActivity()'s own comment for why).
-  if (/\b(updat|edit|chang|modif)\w*\s+(their|his|her|its|my|your)?\s*(profile|account|info|information|details|record)\b/i.test(question)
-    || /\b(profile|account)\s+(updat|edit|chang)\w*\b/i.test(question)) {
-    const text = await queryProfileActivity(question);
-    if (text) return { text, direct: true, topic: 'profile_activity', filters: {} };
-  }
-
-  // "Who are the available staff for appointment?" — a STAFF DIRECTORY
-  // question, not an alumni question at all. "who are" also matches the
-  // 'names' TOPIC_PATTERNS trigger (designed for listing ALUMNI), so without
-  // this early check the question fell through to queryNames() with no
-  // matching Graduate filter and dumped an unrelated, unfiltered 50-alumni
-  // roster — completely wrong domain, not just a wrong filter.
-  // Triggers on bare "staff" alone (no extra qualifier required) — unlike
-  // "available"/"schedule", the word "staff" itself never legitimately
-  // refers to anything in the Graduate/tracer-study domain, so it's an
-  // unambiguous signal on its own; requiring "available/appointment/..."
-  // alongside it meant "list all staff" fell through to general RAG
-  // instead, which has no staff-directory data embedded to answer from.
-  if (/\bstaff\b/i.test(question)) {
-    const text = await queryStaffAvailability(question);
-    if (text) return { text, direct: true, topic: 'staff', filters: {} };
-  }
-
-  // "How many appointments are there?" — the Appointment collection itself
-  // (booking records), not the staff who take them. Checked only when
-  // "staff" ISN'T also mentioned — "available staff FOR appointment" is a
-  // staff-directory question (handled above) where "appointment" is just
-  // context, not the thing being counted; without the exclusion, that exact
-  // phrase would route here instead and undo the staff-lookup fix above.
-  if (/\bappointments?\b/i.test(question) && !/\bstaff\b/i.test(question)) {
-    const text = await queryAppointments(question);
-    if (text) return { text, direct: true, topic: 'appointments', filters: {} };
-  }
-
-  // "How many alumni attended the event?" — ATTENDANCE, a different
-  // question from "how many events are there." Checked before the generic
-  // events bypass below since a real attendance question always also
-  // mentions "event," and would otherwise be answered with the wrong
-  // metric (event count instead of attendee count).
-  // The "event" co-mention is REQUIRED, not just typical — "attend" alone
-  // also appears in completely unrelated advice questions ("How should I
-  // prepare to attend a job interview?", "Should I attend graduate
-  // school?"), which used to match this bypass on "attend" alone and
-  // confidently answer "There are no event attendance records yet." for a
-  // question that was never about events at all.
-  if (/\battend(ed|ance)?\b/i.test(question) && /\bevent/i.test(question)) {
-    const text = await queryAttendance(question);
-    if (text) return { text, direct: true, topic: 'attendance', filters: {} };
-  }
-
-  // "How many events are there?" / "list upcoming events" — the Event
-  // collection. "Event" never means anything in the Graduate/tracer domain,
-  // so it's a safe unambiguous trigger on its own.
-  if (/\bevents?\b/i.test(question)) {
-    const text = await queryEvents(question);
-    if (text) return { text, direct: true, topic: 'events', filters: {} };
-  }
-
-  // "How many partner companies are there?" — the Partnership collection.
-  if (/\bpartnerships?\b|\bpartner\s+compan(y|ies)\b/i.test(question)) {
-    const text = await queryPartnerships(question);
-    if (text) return { text, direct: true, topic: 'partnerships', filters: {} };
-  }
-
-  // "Is the office open?" / "what are the office hours?" — OfficeSettings.
-  if (/\boffice\s+(status|hours|open|closed|schedule)\b|\bis\s+the\s+office\s+(open|closed)\b/i.test(question)) {
-    const text = await queryOfficeStatus();
-    if (text) return { text, direct: true, topic: 'office_status', filters: {} };
+  // Non-tracer PORTAL features — job postings, announcements, events, staff
+  // directory, appointments, partnerships, office hours, profile/account
+  // activity. Each of these used to have its own live-collection query
+  // handler (removed — the AC assistant is scoped to tracer study data
+  // only, not portal-wide). Several of these keywords ("how many job
+  // openings", "how many appointments") still satisfy the generic
+  // "how many X" STATISTICAL_PATTERNS trigger with no other filter set,
+  // which — without an explicit bail-out — fell through to the unrelated
+  // employment-rate/count default and confidently narrated the wrong metric
+  // (e.g. "174 job openings, representing an employment rate of 68.5%",
+  // where 174 is actually the EMPLOYED-alumni count). Answered directly and
+  // explicitly here instead, each with a pointer to the right admin page.
+  const OUT_OF_SCOPE_TOPICS = [
+    { test: /\bjob\s+(openings?|listings?|vacancies|opportunities|postings?)\b|\bavailable\s+(jobs?|positions?|roles?)\b/i,
+      hint: 'Check the Employment Details or Job Board pages for open job postings.' },
+    { test: /\bannouncements?\b/i, exclude: /\bemployment\b/i,
+      hint: 'Check the Post Announcements page.' },
+    { test: /\b(updat|edit|chang|modif)\w*\s+(their|his|her|its|my|your)?\s*(profile|account|info|information|details|record)\b|\b(profile|account)\s+(updat|edit|chang)\w*\b/i,
+      hint: 'Check the Manage Accounts page for account activity.' },
+    { test: /\bstaff\b/i,
+      hint: 'Check the Appointments page\'s Staff Management section.' },
+    { test: /\bappointments?\b/i, exclude: /\bstaff\b/i,
+      hint: 'Check the Appointments page.' },
+    { test: /\bevents?\b|\battend(ed|ance)?\b.{0,20}\bevent/i,
+      hint: 'Check the Events page.' },
+    { test: /\bpartnerships?\b|\bpartner\s+compan(y|ies)\b/i,
+      hint: 'Check the Partnerships page.' },
+    { test: /\boffice\s+(status|hours|open|closed|schedule)\b|\bis\s+the\s+office\s+(open|closed)\b/i,
+      hint: 'Check the Appointments page\'s office settings.' },
+  ];
+  for (const t of OUT_OF_SCOPE_TOPICS) {
+    if (t.test.test(question) && !(t.exclude && t.exclude.test(question))) {
+      return {
+        text: `That's not part of the Graduate Tracer Study data — I can only answer questions about tracer study records (employment status, industries, board exam results, competencies, program breakdowns, etc.). ${t.hint}`,
+        direct: true, topic: 'out_of_scope', filters: {},
+      };
+    }
   }
 
   // "Where is Bryan Canlapan currently working?" — a lookup for ONE named
@@ -2314,4 +2110,4 @@ function suggestFollowUps(topic, filters = {}) {
   return related.slice(0, 3).map(t => FOLLOWUP_QUESTION[t](progWord));
 }
 
-module.exports = { query, hasData, suggestFollowUps };
+module.exports = { query, hasData, suggestFollowUps, extractPersonName };

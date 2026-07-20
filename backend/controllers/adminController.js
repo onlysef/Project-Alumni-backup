@@ -56,7 +56,7 @@ function generateTempPassword() {
 // POST /api/admin/users
 const createUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, college, course, graduationYear, track } = req.body;
+    const { firstName, middleInitial, lastName, email, role, college, course, graduationYear, track } = req.body;
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
     }
@@ -68,11 +68,16 @@ const createUser = async (req, res) => {
     const hashed = await bcrypt.hash(tempPassword, 10);
 
     const userData = {
-      firstName:  firstName.trim(),
-      lastName:   lastName.trim(),
+      firstName:     firstName.trim(),
+      middleInitial: middleInitial ? middleInitial.trim() : '',
+      lastName:      lastName.trim(),
       email:      email.toLowerCase().trim(),
       password:   hashed,
       role:       role.toLowerCase(),
+      // Stays 'pending' even though the admin created it directly — the
+      // account still needs the alumni themselves to open it, activate it,
+      // and set their own password on first login. 'active' would skip that
+      // required first-login step entirely.
       status:     'pending',
       firstLogin: true,
     };
@@ -123,9 +128,10 @@ const getUsers = async (req, res) => {
 // PATCH /api/admin/users/:id
 const updateUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, role, status, college, course, graduationYear, track } = req.body;
+    const { firstName, middleInitial, lastName, email, role, status, college, course, graduationYear, track } = req.body;
     const updates = {};
     if (firstName      !== undefined) updates.firstName      = firstName.trim();
+    if (middleInitial  !== undefined) updates.middleInitial  = middleInitial.trim();
     if (lastName       !== undefined) updates.lastName       = lastName.trim();
     if (email          !== undefined) updates.email          = email.toLowerCase().trim();
     if (role           !== undefined) updates.role           = role;
@@ -277,6 +283,9 @@ const importUsers = async (req, res) => {
       email:      r.email,
       password:   r.hashed,
       role:       r.role,
+      // Same reasoning as createUser() above — stays 'pending' so each
+      // imported alumnus still has to open their account and set their own
+      // password on first login.
       status:     'pending',
       firstLogin: true,
       ...(r.college        ? { college: r.college }               : {}),

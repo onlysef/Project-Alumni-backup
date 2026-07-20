@@ -102,6 +102,15 @@ const STOPWORDS = new Set([
   // letter swap the Damerau-Levenshtein distance treats as a single edit).
   'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
   'eleven', 'twelve', 'first', 'second', 'third', 'last',
+  // "mean"/"means"/"meant" ("I mean...", "that means...") sit exactly one
+  // deletion away from the VOCABULARY demographic term "men" ("mean" minus
+  // the 'a'), which is well within maxDistanceFor(4)=1 — so "I mean how many
+  // are unemployed" silently became "I men how many are unemployed",
+  // matching the gender filter's `\bmen\b` trigger and answering with the
+  // MALE-only unemployed count for a question that never mentioned gender
+  // at all. Filler/conversational verbs like this are never a typo of a
+  // short demographic noun, same reasoning as the other entries here.
+  'mean', 'means', 'meant',
 ]);
 
 // Damerau-Levenshtein (optimal string alignment): like Levenshtein but also
