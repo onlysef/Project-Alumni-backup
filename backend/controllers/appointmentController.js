@@ -114,7 +114,7 @@ const deleteStaff = async (req, res) => {
   try {
     const staff = await Staff.findOneAndUpdate(
       { _id: req.params.id, deleted: false },
-      { deleted: true, status: 'Inactive' },
+      { deleted: true, status: 'Unavailable' },
       { new: true }
     );
     if (!staff) return res.status(404).json({ message: 'Staff member not found.' });

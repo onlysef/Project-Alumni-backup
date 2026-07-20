@@ -257,11 +257,18 @@ function PartnershipModal({ entry, onClose, onSubmit }) {
               <input type="text" name="name" defaultValue={row?.partner || ""} required />
             </label>
             <label>Type
-              <select name="type" defaultValue={row?.type || "Industry"}>
-                <option>Industry</option>
-                <option>Academe</option>
+              <select name="type" defaultValue={row?.type || "Information Technology & BPO"}>
+                <option>Information Technology & BPO</option>
+                <option>Manufacturing</option>
+                <option>Banking & Finance</option>
+                <option>Healthcare</option>
+                <option>Retail & Trade</option>
+                <option>Education</option>
                 <option>Government</option>
-                <option>NGO</option>
+                <option>Construction & Engineering</option>
+                <option>Hospitality & Tourism</option>
+                <option>Agriculture</option>
+                <option>Others</option>
               </select>
             </label>
             <label>Contact Email

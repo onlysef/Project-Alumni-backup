@@ -46,10 +46,9 @@ function generateTimeSlots(start = "08:00", end = "17:00") {
 }
 
 const STATUS_COLORS = {
-  Available:  { color: "#276749", background: "#f0fff4" },
-  Busy:       { color: "#975a16", background: "#fffaf0" },
-  "On Leave": { color: "#c53030", background: "#fff5f5" },
-  Inactive:   { color: "#718096", background: "#f7fafc" },
+  Available:    { color: "#276749", background: "#f0fff4" },
+  Unavailable:  { color: "#975a16", background: "#fffaf0" },
+  "On Leave":   { color: "#c53030", background: "#fff5f5" },
   Pending:    { color: "#975a16", background: "#fffaf0" },
   Approved:   { color: "#276749", background: "#f0fff4" },
   Rejected:   { color: "#c53030", background: "#fff5f5" },
@@ -258,9 +257,8 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
               Status
               <select name="status" defaultValue={item?.status || "Available"}>
                 <option>Available</option>
-                <option>Busy</option>
+                <option>Unavailable</option>
                 <option>On Leave</option>
-                <option>Inactive</option>
               </select>
             </label>
           </div>
@@ -686,7 +684,7 @@ export default function AppointmentsView() {
 
   // ── Client-side filtering ────────────────────────────────────
 
-  const activeStaff = staff.filter((s) => s.status !== "Inactive");
+  const activeStaff = staff.filter((s) => s.status !== "Unavailable");
 
   const filtered = appointments.filter((a) => {
     const nameOk   = !search      || a.alumni_name.toLowerCase().includes(search.toLowerCase());

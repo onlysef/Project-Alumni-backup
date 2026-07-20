@@ -9,7 +9,6 @@ const QUICK_PROMPTS = [
   { label: "Alumni records", text: "How many alumni records are there?" },
   { label: "Tracer surveys", text: "Show me tracer survey activity." },
   { label: "Employment status", text: "What's the current employment status?" },
-  { label: "Job opportunities", text: "What job opportunities are available?" },
 ];
 
 function getSuggestions(text) {
@@ -174,7 +173,6 @@ export default function AiAssistantView() {
   const [uploading, setUploading] = useState(false);
   const [uploadMsg, setUploadMsg] = useState(null);
   const [reembedding, setReembedding] = useState(false);
-  const fileInputRef = useRef(null);
 
   const [filesOpen, setFilesOpen] = useState(false);
   const [importedFiles, setImportedFiles] = useState([]);
@@ -783,26 +781,6 @@ export default function AiAssistantView() {
                 </div>
               )}
               <form className="ac-composer" onSubmit={handleSubmit}>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls,.csv,.docx,.pdf"
-                  style={{ display: "none" }}
-                  onChange={handleFileUpload}
-                />
-                <button
-                  type="button"
-                  className="ac-upload-btn"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  title="Upload file to knowledge base"
-                  aria-label="Upload file"
-                >
-                  {uploading
-                    ? <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="10"/></svg>
-                    : <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  }
-                </button>
                 <textarea
                   ref={inputRef}
                   className="ac-input"

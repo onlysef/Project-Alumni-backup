@@ -1,5 +1,50 @@
 const GREETING_PATTERN = /^\s*(hi|hello|hey|yo|good\s?(morning|afternoon|evening)|greetings|sup)[\s!.,]*$/i;
 
+// Profanity/abuse aimed at the assistant — checked before every other
+// classification so a message like "fuck u" doesn't fall through to the
+// generic statistical/RAG pipeline and come back with a confusing "I don't
+// have enough data" refusal that reads as if the bot searched for an answer
+// and came up short, instead of acknowledging the actual problem (the
+// message itself). Covers common English profanity/insults and Tagalog/
+// Filipino (incl. common Bisaya) profanity/insults, since this is a PH
+// university portal — deliberately broad (mild insults like "tanga"/"bobo"/
+// "stupid" included, not just strong profanity) per explicit request to
+// cover "lahat ng possible offensive words", INCLUDING common typo/leetspeak
+// variants (dropped vowels, letter-for-number substitution, doubled/missing
+// letters) — real users type these fast and angry, rarely with correct
+// spelling, so an exact-word list alone misses most real occurrences.
+const OFFENSIVE_PATTERN = new RegExp('\\b(' + [
+  // English profanity (+ common misspellings/leetspeak)
+  'fuck(?:ing|er|ed|s)?', 'fuk+(?:in|ing|er|ed)?', 'fck', 'fcuk', 'fuq', 'phuck',
+  'shit(?:ty|s)?', 'sh[i1]t', 'sht', 'shyt', 'bullsh[i1]t',
+  'bitch(?:es|y)?', 'b[i1]tch', 'btch',
+  'assh[o0]les?', 'ash+[o0]le', 'jack\\s*ass', 'bastards?', 'basterd',
+  'dick(?:head)?s?', 'd[i1]ck', 'pussy', 'pusy', 'cunts?', 'wh[o0]res?', 'sluts?',
+  'motherf\\w*', 'nigg(?:a|er)s?', 'fagg?ots?', 'retards?(?:ed)?',
+  'douche(?:bag)?s?', 'pricks?', 'twats?', 'wankers?', 'crap',
+  'id[i1]ots?', 'stup[i1]d', 'morons?', 'dumb\\s*ass(?:es)?', 'imbec[i1]le',
+  'asshat', 'scumbag',
+  // Filipino / Tagalog / Bisaya profanity & insults (+ common typo/shortcut spellings)
+  // "putangina"/"tangina" are almost always typed either as one run-on word,
+  // as two words ("putang ina"), or fused with a following pronoun
+  // ("tanginamo") — this single pattern covers all three shapes at once;
+  // the entries after it catch dropped-vowel contractions ("tangna",
+  // "tnginamo") that don't fit the "tang" + "ina" skeleton at all.
+  '(?:p+u+)?tang\\s*[i1]na(?:mo|mu)?',
+  'putangna', 'ptangina', 'tangna', 'tng[i1]na(?:mo|mu)?',
+  'pak+y*u+', 'pucha(?:ng)?', 'puta',
+  'gag[o0uh]', 'g4go', 'gaga',
+  'ul[o0]l', 'ulul', 'ul[o0]+l',
+  'tarantad[oa]', 'trantado', 'tarantad',
+  'punyeta', 'punyet', 'leche', 'letse', 'lecheng',
+  'kupal', 'kupl', 'inutil',
+  'bobo', 'bobu', 'b[o0]b[o0]', 'boba',
+  'tanga(?:ng)?', 'tng[a4]', 'tanha',
+  'bugok', 'buguk', 'bug[o0]k',
+  'engot', 'gunggong', 'abnoy', 'lintik', 'lintek',
+  'peste', 'hayop\\s*ka', 'yawa', 'ulupong', 'walang\\s*hiya',
+].join('|') + ')\\b', 'i');
+
 const HELP_PATTERNS = [
   /\bwhat can you (do|help|answer)\b/i,
   /\bhow (do|can) (i|you) use\b/i,
@@ -120,12 +165,13 @@ const QUALITATIVE_PATTERNS = [
 ];
 
 /**
- * Classify a question as 'greeting', 'help', 'unknown', 'statistical', 'qualitative', or 'mixed'.
+ * Classify a question as 'offensive', 'greeting', 'help', 'unknown', 'statistical', 'qualitative', or 'mixed'.
  * Defaults to 'statistical' for ambiguous questions so MongoDB is tried first.
  */
 function classify(question) {
   const q = (question || '').trim();
 
+  if (OFFENSIVE_PATTERN.test(q)) return 'offensive';
   if (GREETING_PATTERN.test(q)) return 'greeting';
   if (HELP_PATTERNS.some(p => p.test(q))) return 'help';
   if (UNKNOWN_PATTERNS.some(p => p.test(q))) return 'unknown';

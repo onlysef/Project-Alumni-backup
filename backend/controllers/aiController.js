@@ -271,16 +271,17 @@ const reembed = async (req, res) => {
       const TracerStudyResponse = require('../models/TracerStudyResponse');
       const AlumniEmployment   = require('../models/AlumniEmployment');
       const User               = require('../models/User');
-      const Announcement       = require('../models/Announcement');
-      const Event              = require('../models/Event');
-      const Job                = require('../models/Job');
-      const Partnership        = require('../models/Partnership');
       const { getEmbedding }   = require('../services/embeddingService');
 
       const alumniUsers = await User.find().lean();
       const userMap = {};
       for (const u of alumniUsers) userMap[String(u._id)] = u;
 
+      // Scoped to tracer study data only (per explicit product decision — the
+      // AC assistant answers Graduate Tracer Study questions, not portal-wide
+      // ones). Announcements/events/jobs/partnerships used to be embedded
+      // here too; removed along with their aggregationService.js fast-path
+      // handlers so those topics can't leak back in through vector search.
       const collections = [
         { name: 'tracer', docs: await TracerStudyResponse.find().lean(), toText: d => {
           const u = userMap[String(d.alumni_id)];
@@ -292,11 +293,7 @@ const reembed = async (req, res) => {
           const name = u ? `${u.firstName} ${u.lastName}` : 'Unknown Alumni';
           return `Employment for ${name}${u?.course ? ' (' + u.course + ')' : ''}. Status: ${d.employment_status || ''}. Company: ${d.company_name || ''}. Job: ${d.job_title || ''}.`;
         }},
-        { name: 'user', docs: alumniUsers, toText: d => `Alumni: ${d.firstName} ${d.lastName}. Course: ${d.course || ''}. Year: ${d.graduationYear || ''}.` },
-        { name: 'announcement', docs: await Announcement.find().lean(),         toText: d => `Announcement: ${d.title}. ${(d.content || '').slice(0, 300)}` },
-        { name: 'event',        docs: await Event.find().lean(),                toText: d => `Event: ${d.name || d.title}. ${(d.description || '').slice(0, 200)}` },
-        { name: 'job',          docs: await Job.find().lean(),                  toText: d => `Job: ${d.title} at ${d.company || ''}. ${(d.description || '').slice(0, 200)}` },
-        { name: 'partnership',  docs: await Partnership.find().lean(),          toText: d => `Partner: ${d.partner || d.name}. ${(d.description || '').slice(0, 200)}` },
+        { name: 'user', docs: alumniUsers.filter(u => u.role === 'alumni'), toText: d => `Alumni: ${d.firstName} ${d.lastName}. Course: ${d.course || ''}. Year: ${d.graduationYear || ''}.` },
       ];
 
       for (const col of collections) {

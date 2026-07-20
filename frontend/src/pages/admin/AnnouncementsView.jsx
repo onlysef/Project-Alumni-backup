@@ -337,8 +337,7 @@ export default function AnnouncementsView() {
         >
           <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
           <span className="post-launcher-prompt">What's new for alumni?</span>
-          <span className="post-launcher-icon" title="Add photo"><Icon name="icon-21" /></span>
-          <span className="post-launcher-icon" title="Add emoji"><Icon name="icon-22" /></span>
+          <span className="post-launcher-icon" title="Write announcement"><Icon name="icon-edit" /></span>
         </section>
 
         <aside className="recent-posts">
@@ -577,6 +576,8 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
   const [emojiOpen, setEmojiOpen]       = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [location, setLocation]         = useState("");
+  const [titleError, setTitleError]     = useState("");
+  const [descError, setDescError]       = useState("");
 
   useEffect(() => {
     if (composer?.row) {
@@ -595,6 +596,8 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
     setLocationOpen(false);
     setLocation("");
     setSaving(false);
+    setTitleError("");
+    setDescError("");
   }, [composer]);
 
   useEffect(() => {
@@ -622,12 +625,19 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
   }
 
   async function handleSubmit() {
+    const tErr = title.trim() ? "" : "Please enter a title.";
+    const dErr = description.trim() ? "" : "Please write something for this announcement.";
+    if (tErr || dErr) {
+      setTitleError(tErr);
+      setDescError(dErr);
+      return;
+    }
     setSaving(true);
-    const body = description.trim() || "No description provided yet.";
+    const body = description.trim();
     const withLocation = location.trim() ? `${body}\n\n📍 ${location.trim()}` : body;
     await onSubmit(
       {
-        title:       title.trim() || "Untitled Announcement",
+        title:       title.trim(),
         description: withLocation,
         type:        category,
         imageUrl,
@@ -674,15 +684,17 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
             type="text"
             placeholder="Announcement title"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => { setTitle(e.target.value); if (titleError) setTitleError(""); }}
           />
+          {titleError && <span className="field-error">{titleError}</span>}
           <textarea
             className="composer-body"
             rows="5"
             placeholder="What's new for alumni?"
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => { setDescription(e.target.value); if (descError) setDescError(""); }}
           />
+          {descError && <span className="field-error">{descError}</span>}
           {imageUrl && (
             <div className="post-image-preview">
               <img src={imageUrl} alt="Preview" />
@@ -747,7 +759,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
               showToast("Composer cleared.");
             }}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="24" height="24" aria-hidden="true">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
               <path d="M10 11v6"/>
