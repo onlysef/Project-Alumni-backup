@@ -50,6 +50,7 @@ export default function AccountsView() {
   const [loading, setLoading]         = useState(true);
   const [roleFilter, setRoleFilter]   = useState("Role");
   const [statusFilter, setStatusFilter] = useState("Status");
+  const [search, setSearch]           = useState("");
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -85,7 +86,9 @@ export default function AccountsView() {
   function visible(r) {
     const roleMatch   = roleFilter === "Role"   || roleFilter === "All"   || r.role === roleFilter;
     const statusMatch = statusFilter === "Status" || statusFilter === "All" || r.status === statusFilter;
-    return roleMatch && statusMatch;
+    const q = search.trim().toLowerCase();
+    const searchMatch = !q || r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
+    return roleMatch && statusMatch && searchMatch;
   }
 
   function applyFilter(choice, which) {
@@ -265,6 +268,16 @@ export default function AccountsView() {
         <div className="admin-card-head">
           <h3>Manage Accounts</h3>
           <div className={`accounts-controls${filtersOpen ? " filters-open" : ""}`}>
+            <input
+              className="admin-search"
+              type="text"
+              name="accounts-search"
+              placeholder="Search name or email…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search accounts by name or email"
+              autoComplete="off"
+            />
             <button
               type="button"
               className="accounts-filter-toggle"
