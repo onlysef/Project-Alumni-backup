@@ -13,11 +13,13 @@ function capitalize(str = "") {
 }
 
 function mapUser(u) {
+  const middle = u.middleInitial ? `${u.middleInitial} ` : "";
   return {
     id:             u._id,
     firstName:      u.firstName,
+    middleInitial:  u.middleInitial || "",
     lastName:       u.lastName,
-    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${u.lastName}`,
+    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${middle}${u.lastName}`,
     email:          u.email,
     role:           capitalize(u.role),
     status:         capitalize(u.status),
@@ -420,11 +422,12 @@ export default function AccountsView() {
           if (entry.row) {
             try {
               const payload = {
-                firstName: data.firstName,
-                lastName:  data.lastName,
-                email:     data.email,
-                role:      data.role.toLowerCase(),
-                status:    data.status.toLowerCase(),
+                firstName:     data.firstName,
+                middleInitial: data.middleInitial,
+                lastName:      data.lastName,
+                email:         data.email,
+                role:          data.role.toLowerCase(),
+                status:        data.status.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -452,10 +455,11 @@ export default function AccountsView() {
           } else {
             try {
               const payload = {
-                firstName: data.firstName,
-                lastName:  data.lastName,
-                email:     data.email,
-                role:      data.role.toLowerCase(),
+                firstName:     data.firstName,
+                middleInitial: data.middleInitial,
+                lastName:      data.lastName,
+                email:         data.email,
+                role:          data.role.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -672,6 +676,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
             const f = e.currentTarget.elements;
             onSubmit({
               firstName:      f.firstName.value.trim(),
+              middleInitial:  f.middleInitial.value.trim(),
               lastName:       f.lastName.value.trim(),
               email:          f.email.value.trim(),
               role:           f.role.value,
@@ -684,6 +689,9 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
           <div className="admin-entry-fields">
             <label>First Name
               <input type="text" name="firstName" defaultValue={row?.firstName || ""} required />
+            </label>
+            <label>Middle Initial / Middle Name
+              <input type="text" name="middleInitial" defaultValue={row?.middleInitial || ""} maxLength={50} />
             </label>
             <label>Last Name
               <input type="text" name="lastName" defaultValue={row?.lastName || ""} required />

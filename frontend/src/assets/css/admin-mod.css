@@ -2148,6 +2148,36 @@
             font-size: 11px;
         }
 
+        /* The "..." action-menu trigger is an icon-square button, not a
+           regular labeled action button — the generic .appointments-table
+           button rule above stretches it into the same wide, short
+           rectangle as "Approve"/"Reject", which both distorts its shape
+           and (combined with border/background resets elsewhere in this
+           file) left it looking like an unstyled default button instead of
+           matching the solid maroon square used everywhere else (e.g.
+           Manage Accounts). Re-declared here with higher specificity so it
+           can't be overridden by table-wide button rules regardless of
+           source order. */
+        .appointments-table .action-menu-trigger {
+            min-width: 34px !important;
+            width: 34px !important;
+            height: 34px !important;
+            min-height: 34px !important;
+            max-width: 34px !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            background: var(--maroon) !important;
+            border: 0 !important;
+            border-radius: 8px !important;
+            font-size: initial !important;
+        }
+        .appointments-table .action-menu-trigger:hover {
+            background: #7a0420 !important;
+        }
+        .appointments-table .action-menu-trigger .admin-svg-icon {
+            filter: brightness(0) invert(1) !important;
+        }
+
         .delete-appointment {
             display: none;
             border: 1px solid #8a1f2f !important;
@@ -5937,9 +5967,15 @@
             line-height: 1;
         }
         .action-menu-item.action-reject { color: #b3261e; }
-        .action-menu-item.action-resend { background: var(--maroon); color: #fff; }
-        .action-menu-item.action-resend:hover { background: #7a0420; }
-        .action-menu-item.action-resend .action-menu-icon img.admin-svg-icon {
+        .action-menu-item.action-resend,
+        .action-menu-item.action-edit,
+        .action-menu-item.action-suspend { background: var(--maroon); color: #fff; }
+        .action-menu-item.action-resend:hover,
+        .action-menu-item.action-edit:hover,
+        .action-menu-item.action-suspend:hover { background: #7a0420; }
+        .action-menu-item.action-resend .action-menu-icon img.admin-svg-icon,
+        .action-menu-item.action-edit .action-menu-icon img.admin-svg-icon,
+        .action-menu-item.action-suspend .action-menu-icon img.admin-svg-icon {
             filter: brightness(0) invert(1);
         }
 
