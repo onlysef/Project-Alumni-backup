@@ -16,14 +16,20 @@ const COLLEGES = [
   "CBA", "COED", "CASS", "CCJE", "CAFA",
 ];
 
-function computeStatus(event_datetime) {
+function computeStatus(event_datetime, end_datetime) {
   const now = new Date();
-  const d = new Date(event_datetime);
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  if (d >= todayStart && d <= todayEnd) return "On Going";
-  if (d > todayEnd) return "Coming Soon";
-  return "Ended";
+  const start = new Date(event_datetime);
+  // Multi-day events run "On Going" for their whole span, not just their
+  // start day — without an end bound, a 3-day event that started yesterday
+  // was marked "Ended" as soon as its start date passed, even while it was
+  // still actively running. No end_datetime falls back to end-of-start-day,
+  // matching the original single-day behavior.
+  const end = end_datetime
+    ? new Date(end_datetime)
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
+  if (now < start) return "Coming Soon";
+  if (now > end) return "Ended";
+  return "On Going";
 }
 
 function fmtDate(dt) {
@@ -113,7 +119,7 @@ export default function EventManagement() {
 
   // sorted copy for List of Events panel
   const sortedEvents = [...events].sort((a, b) =>
-    STATUS_ORDER[computeStatus(a.event_datetime)] - STATUS_ORDER[computeStatus(b.event_datetime)]
+    STATUS_ORDER[computeStatus(a.event_datetime, a.end_datetime)] - STATUS_ORDER[computeStatus(b.event_datetime, b.end_datetime)]
   );
 
   // recent posts = newest first (already sorted desc by backend)
@@ -361,7 +367,7 @@ export default function EventManagement() {
               <p className="coord-employ-empty" style={{ padding: 12 }}>No events found.</p>
             ) : (
               sortedEvents.map(event => {
-                const status = computeStatus(event.event_datetime);
+                const status = computeStatus(event.event_datetime, event.end_datetime);
                 const slug = status.toLowerCase().replace(/\s+/g, "-");
                 const isHighlighted = String(event._id) === highlightId;
                 return (

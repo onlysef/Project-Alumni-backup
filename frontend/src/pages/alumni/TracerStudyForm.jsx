@@ -438,6 +438,30 @@ export default function TracerStudyForm() {
     );
   }
 
+  // A college with no tracer form authored yet returns zero pages — render
+  // an honest "not available yet" screen instead of a 0-step form with a
+  // dead progress bar and a Submit button that can never fire (currentPage
+  // would be undefined).
+  if (config.pages.length === 0) {
+    return (
+      <div style={{
+        height: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#f5f0f0", fontFamily: "sans-serif",
+      }}>
+        <div style={{ textAlign: "center", padding: 24, maxWidth: 420 }}>
+          <div style={{ fontSize: 32, marginBottom: 10 }}>🕒</div>
+          <p style={{ color: MAROON, fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
+            Tracer study form not yet available
+          </p>
+          <p style={{ color: "#6b7280", fontSize: 13, lineHeight: 1.6 }}>
+            Your college's tracer study form hasn't been set up yet. Please check back later —
+            we'll notify you once it's ready.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const stepTitles = config.pages.map((p) => p.title);
 
   // ── Layout ────────────────────────────────────────────────────────────────

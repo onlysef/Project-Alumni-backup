@@ -554,19 +554,23 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
                   ["firstName",      "Required", "Juan"],
                   ["lastName",       "Required", "dela Cruz"],
                   ["email",          "Required", "juan@email.com"],
-                  ["college",        "Required", "CCS"],
-                  ["course",         "Required", "BSIT"],
-                  ["graduationYear", "Required", "2024"],
+                  ["college",        "Required for alumni & coordinator", "CCS"],
+                  ["course",         "Required for alumni", "BSIT"],
+                  ["graduationYear", "Required for alumni", "2024"],
                   ["role",           "Optional", "alumni (default)"],
                 ].map(([col, req, ex]) => (
                   <tr key={col}>
                     <td style={{ padding: "3px 8px" }}><code>{col}</code></td>
-                    <td style={{ padding: "3px 8px", color: req === "Required" ? "#c53030" : "#888" }}>{req}</td>
+                    <td style={{ padding: "3px 8px", color: req === "Optional" ? "#888" : "#c53030" }}>{req}</td>
                     <td style={{ padding: "3px 8px", color: "#555" }}>{ex}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <p style={{ color: "var(--text-muted, #666)", fontSize: 12, margin: "-6px 0 12px" }}>
+              College is used to scope everything from tracer study forms to what a coordinator can see — rows
+              missing it for an alumni or coordinator role will be skipped and listed under "Failed" below.
+            </p>
             <button
               type="button"
               style={{ fontSize: 12, marginBottom: 14, color: "#6b1a2a", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}
@@ -709,7 +713,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
             </label>
             {(role === "Alumni" || role === "Coordinator") && (
               <label>College
-                <select name="college" value={college} onChange={(e) => setCollege(e.target.value)} required={role === "Coordinator"}>
+                <select name="college" value={college} onChange={(e) => setCollege(e.target.value)} required>
                   <option value="">— Select college —</option>
                   {COLLEGES.map((c) => <option key={c}>{c}</option>)}
                 </select>

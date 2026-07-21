@@ -148,8 +148,17 @@ function loadHistory(key) {
 export default function AiAssistantView() {
   const { user } = useAuth();
   const firstName = user?.firstName || "there";
-  const historyKey = `acChatHistory_${user?.role || "admin"}`;
-  const currentKey = `acCurrentChat_${user?.role || "admin"}`;
+  // Keyed by role ALONE, not by which specific account is logged in — every
+  // coordinator sharing a browser/device saw each other's chat history, and
+  // a coordinator whose assigned college changed kept seeing their OLD
+  // college's cached conversation (e.g. real CCS employment numbers) even
+  // after being reassigned, since nothing about the stored key changed.
+  // Keying by account id + college means a college reassignment always
+  // starts a fresh, correctly-scoped conversation instead of showing
+  // leftover answers from a scope the account no longer has.
+  const acctKey    = `${user?.id || "anon"}_${user?.college || ""}`;
+  const historyKey = `acChatHistory_${user?.role || "admin"}_${acctKey}`;
+  const currentKey = `acCurrentChat_${user?.role || "admin"}_${acctKey}`;
 
   const [messages, setMessages] = useState(() => {
     try {

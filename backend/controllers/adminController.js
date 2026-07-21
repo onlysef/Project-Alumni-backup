@@ -60,6 +60,13 @@ const createUser = async (req, res) => {
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
     }
+    // College is the basis for every college-scoping check in the system
+    // (coordinator data access, alumni tracer form, employment records) — an
+    // alumni or coordinator created without one falls through those checks
+    // unpredictably (e.g. defaults to CCS, or matches nothing).
+    if (['alumni', 'coordinator'].includes(role.toLowerCase()) && !college) {
+      return res.status(400).json({ message: 'College is required for Alumni and Coordinator accounts.' });
+    }
 
     const existing = await User.findOne({ email: email.toLowerCase() });
     if (existing) return res.status(400).json({ message: 'Email is already registered.' });
@@ -234,6 +241,10 @@ const importUsers = async (req, res) => {
 
       if (rawRole === 'alumni' && (!college || !course || !graduationYear)) {
         failed.push({ email, name: `${firstName} ${lastName}`, reason: 'Missing college, course, or graduationYear.' });
+        continue;
+      }
+      if (rawRole === 'coordinator' && !college) {
+        failed.push({ email, name: `${firstName} ${lastName}`, reason: 'Missing college.' });
         continue;
       }
 

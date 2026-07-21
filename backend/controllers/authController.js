@@ -10,6 +10,13 @@ const signToken = (userId, role, college = '') =>
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
+// Wrong-guess limit shared by both OTP flows (2FA login, password reset) —
+// neither had ANY attempt cap before, so a phished password (2FA) or just a
+// known email address (password reset — forgot-password requires no auth
+// at all) was enough to script unlimited guesses against a 6-digit code
+// within its 10-15 minute validity window.
+const MAX_OTP_ATTEMPTS = 5;
+
 // POST /api/auth/login
 const login = async (req, res) => {
   try {
@@ -46,6 +53,7 @@ const login = async (req, res) => {
       user.twoFactorOTPExpiry = new Date(Date.now() + 10 * 60 * 1000);
       user.twoFactorToken = tempToken;
       user.twoFactorTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+      user.twoFactorOTPAttempts = 0;
       await user.save();
 
       console.log(`[2FA] OTP for ${user.email}: ${otp}`);
@@ -103,17 +111,30 @@ const verifyTwoFactor = async (req, res) => {
     if (!user) {
       return res.status(400).json({ message: 'Session expired. Please login again.' });
     }
-    if (user.twoFactorOTP !== otp) {
-      return res.status(400).json({ message: 'Invalid verification code.' });
-    }
     if (user.twoFactorOTPExpiry < Date.now()) {
       return res.status(400).json({ message: 'Code has expired. Please login again.' });
+    }
+    if (user.twoFactorOTPAttempts >= MAX_OTP_ATTEMPTS) {
+      user.twoFactorOTP = undefined;
+      user.twoFactorOTPExpiry = undefined;
+      user.twoFactorToken = undefined;
+      user.twoFactorTokenExpiry = undefined;
+      user.twoFactorOTPAttempts = 0;
+      await user.save();
+      return res.status(429).json({ message: 'Too many incorrect attempts. Please login again to request a new code.' });
+    }
+    if (user.twoFactorOTP !== otp) {
+      user.twoFactorOTPAttempts += 1;
+      await user.save();
+      const remaining = MAX_OTP_ATTEMPTS - user.twoFactorOTPAttempts;
+      return res.status(400).json({ message: `Invalid verification code. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.` });
     }
 
     user.twoFactorOTP = undefined;
     user.twoFactorOTPExpiry = undefined;
     user.twoFactorToken = undefined;
     user.twoFactorTokenExpiry = undefined;
+    user.twoFactorOTPAttempts = 0;
     await user.save();
 
     const token = signToken(user._id, user.role, user.college || '');
@@ -156,6 +177,7 @@ const resendTwoFactor = async (req, res) => {
     const otp = generateOTP();
     user.twoFactorOTP = otp;
     user.twoFactorOTPExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    user.twoFactorOTPAttempts = 0;
     await user.save();
 
     console.log(`[2FA resend] OTP for ${user.email}: ${otp}`);
@@ -188,6 +210,7 @@ const forgotPassword = async (req, res) => {
     const otp = generateOTP();
     user.resetOTP = otp;
     user.resetOTPExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    user.resetOTPAttempts = 0;
     user.resetToken = undefined;
     user.resetTokenExpiry = undefined;
     await user.save();
@@ -209,14 +232,32 @@ const verifyResetOTP = async (req, res) => {
       return res.status(400).json({ message: 'Email and code are required.' });
     }
 
+    // Matching on email + unexpired resetOTP-existing (not the OTP value
+    // itself) so a wrong guess still resolves to the actual user record —
+    // needed to increment/check ITS attempt counter. The old query matched
+    // email+resetOTP+expiry all at once, so a wrong guess just came back as
+    // "no user found" with nothing to rate-limit against.
     const user = await User.findOne({
       email: email.toLowerCase(),
-      resetOTP: otp,
+      resetOTP: { $exists: true, $ne: null },
       resetOTPExpiry: { $gt: Date.now() },
     });
 
     if (!user) {
       return res.status(400).json({ message: 'Invalid or expired code.' });
+    }
+    if (user.resetOTPAttempts >= MAX_OTP_ATTEMPTS) {
+      user.resetOTP = undefined;
+      user.resetOTPExpiry = undefined;
+      user.resetOTPAttempts = 0;
+      await user.save();
+      return res.status(429).json({ message: 'Too many incorrect attempts. Please request a new reset code.' });
+    }
+    if (user.resetOTP !== otp) {
+      user.resetOTPAttempts += 1;
+      await user.save();
+      const remaining = MAX_OTP_ATTEMPTS - user.resetOTPAttempts;
+      return res.status(400).json({ message: `Invalid or expired code. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.` });
     }
 
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -224,6 +265,7 @@ const verifyResetOTP = async (req, res) => {
     user.resetOTPExpiry = undefined;
     user.resetToken = resetToken;
     user.resetTokenExpiry = new Date(Date.now() + 15 * 60 * 1000);
+    user.resetOTPAttempts = 0;
     await user.save();
 
     res.json({ message: 'Code verified.', resetToken });

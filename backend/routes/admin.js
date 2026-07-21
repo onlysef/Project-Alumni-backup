@@ -13,7 +13,7 @@ const {
 const { getAllJobs } = require('../controllers/jobController');
 const {
   getAlumniWithoutRecord, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
-  getCourseJobStats, getDonutStats, getSurveyStats, getEmploymentStats,
+  getCourseJobStats, getDonutStats, getSurveyStats, getEmploymentStats, getTracerAnalytics,
   getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
@@ -27,7 +27,7 @@ const {
   updateAppointmentStatus, deleteAppointment,
 } = require('../controllers/appointmentController');
 const {
-  getTracerFormConfig, updateTracerFormConfig,
+  getTracerFormConfig, updateTracerFormConfig, importGoogleFormConfig,
 } = require('../controllers/tracerFormConfigController');
 
 // All routes below require a valid token AND admin role
@@ -67,6 +67,7 @@ router.get('/employment/course-stats',               getCourseJobStats);
 router.get('/employment/donut-stats',                getDonutStats);
 router.get('/employment/survey-stats',               getSurveyStats);
 router.get('/employment/stats',                      getEmploymentStats);
+router.get('/employment/tracer-analytics',            getTracerAnalytics);
 router.get('/employment/activity',                   getEmploymentActivity);
 router.get('/employment/export',                     exportEmploymentRecords);
 router.get('/employment/alumni-without-record',      getAlumniWithoutRecord);
@@ -81,6 +82,7 @@ router.get('/employment/responses/:alumni_id',       getTracerResponseDetail);
 // Tracer form config (integrated 6-page form)
 router.get('/tracer-form-config',  getTracerFormConfig);
 router.put('/tracer-form-config',  updateTracerFormConfig);
+router.post('/tracer-form-config/import-google-form', importGoogleFormConfig);
 
 // Tracer form — reorder before /:id
 router.get('/employment/tracer-questions',            getTracerQuestions);

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { getCollegeScopeEmails } = require('../utils/collegeScope');
 
 // One document per Excel row from an ingested tracer-study file, OR one per
 // live alumni portal tracer submission (fileId is null for the latter —
@@ -55,5 +56,31 @@ GraduateSchema.index({ fileId: 1, rowIndex: 1 });
 GraduateSchema.index({ program: 1, employmentStatus: 1 });
 GraduateSchema.index({ industry: 1 });
 GraduateSchema.index({ yearGraduated: 1, employmentStatus: 1 });
+
+// Enforces the AC AI Assistant's college scope (see utils/collegeScope.js)
+// at the single point every query — however it was built — ultimately goes
+// through: the driver call itself. Matches case-insensitively since ingested
+// emails and User account emails aren't guaranteed to share the same case.
+// `emails` is null when no scope was ever established (admin / non-chat
+// queries) — skip entirely. An EMPTY array is a real, active scope (a
+// coordinator whose college has zero alumni accounts) and must still
+// apply — `$in: []`/`$in: [<no patterns>]` naturally matches nothing,
+// which is the correct "you have no data" outcome, not "show everything."
+GraduateSchema.pre('aggregate', function () {
+  const emails = getCollegeScopeEmails();
+  if (!emails) return;
+  this.pipeline().unshift({
+    $match: { $expr: { $in: [{ $toLower: { $ifNull: ['$email', ''] } }, emails] } },
+  });
+});
+
+// /^find/ alone misses countDocuments() (hasData() uses it) — Mongoose fires
+// a separate 'countDocuments' hook for that method, not a find* one.
+GraduateSchema.pre(/^find|^countDocuments$/, function () {
+  const emails = getCollegeScopeEmails();
+  if (!emails) return;
+  const patterns = emails.map(e => new RegExp(`^${e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
+  this.where({ email: { $in: patterns } });
+});
 
 module.exports = mongoose.model('Graduate', GraduateSchema);

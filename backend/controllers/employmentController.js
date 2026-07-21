@@ -263,10 +263,25 @@ const getEmploymentRecords = async (req, res) => {
 };
 
 // GET /api/admin/employment/activity  ← must be declared before /:id route
+// Shared by both the admin route (unscoped — sees everything) and the
+// coordinator route (must only see activity from their own college) — see
+// routes/admin.js and routes/coordinator.js. A coordinator seeing another
+// college's print/export activity would leak that other college has
+// records at all, plus who's been working on them. EmploymentActivity has
+// no college field of its own, only `user_id` (the staff member who
+// performed the action), so scoping joins to User.college the same way
+// buildBasePipeline() above already scopes the employment records table
+// itself — keeping this feed consistent with what the coordinator can
+// actually see there.
 const getEmploymentActivity = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 30, 50);
-    const activities = await EmploymentActivity.find()
+    const match = {};
+    if (req.user.role === 'coordinator') {
+      const staffInCollege = await User.find({ college: req.user.college }).select('_id').lean();
+      match.user_id = { $in: staffInCollege.map(u => u._id) };
+    }
+    const activities = await EmploymentActivity.find(match)
       .sort({ createdAt: -1 })
       .limit(limit)
       .select('user_name action target_name details createdAt');
@@ -712,6 +727,164 @@ const getEmploymentStats = async (req, res) => {
   }
 };
 
+const SKILL_LABELS = {
+  technicalSkills:        'Technical Skills',
+  problemSolvingSkills:   'Problem-Solving Skills',
+  communicationSkills:    'Communication Skills',
+  projectManagement:      'Project Management',
+  teamworkCollaboration:  'Teamwork & Collaboration',
+  adaptability:           'Adaptability',
+  workLifeBalance:        'Work-Life Balance',
+  criticalThinkingSkills: 'Critical Thinking Skills',
+};
+
+// GET /api/admin/employment/tracer-analytics
+// Powers the "Tracer Study Analytics" dashboard section — one aggregation
+// covering every tracer-form section (respondent profile, exam, employment,
+// occupation/industry, unemployment reasons, personal growth, further
+// education, promotion, professional development).
+const getTracerAnalytics = async (req, res) => {
+  try {
+    const notBlank = (field) => ({ [field]: { $nin: ['', null] } });
+
+    // Groups by a case-INsensitive key so typos like "MAle" merge into
+    // "Male" instead of showing as a separate bucket. The display label
+    // used is whichever exact casing occurred most often in that group
+    // (first $group ranks casing variants by count, second $group picks
+    // the top one via $first after the sort) — not just the first one
+    // Mongo happens to encounter.
+    const ciGroup = (valueExpr) => [
+      { $group: { _id: { norm: { $toLower: valueExpr }, orig: valueExpr }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $group: { _id: '$_id.norm', label: { $first: '$_id.orig' }, count: { $sum: '$count' } } },
+      { $sort: { count: -1 } },
+    ];
+    const groupCount = (field) => [
+      { $match: notBlank(field) },
+      ...ciGroup(`$${field}`),
+    ];
+
+    const [result] = await TracerStudyResponse.aggregate([
+      {
+        $facet: {
+          total: [{ $count: 'count' }],
+
+          byGender: groupCount('gender'),
+          // Some bulk-migrated records stored multiple selected programs as a
+          // single ';'-joined array element instead of separate elements —
+          // split those apart so each program is counted individually.
+          byProgram: [
+            { $unwind: { path: '$programsCompleted', preserveNullAndEmptyArrays: false } },
+            { $project: { parts: { $split: ['$programsCompleted', ';'] } } },
+            { $unwind: '$parts' },
+            { $project: { part: { $trim: { input: '$parts' } } } },
+            { $match: { part: { $ne: '' } } },
+            ...ciGroup('$part'),
+            { $limit: 10 },
+          ],
+
+          examStatus: groupCount('professionalExam'),
+          examNames: [
+            { $match: notBlank('professionalExamName') },
+            ...ciGroup('$professionalExamName'),
+            { $limit: 10 },
+          ],
+
+          byEmploymentStatus: groupCount('employmentStatus'),
+          byJobRelevance: [
+            { $match: { employmentStatus: 'Yes', ...notBlank('jobRelatedToDegree') } },
+            ...ciGroup('$jobRelatedToDegree'),
+          ],
+          byDuration: [
+            { $match: { employmentStatus: 'Yes', ...notBlank('yearsInCurrentJob') } },
+            ...ciGroup('$yearsInCurrentJob'),
+          ],
+
+          topOccupations: [
+            { $match: { employmentStatus: 'Yes', ...notBlank('occupationTitle') } },
+            ...ciGroup('$occupationTitle'),
+            { $limit: 10 },
+          ],
+          byIndustry: [
+            { $match: { employmentStatus: 'Yes', ...notBlank('industryField') } },
+            ...ciGroup('$industryField'),
+          ],
+
+          unemploymentReasons: [
+            { $match: { employmentStatus: { $in: ['No', 'Never Employed'] } } },
+            { $unwind: { path: '$reasonsNotEmployed', preserveNullAndEmptyArrays: false } },
+            ...ciGroup('$reasonsNotEmployed'),
+          ],
+
+          personalGrowth: [
+            { $project: { ratings: { $objectToArray: '$personalGrowthRatings' } } },
+            { $unwind: '$ratings' },
+            { $match: { 'ratings.v': { $nin: ['', null] } } },
+            { $group: { _id: { skill: '$ratings.k', rating: '$ratings.v' }, count: { $sum: 1 } } },
+          ],
+
+          byFurtherEducation: groupCount('furtherEducation'),
+          byTrainings: groupCount('pursuedTrainings'),
+
+          byPromotion: groupCount('promotedInJob'),
+          byAccomplishments: groupCount('significantAccomplishments'),
+
+          byCertifications: groupCount('professionalCertifications'),
+          byDevActivities: groupCount('professionalDevelopmentActivities'),
+        },
+      },
+    ]);
+
+    const mapRows = (rows) => (rows || []).map((r) => ({ label: r.label ?? r._id, count: r.count }));
+
+    const personalGrowth = Object.entries(SKILL_LABELS).map(([key, label]) => {
+      const ratings = {};
+      (result.personalGrowth || [])
+        .filter((r) => r._id.skill === key)
+        .forEach((r) => { ratings[r._id.rating] = r.count; });
+      return { skill: label, ratings };
+    });
+
+    res.json({
+      total: result.total?.[0]?.count ?? 0,
+      respondentProfile: {
+        byGender: mapRows(result.byGender),
+        byProgram: mapRows(result.byProgram),
+      },
+      professionalExam: {
+        byStatus: mapRows(result.examStatus),
+        byExamName: mapRows(result.examNames),
+      },
+      employmentOverview: {
+        byStatus: mapRows(result.byEmploymentStatus),
+        byJobRelevance: mapRows(result.byJobRelevance),
+        byDuration: mapRows(result.byDuration),
+      },
+      occupationIndustry: {
+        topOccupations: mapRows(result.topOccupations),
+        byIndustry: mapRows(result.byIndustry),
+      },
+      unemploymentReasons: mapRows(result.unemploymentReasons),
+      personalGrowth,
+      furtherEducation: {
+        byFurtherEducation: mapRows(result.byFurtherEducation),
+        byTrainings: mapRows(result.byTrainings),
+      },
+      promotion: {
+        byPromotion: mapRows(result.byPromotion),
+        byAccomplishments: mapRows(result.byAccomplishments),
+      },
+      professionalDevelopment: {
+        byCertifications: mapRows(result.byCertifications),
+        byDevActivities: mapRows(result.byDevActivities),
+      },
+    });
+  } catch (err) {
+    console.error('getTracerAnalytics error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // Maps tracer employmentStatus answer → AlumniEmployment enum (same logic as alumniController)
 function mapTracerStatus(tracerStatus) {
   if (!tracerStatus) return 'Not Yet Updated';
@@ -1106,6 +1279,7 @@ module.exports = {
   getDonutStats,
   getSurveyStats,
   getEmploymentStats,
+  getTracerAnalytics,
   getEmploymentRecords,
   getEmploymentRecord,
   updateEmploymentRecord,

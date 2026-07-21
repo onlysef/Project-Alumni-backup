@@ -33,6 +33,11 @@ const OFFENSIVE_RESPONSE = `Let's keep this conversation respectful. I'm here to
 
 const LOW_SIMILARITY_RESPONSE = `I couldn't find relevant information in the graduate records.`;
 
+// College codes recognized in a coordinator's question, purely to word the
+// college-scope refusal message accurately — see the collegeScope block in
+// generateAnswer() below.
+const COLLEGE_CODES = ['CPAG', 'CCS', 'COS', 'CIT', 'COE', 'CBA', 'COED', 'CASS', 'CCJE', 'CAFA'];
+
 // Used only for narrating pre-computed MongoDB stats (the "mixed" classification
 // path). Unlike SYSTEM_PROMPT, this never tells the model a refusal phrase exists
 // to fall back on — the data here is guaranteed complete, so there is nothing to
@@ -100,14 +105,25 @@ function extractYears(text) {
 // standalone questions (the common case) skip this entirely, no added cost.
 const PRONOUN_REFERENT_PATTERN = /\b(his|her|their|him|she|he|they|them|those|that person|this person|theirs)\b/i;
 
+// Elliptical continuations ("together with self employed", "what about
+// BSIT?") name no subject of their own — read alone, "together with self
+// employed" has no "what" to combine self-employed with, so filter
+// extraction saw only the literal words present ("self employed") and
+// answered that in isolation instead of the combined total the phrase
+// actually asks for. These multi-word markers are specific enough not to
+// false-positive on complete standalone questions the way single words like
+// "also"/"and"/"plus" would (e.g. "employed and unemployed" is already a
+// complete compound question on its own).
+const CONTINUATION_PATTERN = /\b(together with|along with|combined? with|what about|how about|same for)\b/i;
+
 async function condenseQuestion(question, chatHistory) {
-  if (!chatHistory.length || !PRONOUN_REFERENT_PATTERN.test(question)) return question;
+  if (!chatHistory.length || (!PRONOUN_REFERENT_PATTERN.test(question) && !CONTINUATION_PATTERN.test(question))) return question;
 
   const recentTurns = chatHistory.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n');
   const messages = [
     {
       role: 'system',
-      content: 'Rewrite the user\'s latest message into a fully self-contained question that does not rely on pronouns or prior conversation context — substitute in the actual name/subject from the conversation. Return ONLY the rewritten question, no explanation, no quotes.',
+      content: 'Rewrite the user\'s latest message into a fully self-contained question that does not rely on pronouns or prior conversation context — substitute in the actual name/subject from the conversation. If the latest message is an elliptical continuation (e.g. "together with X", "what about Y") that extends or combines with the previous question rather than replacing it, merge them into one combined question (e.g. previous "how many are employed" + latest "together with self employed" → "how many are employed or self-employed combined"). Return ONLY the rewritten question, no explanation, no quotes.',
     },
     { role: 'user', content: `Conversation so far:\n${recentTurns}\n\nLatest message: ${question}\n\nRewritten standalone question:` },
   ];
@@ -522,9 +538,22 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     return finish({ answer: UNKNOWN_RESPONSE, sources: [], type: 'unknown' });
   }
 
+  // A college coordinator only ever sees their own college's tracer study
+  // data (see aggregationService.query()'s college-scope handling and
+  // utils/collegeScope.js for why). That scope only reaches Graduate
+  // documents through a Mongoose hook — it does NOT reach EmbeddingDocument,
+  // which vector search reads from separately and has no college tag to
+  // filter on at all. So when scoping is active, EVERY question (including
+  // ones that would normally classify as 'qualitative' and skip straight to
+  // vector search) is forced through the scoped structured-aggregation path
+  // first, and stops with an explicit "no data" answer if that finds
+  // nothing — never falling through to an unscoped RAG search that could
+  // surface another college's embedded tracer/employment data.
+  const collegeScope = filters.college || null;
+
   // ── Hybrid path: try MongoDB aggregation first for statistical questions ──────
-  if (queryType === 'statistical' || queryType === 'mixed') {
-    const aggResult = await aggregationService.query(question);
+  if (queryType === 'statistical' || queryType === 'mixed' || collegeScope) {
+    const aggResult = await aggregationService.query(question, { college: collegeScope });
     if (aggResult) {
       const aggText     = typeof aggResult === 'string' ? aggResult : aggResult.text;
       // Context-aware, guaranteed-answerable suggestions — built from the same
@@ -547,7 +576,12 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       // aggText is guaranteed complete and correctly formatted, so bulleted
       // answers skip narration entirely now, the same as isListTopic below.
       const aggLineCount   = aggText.split('\n').filter(l => l.trim()).length;
-      const bulletLineCount = (aggText.match(/^[-*]\s/gm) || []).length;
+      // Dash/asterisk bullets AND numbered lists ("1. **X** — Y graduates",
+      // used by ranking-style breakdowns like queryIndustry()) both count —
+      // the first version of this check only looked for "- ", so numbered
+      // rankings still slipped through to narration and came back as the
+      // same kind of dense run-on paragraph this check exists to prevent.
+      const bulletLineCount = (aggText.match(/^(?:[-*]|\d+\.)\s/gm) || []).length;
       const isListTopic = ['names', 'jobs', 'announcements', 'staff', 'appointments', 'events', 'partnerships'].includes(aggResult.topic);
       if (queryType === 'statistical' && (aggLineCount <= 1 || isListTopic || bulletLineCount >= 2)) {
         if (onToken) onToken(aggText);
@@ -600,6 +634,26 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         for (const line of finalAnswer.split('\n')) onToken(line + '\n');
       }
       return finish({ answer: finalAnswer, sources: ['graduate_records'], type: 'statistics', suggestions });
+    }
+
+    // See the collegeScope comment above — a scoped coordinator query that
+    // found nothing must stop here, not fall through to an unscoped RAG
+    // search that has no per-college filter at all.
+    //
+    // Wording matters here: a bare "I don't have data for CCS" reads as
+    // "CCS itself has no data," which is FALSE and confusing to a CCS
+    // coordinator who knows perfectly well their own college has records —
+    // the real reason is they asked about a DIFFERENT college they aren't
+    // allowed to see. Naming that other college explicitly (when the
+    // question mentions one) makes the actual cause clear instead of
+    // sounding like a data-completeness bug.
+    if (collegeScope) {
+      const askedCollege = COLLEGE_CODES.find(c => c !== collegeScope && new RegExp(`\\b${c}\\b`, 'i').test(question));
+      const msg = askedCollege
+        ? `As a ${collegeScope} coordinator, you can only access ${collegeScope} alumni tracer study data — I don't have access to ${askedCollege} or other colleges' records.`
+        : `I don't have any tracer study data matching that within ${collegeScope} alumni records.`;
+      if (onToken) onToken(msg);
+      return finish({ answer: msg, sources: [], type: 'out_of_scope' });
     }
   }
 

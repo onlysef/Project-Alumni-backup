@@ -369,6 +369,10 @@ export default function EmploymentView() {
       if (!f.job_title?.trim())     e.job_title     = "Job title is required.";
       if (!f.industry?.trim())      e.industry      = "Industry is required.";
       if (!f.work_location?.trim()) e.work_location = "Work location is required.";
+    } else if (status === "Unemployed") {
+      if (!f.reason_unemployed?.trim()) e.reason_unemployed = "Reason is required.";
+    } else if (status === "Self-employed") {
+      if (!f.industry?.trim()) e.industry = "Industry or business type is required.";
     }
     return e;
   }
@@ -955,12 +959,13 @@ export default function EmploymentView() {
 
                 {editForm.employment_status === "Unemployed" && (
                   <label>
-                    Reason for Unemployment
+                    Reason for Unemployment *
                     <textarea
                       value={editForm.reason_unemployed}
                       onChange={e => setEditForm(f => ({ ...f, reason_unemployed: e.target.value }))}
                       placeholder="Briefly describe the situation…"
                     />
+                    {editErrors.reason_unemployed && <span className="field-error">{editErrors.reason_unemployed}</span>}
                   </label>
                 )}
 

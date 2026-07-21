@@ -137,6 +137,18 @@ const deleteEvent = async (req, res) => {
 // GET /coordinator/events/:id/interested
 const getInterestedAlumni = async (req, res) => {
   try {
+    // Coordinators can only view interest for events belonging to their
+    // college — updateEvent/deleteEvent above already guard this same way;
+    // without it, a coordinator who knows/guesses another college's event
+    // ID could read that college's interested-alumni list directly.
+    if (req.user.college) {
+      const event = await Event.findById(req.params.id, 'college').lean();
+      if (!event) return res.status(404).json({ message: 'Event not found.' });
+      if (event.college !== req.user.college) {
+        return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+      }
+    }
+
     const records = await EventInterested.find({ event_id: req.params.id })
       .populate('alumni_id', 'firstName lastName email course')
       .sort({ createdAt: -1 })
@@ -197,11 +209,15 @@ const toggleInterested = async (req, res) => {
 // GET /coordinator/notifications
 const getCoordinatorNotifications = async (req, res) => {
   try {
-    const notifs = await Notification.find({ user_id: req.user.id })
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .lean();
-    const unread = notifs.filter(n => !n.is_read).length;
+    // `unread` must count ALL unread notifications, not just those within
+    // the 20 most recently fetched — counting after the .limit(20) silently
+    // undercounts the badge whenever more than 20 unread notifications
+    // exist (e.g. 30 unread but only 12 of the latest 20 are unread shows
+    // "12" instead of "30").
+    const [notifs, unread] = await Promise.all([
+      Notification.find({ user_id: req.user.id }).sort({ createdAt: -1 }).limit(20).lean(),
+      Notification.countDocuments({ user_id: req.user.id, is_read: false }),
+    ]);
     res.json({ notifications: notifs, unread });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });

@@ -1,4 +1,5 @@
 const TracerFormConfig = require('../models/TracerFormConfig');
+const { importGoogleForm } = require('../utils/googleFormsParser');
 
 // The canonical default config — mirrors the hardcoded TracerStudyForm.jsx exactly.
 // Question IDs that match TracerStudyResponse field names are stored as fixed fields;
@@ -359,17 +360,26 @@ const getTracerFormConfig = async (req, res) => {
     let cfg = await TracerFormConfig.findOne({ college });
 
     if (!cfg && college === 'CCS') {
-      // Migrate legacy document (saved before per-college was implemented, college field = '')
+      // CCS is the only college with a real, in-use tracer form — it keeps
+      // its legacy-migration path (the pre-per-college document) and falls
+      // back to the canonical DEFAULT_CONFIG template otherwise.
       const legacy = await TracerFormConfig.findOne({ college: '' });
       if (legacy) {
         legacy.college = 'CCS';
         await legacy.save();
         cfg = legacy;
-      } else {
-        cfg = await TracerFormConfig.create({ college: 'CCS', config: DEFAULT_CONFIG });
+      }
+      if (!cfg) {
+        cfg = await TracerFormConfig.create({ college, config: DEFAULT_CONFIG });
       }
     }
 
+    // Every other college has no tracer form authored for it yet. Auto-
+    // seeding them with CCS's DEFAULT_CONFIG (as this used to do) silently
+    // persisted a form whose consent text, program list, etc. all said
+    // "College of Computer Studies" regardless of which college it
+    // actually was. They now stay blank until an admin builds or imports
+    // one for them via TracerFormEditor (see importTracerFormConfig below).
     res.json({ config: cfg ? cfg.config : BLANK_CONFIG, college });
   } catch (err) {
     console.error('getTracerFormConfig error:', err);
@@ -384,6 +394,20 @@ const updateTracerFormConfig = async (req, res) => {
     if (!config || !Array.isArray(config.pages)) {
       return res.status(400).json({ message: 'Invalid config: pages array is required.' });
     }
+
+    // A radio/checkbox/select question with zero options renders no
+    // selectable choices — if also required, alumni can never satisfy it,
+    // permanently blocking the tracer form for that college. The editor UI
+    // already blocks this at save time; this is a server-side backstop so a
+    // broken config can't reach the database through any other path.
+    for (const page of config.pages) {
+      for (const q of (page.questions || [])) {
+        if (['radio', 'checkbox', 'select'].includes(q.type) && (!Array.isArray(q.options) || q.options.length === 0)) {
+          return res.status(400).json({ message: `Question "${q.label || q.id}" needs at least one option.` });
+        }
+      }
+    }
+
     const college = resolveCollege(req);
 
     let cfg = await TracerFormConfig.findOne({ college });
@@ -402,4 +426,23 @@ const updateTracerFormConfig = async (req, res) => {
   }
 };
 
-module.exports = { getTracerFormConfig, updateTracerFormConfig };
+// POST /api/admin/tracer-form-config/import-google-form  { url }
+// Reads a public Google Form and returns it converted into our page/question
+// shape. Does NOT save anything — the admin reviews it in the editor and
+// saves explicitly via updateTracerFormConfig, same as the college-to-college
+// import path.
+const importGoogleFormConfig = async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ message: 'A Google Form link is required.' });
+    }
+    const { title, pages, warnings } = await importGoogleForm(url.trim());
+    res.json({ title, pages, warnings });
+  } catch (err) {
+    // importGoogleForm throws user-facing messages for bad links/private forms
+    res.status(400).json({ message: err.message || 'Could not import that form.' });
+  }
+};
+
+module.exports = { getTracerFormConfig, updateTracerFormConfig, importGoogleFormConfig };
