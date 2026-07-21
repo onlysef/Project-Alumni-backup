@@ -5,6 +5,24 @@ const EventFeedback = require('../models/EventFeedback');
 const Notification  = require('../models/Notification');
 const User          = require('../models/User');
 
+// The routes below take an :eventId param directly and, before this check
+// existed, queried AttendanceLog/Event/EventFeedback for it with no
+// ownership check at all — a coordinator who knew or guessed another
+// college's event ID could read (or export) that college's full attendee
+// roster, names/emails included. recordAttendance/updateEvent/deleteEvent
+// already guard this same way; this mirrors that for the read/export routes.
+// Returns the event doc on success, or null after already sending a
+// 404/403 response (callers should just `return` when this returns null).
+async function assertEventInScope(req, res, eventId, fields = '') {
+  const event = await Event.findById(eventId, fields ? `college ${fields}` : 'college').lean();
+  if (!event) { res.status(404).json({ message: 'Event not found.' }); return null; }
+  if (req.user.college && event.college && event.college !== req.user.college) {
+    res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+    return null;
+  }
+  return event;
+}
+
 // GET /coordinator/attendance/events
 const getAttendanceEvents = async (req, res) => {
   try {
@@ -129,6 +147,8 @@ const getAttendanceRecords = async (req, res) => {
     const { eventId } = req.params;
     const { search, status, page = 1, limit = 10 } = req.query;
 
+    if (!(await assertEventInScope(req, res, eventId))) return;
+
     const [logs, feedbackDocs] = await Promise.all([
       AttendanceLog.find({ event_id: eventId })
         .populate('alumni_id', 'firstName lastName course email')
@@ -176,8 +196,10 @@ const getAttendanceStats = async (req, res) => {
   try {
     const { eventId } = req.params;
 
-    const [event, logs, feedbackCount] = await Promise.all([
-      Event.findById(eventId, 'title capacity').lean(),
+    const event = await assertEventInScope(req, res, eventId, 'title capacity');
+    if (!event) return;
+
+    const [logs, feedbackCount] = await Promise.all([
       AttendanceLog.find({ event_id: eventId }).populate('alumni_id', 'course').lean(),
       EventFeedback.countDocuments({ event_id: eventId }),
     ]);
@@ -206,6 +228,9 @@ const getEventDetails = async (req, res) => {
   try {
     const event = await Event.findById(req.params.eventId).lean();
     if (!event) return res.status(404).json({ message: 'Event not found.' });
+    if (req.user.college && event.college && event.college !== req.user.college) {
+      return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+    }
 
     const [total, feedbackResponses] = await Promise.all([
       AttendanceLog.countDocuments({ event_id: req.params.eventId }),
@@ -232,6 +257,8 @@ const exportAttendance = async (req, res) => {
   try {
     const { eventId } = req.params;
     const format      = req.query.format === 'xlsx' ? 'xlsx' : 'csv';
+
+    if (!(await assertEventInScope(req, res, eventId))) return;
 
     const [event, logs, feedbackDocs] = await Promise.all([
       Event.findById(eventId, 'title event_datetime').lean(),

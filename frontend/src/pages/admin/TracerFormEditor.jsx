@@ -282,6 +282,7 @@ const s = {
 function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, allQuestions = [] }) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
+  const [error, setError] = useState("");
 
   function startEdit() {
     setForm({
@@ -290,12 +291,14 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
       rowsText: Array.isArray(q.rows) ? q.rows.map((r) => r.label).join("\n") : "",
       ratingOptionsText: Array.isArray(q.ratingOptions) ? q.ratingOptions.join("\n") : "",
     });
+    setError("");
     setEditing(true);
   }
 
   function cancelEdit() {
     setEditing(false);
     setForm({});
+    setError("");
   }
 
   function saveEdit() {
@@ -305,19 +308,31 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
         .map((l) => l.trim())
         .filter(Boolean);
 
+    const effectiveType = form.type ?? q.type;
+    const options = ["radio", "checkbox", "select"].includes(effectiveType)
+      ? lines(form.optionsText)
+      : [];
+
+    // A radio/checkbox/select question with zero options renders no
+    // selectable choices at all — if it's also required, alumni can never
+    // satisfy it, permanently blocking the tracer form for that college.
+    if (["radio", "checkbox", "select"].includes(effectiveType) && options.length === 0) {
+      setError("Add at least one option (one per line) — this question type needs selectable choices.");
+      return;
+    }
+    setError("");
+
     const updated = {
       ...q,
-      type: form.type ?? q.type,
+      type: effectiveType,
       label: form.label ?? q.label,
       content: form.content ?? q.content,
       placeholder: form.placeholder ?? q.placeholder,
       required: form.required ?? q.required,
       showIf: form.showIf || null,
-      options: ["radio", "checkbox", "select"].includes(form.type ?? q.type)
-        ? lines(form.optionsText)
-        : [],
+      options,
       rows:
-        (form.type ?? q.type) === "rating_table"
+        effectiveType === "rating_table"
           ? lines(form.rowsText).map((label) => ({
               key: label
                 .toLowerCase()
@@ -329,7 +344,7 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
             }))
           : q.rows || [],
       ratingOptions:
-        (form.type ?? q.type) === "rating_table" ? lines(form.ratingOptionsText) : [],
+        effectiveType === "rating_table" ? lines(form.ratingOptionsText) : [],
     };
     onUpdate(updated);
     setEditing(false);
@@ -452,7 +467,11 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
                   <textarea
                     style={s.textarea}
                     value={form.optionsText ?? (q.options || []).join("\n")}
-                    onChange={(e) => setForm((f) => ({ ...f, optionsText: e.target.value }))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setForm((f) => ({ ...f, optionsText: val }));
+                      if (error) setError("");
+                    }}
                     placeholder={"Option A\nOption B\nOption C"}
                   />
                   <p style={s.hint}>Each line becomes one selectable option.</p>
@@ -575,6 +594,7 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
             </>
           )}
 
+          {error && <p style={{ color: "#b3261e", fontSize: 12, fontWeight: 600, margin: "0 0 10px" }}>{error}</p>}
           <div style={s.editActions}>
             <button type="button" style={s.primaryBtn} onClick={saveEdit}>
               Save Question
@@ -601,6 +621,14 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
   const [confirmDelete, setConfirmDelete] = useState(null); // { pageIdx, qIdx }
   const [confirmDeletePage, setConfirmDeletePage] = useState(null); // pageIdx
 
+  // ── import dialog state ────────────────────────────────────────────────────────
+  const [importOpen, setImportOpen] = useState(false);
+  const [importTab, setImportTab] = useState("college"); // "college" | "gform"
+  const [importCollegeSel, setImportCollegeSel] = useState("");
+  const [gformUrl, setGformUrl] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importPending, setImportPending] = useState(null); // { pages, sourceLabel, warnings } awaiting overwrite confirmation
+
   function loadConfig(col) {
     setCurrentPage(0);
     setLoading(true);
@@ -616,6 +644,76 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
     if (!open) return;
     loadConfig(college);
   }, [open, college]);
+
+  function closeImportDialog() {
+    setImportOpen(false);
+    setImportPending(null);
+    setImportCollegeSel("");
+    setGformUrl("");
+  }
+
+  function applyImportedPages(pages, sourceLabel, warnings = []) {
+    setConfig({ version: 1, pages });
+    setCurrentPage(0);
+    closeImportDialog();
+    let msg = `Imported ${pages.length} page${pages.length !== 1 ? "s" : ""} from ${sourceLabel}. Review the content, then click "Save Form" to apply it to ${college}.`;
+    if (warnings.length) {
+      msg += ` ${warnings.length} question${warnings.length !== 1 ? "s" : ""} could not be imported (unsupported type) — add ${warnings.length !== 1 ? "them" : "it"} manually if needed.`;
+    }
+    showToast(msg);
+  }
+
+  function requestApplyImport(pages, sourceLabel, warnings) {
+    if (config && config.pages.length > 0) {
+      setImportPending({ pages, sourceLabel, warnings });
+    } else {
+      applyImportedPages(pages, sourceLabel, warnings);
+    }
+  }
+
+  // ── import another college's saved form as a starting point ──────────────────
+  function importFromCollege() {
+    if (!importCollegeSel) return;
+    setImportBusy(true);
+    fetch(`${API}/admin/tracer-form-config?college=${importCollegeSel}`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => {
+        const pages = d.config?.pages || [];
+        if (pages.length === 0) {
+          showToast(`${importCollegeSel} doesn't have a tracer form yet either.`);
+          return;
+        }
+        requestApplyImport(pages, importCollegeSel, []);
+      })
+      .catch(() => showToast("Import failed. Please try again."))
+      .finally(() => setImportBusy(false));
+  }
+
+  // ── import a public Google Form as a starting point ───────────────────────────
+  function importFromGoogleForm() {
+    if (!gformUrl.trim()) return;
+    setImportBusy(true);
+    fetch(`${API}/admin/tracer-form-config/import-google-form`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ url: gformUrl.trim() }),
+    })
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.message || "Import failed.");
+        return d;
+      })
+      .then((d) => {
+        const pages = d.pages || [];
+        if (pages.length === 0) {
+          showToast("No importable questions were found on that form.");
+          return;
+        }
+        requestApplyImport(pages, d.title || "Google Form", d.warnings || []);
+      })
+      .catch((err) => showToast(err.message || "Could not import from that link."))
+      .finally(() => setImportBusy(false));
+  }
 
   // ── config mutators ──────────────────────────────────────────────────────────
   const updatePageTitle = useCallback((pageIdx, title) => {
@@ -784,6 +882,25 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
             >
               {COLLEGES.map((c) => <option key={c} value={c} style={{ color: "#000" }}>{c}</option>)}
             </select>
+            {!loading && config && (
+              <button
+                type="button"
+                style={{
+                  background: "rgba(255,255,255,0.15)",
+                  color: "#fff",
+                  border: "1px solid rgba(255,255,255,0.35)",
+                  borderRadius: 6,
+                  padding: "5px 12px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+                onClick={() => setImportOpen(true)}
+                title="Import questions from another college's form or a Google Form"
+              >
+                Import…
+              </button>
+            )}
             <button type="button" style={s.closeBtn} onClick={onClose} aria-label="Close">
               ×
             </button>
@@ -831,6 +948,20 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
 
             {/* Page body */}
             <div style={s.body}>
+              {config.pages.length === 0 && (
+                <div style={{ textAlign: "center", padding: "40px 20px", color: "#76656a" }}>
+                  <p style={{ fontSize: 14, fontWeight: 600, color: MAROON, marginBottom: 6 }}>
+                    No tracer form yet for {college}
+                  </p>
+                  <p style={{ fontSize: 13, marginBottom: 20 }}>
+                    Build it from scratch with "+ Page" above, or use "Import…" in the header to
+                    copy another college's form or a Google Form as a starting point.
+                  </p>
+                  <button type="button" style={s.primaryBtn} onClick={addPage}>
+                    + Add First Page
+                  </button>
+                </div>
+              )}
               {config.pages[currentPage] && (
                 <>
                   {/* Editable page title */}
@@ -988,6 +1119,132 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
                 Delete Page
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import dialog */}
+      {importOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+          }}
+          onClick={closeImportDialog}
+        >
+          <div
+            style={{
+              background: "#fff",
+              borderRadius: 10,
+              padding: "24px 28px",
+              maxWidth: 440,
+              width: "90%",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.18)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {importPending ? (
+              <>
+                <h4 style={{ margin: "0 0 10px", color: MAROON, fontSize: 15 }}>Replace current form?</h4>
+                <p style={{ margin: "0 0 20px", fontSize: 13, color: "#555", lineHeight: 1.5 }}>
+                  Importing <strong>{importPending.sourceLabel}</strong> will replace all{" "}
+                  {config?.pages.length} page{config?.pages.length !== 1 ? "s" : ""} currently shown for{" "}
+                  <strong>{college}</strong> in this editor. Nothing is saved until you click "Save Form".
+                  {importPending.warnings?.length > 0 && (
+                    <> {importPending.warnings.length} question{importPending.warnings.length !== 1 ? "s" : ""} on
+                    the source couldn't be imported (unsupported type).</>
+                  )}
+                </p>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button style={s.secondaryBtn} onClick={() => setImportPending(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    style={{ ...s.primaryBtn, background: "#8a1f2f" }}
+                    onClick={() => applyImportedPages(importPending.pages, importPending.sourceLabel, importPending.warnings)}
+                  >
+                    Import & Replace
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h4 style={{ margin: "0 0 4px", color: MAROON, fontSize: 15 }}>Import Tracer Form</h4>
+                <p style={{ margin: "0 0 16px", fontSize: 12, color: "#9a8080" }}>
+                  Copy questions in as a starting point for <strong>{college}</strong>. Nothing is saved until
+                  you click "Save Form".
+                </p>
+
+                <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+                  <button
+                    type="button"
+                    style={{ ...s.tab(importTab === "college"), border: `1.5px solid ${MAROON}30`, borderRadius: 6 }}
+                    onClick={() => setImportTab("college")}
+                  >
+                    Another College
+                  </button>
+                  <button
+                    type="button"
+                    style={{ ...s.tab(importTab === "gform"), border: `1.5px solid ${MAROON}30`, borderRadius: 6 }}
+                    onClick={() => setImportTab("gform")}
+                  >
+                    Google Form Link
+                  </button>
+                </div>
+
+                {importTab === "college" ? (
+                  <div style={s.fieldRow}>
+                    <label style={s.fieldLabel}>Copy from</label>
+                    <select
+                      style={{ ...s.selectInput, width: "100%" }}
+                      value={importCollegeSel}
+                      onChange={(e) => setImportCollegeSel(e.target.value)}
+                    >
+                      <option value="">Select a college…</option>
+                      {COLLEGES.filter((c) => c !== college).map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div style={s.fieldRow}>
+                    <label style={s.fieldLabel}>Public Google Form link</label>
+                    <input
+                      style={s.input}
+                      type="text"
+                      value={gformUrl}
+                      onChange={(e) => setGformUrl(e.target.value)}
+                      placeholder="https://docs.google.com/forms/d/e/.../viewform"
+                    />
+                    <p style={s.hint}>
+                      The form's sharing must be set to "Anyone with the link can view." Questions like
+                      images, linear scales, and grids aren't supported yet and will be skipped.
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 16 }}>
+                  <button style={s.secondaryBtn} onClick={closeImportDialog}>
+                    Cancel
+                  </button>
+                  <button
+                    style={{
+                      ...s.primaryBtn,
+                      opacity: importBusy || (importTab === "college" ? !importCollegeSel : !gformUrl.trim()) ? 0.6 : 1,
+                    }}
+                    disabled={importBusy || (importTab === "college" ? !importCollegeSel : !gformUrl.trim())}
+                    onClick={importTab === "college" ? importFromCollege : importFromGoogleForm}
+                  >
+                    {importBusy ? "Importing…" : "Import"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

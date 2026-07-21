@@ -24,12 +24,20 @@ const userSchema = new mongoose.Schema({
   twoFactorOTPExpiry:   { type: Date },
   twoFactorToken:       { type: String },
   twoFactorTokenExpiry: { type: Date },
+  // Wrong-guess counter — the OTP itself is invalidated once this hits the
+  // limit, so a phished password alone can't be brute-forced into a full
+  // login by scripting guesses against verify-2fa.
+  twoFactorOTPAttempts: { type: Number, default: 0 },
 
   // Password reset flow
   resetOTP:         { type: String },
   resetOTPExpiry:   { type: Date },
   resetToken:       { type: String },
   resetTokenExpiry: { type: Date },
+  // Same brute-force guard as twoFactorOTPAttempts, for verify-reset-otp —
+  // forgot-password only needs a known email (no auth), so this is the only
+  // thing stopping someone from scripting guesses against the reset code.
+  resetOTPAttempts: { type: Number, default: 0 },
 
   // Dashboard settings (theme, notifications, etc.)
   settings: { type: mongoose.Schema.Types.Mixed, default: {} },

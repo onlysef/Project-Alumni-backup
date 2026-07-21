@@ -63,10 +63,14 @@ const chat = async (req, res) => {
   res.flushHeaders();
 
   try {
+    // College coordinators only ever see their own college's tracer study
+    // data — admins see everything. See utils/collegeScope.js for why.
+    const college = req.user?.role === 'coordinator' ? req.user.college : null;
+
     const { sources, type, suggestions } = await generateAnswer(
       question,
       history,
-      {},
+      { college },
       (token) => {
         res.write(`data: ${JSON.stringify({ token })}\n\n`);
       }

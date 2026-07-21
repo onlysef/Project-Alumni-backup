@@ -1,4 +1,6 @@
 const Graduate = require('../models/Graduate');
+const User = require('../models/User');
+const { runWithCollegeScope } = require('../utils/collegeScope');
 
 // ─── Intent Detection ─────────────────────────────────────────────────────────
 
@@ -541,6 +543,13 @@ async function queryEmployment(filters) {
   // the full, unfiltered breakdown.
   if (!filters.employmentStatuses) {
     out += `\n**Overall employment rate: ${pct(employed, total)}** (${employed} out of ${total}, including self-employed)`;
+  } else if (filters.employmentStatuses.includes('Yes') && filters.employmentStatuses.includes('Self-Employed')) {
+    // A question that explicitly pairs "employed" with "self-employed"
+    // ("employed together with self-employed") is asking for one combined
+    // count, not two separate rows to add up by hand — self-employed is
+    // conceptually a form of being employed (same as the unfiltered
+    // "Overall employment rate" above already treats it).
+    out += `\n**Combined (employed + self-employed): ${employed}** (${pct(employed, total)})`;
   }
   return out;
 }
@@ -1759,7 +1768,7 @@ async function hasData() {
   return count > 0;
 }
 
-async function query(question) {
+async function queryInner(question) {
   if (!(await hasData())) return null;
 
   // "Who are the PROMINENT/notable/outstanding graduates?" matches the 'names'
@@ -2061,6 +2070,23 @@ async function query(question) {
 
   const text = await fn();
   return text ? { text, direct: true, topic, filters } : null;
+}
+
+// A college coordinator must only ever see their own college's tracer study
+// data through the AC assistant — but Graduate has no `college` field (only
+// free-text `program`), so the restriction is enforced by resolving the
+// coordinator's college to the set of alumni emails belonging to it (via
+// User.college, the same source of truth EmploymentView already scopes by)
+// and running the entire query through that scope — see
+// utils/collegeScope.js for why AsyncLocalStorage instead of threading a
+// filter through every one of the ~40 functions above individually.
+async function query(question, options = {}) {
+  const { college } = options;
+  if (!college) return queryInner(question);
+
+  const alumni = await User.find({ role: 'alumni', college }).select('email').lean();
+  const emails = alumni.map(u => (u.email || '').toLowerCase()).filter(Boolean);
+  return runWithCollegeScope(emails, () => queryInner(question));
 }
 
 // ─── Follow-up suggestions ──────────────────────────────────────────────────

@@ -84,9 +84,15 @@ function mapProgramToTrack(programsCompleted) {
 
 // Finds company_name, work_location, and graduation_year from admin-added custom
 // tracer questions by matching question labels — no hardcoded IDs.
-async function resolveExtraEmploymentFields(extraAnswers) {
+// `college` must be the SUBMITTING alumnus's own college, not a fixed
+// default — this used to always read CCS's form config regardless of who
+// submitted, so a non-CCS alumnus's "Company Name"/"Work Location"/
+// "Graduation Year" answers (which live under different question IDs in
+// their own college's form) never matched anything here and silently never
+// populated their AlumniEmployment record.
+async function resolveExtraEmploymentFields(extraAnswers, college) {
   try {
-    const cfg = await TracerFormConfig.findOne({ college: 'CCS' }).lean()
+    const cfg = (college && await TracerFormConfig.findOne({ college }).lean())
               || await TracerFormConfig.findOne().sort({ updatedAt: -1 }).lean();
     if (!cfg?.config?.pages) return {};
     const result = {};
@@ -248,7 +254,7 @@ const submitTracerStudy = async (req, res) => {
     // Auto-sync employment record from tracer answers.
     // Extra custom questions (company name, work location) are resolved by label matching.
     const employmentUpdate = extractEmploymentFromTracer(body);
-    const extraFields      = await resolveExtraEmploymentFields(extra_answers);
+    const extraFields      = await resolveExtraEmploymentFields(extra_answers, req.user.college);
     Object.assign(employmentUpdate, extraFields);
 
     // When alumni is not employed, explicitly clear work-related fields so stale

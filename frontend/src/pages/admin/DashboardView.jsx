@@ -107,6 +107,305 @@ const COURSE_JOB_METRICS = [
 
 const DONUT_COURSES = ["All", "BSIT", "BSCS", "BSIS"];
 
+// ── Tracer Study Analytics (accordion) ────────────────────────────────────────
+function DistributionBars({ rows, limit }) {
+  if (!rows || rows.length === 0) {
+    return <p className="tracer-empty">No responses yet.</p>;
+  }
+  const shown = limit ? rows.slice(0, limit) : rows;
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  const max   = Math.max(...shown.map((r) => r.count), 1);
+  return (
+    <div className="tracer-bars">
+      {shown.map((r) => {
+        const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
+        return (
+          <div className="tracer-bar-row" key={r.label}>
+            <div className="tracer-bar-label">{r.label}</div>
+            <div className="tracer-bar-meter">
+              <div className="tracer-bar-track">
+                <div className="tracer-bar-fill" style={{ width: `${Math.max((r.count / max) * 100, 4)}%` }} />
+              </div>
+              <span className="tracer-bar-count">{r.count} <em>({pct}%)</em></span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Same palette as the Course vs Job chart (COURSE_COLORS in Charts.jsx) —
+// red, gold, peach, brown — extended with harmonious shades for categories
+// beyond 4 so every chart on the dashboard reads as one consistent theme.
+const CHART_PALETTE = ["#941527", "#dea045", "#eaaa63", "#6b4226", "#570013", "#c23b52", "#e9ad69", "#8f8f8f"];
+
+// Small donut — best for binary/few-category distributions (Yes/No, gender, status).
+function MiniDonut({ rows }) {
+  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  let acc = 0;
+  const segments = rows.map((r, i) => {
+    const pct   = total > 0 ? (r.count / total) * 100 : 0;
+    const start = acc;
+    acc += pct;
+    return { ...r, pct: Math.round(pct), start, end: acc, color: CHART_PALETTE[i % CHART_PALETTE.length] };
+  });
+  const gradient = segments.map((s) => `${s.color} ${s.start}% ${s.end}%`).join(", ");
+  return (
+    <div className="tracer-donut-layout">
+      <div className="tracer-donut" style={{ background: `conic-gradient(${gradient})` }}>
+        <span className="tracer-donut-total">{total}</span>
+      </div>
+      <div className="tracer-donut-legend">
+        {segments.map((s) => (
+          <div className="tracer-donut-legend-row" key={s.label}>
+            <span className="tracer-donut-swatch" style={{ background: s.color }} />
+            <span className="tracer-donut-legend-label" title={s.label}>{s.label}</span>
+            <span className="tracer-donut-legend-value">{s.count} <em>({s.pct}%)</em></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Vertical bar chart — best for ordered or moderate-cardinality categories.
+function MiniBarChart({ rows }) {
+  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
+  const max = Math.max(...rows.map((r) => r.count), 1);
+  return (
+    <div className="tracer-vbar-chart">
+      {rows.map((r, i) => (
+        <div className="tracer-vbar-col" key={r.label}>
+          <div className="tracer-vbar-wrap">
+            <div
+              className="tracer-vbar"
+              style={{ height: `${Math.max((r.count / max) * 100, 8)}%`, background: CHART_PALETTE[i % CHART_PALETTE.length] }}
+              title={`${r.label}: ${r.count}`}
+            >
+              <span className="tracer-vbar-value">{r.count}</span>
+            </div>
+          </div>
+          <div className="tracer-vbar-label" title={r.label}>{r.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const RATING_ORDER  = ["Excellent", "Competent", "Satisfactory", "Beginner", "Non-Acceptable"];
+const RATING_COLORS = {
+  Excellent: "#941527", Competent: "#dea045", Satisfactory: "#eaaa63",
+  Beginner: "#6b4226", "Non-Acceptable": "#8f8f8f",
+};
+
+function RatingMatrix({ rows }) {
+  const hasData = rows?.some((r) => Object.keys(r.ratings).length > 0);
+  if (!hasData) return <p className="tracer-empty">No responses yet.</p>;
+  return (
+    <div className="tracer-rating-matrix">
+      {rows.map((r) => {
+        const total = Object.values(r.ratings).reduce((a, b) => a + b, 0);
+        return (
+          <div className="tracer-rating-row" key={r.skill}>
+            <span className="tracer-rating-label">{r.skill}</span>
+            <div className="tracer-rating-stack">
+              {total === 0 ? (
+                <span className="tracer-rating-empty">No responses</span>
+              ) : (
+                RATING_ORDER.map((k) => {
+                  const c = r.ratings[k] || 0;
+                  if (!c) return null;
+                  const pct = Math.round((c / total) * 100);
+                  return (
+                    <div
+                      key={k}
+                      className="tracer-rating-seg"
+                      title={`${k}: ${c} (${pct}%)`}
+                      style={{ width: `${pct}%`, background: RATING_COLORS[k] }}
+                    />
+                  );
+                })
+              )}
+            </div>
+          </div>
+        );
+      })}
+      <div className="tracer-rating-legend">
+        {RATING_ORDER.map((k) => (
+          <span key={k} className="tracer-rating-legend-item">
+            <i style={{ background: RATING_COLORS[k] }} />{k}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TracerAccordionRow({ num, title, subtitle, open, onToggle, children }) {
+  return (
+    <div className="tracer-accordion-item">
+      <button
+        type="button"
+        className="tracer-accordion-head"
+        onClick={onToggle}
+        aria-expanded={open}
+      >
+        <div>
+          <div className="tracer-accordion-title">{num}. {title}</div>
+          <div className="tracer-accordion-subtitle">{subtitle}</div>
+        </div>
+        <span className={`tracer-accordion-chevron${open ? " open" : ""}`}>⌄</span>
+      </button>
+      {open && <div className="tracer-accordion-body">{children}</div>}
+    </div>
+  );
+}
+
+function TracerStudyAnalytics({ data }) {
+  const [open, setOpen] = useState({});
+  const toggle = (key) => setOpen((o) => ({ ...o, [key]: !o[key] }));
+
+  if (!data) {
+    return (
+      <section className="panel tracer-analytics-panel">
+        <div className="panel-head"><span>Tracer Study Analytics</span></div>
+        <div className="chart-body" style={{ textAlign: "center", color: "var(--muted, #76656a)" }}>
+          Loading tracer study data…
+        </div>
+      </section>
+    );
+  }
+
+  const SECTIONS = [
+    {
+      key: "profile", title: "Respondent Profile",
+      subtitle: "Gender and course distribution of tracer respondents.",
+      body: (
+        <>
+          <h5 className="tracer-subhead">By Gender</h5>
+          <MiniDonut rows={data.respondentProfile.byGender} />
+          <h5 className="tracer-subhead">By Program</h5>
+          <DistributionBars rows={data.respondentProfile.byProgram} />
+        </>
+      ),
+    },
+    {
+      key: "exam", title: "Professional Examination",
+      subtitle: "Professional-examination participation and examination names.",
+      body: (
+        <>
+          <h5 className="tracer-subhead">Participation</h5>
+          <MiniDonut rows={data.professionalExam.byStatus} />
+          <h5 className="tracer-subhead">Examinations Taken</h5>
+          <DistributionBars rows={data.professionalExam.byExamName} />
+        </>
+      ),
+    },
+    {
+      key: "employment", title: "Employment Overview",
+      subtitle: "Employment participation, classification, job-relevance, and duration.",
+      body: (
+        <>
+          <h5 className="tracer-subhead">Employment Status</h5>
+          <MiniDonut rows={data.employmentOverview.byStatus} />
+          <h5 className="tracer-subhead">Job-Relatedness</h5>
+          <MiniBarChart rows={data.employmentOverview.byJobRelevance} />
+          <h5 className="tracer-subhead">Duration in Current Job</h5>
+          <MiniBarChart rows={data.employmentOverview.byDuration} />
+        </>
+      ),
+    },
+    {
+      key: "occupation", title: "Occupation and Industry",
+      subtitle: "Most common occupations and industries of employed respondents.",
+      body: (
+        <>
+          <h5 className="tracer-subhead">Top Occupations</h5>
+          <DistributionBars rows={data.occupationIndustry.topOccupations} />
+          <h5 className="tracer-subhead">By Industry</h5>
+          <MiniBarChart rows={data.occupationIndustry.byIndustry} />
+        </>
+      ),
+    },
+    {
+      key: "unemployment", title: "Unemployment Reasons",
+      subtitle: "Multi-response reasons selected by unemployed respondents.",
+      body: <DistributionBars rows={data.unemploymentReasons} />,
+    },
+    {
+      key: "growth", title: "Personal Growth Assessment",
+      subtitle: "Likert-style comparison of personal-growth areas.",
+      body: <RatingMatrix rows={data.personalGrowth} />,
+    },
+    {
+      key: "education", title: "Further Education",
+      subtitle: "Further-education participation and training pursuits.",
+      body: (
+        <>
+          <h5 className="tracer-subhead">Pursued Further Education</h5>
+          <MiniDonut rows={data.furtherEducation.byFurtherEducation} />
+          <h5 className="tracer-subhead">Pursued Trainings</h5>
+          <MiniDonut rows={data.furtherEducation.byTrainings} />
+        </>
+      ),
+    },
+    {
+      key: "promotion", title: "Promotion and Recognition",
+      subtitle: "Promotions and significant accomplishments reported.",
+      body: (
+        <>
+          <h5 className="tracer-subhead">Promoted in Current Job</h5>
+          <MiniDonut rows={data.promotion.byPromotion} />
+          <h5 className="tracer-subhead">Significant Accomplishments</h5>
+          <MiniDonut rows={data.promotion.byAccomplishments} />
+        </>
+      ),
+    },
+    {
+      key: "development", title: "Professional Development Activities",
+      subtitle: "Participation in professional-development activities and certifications.",
+      body: (
+        <>
+          <h5 className="tracer-subhead">Development Activities</h5>
+          <MiniDonut rows={data.professionalDevelopment.byDevActivities} />
+          <h5 className="tracer-subhead">Professional Certifications</h5>
+          <MiniDonut rows={data.professionalDevelopment.byCertifications} />
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <section className="panel tracer-analytics-panel">
+      <div className="panel-head">
+        <span>Tracer Study Analytics</span>
+        <span style={{ fontWeight: 500, fontSize: 12, opacity: 0.85 }}>{data.total} responses</span>
+      </div>
+      <div className="tracer-analytics-note">
+        Charts reflect free-text and single/multi-select answers as submitted — some categories
+        (e.g. exam names, occupations) are grouped by exact wording and may show near-duplicate
+        entries if alumni phrased answers differently.
+      </div>
+      <div className="tracer-accordion">
+        {SECTIONS.map((s, i) => (
+          <TracerAccordionRow
+            key={s.key}
+            num={i + 1}
+            title={s.title}
+            subtitle={s.subtitle}
+            open={!!open[s.key]}
+            onToggle={() => toggle(s.key)}
+          >
+            {s.body}
+          </TracerAccordionRow>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function DashboardView() {
   const { showToast } = useOutletContext();
   const navigate = useNavigate();
@@ -121,6 +420,7 @@ export default function DashboardView() {
   const [tracerCount, setTracerCount]     = useState(null);
   const [postActivities, setPostActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [tracerAnalytics, setTracerAnalytics] = useState(null);
 
   useEffect(() => {
   
@@ -129,7 +429,12 @@ export default function DashboardView() {
         const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        setTotalUsers(data.users?.length ?? 0);
+        // "Total Users" should read as portal health (real, active accounts) —
+        // counting pending (never-activated) and suspended accounts alongside
+        // active ones made the tile jump on every new registration or
+        // suspension, neither of which reflects actual active usage.
+        const activeCount = (data.users || []).filter(u => u.status === "active").length;
+        setTotalUsers(activeCount);
       } catch {}
     }
 
@@ -186,11 +491,20 @@ export default function DashboardView() {
       }
     }
 
+    async function fetchTracerAnalytics() {
+      try {
+        const res = await fetch(`${API}/admin/employment/tracer-analytics`, { headers: authHeaders() });
+        if (!res.ok) return;
+        setTracerAnalytics(await res.json());
+      } catch {}
+    }
+
     fetchTotalUsers();
     fetchActivities();
     fetchEmploymentStats();
     fetchCourseJobStats();
     fetchSurveyStats();
+    fetchTracerAnalytics();
 
     const interval = setInterval(() => {
       fetchTotalUsers();
@@ -198,6 +512,7 @@ export default function DashboardView() {
       fetchEmploymentStats();
       fetchCourseJobStats();
       fetchSurveyStats();
+      fetchTracerAnalytics();
     }, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -395,6 +710,8 @@ export default function DashboardView() {
           </section>
         </aside>
       </div>
+
+      <TracerStudyAnalytics data={tracerAnalytics} />
     </section>
   );
 }

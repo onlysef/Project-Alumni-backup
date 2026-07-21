@@ -35,12 +35,21 @@ export default function AlumniOnboarding() {
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to change password."); return; }
 
-      // Mark onboarding complete with default employment status
-      await fetch(`${API}/alumni/complete-onboarding`, {
+      // Mark onboarding complete with default employment status. The
+      // response was never checked before — if this call failed, the local
+      // session still marked onboarding done and moved on, but the server's
+      // firstLogin flag stayed true, so the very next login sent the user
+      // right back through this screen a second time.
+      const completeRes = await fetch(`${API}/alumni/complete-onboarding`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ employment_status: "Not Yet Updated" }),
       });
+      if (!completeRes.ok) {
+        const data = await completeRes.json().catch(() => ({}));
+        setError(data.message || "Password was changed, but we couldn't finish setting up your account. Please try again.");
+        return;
+      }
 
       setFirstLoginDone();
       navigate("/alumni/dashboard", { replace: true });
