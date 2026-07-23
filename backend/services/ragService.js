@@ -585,7 +585,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       const isListTopic = ['names', 'jobs', 'announcements', 'staff', 'appointments', 'events', 'partnerships'].includes(aggResult.topic);
       if (queryType === 'statistical' && (aggLineCount <= 1 || isListTopic || bulletLineCount >= 2)) {
         if (onToken) onToken(aggText);
-        return finish({ answer: aggText, sources: ['graduate_records'], type: 'statistics', suggestions });
+        return finish({ answer: aggText, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null });
       }
 
       const context  = `=== TRACER STUDY DATA (from structured records) ===\n${aggText}`;
@@ -633,7 +633,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       if (onToken) {
         for (const line of finalAnswer.split('\n')) onToken(line + '\n');
       }
-      return finish({ answer: finalAnswer, sources: ['graduate_records'], type: 'statistics', suggestions });
+      return finish({ answer: finalAnswer, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null });
     }
 
     // See the collegeScope comment above — a scoped coordinator query that

@@ -2,8 +2,24 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
 import { marked } from "marked";
+import { MiniDonut, DistributionBars } from "../../components/common/Charts.jsx";
 
 marked.setOptions({ breaks: true, gfm: true });
+
+// Renders the chart data the backend attaches to breakdown-style answers
+// ("how many are male?", employment status, industry, etc.) — dispatches by
+// chart.type onto the same chart primitives the admin Dashboard uses, so a
+// chatbot answer and the dashboard read as one consistent visual system.
+function AcChart({ chart }) {
+  if (!chart || !chart.rows?.length) return null;
+  const Chart = chart.type === "bars" ? DistributionBars : MiniDonut;
+  return (
+    <div className="ac-chart-block">
+      {chart.title && <div className="ac-chart-title">{chart.title}</div>}
+      <Chart rows={chart.rows} />
+    </div>
+  );
+}
 
 const QUICK_PROMPTS = [
   { label: "Alumni records", text: "How many alumni records are there?" },
@@ -352,6 +368,13 @@ export default function AiAssistantView() {
               // and guaranteed answerable; prefer them over the static local heuristic.
               if (Array.isArray(payload.suggestions) && payload.suggestions.length) {
                 serverSuggestions = payload.suggestions;
+              }
+              // Chart data (breakdown questions like "how many are male?")
+              // renders an inline graph below the text answer.
+              if (payload.chart) {
+                setMessages((m) =>
+                  m.map((msg) => msg.id === streamingId ? { ...msg, chart: payload.chart } : msg)
+                );
               }
             } else if (payload.error) {
               setMessages((m) =>
@@ -734,6 +757,7 @@ export default function AiAssistantView() {
                       className="ac-ac-text ac-markdown"
                       dangerouslySetInnerHTML={{ __html: marked.parse(m.text || "") }}
                     />
+                    <AcChart chart={m.chart} />
                     <div className="ac-msg-tools ac-msg-tools-ac">
                       <button
                         type="button"

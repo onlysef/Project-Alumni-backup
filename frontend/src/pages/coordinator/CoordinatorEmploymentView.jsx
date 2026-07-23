@@ -123,11 +123,10 @@ export default function CoordinatorEmploymentView() {
       });
       const all = data.records ?? [];
       downloadCsv("coordinator-employment-details.csv", [
-        ["Name", "Course", "Company", "Position", "Status"],
+        ["Name", "Course", "Position", "Status"],
         ...all.map((r) => [
           r.name,
           r.course ?? "",
-          r.company_name ?? "",
           r.job_title ?? "",
           r.employment_status ?? "",
         ]),
@@ -179,6 +178,7 @@ export default function CoordinatorEmploymentView() {
             <option value="BSIT">BSIT</option>
             <option value="BSCS">BSCS</option>
             <option value="BSIS">BSIS</option>
+            <option value="BSIM">BSIM</option>
           </select>
         </div>
 
@@ -191,7 +191,6 @@ export default function CoordinatorEmploymentView() {
               <tr>
                 <th>Name</th>
                 <th>Course</th>
-                <th>Company</th>
                 <th>Position</th>
                 <th>Status</th>
               </tr>
@@ -199,7 +198,7 @@ export default function CoordinatorEmploymentView() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="coord-employ-empty">
+                  <td colSpan={4} className="coord-employ-empty">
                     No records found.
                   </td>
                 </tr>
@@ -208,7 +207,6 @@ export default function CoordinatorEmploymentView() {
                   <tr key={row._id}>
                     <td data-label="Name">{display(row.name)}</td>
                     <td data-label="Course">{display(row.course)}</td>
-                    <td data-label="Company">{display(row.company_name)}</td>
                     <td data-label="Position">{display(row.job_title)}</td>
                     <td data-label="Status"><CoordinatorStatusBadge status={row.employment_status} /></td>
                   </tr>

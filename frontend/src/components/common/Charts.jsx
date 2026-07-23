@@ -86,8 +86,8 @@ export function CourseJobChart({ data, metric }) {
         ))}
         <div className="chart-insights">
           <div><strong>{isTrackView ? "Top Track" : "Top Course"}</strong><span>{topLabel || "—"}</span></div>
-          <div><strong>Average</strong><span>{avg}%</span></div>
-          <div><strong>Job-Related</strong><span>{jobRelatedRate}%</span></div>
+          <div><strong>Avg. {activeMetric === "employmentRate" ? "Employment Rate" : "Job-Related Rate"}</strong><span>{avg}%</span></div>
+          <div><strong>Overall Job-Related</strong><span>{jobRelatedRate}%</span></div>
           <div><strong>{isTrackView ? "BSIT Alumni" : "Total Alumni"}</strong><span>{totalAlumni}</span></div>
         </div>
       </div>
@@ -186,6 +186,70 @@ export function EmploymentChart({ data }) {
           {tip.text}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Shared small chart primitives (dashboard tracer analytics + AC chatbot) ───
+
+// Same palette as the Course vs Job chart above — red, gold, peach, brown —
+// extended with harmonious shades for categories beyond 4.
+export const CHART_PALETTE = ["#941527", "#dea045", "#eaaa63", "#6b4226", "#570013", "#c23b52", "#e9ad69", "#8f8f8f"];
+
+// Small donut — best for binary/few-category distributions (Yes/No, gender, status).
+export function MiniDonut({ rows }) {
+  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  let acc = 0;
+  const segments = rows.map((r, i) => {
+    const pct   = total > 0 ? (r.count / total) * 100 : 0;
+    const start = acc;
+    acc += pct;
+    return { ...r, pct: Math.round(pct), start, end: acc, color: CHART_PALETTE[i % CHART_PALETTE.length] };
+  });
+  const gradient = segments.map((s) => `${s.color} ${s.start}% ${s.end}%`).join(", ");
+  return (
+    <div className="tracer-donut-layout">
+      <div className="tracer-donut" style={{ background: `conic-gradient(${gradient})` }}>
+        <span className="tracer-donut-total">{total}</span>
+      </div>
+      <div className="tracer-donut-legend">
+        {segments.map((s) => (
+          <div className="tracer-donut-legend-row" key={s.label}>
+            <span className="tracer-donut-swatch" style={{ background: s.color }} />
+            <span className="tracer-donut-legend-label" title={s.label}>{s.label}</span>
+            <span className="tracer-donut-legend-value">{s.count} <em>({s.pct}%)</em></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Horizontal ranked bar list — best for many categories, ranked by count.
+export function DistributionBars({ rows, limit }) {
+  if (!rows || rows.length === 0) {
+    return <p className="tracer-empty">No responses yet.</p>;
+  }
+  const shown = limit ? rows.slice(0, limit) : rows;
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  const max   = Math.max(...shown.map((r) => r.count), 1);
+  return (
+    <div className="tracer-bars">
+      {shown.map((r) => {
+        const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
+        return (
+          <div className="tracer-bar-row" key={r.label}>
+            <div className="tracer-bar-label">{r.label}</div>
+            <div className="tracer-bar-meter">
+              <div className="tracer-bar-track">
+                <div className="tracer-bar-fill" style={{ width: `${Math.max((r.count / max) * 100, 4)}%` }} />
+              </div>
+              <span className="tracer-bar-count">{r.count} <em>({pct}%)</em></span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

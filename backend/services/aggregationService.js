@@ -461,6 +461,21 @@ function pct(n, total) {
   return total > 0 ? `${((n / total) * 100).toFixed(1)}%` : '—';
 }
 
+// Builds the { text, chart } shape queryInner()'s wrapper expects. `rows` is
+// whatever category/count rows the calling function already computed for its
+// text breakdown — reused as-is for the chart rather than re-querying.
+// `labelField` lets callers whose rows key the label as `_id` (most raw
+// $group outputs) or `label`/`display` (already-merged case-insensitive
+// groups like queryGender/queryEmployment) all feed the same helper.
+function withChart(text, { type = 'donut', title, rows, labelField = '_id', limit } = {}) {
+  if (!text || !rows?.length) return text;
+  const chartRows = (limit ? rows.slice(0, limit) : rows)
+    .map(r => ({ label: String(r[labelField] ?? r._id ?? r.label ?? ''), count: r.count }))
+    .filter(r => r.label);
+  if (!chartRows.length) return text;
+  return { text, chart: { type, title, rows: chartRows } };
+}
+
 const YES_RE = /^yes\b/i;
 
 // Maps tookExam filter value → MongoDB match condition
@@ -513,15 +528,23 @@ async function queryEmployment(filters) {
     ...stablePipeline(filters),
     { $match: { employmentStatus: { $nin: [null, ''] } } },
     { $addFields: { _status: { $trim: { input: '$employmentStatus' } } } },
-    { $group: { _id: '$_status', count: { $sum: 1 } } },
+    // Group case-insensitively so data-entry variants like "yes" vs "Yes"
+    // merge into one row instead of splitting the same status across two
+    // separate breakdown lines. The summary total below already folded
+    // these together (YES_RE/self-employed regexes are case-insensitive),
+    // so "Yes: 167" + a separate "yes: 2" line made the per-row breakdown
+    // visibly disagree with its own combined total.
+    { $group: { _id: { norm: { $toLower: '$_status' }, orig: '$_status' }, count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $group: { _id: '$_id.norm', label: { $first: '$_id.orig' }, count: { $sum: '$count' } } },
     { $sort: { count: -1 } },
   ]);
   const total = rows.reduce((s, r) => s + r.count, 0);
   if (total === 0) return null;
 
-  const formal   = rows.filter(r => YES_RE.test(r._id) || /^employed$/i.test(r._id))
+  const formal   = rows.filter(r => YES_RE.test(r.label) || /^employed$/i.test(r.label))
                        .reduce((s, r) => s + r.count, 0);
-  const selfEmp  = rows.filter(r => /^self.?employed$/i.test(r._id))
+  const selfEmp  = rows.filter(r => /^self.?employed$/i.test(r.label))
                        .reduce((s, r) => s + r.count, 0);
   const employed = formal + selfEmp;
 
@@ -529,14 +552,14 @@ async function queryEmployment(filters) {
   // only show those rows — answer exactly what was asked, not every status
   // that happens to exist in the data.
   const displayRows = filters.employmentStatuses
-    ? rows.filter(r => filters.employmentStatuses.some(s => new RegExp(`^${s}$`, 'i').test(r._id)))
+    ? rows.filter(r => filters.employmentStatuses.some(s => new RegExp(`^${s}$`, 'i').test(r.label)))
     : rows;
 
   const lbl = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
   let out = `Based on the tracer study data${lbl}, there are **${total}** ${gPrefix}respondents.\n\n`;
   out += `**Employment Breakdown:**\n`;
-  displayRows.forEach(r => { out += `- ${r._id}: **${r.count}** (${pct(r.count, total)})\n`; });
+  displayRows.forEach(r => { out += `- ${r.label}: **${r.count}** (${pct(r.count, total)})\n`; });
 
   // The "overall employment rate" synthesizes beyond just the requested
   // statuses (it folds Self-Employed into "employed"), so only show it for
@@ -551,7 +574,12 @@ async function queryEmployment(filters) {
     // "Overall employment rate" above already treats it).
     out += `\n**Combined (employed + self-employed): ${employed}** (${pct(employed, total)})`;
   }
-  return out;
+  // filters.employmentStatuses is only ever set when 2+ statuses were named
+  // ("employed and unemployed") — still a comparison across categories, so
+  // it charts the same as the full unfiltered breakdown. Only a single named
+  // status (filters.employmentStatus, singular) skips charting — that's
+  // queryCount()'s territory, not this function's.
+  return withChart(out, { type: 'donut', title: 'Employment Breakdown', rows: displayRows, labelField: 'label' });
 }
 
 async function queryIndustry(filters) {
@@ -617,6 +645,9 @@ async function queryIndustry(filters) {
       out += `\nBreakdown:\n`;
       rows.forEach((r, i) => { out += `${i + 1}. **${r._id}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
     }
+    // No chart — a specific industry was named, so this narrows to that one
+    // industry (the "breakdown" above is just near-duplicate name variants),
+    // not an open comparison across all industries.
     return out;
   }
 
@@ -629,7 +660,7 @@ async function queryIndustry(filters) {
 
   let out = `**Top industries where ${gPrefix}${statusAdj}graduates${locLabel}${lbl} are working:**\n\n`;
   rows.forEach((r, i) => { out += `${i + 1}. **${r._id}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
-  return out;
+  return withChart(out, { type: 'bars', title: 'Top Industries', rows });
 }
 
 async function queryGender(filters) {
@@ -664,15 +695,18 @@ async function queryGender(filters) {
 
   // Specific gender asked ("how many male?") → direct single count, not the
   // full breakdown, matching how queryCount() answers a specific-status ask.
+  // No chart here — the question and answer are both a single specific
+  // number, not a comparison across categories.
   if (filters.gender) {
     const match = rows.find(r => r._id === filters.gender.toLowerCase());
     const count = match?.count ?? 0;
-    return `There are **${count}** ${filters.gender.toLowerCase()} graduate${count !== 1 ? 's' : ''} in the tracer study database${lbl} (${pct(count, total)} of ${total} respondents with gender recorded).`;
+    const text = `There are **${count}** ${filters.gender.toLowerCase()} graduate${count !== 1 ? 's' : ''} in the tracer study database${lbl} (${pct(count, total)} of ${total} respondents with gender recorded).`;
+    return text;
   }
 
   let out = `**Gender breakdown${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **${r.display}**: ${r.count} (${pct(r.count, total)})\n`; });
-  return out;
+  return withChart(out, { type: 'donut', title: 'Gender Breakdown', rows, labelField: 'display' });
 }
 
 async function queryWorkType(filters) {
@@ -689,7 +723,7 @@ async function queryWorkType(filters) {
   const gPrefix = genderPrefix(filters);
   let out = `**Employment type breakdown${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
-  return out;
+  return withChart(out, { type: 'donut', title: 'Employment Type', rows });
 }
 
 async function querySector(filters) {
@@ -709,7 +743,7 @@ async function querySector(filters) {
   out += `**Employment Type Breakdown:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
   out += `\n_For accurate sector data, the survey would need a dedicated "employer type" (government/private) question._`;
-  return out;
+  return withChart(out, { type: 'donut', title: 'Employment Type', rows });
 }
 
 async function queryJobRelevance(filters) {
@@ -728,7 +762,7 @@ async function queryJobRelevance(filters) {
   let out = `**Job relevance to course of study${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
   out += `\n${pct(yes, total)} of ${gPrefix}graduates work in a field related to their course.`;
-  return out;
+  return withChart(out, { type: 'donut', title: 'Job Relevance to Course', rows });
 }
 
 // Answers "which program leads to the most job-aligned graduates?" — computed
@@ -791,7 +825,12 @@ async function queryLicensure(filters) {
   out += `  - Failed: **${failed}**\n`;
   out += `- Did not take: **${notTook}** (${pct(notTook, total)})\n`;
   out += `\nOut of **${total}** ${gPrefix}respondents.`;
-  return out;
+  const chartRows = [
+    { _id: 'Passed', count: passed },
+    { _id: 'Failed', count: failed },
+    { _id: 'Did not take', count: notTook },
+  ].filter(r => r.count > 0);
+  return withChart(out, { type: 'donut', title: 'Licensure Exam Results', rows: chartRows });
 }
 
 async function queryFurtherStudies(filters) {
@@ -819,7 +858,11 @@ async function queryFurtherStudies(filters) {
   out += `- Pursued further education: **${pursued}** (${pct(pursued, total)})\n`;
   out += `- Did not pursue: **${notPursued}** (${pct(notPursued, total)})\n`;
   out += `\nOut of **${total}** ${gPrefix}respondents.`;
-  return out;
+  const chartRows = [
+    { _id: 'Pursued further education', count: pursued },
+    { _id: 'Did not pursue', count: notPursued },
+  ].filter(r => r.count > 0);
+  return withChart(out, { type: 'donut', title: 'Further Education', rows: chartRows });
 }
 
 const COMP_LABEL = {
@@ -851,7 +894,7 @@ async function queryCompetencies(filters) {
     const total = rows.reduce((s, r) => s + r.count, 0);
     let out = `**${label} self-ratings${lbl} (${total} ${gPrefix}respondents):**\n\n`;
     rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
-    return out;
+    return withChart(out, { type: 'donut', title: `${label} Self-Ratings`, rows });
   }
 
   // No specific competency → show most common rating for all 8
@@ -938,7 +981,7 @@ async function queryWorkLocation(filters) {
   if (!rows.length) return null;
   let out = `**Work location of ${gPrefix}graduates${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
-  return out;
+  return withChart(out, { type: 'donut', title: 'Work Location', rows });
 }
 
 async function queryByProgram(filters) {
@@ -972,7 +1015,8 @@ async function queryByProgram(filters) {
     const emp = r.employed + r.selfEmp;
     out += `- **${r._id}**: ${r.total} respondents, ${emp} employed (${pct(emp, r.total)})\n`;
   });
-  return out;
+  const chartRows = rows.map(r => ({ _id: r._id, count: r.total }));
+  return withChart(out, { type: 'bars', title: 'Respondents by Program', rows: chartRows });
 }
 
 // Answers "which course/program has the highest employment rate?" — same
@@ -1012,7 +1056,10 @@ async function queryEmploymentRateByProgram(filters) {
   let out = `**Employment rate by program:**\n\n`;
   ranked.forEach(r => { out += `- **${r._id}**: ${r.emp}/${r.total} employed (${pct(r.emp, r.total)})\n`; });
   out += `\n**${top._id}** has the highest employment rate at **${pct(top.emp, top.total)}** (${top.emp} out of ${top.total}, including self-employed).`;
-  return out;
+  // Chart bars show each program's employment RATE (%), not raw headcount —
+  // that's the actual thing being compared/ranked here.
+  const chartRows = ranked.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: 'Employment Rate by Program (%)', rows: chartRows });
 }
 
 // Answers "which course produces the most unemployed graduates?" / "which
@@ -1069,7 +1116,8 @@ async function queryProgramRateExtreme(filters, direction, metric) {
   });
   const topShown = metric === 'unemployment' ? top.notEmp : top.emp;
   out += `\n**${top._id}** had the ${direction} ${metric} rate, at **${pct(topShown, top.total)}** (${topShown} out of ${top.total}).`;
-  return out;
+  const chartRows = ranked.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: `${label} Rate by Program (%)`, rows: chartRows });
 }
 
 // Answers "which program has the most alumni working abroad/locally?" — a
@@ -1142,7 +1190,8 @@ async function queryByYear(filters) {
     const emp = r.employed + r.selfEmp;
     out += `- **Batch ${r._id}**: ${emp}/${r.total} employed (${pct(emp, r.total)})\n`;
   });
-  return out;
+  const chartRows = rows.map(r => ({ _id: `Batch ${r._id}`, count: r.total })).reverse();
+  return withChart(out, { type: 'bars', title: 'Respondents by Batch Year', rows: chartRows });
 }
 
 // Answers "which batch/year had the most/fewest graduates?" — raw headcount
@@ -1170,7 +1219,8 @@ async function queryYearWithMostGraduates(filters, direction) {
   let out = `**Graduates by batch year${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **Batch ${r._id}**: ${r.total} graduate${r.total !== 1 ? 's' : ''}\n`; });
   out += `\n**Batch ${top._id}** had the ${direction === 'highest' ? 'most' : 'fewest'} graduates, with **${top.total}**.`;
-  return out;
+  const chartRows = [...rows].reverse().map(r => ({ _id: `Batch ${r._id}`, count: r.total }));
+  return withChart(out, { type: 'bars', title: 'Graduates by Batch Year', rows: chartRows });
 }
 
 // Answers "which year had the highest/lowest employment/unemployment rate?"
@@ -1219,7 +1269,8 @@ async function queryYearRateExtreme(filters, direction, metric) {
   });
   const topShown = metric === 'unemployment' ? top.notEmp : top.emp;
   out += `\n**Batch ${top._id}** had the ${direction} ${metric} rate, at **${pct(topShown, top.total)}** (${topShown} out of ${top.total}).`;
-  return out;
+  const chartRows = [...ranked].reverse().map(r => ({ _id: `Batch ${r._id}`, count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: `${label} Rate by Batch Year (%)`, rows: chartRows });
 }
 
 // Answers "which batch has the highest/lowest job-course relevance rate?" —
@@ -1540,7 +1591,24 @@ async function queryRate(filters) {
   const breakdown = filters.excludeSelfEmployed
     ? `${formal} formally employed, self-employed not counted`
     : `${employed} — ${formal} formally employed + ${selfEmp} self-employed`;
-  return `The employment rate of ${gPrefix}graduates${lbl} is **${pct(employed, total)}** (${breakdown} out of ${total} respondents).`;
+  const text = `The employment rate of ${gPrefix}graduates${lbl} is **${pct(employed, total)}** (${breakdown} out of ${total} respondents).`;
+
+  // A question that explicitly pairs "employed" with "self-employed" routes
+  // here (see isCombinedEmployedQuery in the topic dispatcher) — still a
+  // 2-category comparison, so it charts the same as any other named-status
+  // compound, unlike the general "what is the employment rate" ask (a single
+  // derived percentage, not a comparison).
+  const isCombinedEmployedQuery = filters.employmentStatuses?.length === 2
+    && filters.employmentStatuses.includes('Yes')
+    && filters.employmentStatuses.includes('Self-Employed');
+  if (isCombinedEmployedQuery) {
+    const chartRows = [
+      { _id: 'Formally Employed', count: formal },
+      { _id: 'Self-Employed', count: selfEmp },
+    ].filter(r => r.count > 0);
+    return withChart(text, { type: 'donut', title: 'Employed + Self-Employed', rows: chartRows });
+  }
+  return text;
 }
 
 async function queryCount(filters) {
@@ -1885,8 +1953,14 @@ async function queryInner(question) {
   // whether things are getting better or worse, which it structurally
   // cannot do.
   if (/\btrend\b|\byear[\s-]over[\s-]year\b|\bover\s+time\b|\b(improv|declin|increas|decreas|grow(?:ing|th)?|worsen|drop(?:ping|ped)?)\w*\b/i.test(question) || filters.yearFrom) {
-    const text = await queryByYear(filters);
-    if (text) return { text, direct: true, topic: 'by_year', filters };
+    // queryByYear() may return { text, chart } now — normalize the same way
+    // the generic dispatch wrapper below does, since this early-return
+    // bypasses that wrapper entirely.
+    const result = await queryByYear(filters);
+    if (result) {
+      const { text, chart } = typeof result === 'string' ? { text: result, chart: null } : result;
+      if (text) return { text, direct: true, topic: 'by_year', filters, chart: chart || null };
+    }
   }
 
   // "Which batch year had the most graduates?" / "Which year had the
@@ -1908,14 +1982,20 @@ async function queryInner(question) {
     // neither "employ" nor "unemploy", so without this check it silently
     // fell through to the plain graduate-headcount ranking instead, a
     // totally different metric than the one actually asked about.
-    const text = isJobAlignmentQuestion
+    const result = isJobAlignmentQuestion
       ? await queryYearJobAlignment(filters, direction)
       : /\bunemploy/i.test(question)
       ? await queryYearRateExtreme(filters, direction, 'unemployment')
       : /\bemploy/i.test(question)
       ? await queryYearRateExtreme(filters, direction, 'employment')
       : await queryYearWithMostGraduates(filters, direction);
-    if (text) return { text, direct: true, topic: 'by_year', filters };
+    // queryYearRateExtreme()/queryYearWithMostGraduates() may return
+    // { text, chart } now — normalize the same way the generic dispatch
+    // wrapper below does, since this early-return bypasses that wrapper.
+    if (result) {
+      const { text, chart } = typeof result === 'string' ? { text: result, chart: null } : result;
+      if (text) return { text, direct: true, topic: 'by_year', filters, chart: chart || null };
+    }
   }
 
   // A bare program mention — "BSIT", "BSIT graduates", "IT graduates" —
@@ -2006,7 +2086,13 @@ async function queryInner(question) {
       : /\bemployment\s+(breakdown|data|statistic)/i.test(question) ? queryEmployment(filters)
       : queryOverview(filters),
     industry:        async () => {
-      const text = await queryIndustry(filters);
+      // queryIndustry() now returns { text, chart } when it has rows to
+      // chart — normalize to a plain string here for the "most/highest"
+      // rewrite below, then reattach the chart to whatever text comes out.
+      const result = await queryIndustry(filters);
+      if (!result) return result;
+      const { text, chart } = typeof result === 'string' ? { text: result, chart: null } : result;
+
       // "Which industry employs the most alumni?" — queryIndustry()'s
       // no-filter branch already sorts industries by count descending, so
       // the top line IS the answer; without this the response was just a
@@ -2015,9 +2101,9 @@ async function queryInner(question) {
       if (text && !filters.industry && !filters.excludeIndustry && /\b(most|highest)\b/i.test(question)) {
         const firstLine = text.split('\n').find(l => /^\d+\.\s+\*\*/.test(l));
         const m = firstLine && firstLine.match(/\*\*(.+?)\*\*\s+—\s+(\d+)/);
-        if (m) return `${text}\n\n**${m[1]}** employs the most alumni, with **${m[2]}** graduates.`;
+        if (m) return chart ? { text: `${text}\n\n**${m[1]}** employs the most alumni, with **${m[2]}** graduates.`, chart } : `${text}\n\n**${m[1]}** employs the most alumni, with **${m[2]}** graduates.`;
       }
-      return text;
+      return chart ? { text, chart } : text;
     },
     work_type:       () => isSectorQuestion ? querySector(filters) : queryWorkType(filters),
     job_relevance:   () => /\bwhich\s+(program|course|degree)\b/i.test(question) ? queryJobAlignmentByProgram(filters)
@@ -2068,8 +2154,14 @@ async function queryInner(question) {
     },
   }[topic] ?? (() => queryEmployment(filters));
 
-  const text = await fn();
-  return text ? { text, direct: true, topic, filters } : null;
+  // Most query functions still return a plain string; a growing set (starting
+  // with queryGender) return { text, chart } instead so the AC chatbot can
+  // render an inline graph alongside the answer — handle both shapes here
+  // rather than converting all ~30 functions at once.
+  const result = await fn();
+  if (!result) return null;
+  const { text, chart } = typeof result === 'string' ? { text: result, chart: null } : result;
+  return text ? { text, direct: true, topic, filters, chart: chart || null } : null;
 }
 
 // A college coordinator must only ever see their own college's tracer study

@@ -3209,6 +3209,16 @@ body.dark-mode .coord-highlight .admin-svg-icon {
     background: #76162a;
     transform: translateY(-1px);
 }
+.coord-notify-btn:disabled {
+    background: #9c9c9c;
+    color: #f0f0f0;
+    cursor: not-allowed;
+    opacity: 0.75;
+}
+.coord-notify-btn:disabled:hover {
+    background: #9c9c9c;
+    transform: none;
+}
 @media (max-width: 600px) {
     .coord-notify-btn {
         flex: 1 1 100%;
