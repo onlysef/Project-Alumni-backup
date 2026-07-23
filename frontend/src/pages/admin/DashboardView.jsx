@@ -703,22 +703,39 @@ export default function DashboardView() {
 
           <section className="panel">
             <div className="panel-head">
-              <span>Course vs Job</span>
-              <Dropdown
-                menuClassName="filter-menu"
-                active={COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label}
-                options={COURSE_JOB_METRICS.map((m) => m.label)}
-                onSelect={(label) => {
-                  const m = COURSE_JOB_METRICS.find((x) => x.label === label);
-                  if (m) setCourseJobMetric(m.key);
-                  showToast(`Course chart: ${label}`);
-                }}
-                trigger={(toggle) => (
-                  <button className="filter" type="button" onClick={toggle}>
-                    {COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label ?? "Filter"}
-                  </button>
-                )}
-              />
+              <span>Employment Rate by Course</span>
+              <div className="chart-head-actions">
+                <Dropdown
+                  menuClassName="filter-menu"
+                  active={COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label}
+                  options={COURSE_JOB_METRICS.map((m) => m.label)}
+                  onSelect={(label) => {
+                    const m = COURSE_JOB_METRICS.find((x) => x.label === label);
+                    if (m) setCourseJobMetric(m.key);
+                    showToast(`Course chart: ${label}`);
+                  }}
+                  trigger={(toggle) => (
+                    <button className="filter" type="button" onClick={toggle}>
+                      {COURSE_JOB_METRICS.find((m) => m.key === courseJobMetric)?.label ?? "Filter"}
+                    </button>
+                  )}
+                />
+                <button
+                  className="chart-export-button"
+                  type="button"
+                  onClick={() => {
+                    if (!courseJobData.byCourse?.length && !courseJobData.bsitByTrack?.length) {
+                      showToast("Chart data is still loading.");
+                      return;
+                    }
+                    downloadReport("Course vs Job", courseJobData, donutData, surveyStats, "All");
+                    showToast("Employment rate by course exported.");
+                  }}
+                >
+                  <Icon name="icon-download" />
+                  <span>Exports</span>
+                </button>
+              </div>
             </div>
             <CourseJobChart data={courseJobData} metric={courseJobMetric} />
           </section>
@@ -726,21 +743,38 @@ export default function DashboardView() {
           <section className="panel">
             <div className="panel-head">
               <span>Employed vs Unemployed</span>
-              <Dropdown
-                menuClassName="filter-menu"
-                active={donutCourse}
-                options={DONUT_COURSES}
-                onSelect={(label) => {
-                  setDonutCourse(label);
-                  setDonutData(null);
-                  showToast(`Employment chart: ${label}`);
-                }}
-                trigger={(toggle) => (
-                  <button className="filter" type="button" onClick={toggle}>
-                    {donutCourse === "All" ? "Filter" : donutCourse}
-                  </button>
-                )}
-              />
+              <div className="chart-head-actions">
+                <Dropdown
+                  menuClassName="filter-menu"
+                  active={donutCourse}
+                  options={DONUT_COURSES}
+                  onSelect={(label) => {
+                    setDonutCourse(label);
+                    setDonutData(null);
+                    showToast(`Employment chart: ${label}`);
+                  }}
+                  trigger={(toggle) => (
+                    <button className="filter" type="button" onClick={toggle}>
+                      {donutCourse === "All" ? "Filter" : donutCourse}
+                    </button>
+                  )}
+                />
+                <button
+                  className="chart-export-button"
+                  type="button"
+                  onClick={() => {
+                    if (!donutData) {
+                      showToast("Chart data is still loading.");
+                      return;
+                    }
+                    downloadReport("Employment Status Distribution", courseJobData, donutData, surveyStats, "All");
+                    showToast("Employment chart exported.");
+                  }}
+                >
+                  <Icon name="icon-download" />
+                  <span>Exports</span>
+                </button>
+              </div>
             </div>
             <EmploymentChart data={donutData} />
           </section>
