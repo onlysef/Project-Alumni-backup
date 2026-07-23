@@ -14,6 +14,8 @@ const AttendanceLog      = require('../models/AttendanceLog');
 const EventFeedback      = require('../models/EventFeedback');
 const EventInterested    = require('../models/EventInterested');
 const Notification       = require('../models/Notification');
+const Graduate           = require('../models/Graduate');
+const EmbeddingDocument  = require('../models/EmbeddingDocument');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 
 const upload = multer({
@@ -183,6 +185,10 @@ const deleteUser = async (req, res) => {
 
     // Cascade delete all records linked to this user.
     // allSettled so one failing delete never blocks the rest.
+    // Graduate (the AC AI Assistant's stats/RAG source) has no alumni_id —
+    // submitTracerStudy() upserts it by email instead — so it's matched the
+    // same way here. Its live-submission RAG chunk is tagged with the
+    // Graduate _id, so that has to be looked up before it can be removed.
     const cascadeResults = await Promise.allSettled([
       AlumniEmployment.deleteOne({ alumni_id: req.params.id }),
       TracerStudyResponse.deleteOne({ alumni_id: req.params.id }),
@@ -193,6 +199,13 @@ const deleteUser = async (req, res) => {
       ActivityLog.deleteMany({ user_id: req.params.id }),
       EmploymentActivity.deleteMany({ user_id: req.params.id }),
       Notification.deleteMany({ user_id: req.params.id }),
+      (async () => {
+        if (!user.email) return;
+        const graduate = await Graduate.findOneAndDelete({ email: user.email.toLowerCase().trim() });
+        if (graduate) {
+          await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
+        }
+      })(),
     ]);
     cascadeResults.forEach((r, i) => {
       if (r.status === 'rejected') console.error(`deleteUser cascade[${i}] error:`, r.reason);

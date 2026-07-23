@@ -652,7 +652,7 @@ const getDonutStats = async (req, res) => {
       { $match: { '_u.role': 'alumni' } },
     ];
 
-    if (course && ['BSIT', 'BSCS', 'BSIS'].includes(course)) {
+    if (course && ['BSIT', 'BSCS', 'BSIS', 'BSIM'].includes(course)) {
       pipeline.push({ $match: { '_u.course': course } });
     }
 
@@ -745,6 +745,7 @@ const SKILL_LABELS = {
 // education, promotion, professional development).
 const getTracerAnalytics = async (req, res) => {
   try {
+    const college = (req.query.college || '').trim().toUpperCase();
     const notBlank = (field) => ({ [field]: { $nin: ['', null] } });
 
     // Groups by a case-INsensitive key so typos like "MAle" merge into
@@ -765,6 +766,25 @@ const getTracerAnalytics = async (req, res) => {
     ];
 
     const [result] = await TracerStudyResponse.aggregate([
+      // Deleting an alumni account doesn't always reach every linked record
+      // (e.g. accounts removed before cascade-delete covered
+      // TracerStudyResponse, or removed directly in the database) — an
+      // orphaned response with no matching User would otherwise still be
+      // counted here forever, showing programs/answers for alumni that were
+      // explicitly deleted. Same guard as getSurveyStats/getDonutStats above.
+      //
+      // Also require role === 'alumni': a response stays linked to a valid
+      // User even after that account's role is changed away from alumni
+      // (e.g. promoted to coordinator/admin for testing) — role changes
+      // don't cascade-clean the old tracer response, so without this check
+      // this dashboard's "alumni" stats silently included non-alumni
+      // accounts' leftover answers.
+      //
+      // Optional college filter — admin sees every college by default (no
+      // college scoping applies to admin, unlike coordinators), but can
+      // narrow the dashboard to one college at a time via ?college=.
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: college ? { '_user.0.role': 'alumni', '_user.0.college': college } : { '_user.0.role': 'alumni' } },
       {
         $facet: {
           total: [{ $count: 'count' }],
@@ -1108,8 +1128,18 @@ const deleteTracerQuestion = async (req, res) => {
 // POST /api/admin/employment/notify
 const { sendEmploymentReminderBulk } = require('../utils/emailService');
 
+// Mirrors NOTIFY_ALUMNI_DISABLED in frontend/src/pages/admin/EmploymentView.jsx.
+// The 254 bulk-migrated alumni accounts must not be emailed until explicitly
+// authorized — the frontend button is disabled, but that alone doesn't stop
+// a direct API call, so this is the actual enforcement point. Flip both
+// flags together when permission is granted.
+const NOTIFY_ALUMNI_DISABLED = true;
+
 const notifyAlumniToUpdate = async (req, res) => {
   try {
+    if (NOTIFY_ALUMNI_DISABLED) {
+      return res.status(403).json({ message: 'Alumni notifications are disabled — email permission not yet granted for the migrated alumni batch.' });
+    }
     const { college, course } = req.body;
     const query = { role: 'alumni', status: 'active' };
     if (college) query.college = college;

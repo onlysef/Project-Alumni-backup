@@ -94,7 +94,7 @@ export const adminMenuChoices = {
 
 export const reportFilters = [
   ["All", "Employed", "Unemployed", "Unidentified"],
-  ["All", "BSIT", "TSM", "NA", "WMA", "BSCS", "BSIS"],
+  ["All", "BSIT", "TSM", "NA", "WMA", "BSCS", "BSIS", "BSIM"],
   ["All", "Completed", "Pending", "This Month"],
 ];
 

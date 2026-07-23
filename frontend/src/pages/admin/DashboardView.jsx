@@ -2,7 +2,7 @@
 import { useOutletContext, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Dropdown } from "../../components/common/Primitives.jsx";
-import { CourseJobChart, EmploymentChart } from "../../components/common/Charts.jsx";
+import { CourseJobChart, EmploymentChart, CHART_PALETTE, MiniDonut, DistributionBars } from "../../components/common/Charts.jsx";
 import { reportFilters } from "../../data.js";
 
 import { API, authHeaders } from "../../services/api.js";
@@ -105,70 +105,16 @@ const COURSE_JOB_METRICS = [
   { label: "BSIT Tracks",     key: "bsitTracks" },
 ];
 
-const DONUT_COURSES = ["All", "BSIT", "BSCS", "BSIS"];
+const DONUT_COURSES = ["All", "BSIT", "BSCS", "BSIS", "BSIM"];
+
+const DURATION_ORDER = [
+  "Less than 6 months", "6 months to 1 year", "1 to 2 years",
+  "2 to 3 years", "3 to 5 years", "More than 5 years",
+];
 
 // ── Tracer Study Analytics (accordion) ────────────────────────────────────────
-function DistributionBars({ rows, limit }) {
-  if (!rows || rows.length === 0) {
-    return <p className="tracer-empty">No responses yet.</p>;
-  }
-  const shown = limit ? rows.slice(0, limit) : rows;
-  const total = rows.reduce((a, r) => a + r.count, 0);
-  const max   = Math.max(...shown.map((r) => r.count), 1);
-  return (
-    <div className="tracer-bars">
-      {shown.map((r) => {
-        const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
-        return (
-          <div className="tracer-bar-row" key={r.label}>
-            <div className="tracer-bar-label">{r.label}</div>
-            <div className="tracer-bar-meter">
-              <div className="tracer-bar-track">
-                <div className="tracer-bar-fill" style={{ width: `${Math.max((r.count / max) * 100, 4)}%` }} />
-              </div>
-              <span className="tracer-bar-count">{r.count} <em>({pct}%)</em></span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Same palette as the Course vs Job chart (COURSE_COLORS in Charts.jsx) —
-// red, gold, peach, brown — extended with harmonious shades for categories
-// beyond 4 so every chart on the dashboard reads as one consistent theme.
-const CHART_PALETTE = ["#941527", "#dea045", "#eaaa63", "#6b4226", "#570013", "#c23b52", "#e9ad69", "#8f8f8f"];
-
-// Small donut — best for binary/few-category distributions (Yes/No, gender, status).
-function MiniDonut({ rows }) {
-  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
-  const total = rows.reduce((a, r) => a + r.count, 0);
-  let acc = 0;
-  const segments = rows.map((r, i) => {
-    const pct   = total > 0 ? (r.count / total) * 100 : 0;
-    const start = acc;
-    acc += pct;
-    return { ...r, pct: Math.round(pct), start, end: acc, color: CHART_PALETTE[i % CHART_PALETTE.length] };
-  });
-  const gradient = segments.map((s) => `${s.color} ${s.start}% ${s.end}%`).join(", ");
-  return (
-    <div className="tracer-donut-layout">
-      <div className="tracer-donut" style={{ background: `conic-gradient(${gradient})` }}>
-        <span className="tracer-donut-total">{total}</span>
-      </div>
-      <div className="tracer-donut-legend">
-        {segments.map((s) => (
-          <div className="tracer-donut-legend-row" key={s.label}>
-            <span className="tracer-donut-swatch" style={{ background: s.color }} />
-            <span className="tracer-donut-legend-label" title={s.label}>{s.label}</span>
-            <span className="tracer-donut-legend-value">{s.count} <em>({s.pct}%)</em></span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// DistributionBars, MiniDonut, and CHART_PALETTE now live in Charts.jsx so the
+// AC AI Assistant chat can render the same charts inline in answers.
 
 // Vertical bar chart — best for ordered or moderate-cardinality categories.
 function MiniBarChart({ rows }) {
@@ -190,6 +136,75 @@ function MiniBarChart({ rows }) {
           <div className="tracer-vbar-label" title={r.label}>{r.label}</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// Tag cloud — best for many categories that would otherwise need
+// horizontal scrolling as bars (e.g. a long industry list). Uniform chip
+// size keeps the row clean and consistent; the count inside each chip
+// still shows magnitude without relying on size differences to read it.
+function TagCloud({ rows }) {
+  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
+  const total = rows.reduce((a, r) => a + r.count, 0);
+  return (
+    <div className="tracer-tagcloud">
+      {rows.map((r, i) => {
+        const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
+        return (
+          <span
+            key={r.label}
+            className="tracer-tag"
+            style={{ background: CHART_PALETTE[i % CHART_PALETTE.length] }}
+            title={`${r.label}: ${r.count} (${pct}%)`}
+          >
+            {r.label} <b>{r.count}</b>
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// Trend/area line — best for ordinal data with a natural sequence (e.g.
+// duration buckets), where the shape across categories in THEIR order
+// matters more than ranking them by count.
+const TREND_W = 560, TREND_H = 150, TREND_PAD = 26;
+
+function TrendLine({ rows, order }) {
+  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
+  const byLabel = new Map(rows.map((r) => [r.label, r.count]));
+  const labels = order && order.length ? order : rows.map((r) => r.label);
+  const ordered = labels.map((label) => ({ label, count: byLabel.get(label) || 0 }));
+  const max = Math.max(...ordered.map((o) => o.count), 1);
+  const stepX = ordered.length > 1 ? (TREND_W - TREND_PAD * 2) / (ordered.length - 1) : 0;
+  const plotH = TREND_H - TREND_PAD * 2 - 18;
+  const points = ordered.map((o, i) => ({
+    ...o,
+    x: TREND_PAD + i * stepX,
+    y: TREND_PAD + 18 + (plotH - (o.count / max) * plotH),
+  }));
+  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const baseY = TREND_H - TREND_PAD;
+  const areaD = `${pathD} L ${points[points.length - 1].x} ${baseY} L ${points[0].x} ${baseY} Z`;
+
+  return (
+    <div className="tracer-trend">
+      <svg viewBox={`0 0 ${TREND_W} ${TREND_H}`} className="tracer-trend-svg" preserveAspectRatio="none" aria-hidden="true">
+        <path d={areaD} className="tracer-trend-area" />
+        <path d={pathD} className="tracer-trend-line" />
+        {points.map((p) => (
+          <g key={p.label}>
+            <circle cx={p.x} cy={p.y} r="4.5" className="tracer-trend-dot" />
+            <text x={p.x} y={p.y - 11} textAnchor="middle" className="tracer-trend-value">{p.count}</text>
+          </g>
+        ))}
+      </svg>
+      <div className="tracer-trend-labels" style={{ gridTemplateColumns: `repeat(${ordered.length}, 1fr)` }}>
+        {ordered.map((o) => (
+          <span key={o.label} title={o.label}>{o.label}</span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -256,21 +271,99 @@ function TracerAccordionRow({ num, title, subtitle, open, onToggle, children }) 
           <div className="tracer-accordion-title">{num}. {title}</div>
           <div className="tracer-accordion-subtitle">{subtitle}</div>
         </div>
-        <span className={`tracer-accordion-chevron${open ? " open" : ""}`}>⌄</span>
+        <span className={`tracer-accordion-chevron${open ? " open" : ""}`}>
+          <svg width="12" height="8" viewBox="0 0 12 8" fill="none" aria-hidden="true">
+            <path d="M1 1.5L6 6.5L11 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
       </button>
       {open && <div className="tracer-accordion-body">{children}</div>}
     </div>
   );
 }
 
-function TracerStudyAnalytics({ data }) {
+function pctOf(count, total) { return total > 0 ? `${Math.round((count / total) * 100)}%` : ""; }
+
+// CSV rows for a single distribution chart (Label, Count, Percent).
+function distCsv(list) {
+  const total = (list || []).reduce((a, r) => a + r.count, 0);
+  return [["Label", "Count", "Percent"], ...(list || []).map((r) => [r.label, r.count, pctOf(r.count, total)])];
+}
+
+// CSV rows for the personal-growth rating matrix (Skill, Rating, Count, Percent).
+function ratingMatrixCsv(rows) {
+  const out = [["Skill", "Rating", "Count", "Percent"]];
+  (rows || []).forEach(({ skill, ratings }) => {
+    const total = Object.values(ratings).reduce((a, b) => a + b, 0);
+    Object.entries(ratings).forEach(([rating, count]) => {
+      out.push([skill, rating, count, pctOf(count, total)]);
+    });
+  });
+  return out;
+}
+
+function downloadCsv(filename, rows) {
+  const csv = rows.map((r) => r.map((v) => {
+    const s = String(v ?? "");
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Wraps a single chart with its own title + CSV export button.
+function ChartBlock({ title, filename, csvRows, children }) {
+  return (
+    <div className="tracer-chart-block">
+      <div className="tracer-subhead-row">
+        <h5 className="tracer-subhead">{title}</h5>
+        <button
+          type="button"
+          className="tracer-chart-export"
+          title={`Export ${title} as CSV`}
+          aria-label={`Export ${title} as CSV`}
+          onClick={() => downloadCsv(filename, csvRows)}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points="7 10 12 15 17 10" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+            <line x1="12" y1="15" x2="12" y2="3" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Export
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const TRACER_COLLEGES = ["CCS", "CIT", "CAFA", "COED", "CCJE", "CPAG", "CBA", "CASS", "COS", "COE"];
+
+function TracerStudyAnalytics({ data, college, onCollegeChange }) {
   const [open, setOpen] = useState({});
   const toggle = (key) => setOpen((o) => ({ ...o, [key]: !o[key] }));
+
+  const collegeFilter = (
+    <Dropdown
+      menuClassName="filter-menu"
+      active={college}
+      options={TRACER_COLLEGES}
+      onSelect={onCollegeChange}
+      trigger={(toggleMenu) => (
+        <button className="filter" type="button" onClick={toggleMenu}>
+          {college}
+        </button>
+      )}
+    />
+  );
 
   if (!data) {
     return (
       <section className="panel tracer-analytics-panel">
-        <div className="panel-head"><span>Tracer Study Analytics</span></div>
+        <div className="panel-head"><span>Tracer Study Analytics</span>{collegeFilter}</div>
         <div className="chart-body" style={{ textAlign: "center", color: "var(--muted, #76656a)" }}>
           Loading tracer study data…
         </div>
@@ -284,23 +377,22 @@ function TracerStudyAnalytics({ data }) {
       subtitle: "Gender and course distribution of tracer respondents.",
       body: (
         <>
-          <h5 className="tracer-subhead">By Gender</h5>
-          <MiniDonut rows={data.respondentProfile.byGender} />
-          <h5 className="tracer-subhead">By Program</h5>
-          <DistributionBars rows={data.respondentProfile.byProgram} />
+          <ChartBlock title="By Gender" filename="tracer-gender.csv" csvRows={distCsv(data.respondentProfile.byGender)}>
+            <MiniDonut rows={data.respondentProfile.byGender} />
+          </ChartBlock>
+          <ChartBlock title="By Program" filename="tracer-program.csv" csvRows={distCsv(data.respondentProfile.byProgram)}>
+            <DistributionBars rows={data.respondentProfile.byProgram} />
+          </ChartBlock>
         </>
       ),
     },
     {
       key: "exam", title: "Professional Examination",
-      subtitle: "Professional-examination participation and examination names.",
+      subtitle: "Professional-examination participation of tracer respondents.",
       body: (
-        <>
-          <h5 className="tracer-subhead">Participation</h5>
+        <ChartBlock title="Participation" filename="tracer-exam-participation.csv" csvRows={distCsv(data.professionalExam.byStatus)}>
           <MiniDonut rows={data.professionalExam.byStatus} />
-          <h5 className="tracer-subhead">Examinations Taken</h5>
-          <DistributionBars rows={data.professionalExam.byExamName} />
-        </>
+        </ChartBlock>
       ),
     },
     {
@@ -308,12 +400,15 @@ function TracerStudyAnalytics({ data }) {
       subtitle: "Employment participation, classification, job-relevance, and duration.",
       body: (
         <>
-          <h5 className="tracer-subhead">Employment Status</h5>
-          <MiniDonut rows={data.employmentOverview.byStatus} />
-          <h5 className="tracer-subhead">Job-Relatedness</h5>
-          <MiniBarChart rows={data.employmentOverview.byJobRelevance} />
-          <h5 className="tracer-subhead">Duration in Current Job</h5>
-          <MiniBarChart rows={data.employmentOverview.byDuration} />
+          <ChartBlock title="Employment Status" filename="tracer-employment-status.csv" csvRows={distCsv(data.employmentOverview.byStatus)}>
+            <MiniDonut rows={data.employmentOverview.byStatus} />
+          </ChartBlock>
+          <ChartBlock title="Job-Relatedness" filename="tracer-job-relatedness.csv" csvRows={distCsv(data.employmentOverview.byJobRelevance)}>
+            <MiniBarChart rows={data.employmentOverview.byJobRelevance} />
+          </ChartBlock>
+          <ChartBlock title="Duration in Current Job" filename="tracer-job-duration.csv" csvRows={distCsv(data.employmentOverview.byDuration)}>
+            <TrendLine rows={data.employmentOverview.byDuration} order={DURATION_ORDER} />
+          </ChartBlock>
         </>
       ),
     },
@@ -322,32 +417,44 @@ function TracerStudyAnalytics({ data }) {
       subtitle: "Most common occupations and industries of employed respondents.",
       body: (
         <>
-          <h5 className="tracer-subhead">Top Occupations</h5>
-          <DistributionBars rows={data.occupationIndustry.topOccupations} />
-          <h5 className="tracer-subhead">By Industry</h5>
-          <MiniBarChart rows={data.occupationIndustry.byIndustry} />
+          <ChartBlock title="Top Occupations" filename="tracer-occupations.csv" csvRows={distCsv(data.occupationIndustry.topOccupations)}>
+            <DistributionBars rows={data.occupationIndustry.topOccupations} />
+          </ChartBlock>
+          <ChartBlock title="By Industry" filename="tracer-industry.csv" csvRows={distCsv(data.occupationIndustry.byIndustry)}>
+            <TagCloud rows={data.occupationIndustry.byIndustry} />
+          </ChartBlock>
         </>
       ),
     },
     {
       key: "unemployment", title: "Unemployment Reasons",
       subtitle: "Multi-response reasons selected by unemployed respondents.",
-      body: <DistributionBars rows={data.unemploymentReasons} />,
+      body: (
+        <ChartBlock title="Unemployment Reasons" filename="tracer-unemployment-reasons.csv" csvRows={distCsv(data.unemploymentReasons)}>
+          <DistributionBars rows={data.unemploymentReasons} />
+        </ChartBlock>
+      ),
     },
     {
       key: "growth", title: "Personal Growth Assessment",
       subtitle: "Likert-style comparison of personal-growth areas.",
-      body: <RatingMatrix rows={data.personalGrowth} />,
+      body: (
+        <ChartBlock title="Personal Growth Assessment" filename="tracer-personal-growth.csv" csvRows={ratingMatrixCsv(data.personalGrowth)}>
+          <RatingMatrix rows={data.personalGrowth} />
+        </ChartBlock>
+      ),
     },
     {
       key: "education", title: "Further Education",
       subtitle: "Further-education participation and training pursuits.",
       body: (
         <>
-          <h5 className="tracer-subhead">Pursued Further Education</h5>
-          <MiniDonut rows={data.furtherEducation.byFurtherEducation} />
-          <h5 className="tracer-subhead">Pursued Trainings</h5>
-          <MiniDonut rows={data.furtherEducation.byTrainings} />
+          <ChartBlock title="Pursued Further Education" filename="tracer-further-education.csv" csvRows={distCsv(data.furtherEducation.byFurtherEducation)}>
+            <MiniDonut rows={data.furtherEducation.byFurtherEducation} />
+          </ChartBlock>
+          <ChartBlock title="Pursued Trainings" filename="tracer-trainings.csv" csvRows={distCsv(data.furtherEducation.byTrainings)}>
+            <MiniDonut rows={data.furtherEducation.byTrainings} />
+          </ChartBlock>
         </>
       ),
     },
@@ -356,10 +463,12 @@ function TracerStudyAnalytics({ data }) {
       subtitle: "Promotions and significant accomplishments reported.",
       body: (
         <>
-          <h5 className="tracer-subhead">Promoted in Current Job</h5>
-          <MiniDonut rows={data.promotion.byPromotion} />
-          <h5 className="tracer-subhead">Significant Accomplishments</h5>
-          <MiniDonut rows={data.promotion.byAccomplishments} />
+          <ChartBlock title="Promoted in Current Job" filename="tracer-promoted.csv" csvRows={distCsv(data.promotion.byPromotion)}>
+            <MiniDonut rows={data.promotion.byPromotion} />
+          </ChartBlock>
+          <ChartBlock title="Significant Accomplishments" filename="tracer-accomplishments.csv" csvRows={distCsv(data.promotion.byAccomplishments)}>
+            <MiniDonut rows={data.promotion.byAccomplishments} />
+          </ChartBlock>
         </>
       ),
     },
@@ -368,10 +477,12 @@ function TracerStudyAnalytics({ data }) {
       subtitle: "Participation in professional-development activities and certifications.",
       body: (
         <>
-          <h5 className="tracer-subhead">Development Activities</h5>
-          <MiniDonut rows={data.professionalDevelopment.byDevActivities} />
-          <h5 className="tracer-subhead">Professional Certifications</h5>
-          <MiniDonut rows={data.professionalDevelopment.byCertifications} />
+          <ChartBlock title="Development Activities" filename="tracer-dev-activities.csv" csvRows={distCsv(data.professionalDevelopment.byDevActivities)}>
+            <MiniDonut rows={data.professionalDevelopment.byDevActivities} />
+          </ChartBlock>
+          <ChartBlock title="Professional Certifications" filename="tracer-certifications.csv" csvRows={distCsv(data.professionalDevelopment.byCertifications)}>
+            <MiniDonut rows={data.professionalDevelopment.byCertifications} />
+          </ChartBlock>
         </>
       ),
     },
@@ -380,8 +491,11 @@ function TracerStudyAnalytics({ data }) {
   return (
     <section className="panel tracer-analytics-panel">
       <div className="panel-head">
-        <span>Tracer Study Analytics</span>
-        <span style={{ fontWeight: 500, fontSize: 12, opacity: 0.85 }}>{data.total} responses</span>
+        <span style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+          <span>Tracer Study Analytics</span>
+          <span style={{ fontWeight: 500, fontSize: 12, opacity: 0.85 }}>{data.total} responses</span>
+        </span>
+        {collegeFilter}
       </div>
       <div className="tracer-analytics-note">
         Charts reflect free-text and single/multi-select answers as submitted — some categories
@@ -421,6 +535,7 @@ export default function DashboardView() {
   const [postActivities, setPostActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [tracerAnalytics, setTracerAnalytics] = useState(null);
+  const [tracerCollege, setTracerCollege] = useState("CCS");
 
   useEffect(() => {
   
@@ -491,20 +606,11 @@ export default function DashboardView() {
       }
     }
 
-    async function fetchTracerAnalytics() {
-      try {
-        const res = await fetch(`${API}/admin/employment/tracer-analytics`, { headers: authHeaders() });
-        if (!res.ok) return;
-        setTracerAnalytics(await res.json());
-      } catch {}
-    }
-
     fetchTotalUsers();
     fetchActivities();
     fetchEmploymentStats();
     fetchCourseJobStats();
     fetchSurveyStats();
-    fetchTracerAnalytics();
 
     const interval = setInterval(() => {
       fetchTotalUsers();
@@ -512,7 +618,6 @@ export default function DashboardView() {
       fetchEmploymentStats();
       fetchCourseJobStats();
       fetchSurveyStats();
-      fetchTracerAnalytics();
     }, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -529,6 +634,20 @@ export default function DashboardView() {
     }
     fetchDonutStats();
   }, [donutCourse]);
+
+  useEffect(() => {
+    async function fetchTracerAnalytics() {
+      try {
+        const qs  = tracerCollege ? `?college=${tracerCollege}` : "";
+        const res = await fetch(`${API}/admin/employment/tracer-analytics${qs}`, { headers: authHeaders() });
+        if (!res.ok) return;
+        setTracerAnalytics(await res.json());
+      } catch {}
+    }
+    fetchTracerAnalytics();
+    const interval = setInterval(fetchTracerAnalytics, 30000);
+    return () => clearInterval(interval);
+  }, [tracerCollege]);
 
   const today = new Date().toLocaleDateString(undefined, {
     weekday: "long",
@@ -711,7 +830,7 @@ export default function DashboardView() {
         </aside>
       </div>
 
-      <TracerStudyAnalytics data={tracerAnalytics} />
+      <TracerStudyAnalytics data={tracerAnalytics} college={tracerCollege} onCollegeChange={setTracerCollege} />
     </section>
   );
 }

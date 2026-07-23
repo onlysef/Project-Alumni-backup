@@ -42,9 +42,9 @@ function groupActivities(acts) {
 }
 
 const COLLEGES   = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
-const COURSES    = ["BSIT", "BSCS", "BSIS"];
+const COURSES    = ["BSIT", "BSCS", "BSIS", "BSIM"];
 const COURSES_BY_COLLEGE = {
-  CCS:  ["BSIT", "BSCS", "BSIS"],
+  CCS:  ["BSIT", "BSCS", "BSIS", "BSIM"],
   COE:  ["BSCE", "BSEE", "BSME", "BSECE"],
   CBA:  ["BSBA", "BSA", "BSME-Mgt"],
   COED: ["BEED", "BSED"],
@@ -78,12 +78,6 @@ const BATCH_YEARS = [2020, 2021, 2022, 2023, 2024];
 const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "", company: "" };
 const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
-
-const EMPTY_VALUES = new Set(["n/a", "none", "na", "null", "undefined", "-", ""]);
-function fmtField(val) {
-  const v = String(val ?? "").trim();
-  return EMPTY_VALUES.has(v.toLowerCase()) ? "—" : v;
-}
 
 function StatusBadge({ status }) {
   const cls = {
@@ -400,7 +394,6 @@ export default function EmploymentView() {
   }
 
   function printRecord(r) {
-    const co = r.employment_status === "Unemployed" ? "—" : fmtField(r.company_name);
     const w  = window.open("", "_blank");
     if (!w) { showToast(`${r.name} record is ready to print.`); return; }
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -421,7 +414,6 @@ export default function EmploymentView() {
   <tr><th>Course</th><td>${r.course || "—"}</td></tr>
   <tr><th>Batch Year</th><td>${r.graduation_year || "—"}</td></tr>
   <tr><th>Employment Status</th><td>${r.employment_status}</td></tr>
-  <tr><th>Company</th><td>${co}</td></tr>
   <tr><th>Job Title</th><td>${r.job_title || "—"}</td></tr>
   <tr><th>Industry</th><td>${r.industry || "—"}</td></tr>
   <tr><th>Work Location</th><td>${r.work_location || "—"}</td></tr>
@@ -603,7 +595,6 @@ export default function EmploymentView() {
                 <th>Name</th>
                 <th>College</th>
                 <th>Course</th>
-                <th>Company</th>
                 <th>Status</th>
                 <th>Last Updated</th>
                 <th>Actions</th>
@@ -611,17 +602,16 @@ export default function EmploymentView() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="emp-loading">Loading employment records…</td></tr>
+                <tr><td colSpan={6} className="emp-loading">Loading employment records…</td></tr>
               ) : error ? (
-                <tr><td colSpan={7} className="emp-error">{error} — <button type="button" style={{ color: "var(--maroon)", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }} onClick={() => setRefreshKey(k => k + 1)}>Retry</button></td></tr>
+                <tr><td colSpan={6} className="emp-error">{error} — <button type="button" style={{ color: "var(--maroon)", background: "none", border: "none", cursor: "pointer", fontWeight: 700 }} onClick={() => setRefreshKey(k => k + 1)}>Retry</button></td></tr>
               ) : records.length === 0 ? (
-                <tr><td colSpan={7} className="emp-empty">No employment records found.</td></tr>
+                <tr><td colSpan={6} className="emp-empty">No employment records found.</td></tr>
               ) : records.map(r => (
                 <tr key={r._id}>
                   <td data-label="Name">{r.name}</td>
                   <td data-label="College">{r.college || "—"}</td>
                   <td data-label="Course">{r.course || "—"}</td>
-                  <td data-label="Company">{(r.employment_status === "Unemployed" || r.employment_status === "Not Yet Updated") ? "—" : fmtField(r.company_name)}</td>
                   <td data-label="Status"><StatusBadge status={r.employment_status} /></td>
                   <td data-label="Last Updated">{fmtDate(r.last_updated)}</td>
                   <td data-label="Actions">
@@ -809,9 +799,6 @@ export default function EmploymentView() {
                 const isNoRecord   = r.employment_status === "Not Yet Updated";
 
                 // Tracer data takes priority; fall back to AlumniEmployment stored values
-                const company  = (isUnemployed || isNoRecord)
-                  ? "—"
-                  : fmtField(td?.companyName || r.company_name);
                 const jobTitle = td?.occupationTitle || r.job_title    || "—";
                 const industry = td?.industryField   || r.industry     || "—";
                 const workLoc  = td?.workLocation    || r.work_location || "—";
@@ -828,7 +815,6 @@ export default function EmploymentView() {
                     <div><strong>Course</strong><span>{r.course || "—"}</span></div>
                     <div><strong>Batch Year</strong><span>{r.graduation_year || "—"}</span></div>
                     <div><strong>Status</strong><span><StatusBadge status={r.employment_status} /></span></div>
-                    <div><strong>Company</strong><span>{company}</span></div>
                     {!isUnemployed && !isNoRecord && (
                       <>
                         <div><strong>Job Title</strong><span>{jobTitle}</span></div>

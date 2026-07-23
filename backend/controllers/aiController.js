@@ -1,4 +1,5 @@
 const multer        = require('multer');
+const crypto        = require('crypto');
 const { HfInference } = require('@huggingface/inference');
 const EmbeddingDocument = require('../models/EmbeddingDocument');
 const ImportedFile  = require('../models/ImportedFile');
@@ -67,7 +68,7 @@ const chat = async (req, res) => {
     // data — admins see everything. See utils/collegeScope.js for why.
     const college = req.user?.role === 'coordinator' ? req.user.college : null;
 
-    const { sources, type, suggestions } = await generateAnswer(
+    const { sources, type, suggestions, chart } = await generateAnswer(
       question,
       history,
       { college },
@@ -76,9 +77,10 @@ const chat = async (req, res) => {
       }
     );
 
-    // Final event with sources, classification type, and (when available)
-    // backend-computed follow-up suggestions guaranteed answerable by aggregation.
-    res.write(`data: ${JSON.stringify({ done: true, sources, type, suggestions })}\n\n`);
+    // Final event with sources, classification type, (when available)
+    // backend-computed follow-up suggestions guaranteed answerable by
+    // aggregation, and (when available) chart data for an inline graph.
+    res.write(`data: ${JSON.stringify({ done: true, sources, type, suggestions, chart })}\n\n`);
   } catch (err) {
     logger.error('chat_request_failed', { question, error: err });
     const isRateLimit = err?.status === 429 || err?.status === 413;
@@ -106,12 +108,26 @@ const ingestFile = [
       return res.status(400).json({ message: `Unsupported file type: .${ext}` });
     }
 
+    // Re-uploading the exact same file (even under a different name) used to
+    // silently double-ingest every row into Graduate/EmbeddingDocument —
+    // duplicate chunks in RAG search and duplicate respondents skewing every
+    // dashboard stat that reads from Graduate. Hash the raw bytes and block
+    // a repeat of anything that already finished ingesting successfully.
+    const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const existing = await ImportedFile.findOne({ content_hash: contentHash, status: 'done' });
+    if (existing) {
+      return res.status(409).json({
+        message: `This file was already imported as "${existing.file_name}" on ${existing.ingested_at ? new Date(existing.ingested_at).toLocaleDateString() : new Date(existing.createdAt).toLocaleDateString()}. Delete that import first if you need to re-ingest it.`,
+      });
+    }
+
     // Create an ImportedFile record immediately so the UI can track progress
     const importedFile = await ImportedFile.create({
-      file_name:   originalname,
-      file_type:   ext === 'xlsx' || ext === 'xls' ? 'excel' : ext,
-      status:      'processing',
-      imported_by: req.user.id,
+      file_name:    originalname,
+      file_type:    ext === 'xlsx' || ext === 'xls' ? 'excel' : ext,
+      status:       'processing',
+      content_hash: contentHash,
+      imported_by:  req.user.id,
     });
 
     res.json({ message: 'File received, ingestion started.', file_id: importedFile._id });
@@ -131,6 +147,7 @@ const ingestFile = [
 
         // Embed each chunk and save
         let savedCount = 0;
+        let lastEmbedError = null;
         for (let i = 0; i < chunks.length; i++) {
           const { text, metadata } = chunks[i];
           try {
@@ -146,7 +163,22 @@ const ingestFile = [
             savedCount++;
           } catch (embedErr) {
             console.error(`Embedding failed for chunk ${i} of ${originalname}:`, embedErr.message);
+            lastEmbedError = embedErr.message;
           }
+        }
+
+        // Every chunk parsed fine but every embedding call failed (e.g. the
+        // HF inference quota is exhausted) — this used to still report
+        // status "done" with chunk_count 0, which reads as a successfully
+        // ingested-but-empty file in the UI ("READY · 0 chunks") instead of
+        // the actual problem: nothing got embedded, so this file is
+        // invisible to every RAG search.
+        if (chunks.length > 0 && savedCount === 0) {
+          await ImportedFile.findByIdAndUpdate(importedFile._id, {
+            status: 'failed',
+            error_message: `All ${chunks.length} chunks failed to embed: ${lastEmbedError || 'unknown error'}`,
+          });
+          return;
         }
 
         // Save structured Graduate records for aggregation queries.
