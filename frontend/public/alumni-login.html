@@ -16,6 +16,11 @@
 
       <section class="left-panel">
         <div class="welcome-copy">
+          <div class="welcome-wave" aria-hidden="true">
+            <span class="wave-hand-image"></span>
+            <span class="wave-pop-lines wave-pop-left"><i></i><i></i></span>
+            <span class="wave-pop-lines wave-pop-right"><i></i><i></i></span>
+          </div>
           <p class="welcome-heading">Welcome! <span class="name">TSUsian</span></p>
           <p class="welcome-sub">
             to Alumni Portal, Reconnect with your Peers,<br>
@@ -63,8 +68,8 @@
           </div>
 
           <div class="links-row">
-            <a href="#">Privacy Policy</a>
-            <a href="#">About us</a>
+            <button type="button" class="info-link" onclick="openInfoModal('privacy')">Privacy Policy</button>
+            <button type="button" class="info-link" onclick="openInfoModal('about')">About us</button>
           </div>
 
           <button class="btn-signin" id="login-btn" type="button" onclick="doLogin()">
@@ -79,6 +84,16 @@
     </div>
   </main>
   <footer class="login-footer">&copy; 2026 Alumni Portal &middot; Tarlac State University | College of Computer Studies</footer>
+
+  <div class="info-modal" id="info-modal" role="dialog" aria-modal="true" aria-labelledby="info-modal-title" hidden>
+    <div class="info-modal-backdrop" onclick="closeInfoModal()"></div>
+    <section class="info-modal-card">
+      <button type="button" class="info-modal-close" onclick="closeInfoModal()" aria-label="Close popup">&times;</button>
+      <h2 id="info-modal-title"></h2>
+      <div class="info-modal-underline"></div>
+      <div id="info-modal-content"></div>
+    </section>
+  </div>
 
   <script>
     const API = window.APP_CONFIG.API;
@@ -136,6 +151,8 @@
 
         if (data.twoFactorRequired) {
           sessionStorage.setItem('tfa_temp_token', data.tempToken);
+          sessionStorage.setItem('tfa_code_sent', 'true');
+          sessionStorage.setItem('tfa_code_sent_at', String(Date.now()));
           window.location.href = 'alumni-2fa.html';
           return;
         }
@@ -175,6 +192,48 @@
         closed.style.display = hidden ? 'block' : 'none';
         btn.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
       });
+    });
+
+    const infoModalContent = {
+      privacy: {
+        title: 'Privacy Policy',
+        content: `
+          <p>The Alumni Portal respects and protects your personal information in accordance with Republic Act No. 10173, or the Data Privacy Act of 2012.</p>
+          <p>Information you provide may be used to verify your identity, manage your account, deliver alumni services, support tracer studies, improve university programs, and maintain portal security.</p>
+          <p>Your information will only be accessed by authorized personnel, retained only as necessary, and protected using reasonable organizational, physical, and technical safeguards. It will not be sold.</p>
+          <p>You may request access to or correction of your information, object to processing, withdraw consent where applicable, or exercise other rights provided by law through the Alumni Affairs Office or the university's designated Data Protection Officer.</p>
+        `
+      },
+      about: {
+        title: 'About Us',
+        content: `
+          <p>The Alumni Portal helps Tarlac State University graduates stay connected with the university and their fellow alumni.</p>
+          <p>Through the portal, alumni can maintain their professional information, participate in tracer studies, discover career opportunities, receive announcements, and engage with university events and services.</p>
+          <p>Our goal is to support lifelong connections, professional growth, and continuous improvement of programs for the TSU alumni community.</p>
+        `
+      }
+    };
+
+    function openInfoModal(type) {
+      const data = infoModalContent[type];
+      if (!data) return;
+      const modal = document.getElementById('info-modal');
+      document.getElementById('info-modal-title').textContent = data.title;
+      document.getElementById('info-modal-content').innerHTML = data.content;
+      modal.hidden = false;
+      document.body.classList.add('modal-open');
+      modal.querySelector('.info-modal-close').focus();
+    }
+
+    function closeInfoModal() {
+      document.getElementById('info-modal').hidden = true;
+      document.body.classList.remove('modal-open');
+    }
+
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && !document.getElementById('info-modal').hidden) {
+        closeInfoModal();
+      }
     });
   </script>
 </body>
