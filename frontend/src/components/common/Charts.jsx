@@ -86,8 +86,11 @@ export function CourseJobChart({ data, metric }) {
         ))}
         <div className="chart-insights">
           <div><strong>{isTrackView ? "Top Track" : "Top Course"}</strong><span>{topLabel || "—"}</span></div>
-          <div><strong>Avg. {activeMetric === "employmentRate" ? "Employment Rate" : "Job-Related Rate"}</strong><span>{avg}%</span></div>
-          <div><strong>Overall Job-Related</strong><span>{jobRelatedRate}%</span></div>
+          <div>
+            <strong>{activeMetric === "employmentRate" ? "Average Employment Rate" : "Average Job-Related Rate"}</strong>
+            <span>{avg}%</span>
+          </div>
+          <div><strong>Job-Related</strong><span>{jobRelatedRate}%</span></div>
           <div><strong>{isTrackView ? "BSIT Alumni" : "Total Alumni"}</strong><span>{totalAlumni}</span></div>
         </div>
       </div>
