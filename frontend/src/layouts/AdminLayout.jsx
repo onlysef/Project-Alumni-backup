@@ -82,7 +82,7 @@ export default function AdminLayout() {
   const title = PATH_TITLES[location.pathname] || "Dashboard";
 
   return (
-    <div className={`app${collapsed ? " sidebar-collapsed" : ""}`}>
+    <div className={`app admin-app${collapsed ? " sidebar-collapsed" : ""}`}>
       <AdminSidebar
         collapsed={collapsed}
         onNavigate={() => { if (window.innerWidth <= 600) setCollapsed(true); }}
