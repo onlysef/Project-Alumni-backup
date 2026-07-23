@@ -660,6 +660,37 @@
                 font-weight: 700;
             }
 
+            .coord-chart-card-head {
+                min-height: 45px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding-right: 12px;
+                background: var(--maroon);
+            }
+
+            .coord-chart-card-head h3 {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .coord-chart-card-head .chart-export-button {
+                flex: 0 0 auto;
+                width: 84px;
+                height: 28px;
+                min-height: 28px;
+                background: #fff;
+                color: #570013;
+            }
+
+            body.dark-mode .coordinator-app .coord-chart-card-head .chart-export-button,
+            body.dark-mode .coordinator-app .coord-chart-card-head .chart-export-button span {
+                background: #fff !important;
+                color: #570013 !important;
+                opacity: 1 !important;
+            }
+
             .coord-chart-box {
                 display: grid;
                 place-items: center;
@@ -3765,3 +3796,95 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 body.dark-mode .coord-event-schedule { color: #a07a85; }
 body.dark-mode .coord-notice-warn { background: #3b2d00; color: #f5c842; border-color: #7a6200; }
 body.dark-mode .coord-notice-error { background: #3b0000; color: #f87171; border-color: #7a0000; }
+
+/* Coordinator chart explanations */
+.coord-chart-legend {
+    margin: 0 14px 14px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid #ead7da;
+    border-radius: 7px;
+    background: #fff8f9;
+    color: #57474b;
+    font-size: 11px;
+}
+.coord-chart-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.coord-chart-legend strong { color: var(--maroon); white-space: nowrap; }
+.coord-legend-swatch {
+    width: 11px;
+    height: 11px;
+    flex: 0 0 11px;
+    border-radius: 2px;
+    background: #8f1026;
+}
+.coord-legend-swatch.feedback { background: #d79b36; }
+
+/* Read-only alumni profile */
+.coord-contact-clickable { cursor: pointer; }
+.coord-contact-clickable:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.coord-contact-profile-hint {
+    display: block;
+    margin-top: 3px;
+    color: var(--maroon);
+    font-size: 9px;
+    font-weight: 700;
+}
+.coord-alumni-profile { width: min(480px, calc(100vw - 24px)); overflow: hidden; }
+.coord-profile-summary {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 20px;
+    border-bottom: 1px solid #ead7da;
+    background: #fff8f9;
+}
+.coord-profile-avatar {
+    width: 58px;
+    height: 58px;
+    flex: 0 0 58px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--maroon);
+    color: #fff;
+    font-size: 18px;
+    font-weight: 800;
+}
+.coord-profile-summary > div:last-child { display: grid; gap: 4px; }
+.coord-profile-summary strong { color: var(--maroon); font-size: 16px; }
+.coord-profile-summary span { color: #76656a; font-size: 12px; }
+.coord-profile-details { display: grid; gap: 0; margin: 0; padding: 10px 20px; }
+.coord-profile-details > div {
+    display: grid;
+    grid-template-columns: 125px minmax(0, 1fr);
+    gap: 12px;
+    padding: 11px 0;
+    border-bottom: 1px solid #f0e2e4;
+}
+.coord-profile-details > div:last-child { border-bottom: 0; }
+.coord-profile-details dt { color: #76656a; font-size: 11px; font-weight: 700; }
+.coord-profile-details dd { margin: 0; color: #2d2024; font-size: 12px; overflow-wrap: break-word; }
+.coord-profile-actions { padding: 0 20px 18px; }
+
+body.dark-mode .coord-chart-legend,
+body.dark-mode .coord-profile-summary {
+    border-color: rgba(250, 200, 83, 0.22);
+    background: #2b141a;
+    color: #f3e7ea;
+}
+body.dark-mode .coord-chart-legend strong,
+body.dark-mode .coord-profile-summary strong,
+body.dark-mode .coord-contact-profile-hint,
+body.dark-mode .coord-profile-details dt { color: var(--gold); }
+body.dark-mode .coord-profile-details > div { border-color: rgba(250, 200, 83, 0.15); }
+body.dark-mode .coord-profile-details dd,
+body.dark-mode .coord-profile-summary span { color: #f3e7ea; }
+
+@media (max-width: 600px) {
+    .coord-chart-legend { align-items: flex-start; flex-direction: column; gap: 6px; }
+    .coord-chart-legend strong { white-space: normal; }
+    .coord-profile-details > div { grid-template-columns: 1fr; gap: 5px; }
+}
