@@ -15,12 +15,27 @@
 
     <!-- Left -->
     <div class="left-panel">
-      <p class="welcome-heading">Two-Factor<br><span class="name">Verification</span></p>
-      <p class="welcome-sub">
-        A 6-digit code has been sent<br>
-        to your registered email address.<br>
-        Enter it to complete your login.
-      </p>
+      <div class="welcome-copy tfa-welcome">
+        <div class="tfa-delivery is-loading" id="tfa-delivery" aria-live="polite" aria-label="Sending verification code">
+          <div class="tfa-phone" aria-hidden="true">
+            <span class="tfa-speaker"></span>
+            <span class="tfa-screen-dot dot-one"></span>
+            <span class="tfa-screen-dot dot-two"></span>
+            <span class="tfa-screen-dot dot-three"></span>
+            <span class="tfa-home"></span>
+          </div>
+          <div class="tfa-code-trail" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="tfa-sent-check" aria-hidden="true">&#10003;</div>
+        </div>
+        <p class="welcome-heading">Two-Factor<br><span class="name">Verification</span></p>
+        <p class="welcome-sub">
+          A 6-digit code has been sent<br>
+          to your registered email address.<br>
+          Enter it to complete your login.
+        </p>
+      </div>
     </div>
 
     <!-- Right -->
@@ -69,6 +84,32 @@
   const tempToken = sessionStorage.getItem('tfa_temp_token');
 
   if (!tempToken) window.location.href = 'alumni-login.html';
+
+  function setDeliveryState(state) {
+    const visual = document.getElementById('tfa-delivery');
+    visual.classList.remove('is-loading', 'is-sent');
+    visual.classList.add(state === 'sent' ? 'is-sent' : 'is-loading');
+    visual.setAttribute('aria-label', state === 'sent' ? 'Verification code sent' : 'Sending verification code');
+  }
+
+  const DELIVERY_LOADING_MS = 5000;
+  let deliveryTimer;
+
+  function showSentAfterMinimumDelay(startedAt) {
+    const elapsed = Date.now() - Number(startedAt || Date.now());
+    const remaining = Math.max(0, DELIVERY_LOADING_MS - elapsed);
+    setDeliveryState('loading');
+    clearTimeout(deliveryTimer);
+    deliveryTimer = setTimeout(() => {
+      if (sessionStorage.getItem('tfa_code_sent') === 'true') setDeliveryState('sent');
+    }, remaining);
+  }
+
+  if (sessionStorage.getItem('tfa_code_sent') === 'true') {
+    showSentAfterMinimumDelay(sessionStorage.getItem('tfa_code_sent_at'));
+  } else {
+    setDeliveryState('loading');
+  }
 
   function showMsg(text, isError = true) {
     const box = document.getElementById('msg-box');
@@ -124,6 +165,8 @@
       }
 
       sessionStorage.removeItem('tfa_temp_token');
+      sessionStorage.removeItem('tfa_code_sent');
+      sessionStorage.removeItem('tfa_code_sent_at');
       showMsg('Login successful! Redirecting…', false);
       const dashboardMap = {
         admin: `${APP}/admin/dashboard`,
@@ -143,7 +186,12 @@
 
   async function resendCode() {
     const link = document.getElementById('resend-link');
+    const deliveryStartedAt = Date.now();
+    clearTimeout(deliveryTimer);
     link.textContent = 'Sending…';
+    sessionStorage.removeItem('tfa_code_sent');
+    sessionStorage.removeItem('tfa_code_sent_at');
+    setDeliveryState('loading');
     try {
       const res = await fetch(`${API}/auth/resend-2fa`, {
         method: 'POST',
@@ -152,11 +200,29 @@
       });
       const data = await res.json();
       showMsg(data.message, !res.ok);
+      if (res.ok) {
+        sessionStorage.setItem('tfa_code_sent', 'true');
+        sessionStorage.setItem('tfa_code_sent_at', String(deliveryStartedAt));
+        const remaining = Math.max(0, DELIVERY_LOADING_MS - (Date.now() - deliveryStartedAt));
+        deliveryTimer = setTimeout(() => {
+          if (sessionStorage.getItem('tfa_code_sent') === 'true') {
+            setDeliveryState('sent');
+            replaySentAnimation();
+          }
+        }, remaining);
+      }
     } catch {
       showMsg('Could not resend code. Please try again.');
     } finally {
       link.textContent = 'Resend Code';
     }
+  }
+
+  function replaySentAnimation() {
+    const visual = document.getElementById('tfa-delivery');
+    visual.classList.remove('is-sent');
+    void visual.offsetWidth;
+    visual.classList.add('is-sent');
   }
 </script>
 
