@@ -372,35 +372,57 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
           type="button"
           style={s.iconBtn()}
           title="Move up"
+          aria-label="Move question up"
           disabled={qIdx === 0}
           onClick={() => onMove("up")}
         >
-          ↑
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m18 15-6-6-6 6" />
+          </svg>
         </button>
         <button
           type="button"
           style={s.iconBtn()}
           title="Move down"
+          aria-label="Move question down"
           disabled={qIdx === totalQ - 1}
           onClick={() => onMove("down")}
         >
-          ↓
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
         </button>
         <button
           type="button"
           style={s.iconBtn()}
           title="Edit question"
+          aria-label={editing ? "Cancel question editing" : "Edit question"}
           onClick={editing ? cancelEdit : startEdit}
         >
-          {editing ? "✕" : "✎"}
+          {editing ? (
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6 6 18" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          )}
         </button>
         <button
           type="button"
           style={s.iconBtn("danger")}
           title="Delete question"
+          aria-label="Delete question"
           onClick={() => onDelete()}
         >
-          🗑
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 6h18" />
+            <path d="M8 6V4h8v2" />
+            <path d="M19 6l-1 14H6L5 6" />
+            <path d="M10 11v5M14 11v5" />
+          </svg>
         </button>
       </div>
 
@@ -994,28 +1016,40 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
                       type="button"
                       style={s.iconBtn()}
                       title="Move page left"
+                      aria-label="Move page to the previous position"
                       disabled={currentPage === 0}
                       onClick={() => movePage(currentPage, "left")}
                     >
-                      ◀
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="m15 18-6-6 6-6" />
+                      </svg>
                     </button>
                     <button
                       type="button"
                       style={s.iconBtn()}
                       title="Move page right"
+                      aria-label="Move page to the next position"
                       disabled={currentPage === config.pages.length - 1}
                       onClick={() => movePage(currentPage, "right")}
                     >
-                      ▶
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="m9 18 6-6-6-6" />
+                      </svg>
                     </button>
                     <button
                       type="button"
                       style={s.iconBtn("danger")}
                       title="Delete this page"
+                      aria-label="Delete this page"
                       disabled={config.pages.length <= 1}
                       onClick={() => setConfirmDeletePage(currentPage)}
                     >
-                      🗑
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4h8v2" />
+                        <path d="M19 6l-1 14H6L5 6" />
+                        <path d="M10 11v5M14 11v5" />
+                      </svg>
                     </button>
                   </div>
 
