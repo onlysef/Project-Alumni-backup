@@ -1,10 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
-import { marked } from "marked";
 import { MiniDonut, DistributionBars } from "../../components/common/Charts.jsx";
-
-marked.setOptions({ breaks: true, gfm: true });
 
 // Renders the chart data the backend attaches to breakdown-style answers
 // ("how many are male?", employment status, industry, etc.) — dispatches by
@@ -145,6 +142,280 @@ function getSuggestions(text) {
     "How many pursued further studies?",
     "How do alumni rate their competencies?",
   ];
+}
+
+function readableParagraphs(text = "") {
+  return String(text)
+    .split(/\n+/)
+    .flatMap((block) => {
+      const clean = block.trim();
+      if (!clean) return [];
+      if (clean.length <= 220) return [clean];
+      const sentences = clean.split(/(?<=[.!?])\s+(?=[A-Z])/);
+      const groups = [];
+      let current = "";
+      sentences.forEach((sentence) => {
+        const next = current ? `${current} ${sentence}` : sentence;
+        if (next.length > 240 && current) {
+          groups.push(current);
+          current = sentence;
+        } else {
+          current = next;
+        }
+      });
+      if (current) groups.push(current);
+      return groups;
+    });
+}
+
+function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }) {
+  return String(text).split(/(\s+)/).filter(Boolean).map((part, index) => {
+    const key = `${keyPrefix}-${index}`;
+    if (/^\s+$/.test(part)) return <React.Fragment key={key}>{part}</React.Fragment>;
+
+    const wordIndex = cursor.value;
+    cursor.value += 1;
+    return (
+      <span
+        key={key}
+        className="ac-word"
+        style={{ "--ac-word-delay": `${Math.min(wordIndex * 24, 1800)}ms` }}
+      >
+        {part}
+      </span>
+    );
+  });
+}
+
+function renderInlineText(text = "", keyPrefix = "inline", cursor = { value: 0 }) {
+  const parts = String(text).split(/(\*\*[^*\n]+?\*\*|__[^_\n]+?__|`[^`\n]+?`|\*[^*\n]+?\*)/g);
+
+  return parts.filter(Boolean).map((part, index) => {
+    const key = `${keyPrefix}-${index}`;
+    if ((part.startsWith("**") && part.endsWith("**")) ||
+        (part.startsWith("__") && part.endsWith("__"))) {
+      return <strong key={key}>{animatedWords(part.slice(2, -2), key, cursor)}</strong>;
+    }
+    if (part.startsWith("`") && part.endsWith("`")) {
+      return <code key={key}>{animatedWords(part.slice(1, -1), key, cursor)}</code>;
+    }
+    if (part.startsWith("*") && part.endsWith("*")) {
+      return <em key={key}>{animatedWords(part.slice(1, -1), key, cursor)}</em>;
+    }
+    return <React.Fragment key={key}>{animatedWords(part, key, cursor)}</React.Fragment>;
+  });
+}
+
+function tableCells(line = "") {
+  return String(line)
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function isTableDivider(line = "") {
+  const cells = tableCells(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function beginsStructuredBlock(lines, index) {
+  const line = (lines[index] || "").trim();
+  const next = (lines[index + 1] || "").trim();
+  if (!line) return true;
+  if (/^#{1,4}\s+/.test(line)) return true;
+  if (/^[-*+•]\s+/.test(line) || /^\d+[.)]\s+/.test(line)) return true;
+  if (/^>\s?/.test(line) || /^-{3,}$/.test(line)) return true;
+  return line.includes("|") && next.includes("|");
+}
+
+function parseAssistantBlocks(text = "") {
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line) {
+      index += 1;
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      blocks.push({ type: "heading", level: heading[1].length, text: heading[2].trim() });
+      index += 1;
+      continue;
+    }
+
+    const unordered = line.match(/^[-*+•]\s+(.+)$/);
+    if (unordered) {
+      const items = [];
+      while (index < lines.length) {
+        const match = lines[index].trim().match(/^[-*+•]\s+(.+)$/);
+        if (!match) break;
+        items.push(match[1].trim());
+        index += 1;
+      }
+      blocks.push({ type: "list", ordered: false, items });
+      continue;
+    }
+
+    const ordered = line.match(/^(\d+)[.)]\s+(.+)$/);
+    if (ordered) {
+      const items = [];
+      const start = Number(ordered[1]) || 1;
+      while (index < lines.length) {
+        const match = lines[index].trim().match(/^(\d+)[.)]\s+(.+)$/);
+        if (!match) break;
+        items.push(match[2].trim());
+        index += 1;
+      }
+      blocks.push({ type: "list", ordered: true, start, items });
+      continue;
+    }
+
+    const nextLine = (lines[index + 1] || "").trim();
+    if (line.includes("|") && nextLine.includes("|")) {
+      const header = tableCells(line);
+      const alignments = isTableDivider(nextLine)
+        ? tableCells(nextLine).map((cell) => cell.endsWith(":") ? "right" : cell.startsWith(":") ? "left" : "left")
+        : header.map(() => "left");
+      index += isTableDivider(nextLine) ? 2 : 1;
+      const rows = [];
+      while (index < lines.length && lines[index].trim() && lines[index].includes("|")) {
+        if (!isTableDivider(lines[index])) rows.push(tableCells(lines[index]));
+        index += 1;
+      }
+      blocks.push({ type: "table", header, alignments, rows });
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quoteLines = [];
+      while (index < lines.length) {
+        const match = lines[index].trim().match(/^>\s?(.*)$/);
+        if (!match) break;
+        quoteLines.push(match[1]);
+        index += 1;
+      }
+      blocks.push({ type: "quote", text: quoteLines.join(" ") });
+      continue;
+    }
+
+    if (/^-{3,}$/.test(line)) {
+      blocks.push({ type: "divider" });
+      index += 1;
+      continue;
+    }
+
+    const paragraphLines = [line];
+    index += 1;
+    while (index < lines.length && lines[index].trim() && !beginsStructuredBlock(lines, index)) {
+      paragraphLines.push(lines[index].trim());
+      index += 1;
+    }
+    readableParagraphs(paragraphLines.join(" ")).forEach((paragraph) => {
+      blocks.push({ type: "paragraph", text: paragraph });
+    });
+  }
+
+  return blocks;
+}
+
+function AssistantResponse({ text, messageId }) {
+  const blocks = parseAssistantBlocks(text);
+  const wordCursor = { value: 0 };
+
+  return (
+    <div className="ac-response-content">
+      {blocks.map((block, blockIndex) => {
+        const key = `${messageId}-block-${blockIndex}`;
+
+        if (block.type === "heading") {
+          const Heading = block.level <= 2 ? "h3" : "h4";
+          return <Heading key={key}>{renderInlineText(block.text, key, wordCursor)}</Heading>;
+        }
+
+        if (block.type === "list") {
+          const List = block.ordered ? "ol" : "ul";
+          return (
+            <List key={key} start={block.ordered ? block.start : undefined}>
+              {block.items.map((item, itemIndex) => (
+                <li key={`${key}-item-${itemIndex}`}>{renderInlineText(item, `${key}-item-${itemIndex}`, wordCursor)}</li>
+              ))}
+            </List>
+          );
+        }
+
+        if (block.type === "table") {
+          return (
+            <div className="ac-table-scroll" key={key} role="region" aria-label="AI response table" tabIndex={0}>
+              <table>
+                <thead>
+                  <tr>
+                    {block.header.map((cell, cellIndex) => (
+                      <th key={`${key}-head-${cellIndex}`} scope="col" style={{ textAlign: block.alignments[cellIndex] || "left" }}>
+                        {renderInlineText(cell, `${key}-head-${cellIndex}`, wordCursor)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, rowIndex) => (
+                    <tr key={`${key}-row-${rowIndex}`}>
+                      {block.header.map((_, cellIndex) => (
+                        <td key={`${key}-cell-${rowIndex}-${cellIndex}`} style={{ textAlign: block.alignments[cellIndex] || "left" }}>
+                          {renderInlineText(row[cellIndex] || "", `${key}-cell-${rowIndex}-${cellIndex}`, wordCursor)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
+
+        if (block.type === "quote") {
+          return <blockquote key={key}>{renderInlineText(block.text, key, wordCursor)}</blockquote>;
+        }
+
+        if (block.type === "divider") return <hr key={key} />;
+
+        const plainText = block.text.replace(/[*_`]/g, "");
+        const className = /^The Bachelor|^Bachelor/i.test(plainText) ? "ac-answer-program" : undefined;
+        return <p key={key} className={className}>{renderInlineText(block.text, key, wordCursor)}</p>;
+      })}
+    </div>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  );
 }
 
 function nowTime() {
@@ -662,7 +933,7 @@ export default function AiAssistantView() {
           <div className="ac-welcome">
             <h2 className="ac-welcome-title">Ask away, {firstName}!</h2>
             <p className="ac-welcome-sub">
-              I'm AC, your assistant for alumni records, tracer surveys, employment, and more.
+              I'm AC, your assistant for alumni records, tracer surveys, and employment outcomes.
             </p>
 
             <form className="ac-composer ac-composer-center" onSubmit={handleSubmit}>
@@ -736,7 +1007,7 @@ export default function AiAssistantView() {
                             aria-label="Copy message"
                             title={copiedId === m.id ? "Copied" : "Copy"}
                           >
-                            {copiedId === m.id ? "✓" : "⧉"}
+                            {copiedId === m.id ? <CheckIcon /> : <CopyIcon />}
                           </button>
                           <button
                             type="button"
@@ -745,7 +1016,7 @@ export default function AiAssistantView() {
                             aria-label="Edit message"
                             title="Edit"
                           >
-                            ✎
+                            <EditIcon />
                           </button>
                         </div>
                       </>
@@ -753,10 +1024,9 @@ export default function AiAssistantView() {
                   </div>
                 ) : (
                   <div key={m.id} className="ac-row ac-row-ac">
-                    <div
-                      className="ac-ac-text ac-markdown"
-                      dangerouslySetInnerHTML={{ __html: marked.parse(m.text || "") }}
-                    />
+                    <div className="ac-ac-text">
+                      <AssistantResponse text={m.text} messageId={m.id} />
+                    </div>
                     <AcChart chart={m.chart} />
                     <div className="ac-msg-tools ac-msg-tools-ac">
                       <button
@@ -766,7 +1036,7 @@ export default function AiAssistantView() {
                         title={copiedId === m.id ? "Copied" : "Copy"}
                         aria-label="Copy response"
                       >
-                        {copiedId === m.id ? "✓" : "⧉"}
+                        {copiedId === m.id ? <CheckIcon /> : <CopyIcon />}
                       </button>
                     </div>
                   </div>
