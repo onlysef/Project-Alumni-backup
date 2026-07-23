@@ -61,6 +61,8 @@ export default function CoordinatorHome() {
   const chartLabels     = data?.chartEvents?.map(e => e.label)      ?? [];
   const attendanceVals  = data?.chartEvents?.map(e => e.attendance)  ?? [];
   const feedbackVals    = data?.chartEvents?.map(e => e.feedbacks)   ?? [];
+  const attendanceTotal = attendanceVals.reduce((sum, value) => sum + Number(value || 0), 0);
+  const feedbackTotal   = feedbackVals.reduce((sum, value) => sum + Number(value || 0), 0);
 
   return (
     <section className={`content coordinator-content view active-view`}>
@@ -102,20 +104,60 @@ export default function CoordinatorHome() {
       <div className="coord-dashboard-grid">
         <div className="coord-left-stack">
           <section className="coord-card">
-            <h3>Event Attendance</h3>
+            <div className="coord-chart-card-head">
+              <h3>Event Attendance</h3>
+              <button
+                className="chart-export-button"
+                type="button"
+                onClick={() => {
+                  downloadCsv("event-attendance-chart.csv", [
+                    ["Event", "Attendance"],
+                    ...(chartLabels.length ? chartLabels.map((label, i) => [label, attendanceVals[i] ?? 0]) : [["No data", 0]]),
+                  ]);
+                  showToast?.("Event attendance chart exported.");
+                }}
+              >
+                <Icon name="icon-download" />
+                <span>Exports</span>
+              </button>
+            </div>
             <MiniBarChart
               title="Event Attendance"
               values={attendanceVals.length ? attendanceVals : [0]}
               labels={chartLabels.length   ? chartLabels    : ["No data"]}
             />
+            <div className="coord-chart-legend" aria-label="Event attendance chart explanation">
+              <span><i className="coord-legend-swatch attendance" aria-hidden="true" />Attendance recorded per event</span>
+              <strong>{chartLabels.length ? `Total attendance: ${attendanceTotal}` : "No attendance data yet"}</strong>
+            </div>
           </section>
           <section className="coord-card">
-            <h3>Event Feedback Completion</h3>
+            <div className="coord-chart-card-head">
+              <h3>Event Feedback Completion</h3>
+              <button
+                className="chart-export-button"
+                type="button"
+                onClick={() => {
+                  downloadCsv("event-feedback-chart.csv", [
+                    ["Event", "Feedback Submissions"],
+                    ...(chartLabels.length ? chartLabels.map((label, i) => [label, feedbackVals[i] ?? 0]) : [["No data", 0]]),
+                  ]);
+                  showToast?.("Event feedback chart exported.");
+                }}
+              >
+                <Icon name="icon-download" />
+                <span>Exports</span>
+              </button>
+            </div>
             <MiniBarChart
               title="Event Feedback Counts"
               values={feedbackVals.length ? feedbackVals : [0]}
               labels={chartLabels.length  ? chartLabels   : ["No data"]}
             />
+            <div className="coord-chart-legend" aria-label="Event feedback chart explanation">
+              <span><i className="coord-legend-swatch feedback" aria-hidden="true" />Feedback submissions per event</span>
+              <strong>{chartLabels.length ? `Total responses: ${feedbackTotal}` : "No feedback data yet"}</strong>
+            </div>
           </section>
         </div>
         <aside className="coord-right-stack">
@@ -127,11 +169,20 @@ export default function CoordinatorHome() {
               <div className="activity-list">
                 {data.activity.map((a, i) => (
                   <div
-                    className="activity"
+                    className="activity activity-clickable"
                     key={a._id ?? i}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => {
                       const dest = a.type === "attendance" ? "/coordinator/participation" : "/coordinator/events";
                       navigate(dest, { state: { eventId: a.event_id ?? null } });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        const dest = a.type === "attendance" ? "/coordinator/participation" : "/coordinator/events";
+                        navigate(dest, { state: { eventId: a.event_id ?? null } });
+                      }
                     }}
                     style={{ cursor: "pointer" }}
                   >
