@@ -13,23 +13,23 @@ export const employmentSets = [
 ];
 
 export const assistantGreetings = [
-  "Hello! I'm AC, your AI chatbot. How may I assist you today?\nYou may ask about alumni records, tracer surveys, or job opportunities.",
-  "Hi, I'm AC. I can help you review alumni records, employment status, tracer surveys, and recent activities.",
-  "Welcome back. I'm AC, your AI assistant for alumni records, reports, appointments, and employment insights.",
-  "Good day! I'm AC. Ask me about alumni profiles, course alignment, survey completion, or job opportunities.",
+  "Hello! I'm AC, your AI chatbot. How may I assist you today?\nYou may ask about alumni records, tracer surveys, or employment data.",
+  "Hi, I'm AC. I can help you review alumni records, employment status, and tracer-survey results.",
+  "Welcome back. I'm AC, your AI assistant for tracer records and graduate employment insights.",
+  "Good day! I'm AC. Ask me about alumni profiles, course alignment, survey completion, or employment outcomes.",
 ];
 
 export function assistantReply(message) {
   const n = message.toLowerCase();
   if (n.includes("record"))
-    return "There are 400 alumni records in the dashboard. You can filter them by course, employment status, or tracer submission date.";
+    return "### Alumni Records\n\nThere are **400 alumni records** in the dashboard. You can organize them using these filters:\n\n- Course or program\n- Employment status\n- Tracer submission date";
   if (n.includes("survey") || n.includes("tracer"))
-    return "There are 100 recent tracer submissions. The latest activity list shows the newest alumni engagement updates.";
+    return "### Tracer Survey Activity\n\n- Recent submissions: **100**\n- Latest activity: newest alumni engagement updates\n- Available views: completed, pending, and recent responses";
   if (n.includes("employment") || n.includes("employed"))
-    return "260 alumni are currently marked as employed, with the distribution chart showing employed, unemployed, and unidentified records.";
+    return "### Employment Summary\n\nThe dashboard contains **260 alumni employment records**.\n\n| Status | Alumni | Share |\n| :--- | ---: | ---: |\n| Employed | 169 | 65% |\n| Unemployed | 52 | 20% |\n| Unidentified | 39 | 15% |\n\n1. Review unidentified records first.\n2. Use the employment chart to compare each status.\n3. Filter by course for a more focused breakdown.";
   if (n.includes("job") || n.includes("opportunit"))
-    return "You can review job fair posts, internships, and career webinar activity from the recent post panel.";
-  return "I can help with alumni records, tracer surveys, employment status, and job opportunities. Try one of the quick buttons below.";
+    return "AC is focused on tracer-study data. I can help with alumni records, survey responses, employment status, and course-related employment outcomes.";
+  return "### What I can help with\n\n- Alumni records\n- Tracer surveys\n- Employment status\n- Course-related employment outcomes\n\nTry one of the quick buttons or ask a question about these areas.";
 }
 
 export function currentTime() {
@@ -55,10 +55,10 @@ export const navItems = [
   { view: "employment", icon: "icon-2", label: "Alumni Employment Details" },
   { view: "appointments", icon: "icon-3", label: "Appointments" },
   { view: "accounts", icon: "icon-4", label: "Manage Accounts", children: [
+      { key: "Admin", label: "Admin" },
       { key: "Alumni", label: "Alumni" },
       { key: "Coordinator", label: "Coordinator" },
       { key: "Employer", label: "Employer" },
-      { key: "Admin", label: "Admin" },
   ] },
   { view: "announcements", icon: "icon-5", label: "Post Announcements" },
   { view: "partnerships", icon: "icon-6", label: "Partnerships" },
