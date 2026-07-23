@@ -94,16 +94,13 @@ export function AdminSidebar({ collapsed, onNavigate }) {
                 >
                   <span><Icon name={item.icon} /></span>
                   <span className="nav-item-label">{item.label}</span>
-                  <span className={`nav-caret${isOpen ? " open" : ""}`}>
-                    <svg width="4" height="4" viewBox="0 0 10 6" fill="none" aria-hidden="true">
-                      <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </span>
+                  <span className={`nav-caret sidebar-chevron${isOpen ? " open" : ""}`} aria-hidden="true" />
                 </a>
                 <div className={`nav-sub${isOpen ? " open" : ""}`}>
                   {item.children.map((child) => (
                     <a
                       key={child.key}
+                      className={new URLSearchParams(location.search).get("role") === child.key ? "selected" : undefined}
                       href="#"
                       tabIndex={isOpen ? 0 : -1}
                       onClick={(e) => { e.preventDefault(); handleSelect(item.view, child.key); }}
