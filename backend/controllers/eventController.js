@@ -79,11 +79,15 @@ const updateEvent = async (req, res) => {
   try {
     const { title, description, image, location, event_datetime, end_datetime, visibility, capacity } = req.body;
 
-    // Coordinators can only edit events belonging to their college
+    // Coordinators can only edit events belonging to their college — but a
+    // coordinator who created an event before its college field was set
+    // (or otherwise left blank/mismatched) couldn't manage their own event
+    // under a college-only check, so the creator is always let through too.
     if (req.user.college) {
-      const existing = await Event.findById(req.params.id, 'college').lean();
+      const existing = await Event.findById(req.params.id, 'college created_by').lean();
       if (!existing) return res.status(404).json({ message: 'Event not found.' });
-      if (existing.college !== req.user.college) {
+      const ownsIt = String(existing.created_by) === String(req.user.id);
+      if (!ownsIt && existing.college !== req.user.college) {
         return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
       }
     }
@@ -112,11 +116,13 @@ const updateEvent = async (req, res) => {
 // DELETE /coordinator/events/:id
 const deleteEvent = async (req, res) => {
   try {
-    // Coordinators can only delete events belonging to their college
+    // Coordinators can only delete events belonging to their college — same
+    // creator-fallback as updateEvent above.
     if (req.user.college) {
-      const existing = await Event.findById(req.params.id, 'college').lean();
+      const existing = await Event.findById(req.params.id, 'college created_by').lean();
       if (!existing) return res.status(404).json({ message: 'Event not found.' });
-      if (existing.college !== req.user.college) {
+      const ownsIt = String(existing.created_by) === String(req.user.id);
+      if (!ownsIt && existing.college !== req.user.college) {
         return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
       }
     }
@@ -138,13 +144,15 @@ const deleteEvent = async (req, res) => {
 const getInterestedAlumni = async (req, res) => {
   try {
     // Coordinators can only view interest for events belonging to their
-    // college — updateEvent/deleteEvent above already guard this same way;
-    // without it, a coordinator who knows/guesses another college's event
-    // ID could read that college's interested-alumni list directly.
+    // college — updateEvent/deleteEvent above already guard this same way
+    // (with the same creator-fallback); without it, a coordinator who
+    // knows/guesses another college's event ID could read that college's
+    // interested-alumni list directly.
     if (req.user.college) {
-      const event = await Event.findById(req.params.id, 'college').lean();
+      const event = await Event.findById(req.params.id, 'college created_by').lean();
       if (!event) return res.status(404).json({ message: 'Event not found.' });
-      if (event.college !== req.user.college) {
+      const ownsIt = String(event.created_by) === String(req.user.id);
+      if (!ownsIt && event.college !== req.user.college) {
         return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
       }
     }
@@ -165,6 +173,72 @@ const getInterestedAlumni = async (req, res) => {
     res.json({ alumni, total: alumni.length });
   } catch (err) {
     console.error('getInterestedAlumni error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/alumni/events — read-only, scoped to what this alumni can see
+// (public events, events open to all alumni, and events scoped to their
+// own college) rather than the coordinator/admin-only getEvents above.
+const getAlumniEvents = async (req, res) => {
+  try {
+    const college = req.user.college || '';
+    const visibilities = ['Public', 'All Alumni'];
+    if (college) visibilities.push(college, `${college} Alumni`);
+
+    const events = await Event.find({ visibility: { $in: visibilities } })
+      .sort({ event_datetime: -1 })
+      .lean();
+
+    const eventIds = events.map((e) => e._id);
+    const [counts, mine] = await Promise.all([
+      EventInterested.aggregate([
+        { $match: { event_id: { $in: eventIds } } },
+        { $group: { _id: '$event_id', count: { $sum: 1 } } },
+      ]),
+      EventInterested.find({ event_id: { $in: eventIds }, alumni_id: req.user.id }).select('event_id').lean(),
+    ]);
+    const countMap = {};
+    counts.forEach((c) => { countMap[String(c._id)] = c.count; });
+    const mySet = new Set(mine.map((m) => String(m.event_id)));
+
+    // There's no scheduler/cron in this app to fire a reminder exactly N
+    // hours before an event, so the reminder is generated lazily here: any
+    // time this alumnus loads their events, check their interested events
+    // for ones starting within 24h and create the reminder Notification if
+    // one hasn't already gone out for that alumnus+event pair.
+    const now = new Date();
+    const soon = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const dueSoon = events.filter((e) => mySet.has(String(e._id)) && new Date(e.event_datetime) > now && new Date(e.event_datetime) <= soon);
+    if (dueSoon.length) {
+      const alreadySent = await Notification.find({
+        user_id: req.user.id,
+        type: 'reminder_due',
+        event_id: { $in: dueSoon.map((e) => e._id) },
+      }).select('event_id').lean();
+      const sentSet = new Set(alreadySent.map((n) => String(n.event_id)));
+      const toCreate = dueSoon
+        .filter((e) => !sentSet.has(String(e._id)))
+        .map((e) => ({
+          user_id:  req.user.id,
+          title:    'Event Starting Soon',
+          message:  `"${e.title}" is happening soon — ${new Date(e.event_datetime).toLocaleString('en-PH', { month: 'long', day: '2-digit', hour: 'numeric', minute: '2-digit' })}${e.location ? ` at ${e.location}` : ''}.`,
+          is_read:  false,
+          event_id: e._id,
+          type:     'reminder_due',
+        }));
+      if (toCreate.length) await Notification.insertMany(toCreate);
+    }
+
+    res.json({
+      events: events.map((e) => ({
+        ...e,
+        interested_count: countMap[String(e._id)] || 0,
+        isInterestedByMe: mySet.has(String(e._id)),
+      })),
+    });
+  } catch (err) {
+    console.error('getAlumniEvents error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -195,6 +269,19 @@ const toggleInterested = async (req, res) => {
         is_read:  false,
         event_id: event._id,
         type:     'interested',
+      });
+
+      // Confirm the "Remind" click actually did something — the button
+      // toggling isInterestedByMe alone was invisible to the alumnus once
+      // they left the events page; this gives them a real notification
+      // that a reminder is now set for this event.
+      await Notification.create({
+        user_id:  req.user.id,
+        title:    'Reminder Set',
+        message:  `You'll get a reminder for "${event.title}" on ${new Date(event.event_datetime).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: '2-digit' })}.`,
+        is_read:  false,
+        event_id: event._id,
+        type:     'reminder_set',
       });
     }
 
@@ -240,6 +327,7 @@ module.exports = {
   updateEvent,
   deleteEvent,
   getInterestedAlumni,
+  getAlumniEvents,
   toggleInterested,
   getCoordinatorNotifications,
   markNotificationsRead,

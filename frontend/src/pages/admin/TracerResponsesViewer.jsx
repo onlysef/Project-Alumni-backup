@@ -76,6 +76,28 @@ function RatingsTable({ ratings }) {
 }
 
 function DetailModal({ response, onClose }) {
+  const [questionLabels, setQuestionLabels] = useState({});
+  const college = response?.alumni?.college;
+
+  // extra_answers is stored keyed by each custom question's internal id
+  // (e.g. "q_newQuestion_lz3k9f2", auto-generated once at creation and never
+  // updated to track the label the admin later types) — showing that raw key
+  // as-is made a newly-added question's answer look like it never made it
+  // into the database, when it actually had, it just had no readable label.
+  // Fetching the form config and mapping id -> current label fixes the display
+  // without changing how/where the answer itself is stored.
+  useEffect(() => {
+    if (!college) { setQuestionLabels({}); return; }
+    fetch(`${API}/admin/tracer-form-config?college=${encodeURIComponent(college)}`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => {
+        const map = {};
+        (d.config?.pages || []).forEach(p => (p.questions || []).forEach(q => { map[q.id] = q.label; }));
+        setQuestionLabels(map);
+      })
+      .catch(() => setQuestionLabels({}));
+  }, [college]);
+
   if (!response) return null;
   const r    = response;
   const user = r.alumni || {};
@@ -186,7 +208,7 @@ function DetailModal({ response, onClose }) {
             <>
               <Section title="Additional Answers" />
               {Object.entries(r.extra_answers).map(([k, v]) => (
-                <Field key={k} label={k} value={Array.isArray(v) ? v.join(", ") : String(v ?? "")} />
+                <Field key={k} label={questionLabels[k] || k} value={Array.isArray(v) ? v.join(", ") : String(v ?? "")} />
               ))}
             </>
           )}

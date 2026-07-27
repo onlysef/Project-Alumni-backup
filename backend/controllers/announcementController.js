@@ -33,7 +33,7 @@ const getAnnouncements = async (req, res) => {
           isSharedByMe:  userId ? { $in: [userId, { $ifNull: ['$sharedBy', []] }] } : false,
         }},
         { $project: {
-          title: 1, description: 1, type: 1,
+          title: 1, description: 1, type: 1, imageUrl: 1, location: 1,
           createdAt: 1, updatedAt: 1, createdBy: 1,
           likesCount: 1, commentsCount: 1, sharesCount: 1,
           isLikedByMe: 1, isSharedByMe: 1,
@@ -53,7 +53,7 @@ const getAnnouncements = async (req, res) => {
 // POST /api/admin/announcements
 const createAnnouncement = async (req, res) => {
   try {
-    const { title, description, type, imageUrl } = req.body;
+    const { title, description, type, imageUrl, location } = req.body;
     if (!title || !description) {
       return res.status(400).json({ message: 'Title and description are required.' });
     }
@@ -62,6 +62,7 @@ const createAnnouncement = async (req, res) => {
       description: description.trim(),
       type: type || 'News',
       imageUrl: imageUrl || '',
+      location: (location || '').trim(),
       createdBy: req.user.id,
     });
     res.status(201).json({ message: 'Announcement created.', announcement });
@@ -74,12 +75,13 @@ const createAnnouncement = async (req, res) => {
 // PATCH /api/admin/announcements/:id
 const updateAnnouncement = async (req, res) => {
   try {
-    const { title, description, type, imageUrl } = req.body;
+    const { title, description, type, imageUrl, location } = req.body;
     const updates = {};
     if (title       !== undefined) updates.title       = title.trim();
     if (description !== undefined) updates.description = description.trim();
     if (type        !== undefined) updates.type        = type;
     if (imageUrl    !== undefined) updates.imageUrl    = imageUrl;
+    if (location    !== undefined) updates.location    = location.trim();
 
     const announcement = await Announcement.findByIdAndUpdate(
       req.params.id, updates, { new: true, runValidators: true }
@@ -146,9 +148,22 @@ const toggleLike = async (req, res) => {
 // GET /api/admin/announcements/:id/comments
 const getComments = async (req, res) => {
   try {
-    const ann = await Announcement.findById(req.params.id).select('comments');
+    const ann = await Announcement.findById(req.params.id)
+      .select('comments')
+      .populate('comments.user', 'firstName lastName');
     if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
-    res.json({ comments: ann.comments });
+
+    // `userName` on each comment is a plain string frozen at post time — if
+    // that commenter later changes their name (e.g. via Accounts), every
+    // past comment kept showing the old name forever. Resolving the live
+    // User record here reflects a name change retroactively, falling back
+    // to the frozen text only if the commenter's account was deleted.
+    const comments = ann.comments.map((c) => {
+      const obj = c.toObject();
+      if (c.user && c.user.firstName) obj.userName = `${c.user.firstName} ${c.user.lastName}`;
+      return obj;
+    });
+    res.json({ comments });
   } catch (err) {
     console.error('getComments error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -267,7 +282,7 @@ const getRecentAnnouncements = async (req, res) => {
 const getAnnouncement = async (req, res) => {
   try {
     const ann = await Announcement.findById(req.params.id)
-      .select('title description type imageUrl createdAt updatedAt likedBy sharedBy comments')
+      .select('title description type imageUrl location createdAt updatedAt likedBy sharedBy comments')
       .lean();
     if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
     const userId = String(req.user?.id || '');

@@ -5,6 +5,7 @@ import { Dropdown, Modal, ConfirmDialog } from "../../components/common/Primitiv
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { accountActionList, actionLabels } from "../../data.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
 
@@ -61,6 +62,7 @@ const BATCH_YEARS = [2024, 2023, 2022, 2021, 2020];
 
 export default function AccountsView() {
   const { showToast } = useOutletContext();
+  const { user: loggedInUser, updateUser } = useAuth();
   const [searchParams] = useSearchParams();
   const roleFilterFromNav = searchParams.get("role") || "Role";
   const [rows, setRows]               = useState([]);
@@ -463,6 +465,19 @@ export default function AccountsView() {
               setRows((prev) => prev.map((r) =>
                 r.id === entry.row.id ? mapUser(json.user) : r
               ));
+              // Editing your OWN account here (e.g. an admin renaming
+              // themselves) updates the database, but the logged-in
+              // session's cached profile is a separate copy set once at
+              // login — without this, the old name keeps showing anywhere
+              // it's read from auth context (AC assistant greeting, etc.)
+              // until the next full sign-in.
+              if (loggedInUser?.id === entry.row.id) {
+                updateUser({
+                  firstName: json.user.firstName,
+                  lastName:  json.user.lastName,
+                  email:     json.user.email,
+                });
+              }
               showToast(json.employmentRemoved
                 ? `${data.firstName} ${storedLastName} updated. Employment record removed.`
                 : `${data.firstName} ${storedLastName} updated.`);

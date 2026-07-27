@@ -10,8 +10,9 @@ const commentSchema = new mongoose.Schema({
 const announcementSchema = new mongoose.Schema({
   title:       { type: String, required: true, trim: true },
   description: { type: String, required: true },
-  type:        { type: String, enum: ['News', 'Event', 'Career', 'Scholarship'], default: 'News' },
+  type:        { type: String, enum: ['News'], default: 'News' },
   imageUrl:    { type: String, default: '' },
+  location:    { type: String, default: '' },
   likedBy:     [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   comments:    [commentSchema],
   sharedBy:    [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

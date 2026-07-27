@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext, useLocation } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 import { apiFetch } from "../../services/api.js";
 
@@ -45,21 +46,30 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const BLANK = { title: "", description: "", location: "", event_datetime: "", end_datetime: "", visibility: "Public", capacity: "", image: "" };
+// A coordinator's events are, by default, for their own college's alumni —
+// only an admin (no assigned college) gets "Public" as the sensible default,
+// and only an admin gets to pick any of the 10 colleges at all (see the
+// "Colleges" <select> below); a coordinator's own college is the one
+// meaningful specific-college choice they'd ever have a reason to pick.
+function blankForm(myCollege) {
+  return { title: "", description: "", location: "", event_datetime: "", end_datetime: "", visibility: myCollege || "Public", capacity: "", image: "" };
+}
 
 export default function EventManagement() {
   const { showToast } = useOutletContext();
+  const { user } = useAuth();
+  const myCollege = user?.college || "";
   const location = useLocation();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [highlightId, setHighlightId] = useState(null);
   const highlightRef = useRef(null);
-  const [form, setForm] = useState(BLANK);
+  const [form, setForm] = useState(() => blankForm(myCollege));
   const [submitting, setSubmitting] = useState(false);
 
   // modals
   const [editEvent, setEditEvent] = useState(null);
-  const [editForm, setEditForm] = useState(BLANK);
+  const [editForm, setEditForm] = useState(() => blankForm(myCollege));
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
@@ -134,7 +144,7 @@ export default function EventManagement() {
       const data = await apiPost("/coordinator/events", { ...form, capacity: Number(form.capacity) || 0 });
       if (data.event) {
         setEvents(prev => [data.event, ...prev]);
-        setForm(BLANK);
+        setForm(blankForm(myCollege));
         if (fileInputRef.current) fileInputRef.current.value = "";
         showToast?.("Event created successfully.");
       } else {
@@ -295,7 +305,7 @@ export default function EventManagement() {
                     onChange={e => setForm(p => ({ ...p, visibility: e.target.value }))}
                   >
                     <option value="Public">All Colleges</option>
-                    {COLLEGES.map(c => (
+                    {(myCollege ? [myCollege] : COLLEGES).map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
@@ -439,7 +449,11 @@ export default function EventManagement() {
                   <label className="coord-field"><span>Colleges</span>
                     <select value={editForm.visibility} onChange={e => setEditForm(p => ({ ...p, visibility: e.target.value }))}>
                       <option value="Public">All Colleges</option>
-                      {COLLEGES.map(c => (
+                      {/* A legacy event's visibility can predate this college-restricted
+                          list (e.g. scoped to a different college than this coordinator's
+                          own) — keep it selectable so editing doesn't silently show a
+                          blank/mismatched value for that one event. */}
+                      {[...new Set([...(myCollege ? [myCollege] : COLLEGES), editForm.visibility].filter((c) => c && c !== "Public"))].map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>

@@ -2,14 +2,27 @@ import React, { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AlumniSidebar } from "../components/alumni/AlumniSidebar.jsx";
 import { AlumniTopbar } from "../components/alumni/AlumniTopbar.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
 
 const TITLES = { home: "Home", announcements: "Announcements", employment: "Employment Details", office: "Alumni Office", suggested: "Suggested Alumni", career: "Career Recommendation", jobconnect: "Job Connect" };
 
 export default function AlumniLayout() {
   const location = useLocation();
+  const { firstLogin, tracerStudyCompleted } = useAuth();
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
   const section = new URLSearchParams(location.search).get("section") || "home";
   const title = TITLES[section] || "Home";
+
+  // An alumni who hasn't set their password yet or hasn't completed the
+  // tracer study yet must finish that step before the rest of the portal is
+  // reachable — the sidebar/topbar shell still renders (same background,
+  // branding, and Logout button as the rest of the app), but the sidebar's
+  // nav list is withheld so no other section reads as available. These are
+  // two distinct steps (password setup happens first, then the tracer
+  // study), so the label shown has to reflect whichever one is actually
+  // still pending rather than always saying "Account Setup".
+  const restrictedStep = firstLogin ? "Account Setup" : !tracerStudyCompleted ? "Tracer Study" : null;
+  const restricted = !!restrictedStep;
 
   useEffect(() => { document.title = `${title} | Tarlac State University`; }, [title]);
   useEffect(() => {
@@ -20,10 +33,10 @@ export default function AlumniLayout() {
 
   return (
     <div className={`app alumni-app${collapsed ? " sidebar-collapsed" : ""}`}>
-      <AlumniSidebar collapsed={collapsed} onNavigate={() => window.innerWidth <= 600 && setCollapsed(true)} />
+      <AlumniSidebar collapsed={collapsed} restricted={restricted} restrictedLabel={restrictedStep} onNavigate={() => window.innerWidth <= 600 && setCollapsed(true)} />
       {!collapsed && <div className="sidebar-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />}
       <main className="main">
-        <AlumniTopbar title={title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} />
+        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} />
         <Outlet context={{ section, sidebarCollapsed: collapsed }} />
       </main>
     </div>

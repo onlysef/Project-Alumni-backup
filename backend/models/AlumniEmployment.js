@@ -22,6 +22,8 @@ const alumniEmploymentSchema = new mongoose.Schema({
   employment_type:       { type: String, default: null },
   years_in_current_job:  { type: String, default: null },
   reason_unemployed:     { type: String, default: null },
+  skills:                { type: String, default: '' },
+  experience:            { type: String, default: '' },
   last_updated:          { type: Date, default: Date.now },
 }, { timestamps: true });
 

@@ -636,17 +636,25 @@ export default function DashboardView() {
   }, [donutCourse]);
 
   useEffect(() => {
+    // Switching colleges quickly can let an in-flight request for the
+    // PREVIOUS college resolve after the new one already did, overwriting
+    // the correct data with stale data. `cancelled` is flipped by this
+    // effect's own cleanup (which runs whenever tracerCollege changes),
+    // so a late response from an abandoned request is dropped instead of
+    // applied.
+    let cancelled = false;
     async function fetchTracerAnalytics() {
       try {
         const qs  = tracerCollege ? `?college=${tracerCollege}` : "";
         const res = await fetch(`${API}/admin/employment/tracer-analytics${qs}`, { headers: authHeaders() });
-        if (!res.ok) return;
-        setTracerAnalytics(await res.json());
+        if (!res.ok || cancelled) return;
+        const json = await res.json();
+        if (!cancelled) setTracerAnalytics(json);
       } catch {}
     }
     fetchTracerAnalytics();
     const interval = setInterval(fetchTracerAnalytics, 30000);
-    return () => clearInterval(interval);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [tracerCollege]);
 
   const today = new Date().toLocaleDateString(undefined, {
