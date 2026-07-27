@@ -115,12 +115,13 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
                 >
                   <span><Icon name={item.icon} /></span>
                   <span>{item.label}</span>
-                  <span className={`nav-caret${isOpen ? " open" : ""}`}>▾</span>
+                  <span className={`nav-caret sidebar-chevron${isOpen ? " open" : ""}`} aria-hidden="true" />
                 </a>
                 <div className={`nav-sub${isOpen ? " open" : ""}`}>
                   {item.children.map((child) => (
                     <a
                       key={child.key}
+                      className={view === child.key ? "selected" : undefined}
                       href="#"
                       tabIndex={isOpen ? 0 : -1}
                       onClick={(e) => { e.preventDefault(); handleSelect(child.key); }}

@@ -46,15 +46,24 @@ function generateTimeSlots(start = "08:00", end = "17:00") {
 }
 
 const STATUS_COLORS = {
-  Available:    { color: "#276749", background: "#f0fff4" },
-  Unavailable:  { color: "#975a16", background: "#fffaf0" },
-  "On Leave":   { color: "#c53030", background: "#fff5f5" },
+  Available:  { color: "#276749", background: "#f0fff4" },
+  Busy:       { color: "#975a16", background: "#fffaf0" },
+  Unavailable:{ color: "#975a16", background: "#fffaf0" },
+  "On Leave": { color: "#c53030", background: "#fff5f5" },
   Pending:    { color: "#975a16", background: "#fffaf0" },
   Approved:   { color: "#276749", background: "#f0fff4" },
   Rejected:   { color: "#c53030", background: "#fff5f5" },
   Completed:  { color: "#2b6cb0", background: "#ebf8ff" },
   Cancelled:  { color: "#718096", background: "#f7fafc" },
 };
+
+function displayStaffStatus(status) {
+  return status === "Available" || status === "On Leave" ? status : "Unavailable";
+}
+
+function storedStaffStatus(status) {
+  return status === "Available" || status === "On Leave" ? status : "Busy";
+}
 
 function statusStyle(s) {
   const c = STATUS_COLORS[s] || { color: "#2d2024", background: "#f0f0f0" };
@@ -234,11 +243,11 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
             </label>
             <label>
               Role
-              <select name="role" defaultValue={item?.role || "Staff"} required>
+              <select name="role" defaultValue={item?.role === "Counselor" || item?.role === "Registrar" ? "President" : (item?.role || "Staff")} required>
                 <option value="Staff">Staff</option>
                 <option value="Admin">Admin</option>
-                <option value="President">President</option>
                 <option value="Coordinator">Coordinator</option>
+                <option value="President">President</option>
               </select>
             </label>
             <label>
@@ -255,9 +264,9 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
             </label>
             <label>
               Status
-              <select name="status" defaultValue={item?.status || "Available"}>
+              <select name="status" defaultValue={storedStaffStatus(item?.status || "Available")}>
                 <option>Available</option>
-                <option>Unavailable</option>
+                <option value="Busy">Unavailable</option>
                 <option>On Leave</option>
               </select>
             </label>
@@ -829,7 +838,7 @@ export default function AppointmentsView() {
                 <div key={s._id}>
                   <strong>{s.name}</strong>
                   <span style={{ alignItems: "center", fontSize: 12, color: "var(--muted)" }}>{s.role}</span>
-                  <em style={statusStyle(s.status)}>{s.status}</em>
+                  <em style={statusStyle(displayStaffStatus(s.status))}>{displayStaffStatus(s.status)}</em>
                   {editingStaff && <div className="staff-row-actions">
                     <button
                       type="button"

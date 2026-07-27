@@ -12,14 +12,29 @@ function capitalize(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+function splitStoredLastName(value = "") {
+  const normalized = String(value).trim();
+  const match = normalized.match(/^([A-Za-z])\.?\s+(.+)$/);
+  return match
+    ? { middleInitial: match[1].toUpperCase(), lastName: match[2].trim() }
+    : { middleInitial: "", lastName: normalized };
+}
+
+function joinStoredLastName(middleInitial = "", lastName = "") {
+  const initial = String(middleInitial).trim().replace(/\./g, "").slice(0, 1).toUpperCase();
+  return [initial ? `${initial}.` : "", String(lastName).trim()].filter(Boolean).join(" ");
+}
+
 function mapUser(u) {
-  const middle = u.middleInitial ? `${u.middleInitial} ` : "";
+  const parsedLastName = splitStoredLastName(u.lastName);
+  const middleInitial = (u.middleInitial || parsedLastName.middleInitial || "").replace(/\./g, "").slice(0, 1).toUpperCase();
+  const lastName = u.middleInitial ? u.lastName : parsedLastName.lastName;
   return {
     id:             u._id,
     firstName:      u.firstName,
-    middleInitial:  u.middleInitial || "",
-    lastName:       u.lastName,
-    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${middle}${u.lastName}`,
+    middleInitial,
+    lastName,
+    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`,
     email:          u.email,
     role:           capitalize(u.role),
     status:         capitalize(u.status),
@@ -421,13 +436,13 @@ export default function AccountsView() {
         onSubmit={async (data) => {
           if (entry.row) {
             try {
+              const storedLastName = joinStoredLastName(data.middleInitial, data.lastName);
               const payload = {
-                firstName:     data.firstName,
-                middleInitial: data.middleInitial,
-                lastName:      data.lastName,
-                email:         data.email,
-                role:          data.role.toLowerCase(),
-                status:        data.status.toLowerCase(),
+                firstName: data.firstName,
+                lastName:  storedLastName,
+                email:     data.email,
+                role:      data.role.toLowerCase(),
+                status:    data.status.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -449,17 +464,17 @@ export default function AccountsView() {
                 r.id === entry.row.id ? mapUser(json.user) : r
               ));
               showToast(json.employmentRemoved
-                ? `${data.firstName} ${data.lastName} updated. Employment record removed.`
-                : `${data.firstName} ${data.lastName} updated.`);
+                ? `${data.firstName} ${storedLastName} updated. Employment record removed.`
+                : `${data.firstName} ${storedLastName} updated.`);
             } catch { showToast("Could not connect to server."); return; }
           } else {
             try {
+              const storedLastName = joinStoredLastName(data.middleInitial, data.lastName);
               const payload = {
-                firstName:     data.firstName,
-                middleInitial: data.middleInitial,
-                lastName:      data.lastName,
-                email:         data.email,
-                role:          data.role.toLowerCase(),
+                firstName: data.firstName,
+                lastName:  storedLastName,
+                email:     data.email,
+                role:      data.role.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -694,8 +709,15 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
             <label>First Name
               <input type="text" name="firstName" defaultValue={row?.firstName || ""} required />
             </label>
-            <label>Middle Initial / Middle Name
-              <input type="text" name="middleInitial" defaultValue={row?.middleInitial || ""} maxLength={50} />
+            <label>Middle Initial
+              <input
+                type="text"
+                name="middleInitial"
+                defaultValue={row?.middleInitial || ""}
+                maxLength={1}
+                inputMode="text"
+                aria-label="Middle initial"
+              />
             </label>
             <label>Last Name
               <input type="text" name="lastName" defaultValue={row?.lastName || ""} required />

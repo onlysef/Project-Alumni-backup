@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
 import toptsuLogo from "../../assets/images/tsu-top-header.webp";
@@ -18,6 +19,7 @@ function timeAgo(dateStr) {
 
 
 export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast }) {
+  const location = useLocation();
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [lastReadAt, setLastReadAt] = useState(() => {
@@ -26,11 +28,37 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
   });
   const pollRef = useRef(null);
 
-  function closeSettings() {
+  const closeSettings = useCallback(() => {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");
     document.body.classList.toggle("compact-admin", settings.compactTables ?? false);
     setPanel(null);
-  }
+  }, [settings.theme, settings.compactTables]);
+
+  useEffect(() => {
+    if (!panel) return;
+    function closeOnOutsidePointer(e) {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".topbar-modal") || target.closest(".top-actions")) return;
+      if (panel === "settings") closeSettings();
+      else setPanel(null);
+    }
+    function closeOnEscape(e) {
+      if (e.key !== "Escape") return;
+      if (panel === "settings") closeSettings();
+      else setPanel(null);
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [panel, closeSettings]);
+
+  useEffect(() => {
+    closeSettings();
+  }, [location.pathname, closeSettings]);
 
   const fetchNotifications = useCallback(async () => {
     try {

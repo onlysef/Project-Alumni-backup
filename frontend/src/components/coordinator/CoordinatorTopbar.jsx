@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
 import { API, authHeaders } from "../../services/api.js";
@@ -12,6 +13,7 @@ function timeAgo(date) {
 }
 
 export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast, settings, setSettings }) {
+  const location = useLocation();
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -59,11 +61,37 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
     document.body.classList.toggle("dark-mode", theme === "dark");
   }
 
-  function closeSettings() {
+  const closeSettings = useCallback(() => {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");
     document.body.classList.toggle("compact-admin", settings.compactTables ?? false);
     setPanel(null);
-  }
+  }, [settings.theme, settings.compactTables]);
+
+  useEffect(() => {
+    if (!panel) return;
+    function closeOnOutsidePointer(e) {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".topbar-modal") || target.closest(".top-actions")) return;
+      if (panel === "settings") closeSettings();
+      else setPanel(null);
+    }
+    function closeOnEscape(e) {
+      if (e.key !== "Escape") return;
+      if (panel === "settings") closeSettings();
+      else setPanel(null);
+    }
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [panel, closeSettings]);
+
+  useEffect(() => {
+    closeSettings();
+  }, [location.pathname, closeSettings]);
 
   return (
     <>

@@ -114,20 +114,12 @@ export default function AppRoutes() {
           {/* Alumni routes */}
           <Route
             path="/alumni"
-            element={
-              <ProtectedRoute allowedRoles={["alumni"]} skipOnboarding skipTracerStudy>
-                <AlumniLayout />
-              </ProtectedRoute>
-            }
+            element={<AlumniLayout />}
           >
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route
               path="dashboard"
-              element={
-                <ProtectedRoute allowedRoles={["alumni"]}>
-                  <AlumniDashboard />
-                </ProtectedRoute>
-              }
+              element={<AlumniDashboard />}
             />
             <Route
               path="onboarding"
