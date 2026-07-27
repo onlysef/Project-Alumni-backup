@@ -112,13 +112,18 @@ const ingestFile = [
     // silently double-ingest every row into Graduate/EmbeddingDocument —
     // duplicate chunks in RAG search and duplicate respondents skewing every
     // dashboard stat that reads from Graduate. Hash the raw bytes and block
-    // a repeat of anything that already finished ingesting successfully.
+    // a repeat of anything that already finished ingesting successfully —
+    // also block a repeat while the FIRST upload is still 'processing'
+    // (ingestion runs in the background via setImmediate below and can take
+    // a while), otherwise two near-simultaneous uploads of the same file
+    // both pass this check before either reaches 'done'.
     const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
-    const existing = await ImportedFile.findOne({ content_hash: contentHash, status: 'done' });
+    const existing = await ImportedFile.findOne({ content_hash: contentHash, status: { $in: ['done', 'processing'] } });
     if (existing) {
-      return res.status(409).json({
-        message: `This file was already imported as "${existing.file_name}" on ${existing.ingested_at ? new Date(existing.ingested_at).toLocaleDateString() : new Date(existing.createdAt).toLocaleDateString()}. Delete that import first if you need to re-ingest it.`,
-      });
+      const message = existing.status === 'processing'
+        ? `This file is already being imported (started ${new Date(existing.createdAt).toLocaleString()}). Please wait for it to finish.`
+        : `This file was already imported as "${existing.file_name}" on ${existing.ingested_at ? new Date(existing.ingested_at).toLocaleDateString() : new Date(existing.createdAt).toLocaleDateString()}. Delete that import first if you need to re-ingest it.`;
+      return res.status(409).json({ message });
     }
 
     // Create an ImportedFile record immediately so the UI can track progress

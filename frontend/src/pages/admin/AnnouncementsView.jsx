@@ -8,7 +8,7 @@ import { adminMenuChoices } from "../../data.js";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 
 import { API, authHeaders } from "../../services/api.js";
-const TYPE_ART_CLASS = { News: "", Event: "event", Career: "career", Scholarship: "scholarship" };
+const TYPE_ART_CLASS = { News: "" };
 
 async function safeJson(res) {
   const text = await res.text();
@@ -23,6 +23,7 @@ function mapRow(a) {
     description:   a.description,
     type:          a.type,
     imageUrl:      a.imageUrl || "",
+    location:      a.location || "",
     hasImage:      a.hasImage ?? !!a.imageUrl,
     liked:         a.isLikedByMe ?? false,
     likesCount:    a.likesCount  ?? 0,
@@ -190,15 +191,28 @@ export default function AnnouncementsView() {
     const post = rows.find(r => r.id === id);
     if (!post) return;
 
-    // Always copy to clipboard regardless of share status
+    // Silently copying to the clipboard produced no visible feedback the
+    // user could actually notice besides the count changing — use the real
+    // native share sheet where supported (a clearly visible action), with
+    // clipboard-copy + toast only as the fallback for browsers without it.
+    const shareUrl  = `${window.location.origin}${window.location.pathname}?post=${id}`;
+    const shareText = `${post.title}\n\n${post.description}`;
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?post=${id}`);
-    } catch { /* clipboard unavailable */ }
-
-    if (post.shared) {
-      showToast("Link copied! (Already shared)");
+      if (navigator.share) {
+        await navigator.share({ title: post.title, text: shareText, url: shareUrl });
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareUrl);
+        showToast("Link copied to clipboard!");
+      } else {
+        showToast("Could not share — copy this link manually: " + shareUrl);
+      }
+    } catch (err) {
+      if (err?.name === "AbortError") return; // user cancelled the native share sheet — don't count it
+      showToast("Could not share this post.");
       return;
     }
+
+    if (post.shared) return; // already tracked before, don't double count
 
     const patchShare = (rs, shared, count) => rs.map(r => r.id === id ? { ...r, shared, sharesCount: count } : r);
     setRows(rs => patchShare(rs, true, post.sharesCount + 1));
@@ -213,10 +227,7 @@ export default function AnnouncementsView() {
       }
       setRows(rs => patchShare(rs, json.shared, json.sharesCount));
       setRecentPosts(rs => patchShare(rs, json.shared, json.sharesCount));
-      showToast("Link copied and share tracked!");
-    } catch {
-      showToast("Link copied.");
-    }
+    } catch { /* keep optimistic state on network failure */ }
   }
 
   async function handleQuickPost() {
@@ -253,7 +264,6 @@ export default function AnnouncementsView() {
           <thead>
             <tr>
               <th>Post Title</th>
-              <th>Type</th>
               <th>Description</th>
               <th>Actions</th>
             </tr>
@@ -261,7 +271,7 @@ export default function AnnouncementsView() {
           <tbody>
             {loading && (
               <tr>
-                <td colSpan="4" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                <td colSpan="3" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
                   Loading…
                 </td>
               </tr>
@@ -269,7 +279,6 @@ export default function AnnouncementsView() {
             {!loading && filtered.map((r) => (
               <tr key={r.id}>
                 <td>{r.title}</td>
-                <td>{r.type}</td>
                 <td>{r.description}</td>
                 <td>
                   <div className="announcement-action-menu">
@@ -290,7 +299,7 @@ export default function AnnouncementsView() {
             ))}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td colSpan="4" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                <td colSpan="3" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
                   No announcements match the current filter.
                 </td>
               </tr>
@@ -570,9 +579,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
   const [title, setTitle]               = useState("");
   const [description, setDescription]   = useState("");
   const [imageUrl, setImageUrl]         = useState("");
-  const [category, setCategory]         = useState("News");
   const [saving, setSaving]             = useState(false);
-  const [catOpen, setCatOpen]           = useState(false);
   const [emojiOpen, setEmojiOpen]       = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [location, setLocation]         = useState("");
@@ -584,28 +591,26 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
       setTitle(composer.row.title);
       setDescription(composer.row.description);
       setImageUrl(composer.row.imageUrl || "");
-      setCategory(composer.row.type || "News");
+      setLocation(composer.row.location || "");
     } else {
       setTitle("");
       setDescription("");
       setImageUrl(composer?.initialImage || "");
-      setCategory("News");
+      setLocation("");
     }
-    setCatOpen(false);
     setEmojiOpen(false);
     setLocationOpen(false);
-    setLocation("");
     setSaving(false);
     setTitleError("");
     setDescError("");
   }, [composer]);
 
   useEffect(() => {
-    if (!catOpen && !emojiOpen) return;
-    const onDoc = () => { setCatOpen(false); setEmojiOpen(false); };
+    if (!emojiOpen) return;
+    const onDoc = () => setEmojiOpen(false);
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
-  }, [catOpen, emojiOpen]);
+  }, [emojiOpen]);
 
   function handleImageChange(e) {
     const file = e.target.files[0];
@@ -633,14 +638,13 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
       return;
     }
     setSaving(true);
-    const body = description.trim();
-    const withLocation = location.trim() ? `${body}\n\n📍 ${location.trim()}` : body;
     await onSubmit(
       {
         title:       title.trim(),
-        description: withLocation,
-        type:        category,
+        description: description.trim(),
+        type:        "News",
         imageUrl,
+        location:    location.trim(),
       },
       composer.row?.id
     );
@@ -660,22 +664,11 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
           <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
           <div>
             <strong>TSU Alumni Office</strong>
-            <span style={{ position: "relative" }}>
-              <button
-                type="button"
-                className="admin-choice composer-category"
-                onClick={(e) => { e.stopPropagation(); setCatOpen((o) => !o); }}
-              >
-                {category}
-              </button>
-              {catOpen && (
-                <div className="admin-menu show" onClick={(e) => e.stopPropagation()}>
-                  {adminMenuChoices["post-category"].map((c) => (
-                    <button key={c} type="button" onClick={() => { setCategory(c); setCatOpen(false); }}>{c}</button>
-                  ))}
-                </div>
-              )}
-            </span>
+            {/* News is the only type this composer can post — Job Postings
+                come from Employers and Events from Coordinators, each
+                through their own dedicated model/flow, so there's nothing
+                else to pick here. */}
+            <span className="admin-choice composer-category" style={{ display: "inline-flex", alignItems: "center", cursor: "default" }}>News</span>
           </div>
         </div>
         <div className="create-post-body">

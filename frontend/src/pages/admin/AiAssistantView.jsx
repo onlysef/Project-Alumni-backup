@@ -520,18 +520,33 @@ export default function AiAssistantView() {
     } catch { /* ignore */ }
   }
 
+  // Builds the history list with the current conversation archived onto it
+  // (if non-empty) and, optionally, a specific entry removed — lets
+  // restoreConversation drop the entry it's restoring FROM history in the
+  // same state update as archiving what's currently on screen, so restoring
+  // an old conversation and later hitting "New chat" again doesn't leave a
+  // duplicate of it sitting in history (once under its original timestamp,
+  // once re-archived under a new one).
+  function buildArchivedHistory(excludeId) {
+    let next = excludeId ? history.filter((h) => h.id !== excludeId) : history;
+    if (messages.length > 0) {
+      const firstUser = messages.find((m) => m.role === "user");
+      const title = (firstUser?.text || "Conversation").slice(0, 48);
+      const entry = {
+        id: `c-${Date.now()}`,
+        title,
+        savedAt: new Date().toISOString(),
+        messages,
+      };
+      next = [entry, ...next];
+    }
+    return next.slice(0, 30);
+  }
+
   // Save the current conversation into history (if it has any messages)
   function archiveCurrent() {
     if (messages.length === 0) return;
-    const firstUser = messages.find((m) => m.role === "user");
-    const title = (firstUser?.text || "Conversation").slice(0, 48);
-    const entry = {
-      id: `c-${Date.now()}`,
-      title,
-      savedAt: new Date().toISOString(),
-      messages,
-    };
-    persistHistory([entry, ...history].slice(0, 30));
+    persistHistory(buildArchivedHistory());
   }
 
   function newChat() {
@@ -559,7 +574,7 @@ export default function AiAssistantView() {
   }
 
   function restoreConversation(entry) {
-    archiveCurrent();
+    persistHistory(buildArchivedHistory(entry.id));
     setMessages(entry.messages || []);
     setHistoryOpen(false);
   }

@@ -201,7 +201,12 @@ const deleteUser = async (req, res) => {
       Notification.deleteMany({ user_id: req.params.id }),
       (async () => {
         if (!user.email) return;
-        const graduate = await Graduate.findOneAndDelete({ email: user.email.toLowerCase().trim() });
+        // Graduate.email isn't schema-normalized to lowercase (bulk-imported
+        // rows keep the source spreadsheet's original casing), so an exact
+        // match here silently misses records and leaves them orphaned.
+        const graduate = await Graduate.findOneAndDelete({
+          $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, user.email.toLowerCase().trim()] },
+        });
         if (graduate) {
           await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
         }

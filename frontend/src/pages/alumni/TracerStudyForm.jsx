@@ -252,14 +252,26 @@ function validatePage(page, answers) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TracerStudyForm() {
-  const { token, firstLogin, setTracerStudyDone } = useAuth();
+  const { token, user, firstLogin, setTracerStudyDone } = useAuth();
   const navigate = useNavigate();
+
+  // The form has no backend draft-save — without this, refreshing mid-form
+  // (e.g. on page 2 of 6) lost every answer and the current page, dropping
+  // the alumni straight back to page 1. Persisted client-side per account so
+  // an in-progress attempt survives a refresh or an accidental tab close.
+  const draftKey = `tracerDraft_${user?.id || "anon"}`;
+  function loadDraft() {
+    try {
+      const raw = localStorage.getItem(draftKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
 
   const [config, setConfig]               = useState(null);
   const [configLoading, setConfigLoading]   = useState(true);
   const [configError, setConfigError]     = useState(""); // error loading the form config
-  const [step, setStep]                   = useState(1);
-  const [answers, setAnswers]             = useState({});
+  const [step, setStep]                   = useState(() => loadDraft()?.step || 1);
+  const [answers, setAnswers]             = useState(() => loadDraft()?.answers || {});
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState(""); // validation / submission errors
   const [isAlreadySubmitted, setIsAlreadySubmitted] = useState(false);
@@ -306,6 +318,16 @@ export default function TracerStudyForm() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [fetchConfig]);
 
+  // The visibilitychange re-fetch above only fires on a tab switch — an
+  // alumni who stays on this tab the whole time (the common case while
+  // actively filling out a form) never re-triggers it, so an admin's edit
+  // made while they're mid-form wouldn't reach them until they happened to
+  // switch tabs or refresh. Polling covers that gap.
+  useEffect(() => {
+    const interval = setInterval(() => fetchConfig(true), 30000);
+    return () => clearInterval(interval);
+  }, [fetchConfig]);
+
   // Load existing tracer response on mount so alumni can edit their previous answers
   useEffect(() => {
     if (!token) { setExistingDataLoading(false); return; }
@@ -344,6 +366,18 @@ export default function TracerStudyForm() {
       .catch((err) => console.error("TracerStudyForm: could not load existing response", err))
       .finally(() => setExistingDataLoading(false));
   }, [token]);
+
+  // Save the draft on every answer/page change, so a refresh restores it.
+  useEffect(() => {
+    try { localStorage.setItem(draftKey, JSON.stringify({ step, answers })); } catch {}
+  }, [draftKey, step, answers]);
+
+  // A restored draft's page number can outlive the form it was saved
+  // against — if the admin removes pages between the alumni's visits, the
+  // saved step could point past the end and leave currentPage undefined.
+  useEffect(() => {
+    if (config && step > config.pages.length) setStep(Math.max(1, config.pages.length));
+  }, [config, step]);
 
   // Guards — must come after all hooks
   if (firstLogin) return <Navigate to="/alumni/onboarding" replace />;
@@ -384,6 +418,7 @@ export default function TracerStudyForm() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Submission failed. Please try again."); return; }
+      try { localStorage.removeItem(draftKey); } catch {}
       setTracerStudyDone();
       navigate("/alumni/dashboard", { replace: true });
     } catch {
@@ -397,8 +432,8 @@ export default function TracerStudyForm() {
   if (configLoading || existingDataLoading) {
     return (
       <div style={{
-        height: "100vh", display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#f5f0f0", fontFamily: "sans-serif",
+        minHeight: "calc(100vh - 70px)", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#faf8f8", fontFamily: "sans-serif",
       }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ width: 40, height: 40, border: `4px solid ${MAROON}30`, borderTopColor: MAROON, borderRadius: "50%", margin: "0 auto 16px", animation: "spin 0.8s linear infinite" }} />
@@ -412,8 +447,8 @@ export default function TracerStudyForm() {
   if (!config) {
     return (
       <div style={{
-        height: "100vh", display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#f5f0f0", fontFamily: "sans-serif",
+        minHeight: "calc(100vh - 70px)", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#faf8f8", fontFamily: "sans-serif",
       }}>
         <div style={{ textAlign: "center", padding: 24, maxWidth: 400 }}>
           <p style={{ color: "#b91c1c", fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
@@ -445,10 +480,14 @@ export default function TracerStudyForm() {
   if (config.pages.length === 0) {
     return (
       <div style={{
-        height: "100vh", display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#f5f0f0", fontFamily: "sans-serif",
+        minHeight: "calc(100vh - 70px)", display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#faf8f8", fontFamily: "sans-serif",
       }}>
-        <div style={{ textAlign: "center", padding: 24, maxWidth: 420 }}>
+        <div style={{
+          textAlign: "center", padding: "2.5rem", maxWidth: 420,
+          background: "linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,248,239,.92)), #fff",
+          border: "1px solid #e1d4d8", borderRadius: 12, boxShadow: "0 10px 28px rgba(70,0,18,.08)",
+        }}>
           <div style={{ fontSize: 32, marginBottom: 10 }}>🕒</div>
           <p style={{ color: MAROON, fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
             Tracer study form not yet available
@@ -466,7 +505,7 @@ export default function TracerStudyForm() {
 
   // ── Layout ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ height: "100vh", overflowY: "auto", background: "#f5f0f0", fontFamily: "sans-serif" }}>
+    <div style={{ minHeight: "calc(100vh - 70px)", background: "#faf8f8", fontFamily: "sans-serif" }}>
 
       {/* Header */}
       <div style={{ background: `linear-gradient(135deg, ${MAROON} 0%, #9b2235 100%)`, padding: "20px 24px", color: "#fff" }}>

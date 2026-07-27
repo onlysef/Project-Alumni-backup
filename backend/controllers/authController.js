@@ -86,6 +86,8 @@ const login = async (req, res) => {
         course: user.course,
         graduationYear: user.graduationYear,
         tracerStudyCompleted: user.tracerStudyCompleted,
+        avatarUrl: user.avatarUrl || '',
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
       },
     });
   } catch (err) {
@@ -152,6 +154,8 @@ const verifyTwoFactor = async (req, res) => {
         course: user.course,
         graduationYear: user.graduationYear,
         tracerStudyCompleted: user.tracerStudyCompleted,
+        avatarUrl: user.avatarUrl || '',
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
       },
     });
   } catch (err) {

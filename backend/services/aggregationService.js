@@ -1338,7 +1338,8 @@ const PERSON_LOOKUP_PATTERNS = [
   /\bwhat\s+(?:is|does)\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})(?:'s)?\s+(?:job|occupation|position|current\s+job|current\s+role|working\s+as|company|employer)\b/i,
   /\bis\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+(?:currently\s+)?employed\b/i,
   /\bwhat\s+company\s+does\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+work\s+(?:for|at)\b/i,
-  /\bwho\s+is\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+working\s+(?:for|with|at)\b/i,
+  // "who is X working for/with/at" is now handled by WHO_IS_PATTERN below
+  // (it's a strict superset — bare "who is X" AND this trailing-clause form).
 ];
 
 // "Is there an alumni/alumnus named vincent?" / "Do you have a graduate
@@ -1354,6 +1355,36 @@ const PERSON_LOOKUP_PATTERNS = [
 // filter ever extracted, silently dumping the entire unfiltered 50-alumni
 // roster as if it had answered the question.
 const NAMED_LOOKUP_PATTERN = /\b(?:alumni|alumnus|alumna|graduates?)\s+(?:named|called)\s+([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4})(?=[?,!.]|$)/i;
+
+// "Who is Vincent De Jesus?" / "who is vincent de jesus" — the single most
+// natural way to ask about one specific person, but every PERSON_LOOKUP_PATTERNS
+// entry above requires a trailing clause ("... working for/at/with"). A bare
+// "who is X" with nothing after it matched NONE of them, so it silently fell
+// through this file entirely to RAG/LLM narration instead of the verified,
+// structured lookup below — producing a vague, sometimes-hallucinated answer
+// for the most common phrasing of the most common question type. Lowercase-
+// tolerant for the same reason NAMED_LOOKUP_PATTERN is (casual typing is the
+// norm, not the exception); the lookahead stops the capture at an optional
+// "working for/with/at" clause, sentence punctuation, or end of string so it
+// doesn't swallow a trailing clause into the "name".
+//
+// Rhetorical/definition-style "who is X" questions aren't person lookups at
+// all ("who is available", "who is responsible for grading", "who is the
+// best program") — excluding their common leading words (same
+// STATUS_EXCLUDE_WORDS/STATUS_NAME_WORD approach as below) keeps those from
+// misfiring into a Graduate-name search that can never match.
+const WHO_IS_EXCLUDE_WORDS = 'the|a|an|this|that|these|those|available|going|responsible|eligible|allowed|able|qualified|assigned|in|charge|best|worst|good|great|new|old|it|he|she|they|we|you|i|there|here';
+const WHO_IS_NAME_WORD = String.raw`(?!(?:${WHO_IS_EXCLUDE_WORDS})\b)[a-zA-Z][a-zA-Z.'-]*`;
+// The optional filler-adverb group before "working" stops a word like
+// "currently"/"still" sitting between the name and the working-clause from
+// being swallowed into the captured name (it used to be, since the lookahead
+// required "working" to follow immediately) — the filler is matched by the
+// lookahead itself, not the capture group, so it's consumed without being
+// part of the returned name.
+const WHO_IS_PATTERN = new RegExp(
+  String.raw`\bwho\s+is\s+(${WHO_IS_NAME_WORD}(?:\s+${WHO_IS_NAME_WORD}){0,4}?)(?=(?:\s+(?:currently|now|still|recently|presently))?\s+working\s+(?:for|with|at)\b|[?,!.]|\s*$)`,
+  'i'
+);
 
 // "what dani manlapig status" (casual, ungrammatical, lowercase — no "is",
 // no possessive) / "what is Dani Manlapig's status" — none of the
@@ -1390,6 +1421,9 @@ const STATUS_LOOKUP_PATTERN = new RegExp(
 function extractPersonName(question) {
   const namedMatch = question.match(NAMED_LOOKUP_PATTERN);
   if (namedMatch) return namedMatch[1].trim();
+
+  const whoIsMatch = question.match(WHO_IS_PATTERN);
+  if (whoIsMatch) return whoIsMatch[1].trim();
 
   const statusMatch = question.match(STATUS_LOOKUP_PATTERN);
   if (statusMatch) return statusMatch[1].replace(/'s$/i, '').trim();

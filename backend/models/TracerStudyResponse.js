@@ -16,6 +16,7 @@ const tracerStudyResponseSchema = new mongoose.Schema({
   employmentStatus: { type: String, default: '' }, // Yes / No / Never Employed
 
   // — if employed —
+  companyName:            { type: String, default: '' },
   placeOfWork:            { type: String, default: '' },
   occupationTitle:        { type: String, default: '' },
   industryField:          { type: String, default: '' },

@@ -51,6 +51,19 @@ export function AuthProvider({ children }) {
     setTracerStudyCompletedState(true);
   }
 
+  // Patches the logged-in user's own cached profile (name, email, etc.) after
+  // a self-edit — without this, `user` stays frozen at whatever it was at
+  // login until the next full sign-in, so a changed name keeps showing the
+  // old value everywhere it's read from this context (e.g. the AC assistant
+  // greeting) even though the database was updated successfully.
+  function updateUser(patch) {
+    setUser((prev) => {
+      const next = { ...(prev || {}), ...patch };
+      try { localStorage.setItem("auth_user", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
   function logout() {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
@@ -59,7 +72,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, firstLogin, setFirstLoginDone, tracerStudyCompleted, setTracerStudyDone, logout }}>
+    <AuthContext.Provider value={{ user, token, firstLogin, setFirstLoginDone, tracerStudyCompleted, setTracerStudyDone, updateUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

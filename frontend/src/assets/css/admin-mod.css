@@ -7050,9 +7050,8 @@
             .partnership-table td:nth-child(5)::before { content: "Actions"; }
 
             .announcement-table td:nth-child(1)::before { content: "Post Title"; }
-            .announcement-table td:nth-child(2)::before { content: "Type"; }
-            .announcement-table td:nth-child(3)::before { content: "Description"; }
-            .announcement-table td:nth-child(4)::before { content: "Actions"; }
+            .announcement-table td:nth-child(2)::before { content: "Description"; }
+            .announcement-table td:nth-child(3)::before { content: "Actions"; }
 
             .appointments-table td:nth-child(1)::before { content: "Date & Time"; }
             .appointments-table td:nth-child(2)::before { content: "Alumni"; }
@@ -7452,14 +7451,29 @@
         body.dark-mode .post-launcher-icon:hover { background: #3a1f27; }
 
         @media (min-width: 601px) {
+            /* table-layout: auto (the default) sizes columns to fit content
+               on one line whenever possible, so the percentage widths below
+               were only ever a hint — a long Description just grew the
+               column (and the whole table, via .table-scroll's horizontal
+               scroll) instead of wrapping. Fixed layout makes the browser
+               honor these widths and wrap text inside them instead. */
+            .announcement-table {
+                table-layout: fixed;
+            }
             .announcement-table th:nth-child(1),
-            .announcement-table td:nth-child(1) { width: 24%; }
+            .announcement-table td:nth-child(1) {
+                width: 28%;
+                white-space: normal;
+                overflow-wrap: break-word;
+            }
             .announcement-table th:nth-child(2),
-            .announcement-table td:nth-child(2) { width: 16%; }
+            .announcement-table td:nth-child(2) {
+                width: 58%;
+                white-space: normal;
+                overflow-wrap: break-word;
+            }
             .announcement-table th:nth-child(3),
-            .announcement-table td:nth-child(3) { width: 46%; }
-            .announcement-table th:nth-child(4),
-            .announcement-table td:nth-child(4) {
+            .announcement-table td:nth-child(3) {
                 width: 14% !important;
                 text-align: center;
             }

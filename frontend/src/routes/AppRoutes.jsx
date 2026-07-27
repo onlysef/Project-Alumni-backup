@@ -119,7 +119,11 @@ export default function AppRoutes() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route
               path="dashboard"
-              element={<AlumniDashboard />}
+              element={
+                <ProtectedRoute allowedRoles={["alumni"]}>
+                  <AlumniDashboard />
+                </ProtectedRoute>
+              }
             />
             <Route
               path="onboarding"

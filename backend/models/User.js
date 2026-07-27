@@ -8,6 +8,7 @@ const userSchema = new mongoose.Schema({
   password:   { type: String, required: true },
   role:       { type: String, enum: ['admin', 'alumni', 'coordinator', 'employer'], default: 'alumni' },
   status:     { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
+  avatarUrl:      { type: String, default: '' },
   college:        { type: String, default: '' },
   company:        { type: String, default: '' },
   course:         { type: String },

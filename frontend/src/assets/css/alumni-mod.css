@@ -72,7 +72,10 @@
   color: #650019;
   font-weight: 800;
   cursor: pointer;
+  overflow: hidden;
+  padding: 0;
 }
+.alumni-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
 .alumni-top-panel {
   position: absolute;
@@ -88,8 +91,45 @@
   box-shadow: 0 12px 30px rgba(39, 0, 10, .18);
 }
 
+/* Account settings reuses the same anchored side-dropdown as Notifications
+   and Settings (not a centered overlay modal) — just wider, since it holds
+   a photo uploader and a 3-field password form, and capped with its own
+   scroll so it never gets clipped against the top of a short window. */
+.alumni-top-panel.account-panel { width: 300px; max-height: 80vh; overflow-y: auto; }
+.account-settings-avatar-row { display: flex; align-items: center; gap: 12px; }
+.account-settings-avatar { flex-shrink: 0; width: 52px; height: 52px; border-radius: 50%; background: #f3d286; color: #620019; font-weight: 800; font-size: 18px; display: grid; place-items: center; overflow: hidden; }
+.account-settings-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.account-settings-avatar-row strong { display: block; color: #2d2024; font-size: 13px; }
+.account-settings-avatar-row p { margin: 2px 0 6px; color: #76656a; font-size: 11px; word-break: break-all; }
+.account-settings-avatar-row button { padding: 5px 12px; border: 1px solid #70001d; border-radius: 5px; background: #fff; color: #70001d; font-size: 11px; font-weight: 600; cursor: pointer; }
+.account-settings-hint { display: block; margin-top: 5px; font-size: 10.5px; color: #76656a; }
+.alumni-top-panel .account-settings-divider { height: 1px; background: #f0e6e6; margin: 14px 0; }
+.account-settings-password-form { display: flex; flex-direction: column; gap: 10px; }
+.account-settings-password-form h3 { margin: 0; color: #620019; font-size: 13px; }
+.account-settings-password-form label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; font-weight: 600; color: #54484c; }
+.account-settings-password-form input { padding: 7px 10px; border: 1px solid #d8c9cd; border-radius: 6px; font-size: 12.5px; outline: none; }
+.account-settings-password-form input:focus { border-color: #70001d; }
+.account-settings-password-form .primary-card-btn { margin-top: 2px; border: 0; cursor: pointer; padding: 8px; border-radius: 5px; }
+.account-settings-error { padding: 7px 10px; border-radius: 6px; background: #fef2f2; color: #b91c1c; font-size: 11px; }
+.account-settings-success { padding: 7px 10px; border-radius: 6px; background: #f0fdf4; color: #15803d; font-size: 11px; }
+
 .alumni-top-panel p { margin: 7px 0; color: #76656a; font-size: 13px; }
 .alumni-top-panel button { padding: 7px 14px; border: 0; border-radius: 5px; background: #70001d; color: #fff; cursor: pointer; }
+
+.two-factor-toggle { margin-top: 10px; }
+.two-factor-toggle label { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.two-factor-toggle input[type="checkbox"] { margin-top: 2px; width: 16px; height: 16px; accent-color: #70001d; cursor: pointer; }
+.two-factor-toggle strong { display: block; font-size: 12.5px; color: #2d2024; }
+.two-factor-toggle small { display: block; margin-top: 2px; font-size: 11px; color: #76656a; line-height: 1.4; }
+.two-factor-save-btn { margin-top: 10px; padding: 6px 16px; border: 0; border-radius: 5px; background: #70001d; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+.two-factor-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.alumni-notif-list { list-style: none; margin: 8px -16px -16px; padding: 4px 0; max-height: 320px; overflow-y: auto; }
+.alumni-notif-list li { display: flex; flex-direction: column; gap: 2px; padding: 9px 16px; border-top: 1px solid #f0e6e6; }
+.alumni-notif-list li:first-child { border-top: 0; }
+.alumni-notif-list li.unread { background: #fdf5f6; }
+.alumni-notif-list li b { font-size: 12.5px; color: #70001d; }
+.alumni-notif-list li span { font-size: 12px; color: #54484c; line-height: 1.4; }
+.alumni-notif-list li time { font-size: 10.5px; color: #a8989c; }
 .alumni-page-content { min-height: calc(100vh - 70px); padding: 28px; background: #faf8f8; }
 .alumni-placeholder { min-height: 420px; display: grid; place-content: center; justify-items: center; border: 1px dashed #d8c9cd; border-radius: 10px; background: #fff; color: #76656a; }
 .alumni-placeholder img { width: 82px; opacity: .65; }
@@ -134,6 +174,7 @@
 .announcement-body { position: relative; align-self: center; padding: 22px 28px 22px 4px; }
 .announcement-body h2 { max-width: 590px; margin: 12px 0 10px; color: #151012; font-size: 22px; line-height: 1.05; }
 .announcement-body p { max-width: 610px; margin: 0 0 18px; color: #302a2c; font-size: 13px; line-height: 1.35; }
+.announcement-location { margin: -10px 0 18px !important; color: #70001d !important; font-size: 12px !important; font-weight: 600; }
 .announcement-tag, .primary-card-btn { display: inline-block; padding: 10px 20px; border: 0; border-radius: 4px; background: #70001d; color: #fff; font-size: 13px; font-weight: 700; }
 .primary-card-btn { cursor: pointer; }
 .primary-card-btn.applied { background: #2e7d4f; }
@@ -142,8 +183,14 @@
 .announcement-meta b { color: #51494c; font-size: 11px; }
 .meta-action { border: 0; background: transparent; color: #70001d; font-size: 12px; font-weight: 700; cursor: pointer; }
 .meta-action.active { color: #b8891e; }
+/* Without this, the browser's default focus ring lingers on whichever
+   action (Like/Comments/Share) was clicked last, showing as a stray box
+   around only that one button — not a state indicator, just leftover
+   default focus styling with no override. Keyboard users still get a
+   visible ring via :focus-visible; a mouse click doesn't retain one. */
+.meta-action:focus { outline: none; }
+.meta-action:focus-visible { outline: 2px solid #b8891e; outline-offset: 2px; border-radius: 4px; }
 .event-image { display: flex; align-items: flex-end; background: linear-gradient(135deg, #f35b49, #ffd28d 48%, #65102b); }
-.event-image::before { content: "CCS ALUMNI CAREER TALK"; position: absolute; top: 24px; left: 18px; right: 18px; color: #fff; font-size: 20px; font-weight: 900; text-align: center; text-shadow: 0 2px 5px #680017; }
 .event-image > span { z-index: 2; margin: 0 0 14px 12px; padding: 6px 10px; border-radius: 3px; background: #70001d; color: #fff; font-size: 12px; font-weight: 700; }
 .event-people { position: absolute; inset: 70px 20px 0; display: flex; justify-content: center; align-items: flex-end; gap: 10px; }
 .event-people i { width: 52px; height: 90px; border-radius: 50% 50% 15% 15%; background: linear-gradient(#dbb198 30%, #263f64 31%); box-shadow: 0 8px 18px rgba(61,0,20,.35); }
@@ -151,10 +198,16 @@
 .event-detail { margin: 8px 0; color: #2f292b; font-size: 13px; }
 .card-bell { position: absolute; top: 10px; right: 18px; padding: 6px 9px; border: 1px solid #d8c9cd; border-radius: 999px; background: #fff; color: #70001d; font-size: 10px; font-weight: 800; cursor: pointer; }
 .card-bell.active { border-color: #70001d; background: #70001d; color: #fff; }
-.next-btn { position: absolute; right: 28px; bottom: 20px; min-width: 110px; cursor: pointer; }
+.next-btn { position: absolute; right: 28px; bottom: 20px; min-width: 110px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.next-btn .admin-svg-icon { width: 14px; height: 14px; }
 .company { margin: -7px 0 16px; font-size: 13px; line-height: 1.3; }
 .job-actions { display: flex; align-items: center; gap: 14px; }
 .details-btn { border: 0; background: transparent; color: #51494c; cursor: pointer; }
+/* The modal's Close button reused .details-btn, which is styled as plain
+   inline text for "See details ->" links elsewhere — inside a modal that
+   read as an unstyled label with no visible button affordance at all. */
+.alumni-action-modal-buttons .details-btn { padding: 7px 16px; border: 1px solid #70001d; border-radius: 5px; color: #70001d; font-weight: 600; }
+.alumni-action-modal-buttons .details-btn:hover { background: #fdf0f1; }
 .news-thread { overflow: hidden; border: 1px solid #aaa; border-radius: 5px; background: #fff; }
 .news-thread .announcement-card { border: 0; border-radius: 0; box-shadow: none; }
 .guidance-image { display: grid; place-content: center; justify-items: center; background: linear-gradient(135deg, #ecf4ef, #deb78d); color: #4c6f78; font-weight: 900; }
@@ -184,19 +237,29 @@
 .logo-image.purple { background: radial-gradient(circle, #713c9d, #08111d 70%); }
 .view-more { display: block; width: 100%; border: 0; background: transparent; color: #70001d; font-size: 12px; font-weight: 700; text-align: right; text-decoration: underline; cursor: pointer; }
 .alumni-action-overlay { position: fixed; inset: 0; z-index: 180; display: grid; place-items: center; padding: 24px; background: rgba(33, 11, 18, .48); }
-.alumni-action-modal { width: min(430px, 92vw); padding: 22px; border: 1px solid #e2d3d7; border-radius: 8px; background: #fff; box-shadow: 0 22px 55px rgba(32, 0, 9, .28); }
+.alumni-action-modal { width: min(430px, 92vw); padding: 26px; border: 1px solid #e2d3d7; border-radius: 8px; background: #fff; box-shadow: 0 22px 55px rgba(32, 0, 9, .28); }
 .alumni-action-modal span { color: #b68922; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
-.alumni-action-modal h2 { margin: 6px 0 8px; color: #620019; font-size: 20px; }
-.alumni-action-modal p { margin: 0; color: #54484c; font-size: 13px; line-height: 1.55; }
+.alumni-action-modal h2 { margin: 8px 0 14px; color: #620019; font-size: 20px; }
+/* Event details concatenate description + schedule + venue into one
+   string with \n\n / \n separators — pre-line renders those as actual
+   line breaks instead of collapsing them into one run-on paragraph. */
+.alumni-action-modal p { margin: 0; color: #54484c; font-size: 13px; line-height: 1.6; white-space: pre-line; }
 .alumni-action-modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 .event-image.second { background: linear-gradient(135deg, #b9d9ed, #f1d8b6 50%, #26466a); }
 .recent-title { margin-top: 28px !important; text-transform: none !important; }
-.completed-event { position: relative; display: grid; grid-template-columns: 130px 1fr; align-items: center; max-width: 550px; min-height: 120px; border: 1px solid #aaa; border-radius: 4px; background: #fff; }
-.completed-event .announcement-image { min-height: 82px; margin: 12px; }
+/* Was a CSS grid with a fixed 130px image column and min-height:120px that
+   left a tall block of empty space under short title/date text, plus an
+   absolutely-positioned badge spanning the full top-right edge like a strip
+   rather than a proper pill. Flex + content-sized image reads much cleaner
+   for a compact "completed" row. */
+.completed-event { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 16px 12px 12px; border: 1px solid #e2dde0; border-radius: 6px; background: #fff; }
+.completed-event .announcement-image { flex-shrink: 0; width: 92px; height: 68px; min-height: 0; margin: 0; border-radius: 4px; overflow: hidden; }
 .completed-event .event-image::before, .completed-event .event-people { display: none; }
 .completed-event .event-image > span { font-size: 8px; }
-.completed-event p { color: #777; font-size: 12px; }
-.completed-event > span { position: absolute; top: 0; right: 0; padding: 6px 10px; background: #71bf70; color: #fff; }
+.completed-event > div { flex: 1; min-width: 0; }
+.completed-event b { display: block; color: #2d2024; font-size: 14px; margin-bottom: 2px; }
+.completed-event p { margin: 0; color: #76656a; font-size: 12px; }
+.completed-event > span { flex-shrink: 0; padding: 4px 12px; border-radius: 999px; background: #71bf70; color: #fff; font-size: 11px; font-weight: 700; }
 
 /* Alumni home */
 .alumni-home-page {
@@ -556,7 +619,8 @@
 .secondary-employment-btn { border: 1px solid #cbbdc1; background: #fff; color: #65585c; }
 .profile-summary-card { position: sticky; top: 92px; padding: 25px; border-radius: 10px; background: linear-gradient(160deg, #790020, #510015); color: #fff; box-shadow: 0 12px 28px rgba(80,0,20,.2); }
 .profile-card-label { color: #f4cf6b; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
-.profile-avatar { display: grid; place-items: center; width: 82px; height: 82px; margin: 20px auto 12px; border: 3px solid #f5cf65; border-radius: 50%; background: #dbeaf2; color: #70001d; font-size: 25px; font-weight: 900; }
+.profile-avatar { display: grid; place-items: center; width: 82px; height: 82px; margin: 20px auto 12px; border: 3px solid #f5cf65; border-radius: 50%; background: #dbeaf2; color: #70001d; font-size: 25px; font-weight: 900; overflow: hidden; }
+.profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .profile-summary-card h2 { margin: 0; font-size: 18px; text-align: center; }
 .profile-course, .profile-email { margin: 6px 0; color: rgba(255,255,255,.78); font-size: 11px; text-align: center; }
 .profile-divider { height: 1px; margin: 20px 0; background: rgba(255,255,255,.18); }

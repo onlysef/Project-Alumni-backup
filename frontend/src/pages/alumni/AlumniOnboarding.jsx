@@ -68,8 +68,12 @@ export default function AlumniOnboarding() {
   const fieldStyle = { marginBottom: "1rem" };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>
-      <div style={{ background: "#fff", borderRadius: "12px", boxShadow: "0 4px 24px rgba(0,0,0,0.10)", padding: "2.5rem", width: "100%", maxWidth: "420px" }}>
+    <div style={{ minHeight: "calc(100vh - 70px)", background: "#faf8f8", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif", padding: "28px" }}>
+      <div style={{
+        background: "linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,248,239,.92)), #fff",
+        border: "1px solid #e1d4d8", borderRadius: "12px", boxShadow: "0 10px 28px rgba(70,0,18,.08)",
+        padding: "2.5rem", width: "100%", maxWidth: "420px",
+      }}>
 
         <div style={{ marginBottom: "1.75rem", textAlign: "center" }}>
           <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 52, height: 52, background: "#eff6ff", borderRadius: "50%", marginBottom: "0.75rem" }}>

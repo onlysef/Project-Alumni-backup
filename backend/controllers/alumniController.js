@@ -5,6 +5,9 @@ const TracerStudyResponse  = require('../models/TracerStudyResponse');
 const TracerFormConfig     = require('../models/TracerFormConfig');
 const Graduate             = require('../models/Graduate');
 const EmbeddingDocument    = require('../models/EmbeddingDocument');
+const Announcement         = require('../models/Announcement');
+const Job                  = require('../models/Job');
+const Event                = require('../models/Event');
 const { getTracerFormConfig } = require('./tracerFormConfigController');
 const { getEmbedding }        = require('../services/embeddingService');
 const { tracerRowToText }     = require('../utils/fileParser');
@@ -15,7 +18,7 @@ const FIXED_KEYS = new Set([
   'consent', // validated on frontend; not persisted
   'contactNumber', 'gender',
   'programsCompleted', 'professionalExam', 'professionalExamName',
-  'employmentStatus', 'placeOfWork', 'occupationTitle', 'industryField',
+  'employmentStatus', 'companyName', 'placeOfWork', 'occupationTitle', 'industryField',
   'presentEmploymentType', 'jobRelatedToDegree', 'yearsInCurrentJob',
   'reasonsNotEmployed',
   'furtherEducation', 'furtherEducationType',
@@ -52,6 +55,7 @@ function extractEmploymentFromTracer(answers) {
 
   return {
     employment_status:     mapEmploymentStatus(answers.employmentStatus),
+    company_name:           answers.companyName          || '',
     job_title:             answers.occupationTitle      || '',
     industry:              answers.industryField        || '',
     job_related_to_course: jrd.startsWith('yes'),
@@ -121,6 +125,9 @@ async function resolveExtraEmploymentFields(extraAnswers, college) {
 }
 
 // POST /api/alumni/change-password
+// Only used by the first-login onboarding flow — the alumnus is already
+// authenticated via the one-time temp password they were just handed, so
+// there's nothing meaningful to verify it against.
 const changePassword = async (req, res) => {
   try {
     const { newPassword } = req.body;
@@ -132,6 +139,45 @@ const changePassword = async (req, res) => {
     res.json({ message: 'Password changed successfully.' });
   } catch (err) {
     console.error('changePassword error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// PUT /api/alumni/password — self-service change from Account Settings.
+// Unlike changePassword above, this requires and verifies the current
+// password first — an already-logged-in but unattended session shouldn't
+// be enough on its own to lock the real owner out of their account.
+const updatePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword) return res.status(400).json({ message: 'Current password is required.' });
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    }
+    const user = await User.findById(req.user.id).select('password');
+    if (!user) return res.status(404).json({ message: 'Account not found.' });
+
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) return res.status(400).json({ message: 'Current password is incorrect.' });
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    res.json({ message: 'Password updated successfully.' });
+  } catch (err) {
+    console.error('updatePassword error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// PUT /api/alumni/avatar
+const updateAvatar = async (req, res) => {
+  try {
+    const { avatarUrl } = req.body;
+    if (typeof avatarUrl !== 'string') return res.status(400).json({ message: 'avatarUrl is required.' });
+    await User.findByIdAndUpdate(req.user.id, { avatarUrl });
+    res.json({ avatarUrl });
+  } catch (err) {
+    console.error('updateAvatar error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -228,6 +274,7 @@ const submitTracerStudy = async (req, res) => {
           professionalExam:     body.professionalExam     || '',
           professionalExamName: body.professionalExamName || '',
           employmentStatus:     body.employmentStatus     || '',
+          companyName:           body.companyName           || '',
           placeOfWork:           body.placeOfWork           || '',
           occupationTitle:       body.occupationTitle       || '',
           industryField:         body.industryField         || '',
@@ -379,4 +426,161 @@ const submitTracerStudy = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig };
+// Out of a fixed checklist, since AlumniEmployment defaults company_name to
+// 'N/A' and employment_status to 'Not Yet Updated' rather than leaving them
+// empty — those default values must count as "not filled", not as real
+// answers, or an alumnus who never touched their employment record would
+// still show a non-zero completeness score. Limited to the fields the
+// alumni's own Employment Details form actually lets them edit — the
+// earlier version also checked employment_type, a field with no input on
+// that form at all, so alumni could never reach 100% no matter what they did.
+function computeProfileCompleteness(emp) {
+  if (!emp) return 0;
+  const filled = [
+    emp.employment_status && emp.employment_status !== 'Not Yet Updated',
+    emp.company_name && emp.company_name !== 'N/A',
+    !!emp.job_title,
+    !!emp.industry,
+    !!emp.work_location,
+  ].filter(Boolean).length;
+  return Math.round((filled / 5) * 100);
+}
+
+// GET /api/alumni/employment — self-service read of the alumnus's own record
+const getMyEmployment = async (req, res) => {
+  try {
+    const emp = await AlumniEmployment.findOne({ alumni_id: req.user.id }).lean();
+    res.json({ employment: emp || null });
+  } catch (err) {
+    console.error('getMyEmployment error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// PUT /api/alumni/employment — self-service update of the alumnus's own record
+const updateMyEmployment = async (req, res) => {
+  try {
+    const {
+      employment_status, company_name, job_title, industry, work_location,
+      salary_range, date_employed, skills, experience,
+    } = req.body;
+
+    const updates = {
+      employment_status: employment_status || 'Not Yet Updated',
+      company_name:      company_name || 'N/A',
+      job_title:         job_title || null,
+      industry:          industry || null,
+      work_location:     work_location || null,
+      salary_range:      salary_range || '',
+      skills:            skills || '',
+      experience:        experience || '',
+      last_updated:      new Date(),
+    };
+    if (date_employed) updates.date_employed = new Date(date_employed);
+
+    const emp = await AlumniEmployment.findOneAndUpdate(
+      { alumni_id: req.user.id },
+      { $set: updates },
+      { upsert: true, new: true }
+    );
+    res.json({ employment: emp });
+  } catch (err) {
+    console.error('updateMyEmployment error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/alumni/home-summary
+// Single call backing the alumni Home page's quick-stat cards, profile
+// strength ring, and "similar paths" list — these used to be hardcoded
+// placeholder numbers/names with no backend behind them at all.
+const getHomeSummary = async (req, res) => {
+  try {
+    const alumniId = req.user.id;
+    const me = await User.findById(alumniId).select('course college graduationYear').lean();
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    // The card itself is labeled "News, jobs, and campus events" — it used
+    // to only count Announcement docs, so posting a new Event (a separate
+    // model entirely) never moved this number, contradicting its own label.
+    const college = me?.college || '';
+    const eventVisibilities = ['Public', 'All Alumni'];
+    if (college) eventVisibilities.push(college, `${college} Alumni`);
+    const recentEventsFilter = { visibility: { $in: eventVisibilities }, createdAt: { $gte: thirtyDaysAgo } };
+    // "What needs your attention" should keep showing an event for as long
+    // as it's still upcoming, not just for 30 days after it was posted — an
+    // event announced 40 days in advance would otherwise vanish from the
+    // list before it even happens, while still being the most relevant
+    // thing on the page.
+    const upcomingEventsFilter = { visibility: { $in: eventVisibilities }, event_datetime: { $gte: new Date() } };
+
+    const [announcementsCount, recentEventsCount, recommendedJobsCount, employment, networkMatchesCount, similarAlumni, recentAnnouncements, recentJobs, recentEvents] = await Promise.all([
+      Announcement.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+      Event.countDocuments(recentEventsFilter),
+      Job.countDocuments({ status: 'open' }),
+      AlumniEmployment.findOne({ alumni_id: alumniId }).lean(),
+      me?.course ? User.countDocuments({ role: 'alumni', course: me.course, _id: { $ne: alumniId } }) : 0,
+      me?.course
+        ? User.find({ role: 'alumni', course: me.course, _id: { $ne: alumniId } })
+            .select('firstName lastName course graduationYear')
+            .limit(3)
+            .lean()
+        : [],
+      Announcement.find({ createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: -1 }).limit(6).select('title type createdAt').lean(),
+      Job.find({ status: 'open', createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: -1 }).limit(6).select('title location createdAt').lean(),
+      Event.find(upcomingEventsFilter).sort({ event_datetime: 1 }).limit(6).select('title location createdAt event_datetime').lean(),
+    ]);
+
+    const similarIds = similarAlumni.map((a) => a._id);
+    const similarEmployments = similarIds.length
+      ? await AlumniEmployment.find({ alumni_id: { $in: similarIds } }).lean()
+      : [];
+    const empByAlumni = new Map(similarEmployments.map((e) => [String(e.alumni_id), e]));
+
+    const similarAlumniOut = similarAlumni.map((a) => {
+      const emp = empByAlumni.get(String(a._id));
+      const gradDiff = (me?.graduationYear && a.graduationYear) ? Math.abs(me.graduationYear - a.graduationYear) : null;
+      const score = gradDiff === null ? 85 : Math.max(60, 95 - gradDiff * 3);
+      return {
+        name: `${a.firstName} ${a.lastName}`,
+        initials: `${(a.firstName || '')[0] || ''}${(a.lastName || '')[0] || ''}`.toUpperCase(),
+        role: emp?.job_title || 'Role not yet updated',
+        match: `${a.course}${a.graduationYear ? ` · Batch ${a.graduationYear}` : ''}`,
+        score: `${score}%`,
+        category: 'Course match',
+        reason: gradDiff === 0 ? 'Same course and batch' : 'Same course',
+      };
+    });
+
+    // "What needs your attention" showed only the single most recent item
+    // per category, so a second/third event (or news post) within the same
+    // window silently never appeared even though it was just as recent —
+    // merge all three sources and re-sort so every recent item shows,
+    // newest first, instead of one per type.
+    const recentUpdates = [
+      // subtitle is intentionally blank here — Announcement.type is always
+      // "News" now (the composer no longer offers any other type), so
+      // reusing it as the subtitle just repeated the "News" kind label.
+      ...recentAnnouncements.map((a) => ({ kind: 'News', title: a.title, subtitle: '', createdAt: a.createdAt, section: 'announcements' })),
+      ...recentEvents.map((e) => ({ kind: 'Event', title: e.title, subtitle: e.location || 'Event', createdAt: e.createdAt, section: 'announcements&filter=Events' })),
+      ...recentJobs.map((j) => ({ kind: 'Job', title: j.title, subtitle: j.location || 'Open position', createdAt: j.createdAt, section: 'jobconnect' })),
+    ]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 6);
+
+    res.json({
+      announcementsCount: announcementsCount + recentEventsCount,
+      recommendedJobsCount,
+      networkMatchesCount,
+      profileCompleteness: computeProfileCompleteness(employment),
+      similarAlumni: similarAlumniOut,
+      recentUpdates,
+    });
+  } catch (err) {
+    console.error('getHomeSummary error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { changePassword, updatePassword, updateAvatar, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment };
