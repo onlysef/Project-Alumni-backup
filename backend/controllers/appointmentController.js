@@ -149,82 +149,140 @@ const getAppointments = async (req, res) => {
   }
 };
 
+// Shared by the admin-authored booking form and the alumni self-service one —
+// keeps office-hours/working-day/double-booking rules in exactly one place.
+async function createAppointmentRecord({ alumni_id, alumni_name, staff_id, appointment_date, appointment_time, purpose, notes }) {
+  if (!alumni_name || !staff_id || !appointment_date || !appointment_time) {
+    return { ok: false, status: 400, message: 'Alumni name, staff, date, and time are required.' };
+  }
+
+  const staff = await Staff.findOne({ _id: staff_id, deleted: false });
+  if (!staff) return { ok: false, status: 404, message: 'Selected staff member not found.' };
+
+  const settings = await OfficeSettings.findOne();
+  if (settings) {
+    if (settings.office_status === 'Closed') {
+      return { ok: false, status: 400, message: 'The office is currently closed. Appointments cannot be booked.' };
+    }
+
+    const [year, month, day] = appointment_date.split('-').map(Number);
+    const dateObj        = new Date(year, month - 1, day);
+    const appointmentDay = JS_DAY_TO_LABEL[dateObj.getDay()];
+
+    if (!appointmentDay || !settings.working_days.includes(appointmentDay)) {
+      const dayList = settings.working_days.join(', ') || 'none';
+      return { ok: false, status: 400, message: `Appointments are not available on this day. Working days: ${dayList}.` };
+    }
+
+    const apptMin  = toMinutes(appointment_time);
+    const startMin = toMinutes(settings.start_time);
+    const endMin   = toMinutes(settings.end_time);
+    if (apptMin < startMin || apptMin >= endMin) {
+      return { ok: false, status: 400, message: `Appointment time must be within office hours (${settings.start_time}–${settings.end_time}).` };
+    }
+  }
+
+  // Prevent double-booking the same staff at the same date + time
+  const conflict = await Appointment.findOne({
+    staff_id,
+    appointment_date,
+    appointment_time,
+    status: { $nin: ['Rejected', 'Cancelled'] },
+  });
+  if (conflict) {
+    return { ok: false, status: 409, message: 'This staff member already has an appointment at that date and time.' };
+  }
+
+  let resolvedName = alumni_name.trim();
+  if (alumni_id) {
+    const user = await User.findById(alumni_id).select('firstName lastName');
+    if (user) resolvedName = `${user.firstName} ${user.lastName}`;
+  }
+
+  const appointment = await Appointment.create({
+    alumni_id: alumni_id || undefined,
+    alumni_name: resolvedName,
+    staff_id,
+    appointment_date,
+    appointment_time,
+    purpose: purpose ? purpose.trim() : '',
+    notes:   notes   ? notes.trim()   : '',
+    status:  'Pending',
+  });
+
+  const populated = await Appointment.findById(appointment._id)
+    .populate('staff_id',  'name role status')
+    .populate('alumni_id', 'firstName lastName email');
+
+  return { ok: true, appointment: populated };
+}
+
 // POST /api/admin/appointments
 const createAppointment = async (req, res) => {
   try {
     const { alumni_id, alumni_name, staff_id, appointment_date, appointment_time, purpose, notes } = req.body;
-
-    if (!alumni_name || !staff_id || !appointment_date || !appointment_time) {
-      return res.status(400).json({ message: 'Alumni name, staff, date, and time are required.' });
-    }
-
-    const staff = await Staff.findOne({ _id: staff_id, deleted: false });
-    if (!staff) return res.status(404).json({ message: 'Selected staff member not found.' });
-
-    const settings = await OfficeSettings.findOne();
-    if (settings) {
-      if (settings.office_status === 'Closed') {
-        return res.status(400).json({ message: 'The office is currently closed. Appointments cannot be booked.' });
-      }
-
-      const [year, month, day] = appointment_date.split('-').map(Number);
-      const dateObj        = new Date(year, month - 1, day);
-      const appointmentDay = JS_DAY_TO_LABEL[dateObj.getDay()];
-
-      if (!appointmentDay || !settings.working_days.includes(appointmentDay)) {
-        const dayList = settings.working_days.join(', ') || 'none';
-        return res.status(400).json({
-          message: `Appointments are not available on this day. Working days: ${dayList}.`,
-        });
-      }
-
-      const apptMin  = toMinutes(appointment_time);
-      const startMin = toMinutes(settings.start_time);
-      const endMin   = toMinutes(settings.end_time);
-      if (apptMin < startMin || apptMin >= endMin) {
-        return res.status(400).json({
-          message: `Appointment time must be within office hours (${settings.start_time}–${settings.end_time}).`,
-        });
-      }
-    }
-
-    // Prevent double-booking the same staff at the same date + time
-    const conflict = await Appointment.findOne({
-      staff_id,
-      appointment_date,
-      appointment_time,
-      status: { $nin: ['Rejected', 'Cancelled'] },
-    });
-    if (conflict) {
-      return res.status(409).json({
-        message: 'This staff member already has an appointment at that date and time.',
-      });
-    }
-
-    let resolvedName = alumni_name.trim();
-    if (alumni_id) {
-      const user = await User.findById(alumni_id).select('firstName lastName');
-      if (user) resolvedName = `${user.firstName} ${user.lastName}`;
-    }
-
-    const appointment = await Appointment.create({
-      alumni_id: alumni_id || undefined,
-      alumni_name: resolvedName,
-      staff_id,
-      appointment_date,
-      appointment_time,
-      purpose: purpose ? purpose.trim() : '',
-      notes:   notes   ? notes.trim()   : '',
-      status:  'Pending',
-    });
-
-    const populated = await Appointment.findById(appointment._id)
-      .populate('staff_id',  'name role status')
-      .populate('alumni_id', 'firstName lastName email');
-
-    res.status(201).json({ message: 'Appointment created.', appointment: populated });
+    const result = await createAppointmentRecord({ alumni_id, alumni_name, staff_id, appointment_date, appointment_time, purpose, notes });
+    if (!result.ok) return res.status(result.status).json({ message: result.message });
+    res.status(201).json({ message: 'Appointment created.', appointment: result.appointment });
   } catch (err) {
     console.error('createAppointment error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/alumni/appointments/booked-slots?staff_id=&date= — just the taken
+// times for that staff/day, so the alumni booking form can hide them. No
+// alumni identity is exposed here, unlike the admin appointments list.
+const getBookedSlots = async (req, res) => {
+  try {
+    const { staff_id, date } = req.query;
+    if (!staff_id || !date) return res.status(400).json({ message: 'staff_id and date are required.' });
+
+    const appointments = await Appointment.find({
+      staff_id,
+      appointment_date: date,
+      status: { $nin: ['Rejected', 'Cancelled'] },
+    }).select('appointment_time');
+
+    res.json({ times: appointments.map((a) => a.appointment_time) });
+  } catch (err) {
+    console.error('getBookedSlots error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/alumni/appointments/staff — only staff currently taking appointments
+const getAvailableStaff = async (req, res) => {
+  try {
+    const staff = await Staff.find({ deleted: false, status: 'Available' }).sort({ name: 1 });
+    res.json({ staff });
+  } catch (err) {
+    console.error('getAvailableStaff error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// POST /api/alumni/appointments — alumni books for themselves; identity comes
+// from the authenticated session, never from the request body.
+const bookAppointment = async (req, res) => {
+  try {
+    const { staff_id, appointment_date, appointment_time, purpose } = req.body;
+
+    const user = await User.findById(req.user.id).select('firstName lastName');
+    if (!user) return res.status(404).json({ message: 'Account not found.' });
+
+    const result = await createAppointmentRecord({
+      alumni_id: req.user.id,
+      alumni_name: `${user.firstName} ${user.lastName}`,
+      staff_id,
+      appointment_date,
+      appointment_time,
+      purpose,
+    });
+    if (!result.ok) return res.status(result.status).json({ message: result.message });
+    res.status(201).json({ message: 'Your appointment request has been sent.', appointment: result.appointment });
+  } catch (err) {
+    console.error('bookAppointment error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -280,4 +338,5 @@ module.exports = {
   getStaff,             createStaff,    updateStaff,    deleteStaff,
   getAppointments,      createAppointment,
   updateAppointmentStatus, deleteAppointment,
+  getAvailableStaff,    bookAppointment,    getBookedSlots,
 };

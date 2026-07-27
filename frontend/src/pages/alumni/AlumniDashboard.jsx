@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import Icon from "../../components/common/Icon.jsx";
+import { Modal } from "../../components/common/Primitives.jsx";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 import AlumniEmploymentDetails from "./AlumniEmploymentDetails.jsx";
 import SuggestedAlumni from "./SuggestedAlumni.jsx";
@@ -269,6 +270,7 @@ function AlumniHome({ navigate }) {
   const name = user?.firstName || "there";
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [selectedAlumnus, setSelectedAlumnus] = useState(null);
 
   useEffect(() => {
     if (!token) { setSummaryLoading(false); return; }
@@ -345,7 +347,7 @@ function AlumniHome({ navigate }) {
       </article>
 
       <aside className="alumni-home-panel home-profile">
-        <div className="profile-ring"><strong>{summaryLoading ? "…" : `${profileCompleteness}%`}</strong></div>
+        <div className="profile-ring" style={{ "--pct": profileCompleteness }}><strong>{summaryLoading ? "…" : `${profileCompleteness}%`}</strong></div>
         <h2>{profileCompleteness >= 70 ? "Your profile looks strong" : "Your profile needs an update"}</h2>
         <p>Add your latest role, skills, and certifications to improve job and alumni recommendations.</p>
         <button type="button" onClick={() => navigate("/alumni/dashboard?section=employment")}>Update Employment Details</button>
@@ -358,14 +360,52 @@ function AlumniHome({ navigate }) {
         {similarAlumni.length === 0 && !summaryLoading && (
           <p style={{ margin: 0, color: "#76656a", fontSize: 13 }}>No other alumni from your course yet.</p>
         )}
-        {similarAlumni.map(person => <article className="similar-path-card" key={person.name}>
-          <div className="similar-avatar">{person.initials}</div>
+        {similarAlumni.map(person => <article
+          className="similar-path-card"
+          key={person._id || person.name}
+          role="button"
+          tabIndex={0}
+          onClick={() => setSelectedAlumnus(person)}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedAlumnus(person); } }}
+        >
+          <div className="similar-avatar">{person.avatarUrl ? <img src={person.avatarUrl} alt="" /> : person.initials}</div>
           <div><h3>{person.name}</h3><strong>{person.role}</strong><p>{person.match}</p><small>{person.reason}</small></div>
           <span>{person.score} {person.category}</span>
         </article>)}
       </div>
       <button className="similar-view-all" type="button" onClick={() => navigate("/alumni/dashboard?section=suggested")} title="View suggested alumni"><img src={HOME_ICONS.viewSuggested} alt="" aria-hidden="true" /><span>Suggested Alumni</span></button>
     </section>
+
+    {selectedAlumnus && (
+      <Modal open onClose={() => setSelectedAlumnus(null)}>
+        <section className="tracer-modal coord-alumni-profile" role="dialog" aria-modal="true" aria-label="Alumni profile">
+          <div className="modal-head">
+            <h3>Alumni Profile</h3>
+            <button type="button" aria-label="Close profile" onClick={() => setSelectedAlumnus(null)}>×</button>
+          </div>
+          <div className="coord-profile-summary">
+            <div className="similar-avatar" aria-hidden="true">
+              {selectedAlumnus.avatarUrl ? <img src={selectedAlumnus.avatarUrl} alt="" /> : selectedAlumnus.initials}
+            </div>
+            <div>
+              <strong>{selectedAlumnus.name}</strong>
+              <span>{selectedAlumnus.role}</span>
+            </div>
+          </div>
+          <dl className="coord-profile-details">
+            <div><dt>Company</dt><dd>{selectedAlumnus.company}</dd></div>
+            <div><dt>Course</dt><dd>{selectedAlumnus.course || "—"}</dd></div>
+            <div><dt>Graduation Year</dt><dd>{selectedAlumnus.year || "—"}</dd></div>
+            {selectedAlumnus.industry && <div><dt>Industry</dt><dd>{selectedAlumnus.industry}</dd></div>}
+            {selectedAlumnus.location && <div><dt>Location</dt><dd>{selectedAlumnus.location}</dd></div>}
+            {selectedAlumnus.skills && <div><dt>Skills</dt><dd>{selectedAlumnus.skills}</dd></div>}
+          </dl>
+          <div className="modal-actions coord-profile-actions">
+            <button type="button" onClick={() => setSelectedAlumnus(null)}>Close</button>
+          </div>
+        </section>
+      </Modal>
+    )}
   </div>;
 }
 
