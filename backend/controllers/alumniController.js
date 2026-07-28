@@ -1,4 +1,5 @@
 const bcrypt               = require('bcryptjs');
+const { HfInference }       = require('@huggingface/inference');
 const User                 = require('../models/User');
 const AlumniEmployment     = require('../models/AlumniEmployment');
 const TracerStudyResponse  = require('../models/TracerStudyResponse');
@@ -481,7 +482,7 @@ function computeMatchScore(me, candidate, myEmp, theirEmp) {
   let score = 40;
   const reasons = [];
 
-  if (me?.course && candidate.course && me.course === candidate.course) {
+  if (me?.course && candidate.course && me.course.trim().toUpperCase() === candidate.course.trim().toUpperCase()) {
     score += 20;
     reasons.push('same course');
   }
@@ -593,12 +594,16 @@ const getHomeSummary = async (req, res) => {
       Job.countDocuments({ status: 'open' }),
       AlumniEmployment.findOne({ alumni_id: alumniId }).lean(),
       me?.course ? User.countDocuments({ role: 'alumni', course: me.course, _id: { $ne: alumniId } }) : 0,
-      // Not limited to 3 here — every same-course alumnus is scored below so
-      // the 3 actually shown are the closest matches, not just the first 3
-      // returned by the database in whatever order it happened to store them.
+      // Scored below to surface the 3 closest matches rather than just the
+      // first 3 the database happened to return — but courses like BSIT run
+      // 140+ alumni, so this is capped to a 60-alumnus sample instead of
+      // literally everyone, trading a small chance of missing the single
+      // best match for a bounded, predictable query cost on every Home load
+      // and 30s poll.
       me?.course
         ? User.find({ role: 'alumni', course: me.course, _id: { $ne: alumniId } })
             .select('firstName lastName course graduationYear avatarUrl')
+            .limit(60)
             .lean()
         : [],
       Announcement.find({ createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: -1 }).limit(6).select('title type createdAt').lean(),
@@ -747,17 +752,73 @@ const getSuggestedAlumni = async (req, res) => {
 
 // ============ CAREER RECOMMENDATION ============
 
+const hf = new HfInference(process.env.HF_API_KEY);
+const CAREER_CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+
+// The "Suggested next step" line used to be one fixed template string
+// ("Complete a course in X to qualify for more Y roles.") every time —
+// same wording no matter who was looking at it. This asks the chat model
+// for a fresh, specific sentence instead, and falls back to that template
+// only if the API call fails.
+async function generateNextStepSuggestion({ topCareer, userCourse, userJobTitle, userSkillsText }) {
+  try {
+    const prompt = `Alumnus profile — course: ${userCourse || 'not specified'}; current role: ${userJobTitle || 'not yet employed'}; skills: ${userSkillsText || 'none listed yet'}.
+Top recommended career path: "${topCareer.title}" (${topCareer.match}% match). ${topCareer.missing ? `Their biggest skill gap for this path is: ${topCareer.missing}.` : 'They already cover this path\'s core skills.'}
+Write ONE short, specific, encouraging sentence (max 25 words) telling this alumnus what to do next to improve their fit for this career path. No preamble, no quotes, just the sentence.`;
+
+    const completion = await hf.chatCompletion({
+      model: CAREER_CHAT_MODEL,
+      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      messages: [
+        { role: 'system', content: 'You are a concise, encouraging career advisor for a university alumni portal.' },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 60,
+    });
+
+    const text = completion.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, '');
+    return text || null;
+  } catch (err) {
+    console.error('generateNextStepSuggestion failed, using template fallback:', err.message);
+    return null;
+  }
+}
+
+// Derived from a real dataset (Kaggle: "Candidate Job Role Dataset",
+// ckshetty/candidate-job-role-dataset — 1000 candidate rows across 22 job
+// roles). `skills` per role are the actual most-frequent skills reported for
+// that role in the dataset (not hand-picked), filtered to skills appearing
+// in 2+ rows for that role. "Video Game Designer" (1 row) was merged into
+// "Game Developer" (50 rows, identical skill set) as an obvious duplicate
+// label, not a real distinct role.
+// `courses` maps only where the dataset's qualification field is a direct
+// equivalent to one of this portal's 4 actual alumni courses (BSIT/BSCS/
+// BSIS/BSIM) — left empty for roles whose real-data qualification (Data
+// Science, Cybersecurity, Design, Marketing, HR, Finance, Game Development,
+// Statistics, AI) has no honest TSU-course counterpart, rather than forcing
+// a fabricated match.
 const CAREER_PATHS = [
-  { title: 'Full-Stack Developer', text: 'Build complete web applications using modern frontend and backend technologies.', skills: ['React', 'Node.js', 'JavaScript', 'HTML', 'CSS', 'SQL'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
-  { title: 'Software Engineer', text: 'Design, develop, and maintain reliable software systems for growing organizations.', skills: ['Java', 'Python', 'Git', 'Algorithms', 'Object-Oriented Programming', 'System Design'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
-  { title: 'Data Analyst', text: 'Turn raw business data into useful reports, dashboards, and actionable insights.', skills: ['SQL', 'Python', 'Excel', 'Power BI', 'Data Visualization'], industries: ['Information Technology', 'Business Process Outsourcing'], courses: ['BSIS', 'BSCS', 'BSIT'] },
-  { title: 'IT Support Specialist', text: 'Keep an organization’s hardware, software, and networks running smoothly for end users.', skills: ['Troubleshooting', 'Networking', 'Hardware', 'Customer Service', 'Windows'], industries: ['Information Technology'], courses: ['BSIT', 'BSIS'] },
-  { title: 'Systems Analyst', text: 'Bridge business needs and technical solutions by analyzing and documenting system requirements.', skills: ['Requirements Analysis', 'SQL', 'Business Process', 'Documentation', 'UML'], industries: ['Information Technology', 'Business Process Outsourcing'], courses: ['BSIS', 'BSIT'] },
-  { title: 'Network Administrator', text: 'Set up, secure, and maintain the networks that keep an organization connected.', skills: ['Networking', 'Cisco', 'Security', 'Linux', 'Troubleshooting'], industries: ['Information Technology'], courses: ['BSIT'] },
-  { title: 'UI/UX Designer', text: 'Design intuitive, user-centered interfaces for websites and applications.', skills: ['Figma', 'Wireframing', 'User Research', 'Prototyping', 'Adobe XD'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS', 'BSIM'] },
-  { title: 'IT Project Coordinator', text: 'Plan, schedule, and coordinate the moving pieces of technology projects from kickoff to delivery.', skills: ['Project Management', 'Communication', 'Scheduling', 'Agile', 'Leadership'], industries: ['Information Technology', 'Business Process Outsourcing'], courses: ['BSIM', 'BSIS', 'BSIT'] },
-  { title: 'Database Administrator', text: 'Keep an organization’s databases available, performant, and backed up.', skills: ['SQL', 'Database Management', 'MySQL', 'Oracle', 'Backup and Recovery'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT', 'BSIS'] },
-  { title: 'Business Analyst', text: 'Translate business problems into requirements that technical teams can act on.', skills: ['Business Process', 'Communication', 'Excel', 'SQL', 'Requirements Analysis'], industries: ['Business Process Outsourcing', 'Information Technology'], courses: ['BSIM', 'BSIS'] },
+  { title: 'AIML', text: 'Build and train machine learning and deep learning models to solve real-world problems.', skills: ['Python', 'Deep Learning', 'NLP', 'TensorFlow'], industries: ['Information Technology'], courses: [] },
+  { title: 'Backend Developer', text: 'Design and maintain the server-side logic, APIs, and databases behind an application.', skills: ['Java', 'SQL', 'REST APIs', 'Spring', 'Hibernate', 'Microservices'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
+  { title: 'Blockchain Developer', text: 'Build decentralized applications and smart contracts on blockchain platforms.', skills: ['Solidity', 'Ethereum', 'Web3', 'Blockchain', 'JavaScript'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'C# Developer', text: 'Build Windows and enterprise applications using the .NET ecosystem.', skills: ['C#', 'Azure', 'SQL Server', 'ASP.NET', '.NET Core'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Cybersecurity Engineer', text: 'Protect systems and networks from threats through security monitoring and testing.', skills: ['SIEM', 'Network Security', 'Penetration Testing', 'Firewalls', 'Ethical Hacking'], industries: ['Information Technology'], courses: [] },
+  { title: 'Data Analyst', text: 'Turn raw business data into reports, dashboards, and actionable insights.', skills: ['SQL', 'Python', 'Pandas', 'Data Visualization', 'Tableau', 'Statistics', 'R'], industries: ['Information Technology'], courses: [] },
+  { title: 'Data Scientist', text: 'Apply statistics and machine learning to extract insights and build predictive models.', skills: ['Python', 'TensorFlow', 'Machine Learning', 'SQL', 'Keras', 'R', 'NLP'], industries: ['Information Technology'], courses: [] },
+  { title: 'Designer', text: 'Design intuitive, user-centered interfaces for websites and applications.', skills: ['Figma', 'UI/UX', 'Adobe XD', 'Prototyping', 'Sketch', 'Wireframing'], industries: ['Information Technology'], courses: [] },
+  { title: 'DevOps Engineer', text: 'Automate and manage the infrastructure and deployment pipeline for software systems.', skills: ['AWS', 'Jenkins', 'Terraform', 'Docker', 'Linux'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Finance', text: 'Analyze financial data and manage risk to support business decisions.', skills: ['Financial Modeling', 'Excel', 'Communication', 'Risk Analysis'], industries: ['Finance and Banking'], courses: [] },
+  { title: 'Frontend Developer', text: 'Build the user-facing interface of web applications.', skills: ['HTML', 'CSS', 'React', 'JavaScript', 'Redux', 'TypeScript'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Full Stack Java Developer', text: 'Build complete web applications end-to-end using Java-based technologies.', skills: ['Java', 'AWS', 'Spring Boot', 'Angular', 'Spring', 'React'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
+  { title: 'Full Stack Python Developer', text: 'Build complete web applications end-to-end using Python-based technologies.', skills: ['Python', 'JavaScript', 'PostgreSQL', 'Django', 'Flask', 'SQL'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Game Developer', text: 'Design and build interactive games using modern game engines.', skills: ['C++', 'Game Design', 'Unity', 'Unreal Engine', 'VR Development', 'VR', '3D Modeling'], industries: ['Information Technology'], courses: [] },
+  { title: 'HR', text: 'Manage recruitment, employee relations, and workplace policies.', skills: ['Recruitment', 'HR Policies', 'HR Management', 'Employee Relations', 'Training'], industries: ['Human Resources'], courses: [] },
+  { title: 'Kubernetes Operations Engineer', text: 'Manage containerized infrastructure and deployments at scale.', skills: ['Kubernetes', 'Docker', 'Helm', 'AWS', 'GCP', 'CI/CD'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Marketing', text: 'Plan and run campaigns that grow a brand’s reach and engagement.', skills: ['Analytics', 'SEO', 'Digital Marketing', 'PPC', 'Social Media', 'Marketing Campaigns'], industries: ['Marketing'], courses: [] },
+  { title: 'Mobile Developer', text: 'Build native mobile applications for iOS and Android.', skills: ['Swift', 'UI/UX', 'iOS Development', 'Core Data', 'Java', 'Kotlin', 'REST APIs', 'iOS'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'PHP Developer', text: 'Build server-side web applications using PHP and its frameworks.', skills: ['PHP', 'MySQL', 'JavaScript', 'Laravel', 'Symfony'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Software Project Manager', text: 'Plan, coordinate, and deliver software projects on time and on budget.', skills: ['Agile', 'Scrum', 'Project Management', 'JIRA', 'Stakeholder Management'], industries: ['Information Technology'], courses: ['BSIM'] },
+  { title: 'Web Developer', text: 'Build and maintain websites and web applications.', skills: ['JavaScript', 'HTML', 'CSS', 'Node.js', 'MongoDB', 'Express', 'Vue.js'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
 ];
 
 // Covers the same spread of industries as the Tracer Study form's industry
@@ -784,6 +845,20 @@ const SKILL_BUCKETS = [
   { name: 'Education & Training', keywords: ['teaching', 'lesson planning', 'tutoring', 'curriculum development', 'classroom management', 'training', 'mentoring', 'facilitation'] },
   { name: 'Construction & Trades', keywords: ['construction', 'carpentry', 'welding', 'electrical work', 'plumbing', 'site supervision', 'blueprint reading', 'safety compliance'] },
 ];
+
+// Keyword list entries are lowercase match patterns, not display-ready
+// labels (e.g. "sql", "c++", "next.js") — this maps the ones that don't
+// title-case cleanly to how they're actually written.
+const SKILL_LABEL_OVERRIDES = {
+  javascript: 'JavaScript', typescript: 'TypeScript', 'c++': 'C++', 'c#': 'C#', php: 'PHP',
+  html: 'HTML', css: 'CSS', node: 'Node.js', vue: 'Vue.js', wordpress: 'WordPress', 'next.js': 'Next.js', 'rest api': 'REST API',
+  sql: 'SQL', mysql: 'MySQL', mongodb: 'MongoDB', postgresql: 'PostgreSQL', nosql: 'NoSQL',
+  lan: 'LAN', wan: 'WAN', 'ip addressing': 'IP Addressing',
+  ui: 'UI', ux: 'UX', jira: 'JIRA', crm: 'CRM', cpr: 'CPR', emr: 'EMR',
+  autocad: 'AutoCAD', cad: 'CAD', quickbooks: 'QuickBooks', seo: 'SEO', 'ms office': 'MS Office',
+};
+
+const skillLabel = (keyword) => SKILL_LABEL_OVERRIDES[keyword] || keyword.replace(/\b\w/g, (c) => c.toUpperCase());
 
 const normalizeSkillText = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 
@@ -827,27 +902,101 @@ function missingSkillFor(career, userSkillsText) {
   return career.skills.find((s) => !textContainsSkill(userSkillsText, s)) || null;
 }
 
-// Keyword/course/industry heuristic — used only as a fallback if the
-// embedding call fails (HF API down, no key configured, etc.) so the page
-// still returns something instead of a hard error.
-function computeCareerMatchFallback(career, userSkillsText, userIndustry, userCourse) {
-  const matchedSkills = career.skills.filter((s) => textContainsSkill(userSkillsText, s));
-  const skillRatio = career.skills.length ? matchedSkills.length / career.skills.length : 0;
+// S = Sr*40% + Er*20% + Xr*30% + CS*10%
+// Sr: candidate's skill-set overlap with the role's required skills
+// Er: educational-background relevance (course matches the role's field)
+// Xr: candidate's experience level
+// CS: cosine similarity between the candidate's profile and the role
+const SCORE_WEIGHTS = { Sr: 0.40, Er: 0.20, Xr: 0.30, CS: 0.10 };
 
-  let score = Math.round(skillRatio * 70);
-  if (userCourse && career.courses.includes(userCourse)) score += 15;
-  if (userIndustry && career.industries.some((i) => i.toLowerCase() === userIndustry.toLowerCase())) score += 15;
-  score = Math.min(98, Math.max(10, score));
-
-  return score;
+function computeSkillRatio(career, userSkillsText) {
+  if (!career.skills.length) return 0;
+  const matched = career.skills.filter((s) => textContainsSkill(userSkillsText, s)).length;
+  return matched / career.skills.length;
 }
+
+function computeEducationScore(career, userCourse) {
+  const normalized = (userCourse || '').trim().toUpperCase();
+  return normalized && career.courses.includes(normalized) ? 1 : 0;
+}
+
+// Bracket labels match the Employment Details form's EXPERIENCE_LEVELS and
+// the Tracer Study's years_in_current_job options respectively — whichever
+// of the two the alumnus actually filled in is used, so a Tracer Study
+// answer alone (far more consistently completed than Employment Details'
+// own free-form experience field) still counts.
+const EXPERIENCE_SCORE_MAP = {
+  'No experience yet': 0,
+  'Less than 1 year': 0.2,
+  '1-2 years': 0.4,
+  '3-5 years': 0.6,
+  '5-10 years': 0.8,
+  '10+ years': 1,
+};
+const YEARS_IN_JOB_SCORE_MAP = {
+  'Less than 6 months': 0.15,
+  '6 months to 1 year': 0.3,
+  '1 to 2 years': 0.45,
+  '2 to 3 years': 0.6,
+  '3 to 5 years': 0.75,
+  'More than 5 years': 1,
+};
+
+function computeExperienceScore(employment) {
+  if (employment?.experience && EXPERIENCE_SCORE_MAP[employment.experience] !== undefined) {
+    return EXPERIENCE_SCORE_MAP[employment.experience];
+  }
+  if (employment?.years_in_current_job && YEARS_IN_JOB_SCORE_MAP[employment.years_in_current_job] !== undefined) {
+    return YEARS_IN_JOB_SCORE_MAP[employment.years_in_current_job];
+  }
+  return 0;
+}
+
+// Raw cosine similarity for this embedding model sits roughly in [0.50, 0.80]
+// for professional-text comparisons (measured directly against real alumni
+// profiles) — rescaled to a plain 0-1 fraction so it composes with the other
+// three weighted components on the same scale.
+function normalizeCosine(raw) {
+  const FLOOR = 0.50;
+  const CEIL = 0.80;
+  return Math.min(1, Math.max(0, (raw - FLOOR) / (CEIL - FLOOR)));
+}
+
+function computeCareerScore(career, { userSkillsText, userCourse, experienceScore, cosineScore }) {
+  const Sr = computeSkillRatio(career, userSkillsText);
+  const Er = computeEducationScore(career, userCourse);
+  const Xr = experienceScore;
+  const CS = cosineScore;
+  const S = Sr * SCORE_WEIGHTS.Sr + Er * SCORE_WEIGHTS.Er + Xr * SCORE_WEIGHTS.Xr + CS * SCORE_WEIGHTS.CS;
+  return {
+    score: Math.round(Math.min(98, Math.max(5, S * 100))),
+    breakdown: {
+      skills: Math.round(Sr * 100),
+      education: Math.round(Er * 100),
+      experience: Math.round(Xr * 100),
+      profileSimilarity: Math.round(CS * 100),
+    },
+  };
+}
+
+// Each bucket's keyword list (9-15 items) exists so a wide range of skill
+// phrasings can be matched, not because a real alumnus is expected to name
+// that many. Scoring against the full list length made 1-2 genuine skills
+// read as 7-11%, which understates them. Instead we score against a fixed
+// target of matched skills per category, so a handful of real matches reads
+// as a meaningfully "strong" bar.
+const SKILL_STRENGTH_TARGET = 6;
 
 function computeSkillStrengths(userSkillsText) {
   return SKILL_BUCKETS
-    .map((bucket) => ({
-      name: bucket.name,
-      value: Math.round((bucket.keywords.filter((k) => textContainsSkill(userSkillsText, k)).length / bucket.keywords.length) * 100),
-    }))
+    .map((bucket) => {
+      const matched = bucket.keywords.filter((k) => textContainsSkill(userSkillsText, k));
+      return {
+        name: bucket.name,
+        value: Math.min(100, Math.round((matched.length / SKILL_STRENGTH_TARGET) * 100)),
+        matched: matched.map(skillLabel),
+      };
+    })
     .filter((b) => b.value > 0)
     .sort((a, b) => b.value - a.value)
     .slice(0, 4);
@@ -869,8 +1018,13 @@ const getCareerRecommendations = async (req, res) => {
     const userIndustry = cleanEmploymentValue(employment?.industry);
     const userJobTitle = cleanEmploymentValue(employment?.job_title);
     const userCourse = me?.course || '';
+    const experienceScore = computeExperienceScore(employment);
 
-    let rawScores;
+    // CS (cosine similarity) is only the embedding-dependent piece of the
+    // formula — Sr, Er, and Xr don't need the Hugging Face API at all, so if
+    // it fails (network/HF down), CS just falls back to a neutral 0.5
+    // instead of the whole recommendation failing.
+    let cosineScores = null;
     try {
       const profileText = [
         userCourse && `Course: ${userCourse}.`,
@@ -883,53 +1037,54 @@ const getCareerRecommendations = async (req, res) => {
         getEmbedding(profileText),
         getCareerEmbeddings(),
       ]);
-      rawScores = careerEmbeddings.map((vec) => cosineSimilarity(profileEmbedding, vec));
+      cosineScores = careerEmbeddings.map((vec) => normalizeCosine(cosineSimilarity(profileEmbedding, vec)));
     } catch (embedErr) {
-      console.error('career recommendation embedding failed, using keyword fallback:', embedErr.message);
-      rawScores = null;
+      console.error('career recommendation embedding failed, CS defaults to neutral:', embedErr.message);
     }
 
-    let scored;
-    if (rawScores) {
-      // Fixed calibration, not per-user min-max: min-maxing each alumnus's
-      // own 10 scores against each other always stretches their single best
-      // option up near 98%, even when that "best" option is only a mediocre,
-      // coincidental match — measured directly against this embedding model,
-      // a genuinely strong match (skills/role/industry all aligned) lands
-      // around 0.75-0.78 raw cosine, while an unrelated profile still
-      // clears 0.55-0.60 against most career descriptions (professional
-      // English text about jobs never reads as fully dissimilar). Anchoring
-      // the scale to those real numbers means the percentage reflects actual
-      // fit, not just which of the 10 templates happened to be least bad.
-      const FLOOR = 0.50;
-      const CEIL = 0.80;
-      scored = CAREER_PATHS.map((career, i) => ({
+    // S = Sr*40% + Er*20% + Xr*30% + CS*10%
+    const careers = CAREER_PATHS
+      .map((career, i) => ({
         career,
-        score: Math.round(Math.min(98, Math.max(5, ((rawScores[i] - FLOOR) / (CEIL - FLOOR)) * 100))),
-      }));
-    } else {
-      scored = CAREER_PATHS.map((career) => ({
-        career,
-        score: computeCareerMatchFallback(career, userSkillsText, userIndustry, userCourse),
-      }));
-    }
-
-    const careers = scored
-      .sort((a, b) => b.score - a.score)
+        result: computeCareerScore(career, {
+          userSkillsText,
+          userCourse,
+          experienceScore,
+          cosineScore: cosineScores ? cosineScores[i] : 0.5,
+        }),
+      }))
+      .sort((a, b) => b.result.score - a.result.score)
       .slice(0, 5)
-      .map(({ career, score }) => ({
-        title: career.title,
-        text: career.text,
-        match: score,
-        skills: career.skills.slice(0, 3),
-        missing: missingSkillFor(career, userSkillsText),
-      }));
+      .map(({ career, result }) => {
+        const allSkills = career.skills.map((s) => ({ name: s, matched: textContainsSkill(userSkillsText, s) }));
+        const missingSkills = allSkills.filter((s) => !s.matched).map((s) => s.name);
+        return {
+          title: career.title,
+          text: career.text,
+          match: result.score,
+          breakdown: result.breakdown,
+          skills: career.skills.slice(0, 3),
+          allSkills,
+          missing: missingSkills[0] || null,
+          missingCount: missingSkills.length,
+          industries: career.industries,
+        };
+      });
+
+    const topCareer = careers[0];
+    const nextStep = topCareer
+      ? (await generateNextStepSuggestion({ topCareer, userCourse, userJobTitle, userSkillsText }))
+        || (topCareer.missing
+          ? `Complete a course in ${topCareer.missing} to qualify for more ${topCareer.title} roles.`
+          : 'Keep your Employment Details up to date to get sharper career matches.')
+      : 'Fill out your Employment Details to start getting career recommendations.';
 
     res.json({
       profileCompleteness: computeProfileCompleteness(employment),
       careers,
       skillStrengths: computeSkillStrengths(userSkillsText),
       hasSkills: !!userSkillsText.trim(),
+      nextStep,
     });
   } catch (err) {
     console.error('getCareerRecommendations error:', err);

@@ -24,7 +24,6 @@ export default function CareerRecommendation() {
 
   const careers = data?.careers || [];
   const skillStrengths = data?.skillStrengths || [];
-  const topCareer = careers[0];
 
   return <div className="alumni-page-content career-reco-page">
     <section className="career-hero">
@@ -73,16 +72,12 @@ export default function CareerRecommendation() {
           {!loading && !data?.hasSkills && (
             <p style={{ margin: "0 0 12px", color: "#76656a", fontSize: 12 }}>Add your skills in Employment Details to see your strengths here.</p>
           )}
-          {skillStrengths.map((s) => <Skill key={s.name} name={s.name} value={s.value} />)}
+          {skillStrengths.map((s) => <Skill key={s.name} name={s.name} value={s.value} matched={s.matched} />)}
           <div className="profile-tip"><b>Tip</b><p>Add certifications and recent projects to improve your recommendations.</p></div>
         </section>
         <section className="career-next">
           <h3>Suggested next step</h3>
-          <p>
-            {topCareer?.missing
-              ? `Complete a course in ${topCareer.missing} to qualify for more ${topCareer.title} roles.`
-              : "Keep your Employment Details up to date to get sharper career matches."}
-          </p>
+          <p>{loading ? "Thinking about what would help most…" : (data?.nextStep || "Fill out your Employment Details to start getting career recommendations.")}</p>
           <button type="button" onClick={() => navigate("/alumni/dashboard?section=employment")}>Update Employment Details</button>
         </section>
       </aside>
@@ -90,17 +85,53 @@ export default function CareerRecommendation() {
 
     {selected && (
       <Modal open onClose={() => setSelected(null)}>
-        <section className="tracer-modal coord-alumni-profile" role="dialog" aria-modal="true" aria-label="Career path details">
+        <section className="tracer-modal career-path-modal" role="dialog" aria-modal="true" aria-label="Career path details">
           <div className="modal-head">
             <h3>{selected.title}</h3>
             <button type="button" aria-label="Close" onClick={() => setSelected(null)}>×</button>
           </div>
-          <dl className="coord-profile-details">
-            <div><dt>Match</dt><dd>{selected.match}%</dd></div>
-            <div><dt>About this path</dt><dd>{selected.text}</dd></div>
-            <div><dt>Relevant skills</dt><dd>{selected.skills.join(", ")}</dd></div>
-            {selected.missing && <div><dt>Skill to develop</dt><dd>{selected.missing}</dd></div>}
-          </dl>
+
+          <div className="career-modal-body">
+            <div className="career-modal-summary">
+              <div className="career-modal-match">
+                <div className="career-modal-match-ring" style={{ "--pct": selected.match }}>
+                  <strong>{selected.match}%</strong>
+                </div>
+                <span>Overall match</span>
+              </div>
+              <div>
+                <p>{selected.text}</p>
+                {selected.industries?.length > 0 && (
+                  <div className="career-modal-industries">
+                    {selected.industries.map((i) => <span key={i}>{i}</span>)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="career-modal-section">
+              <h4>How this score is calculated</h4>
+              <Skill name="Skills match (40%)" value={selected.breakdown.skills} />
+              <Skill name="Education fit (20%)" value={selected.breakdown.education} />
+              <Skill name="Experience level (30%)" value={selected.breakdown.experience} />
+              <Skill name="Profile similarity (10%)" value={selected.breakdown.profileSimilarity} />
+            </div>
+
+            <div className="career-modal-section">
+              <h4>
+                Skills for this path
+                <span className="career-modal-skill-count">{selected.allSkills.length - selected.missingCount}/{selected.allSkills.length} you have</span>
+              </h4>
+              <div className="career-skill-tags career-skill-tags-full">
+                {selected.allSkills.map((s) => (
+                  <span key={s.name} className={s.matched ? "skill-have" : "skill-missing"}>
+                    {s.matched ? "✓" : "+"} {s.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="modal-actions coord-profile-actions">
             <button type="button" onClick={() => setSelected(null)}>Close</button>
           </div>
@@ -110,4 +141,10 @@ export default function CareerRecommendation() {
   </div>;
 }
 
-function Skill({ name, value }) { return <div className="skill-meter"><div><span>{name}</span><b>{value}%</b></div><i><em style={{ width: `${value}%` }} /></i></div>; }
+function Skill({ name, value, matched }) {
+  return <div className="skill-meter">
+    <div><span>{name}</span><b>{value}%</b></div>
+    <i><em style={{ width: `${value}%` }} /></i>
+    {matched?.length > 0 && <p className="skill-meter-list">{matched.join(", ")}</p>}
+  </div>;
+}
