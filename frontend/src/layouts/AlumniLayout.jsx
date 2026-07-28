@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AlumniSidebar } from "../components/alumni/AlumniSidebar.jsx";
 import { AlumniTopbar } from "../components/alumni/AlumniTopbar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { apiFetch } from "../services/api.js";
 
 const TITLES = { home: "Home", announcements: "Announcements", employment: "Employment Details", office: "Alumni Office", suggested: "Suggested Alumni", career: "Career Recommendation", jobconnect: "Job Connect" };
 
@@ -10,8 +11,37 @@ export default function AlumniLayout() {
   const location = useLocation();
   const { firstLogin, tracerStudyCompleted } = useAuth();
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("alumniDashboardSettings")) || {};
+      return { theme: saved.theme ?? "light" };
+    } catch {
+      return { theme: "light" };
+    }
+  });
   const section = new URLSearchParams(location.search).get("section") || "home";
   const title = TITLES[section] || "Home";
+
+  // Server settings win over whatever was cached locally, same as the
+  // admin/coordinator dashboards.
+  useEffect(() => {
+    apiFetch("/auth/settings")
+      .then(({ settings: s }) => {
+        if (s && Object.keys(s).length > 0) setSettings((prev) => ({ ...prev, ...s }));
+      })
+      .catch(() => {});
+  }, []);
+
+  const settingsInitialized = useRef(false);
+  useEffect(() => {
+    if (!settingsInitialized.current) { settingsInitialized.current = true; return; }
+    apiFetch("/auth/settings", { method: "PUT", body: { settings } }).catch(() => {});
+    localStorage.setItem("alumniDashboardSettings", JSON.stringify(settings));
+  }, [settings]);
+
+  useEffect(() => {
+    document.body.classList.toggle("dark-mode", settings.theme === "dark");
+  }, [settings.theme]);
 
   // An alumni who hasn't set their password yet or hasn't completed the
   // tracer study yet must finish that step before the rest of the portal is
@@ -36,8 +66,8 @@ export default function AlumniLayout() {
       <AlumniSidebar collapsed={collapsed} restricted={restricted} restrictedLabel={restrictedStep} onNavigate={() => window.innerWidth <= 600 && setCollapsed(true)} />
       {!collapsed && <div className="sidebar-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />}
       <main className="main">
-        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} />
-        <Outlet context={{ section, sidebarCollapsed: collapsed }} />
+        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} />
+        <Outlet context={{ section, sidebarCollapsed: collapsed, settings, setSettings }} />
       </main>
     </div>
   );

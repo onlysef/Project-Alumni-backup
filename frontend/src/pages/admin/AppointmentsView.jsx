@@ -55,6 +55,7 @@ const STATUS_COLORS = {
   Rejected:   { color: "#c53030", background: "#fff5f5" },
   Completed:  { color: "#2b6cb0", background: "#ebf8ff" },
   Cancelled:  { color: "#718096", background: "#f7fafc" },
+  Missed:     { color: "#a05a2c", background: "#fdf2e9" },
 };
 
 function displayStaffStatus(status) {
@@ -910,6 +911,7 @@ export default function AppointmentsView() {
             <option>Rejected</option>
             <option>Completed</option>
             <option>Cancelled</option>
+            <option>Missed</option>
           </select>
           <select
             value={staffFilter}
@@ -973,7 +975,8 @@ export default function AppointmentsView() {
                     key={a._id}
                     className={
                       a.status === "Approved"  ? "is-approved"  :
-                      a.status === "Rejected"  ? "is-rejected"  : ""
+                      a.status === "Rejected"  ? "is-rejected"  :
+                      a.status === "Missed"    ? "is-missed"    : ""
                     }
                   >
                     <td>{fmtDateTime(a.appointment_date, a.appointment_time)}</td>
