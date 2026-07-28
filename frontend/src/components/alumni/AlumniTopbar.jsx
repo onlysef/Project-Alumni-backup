@@ -12,7 +12,7 @@ function fmtNotifTime(d) {
   return new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
 }
 
-export function AlumniTopbar({ title, collapsed, onToggleSidebar }) {
+export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setSettings }) {
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -97,6 +97,24 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar }) {
               <>
                 <strong>Settings</strong>
                 <p>Account preferences and security.</p>
+                <div className="setting-row theme-setting">
+                  <span>
+                    <strong>Theme</strong>
+                    <small>Switch the dashboard between light and dark mode.</small>
+                  </span>
+                  <div className="theme-options">
+                    {["light", "dark"].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={`theme-chip${settings?.theme === t ? " active" : ""}`}
+                        onClick={() => setSettings?.((p) => ({ ...p, theme: t }))}
+                      >
+                        {t === "light" ? "Light" : "Dark"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {/* "Account Settings" and "Log out" used to live here,
                     duplicating the Account Settings panel (avatar click)
                     and the sidebar's own Logout button — this now holds

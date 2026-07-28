@@ -4238,6 +4238,11 @@
             color: #8a1f2f;
         }
 
+        .appointments-table tr.is-missed td {
+            background: #fdf5ec;
+            color: #8a5a2c;
+        }
+
         .modal-actions {
             display: flex;
             justify-content: flex-end;
@@ -4750,6 +4755,11 @@
         body.dark-mode .appointments-table tr.is-rejected td {
             background: #3a151b;
             color: #ffdce2;
+        }
+
+        body.dark-mode .appointments-table tr.is-missed td {
+            background: #3a2a15;
+            color: #ffdfb0;
         }
 
         body.dark-mode .table-icon,
@@ -7003,6 +7013,17 @@
                 border-radius: 8px;
                 background: #fff;
                 overflow: hidden;
+            }
+
+            /* overflow: hidden above clips the card to its rounded corners,
+               but it also clips the absolutely-positioned action-menu
+               dropdown whenever the row is short (e.g. the last row before
+               "Add Appointment") — the dropdown was rendering detached from
+               its trigger and overlapping unrelated content below the
+               table. Lift the clip only while a row's menu is open. */
+            .admin-table tr:has(.action-menu-list),
+            .appointments-table tr:has(.action-menu-list) {
+                overflow: visible;
             }
 
             .admin-table tr.is-hidden {

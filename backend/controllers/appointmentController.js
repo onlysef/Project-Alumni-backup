@@ -2,11 +2,50 @@ const OfficeSettings = require('../models/OfficeSettings');
 const Staff          = require('../models/Staff');
 const Appointment    = require('../models/Appointment');
 const User           = require('../models/User');
+const Notification   = require('../models/Notification');
 
 function toMinutes(t) {
   if (!t) return 0;
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
+}
+
+function isPastDateTime(dateStr, timeStr) {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = (timeStr || '00:00').split(':').map(Number);
+  return new Date(y, mo - 1, d, h, mi).getTime() < Date.now();
+}
+
+// "YYYY-MM-DD" + "HH:MM" → "Jul 28, 2026 · 8:30 AM", matching the format
+// already shown in the coordinator's appointments table.
+function formatApptDateTime(dateStr, timeStr) {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const dateLabel = new Date(y, mo - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const [h, mi] = (timeStr || '00:00').split(':').map(Number);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const h12 = h % 12 || 12;
+  return `${dateLabel} · ${h12}:${String(mi).padStart(2, '0')} ${ampm}`;
+}
+
+// A Pending appointment whose slot has already passed is no longer
+// actionable — approving it now wouldn't put anyone in front of staff at
+// the time they booked. Sweep those to "Missed" so the coordinator queue
+// only shows requests that can still be acted on.
+async function expireStalePendingAppointments() {
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const candidates = await Appointment.find({
+    status: 'Pending',
+    appointment_date: { $lte: todayStr },
+  }).select('_id appointment_date appointment_time');
+
+  const staleIds = candidates
+    .filter((a) => isPastDateTime(a.appointment_date, a.appointment_time))
+    .map((a) => a._id);
+
+  if (staleIds.length) {
+    await Appointment.updateMany({ _id: { $in: staleIds } }, { status: 'Missed' });
+  }
 }
 
 // Day labels aligned with JS Date.getDay(): 0=Sun, 1=Mon, ..., 6=Sat
@@ -130,6 +169,8 @@ const deleteStaff = async (req, res) => {
 // GET /api/admin/appointments  (supports ?search=&status=&staff_id=&date=)
 const getAppointments = async (req, res) => {
   try {
+    await expireStalePendingAppointments();
+
     const { search, status, staff_id, date } = req.query;
     const query = {};
     if (status)   query.status           = status;
@@ -309,6 +350,19 @@ const updateAppointmentStatus = async (req, res) => {
 
     appt.status = status;
     await appt.save();
+
+    if (appt.alumni_id && (status === 'Approved' || status === 'Rejected')) {
+      const when = formatApptDateTime(appt.appointment_date, appt.appointment_time);
+      await Notification.create({
+        user_id: appt.alumni_id,
+        title:   status === 'Approved' ? 'Appointment Approved' : 'Appointment Rejected',
+        message: status === 'Approved'
+          ? `Your ${appt.purpose || 'appointment'} request for ${when} has been approved.`
+          : `Your ${appt.purpose || 'appointment'} request for ${when} was not approved.`,
+        is_read: false,
+        type:    'appointment',
+      });
+    }
 
     const populated = await Appointment.findById(appt._id)
       .populate('staff_id',  'name role status')
