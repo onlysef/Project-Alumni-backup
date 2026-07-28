@@ -3,6 +3,7 @@ dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const connectDB = require('./config/db');
 const authRoutes        = require('./routes/auth');
 const adminRoutes       = require('./routes/admin');
@@ -32,6 +33,10 @@ app.use(cors({
   },
   credentials: true,
 }));
+// Several endpoints embed images as base64 data URIs directly in the JSON
+// response (announcements, events, avatars) instead of serving them as
+// separate files — gzip cuts those payloads down significantly in transit.
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
 app.use('/api/auth',        authRoutes);

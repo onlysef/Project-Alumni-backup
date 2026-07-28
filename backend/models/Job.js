@@ -10,4 +10,6 @@ const jobSchema = new mongoose.Schema({
   location:      { type: String, default: '' },
 }, { timestamps: true });
 
+jobSchema.index({ status: 1, createdAt: -1 });
+
 module.exports = mongoose.model('Job', jobSchema);
