@@ -8,11 +8,15 @@ const Graduate             = require('../models/Graduate');
 const EmbeddingDocument    = require('../models/EmbeddingDocument');
 const Announcement         = require('../models/Announcement');
 const Job                  = require('../models/Job');
+const SavedJob              = require('../models/SavedJob');
+const Resume                = require('../models/Resume');
 const Event                = require('../models/Event');
 const { getTracerFormConfig } = require('./tracerFormConfigController');
 const { getEmbedding }        = require('../services/embeddingService');
+const careerjetService         = require('../services/careerjetService');
 const { tracerRowToText }     = require('../utils/fileParser');
 const { sendInquiryEmail }    = require('../utils/emailService');
+const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill } = require('../utils/skillMatching');
 
 // The set of keys that the TracerStudyResponse schema handles directly.
 // Everything else in the submitted answers object goes into extra_answers.
@@ -821,56 +825,6 @@ const CAREER_PATHS = [
   { title: 'Web Developer', text: 'Build and maintain websites and web applications.', skills: ['JavaScript', 'HTML', 'CSS', 'Node.js', 'MongoDB', 'Express', 'Vue.js'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
 ];
 
-// Covers the same spread of industries as the Tracer Study form's industry
-// list (Information Technology, Education, Virtual Assistance, Customer
-// Service, Engineering/Construction, Marketing, Healthcare, Manufacturing,
-// Finance, HR, Government, Non-Profit) — alumni from IT-adjacent courses
-// often end up in any of these, not just software roles.
-const SKILL_BUCKETS = [
-  { name: 'Programming', keywords: ['javascript', 'python', 'java', 'c++', 'c#', 'php', 'programming', 'coding', 'typescript', 'ruby', 'swift', 'kotlin', 'software development', 'algorithms', 'data structures'] },
-  { name: 'Web Development', keywords: ['html', 'css', 'react', 'node', 'vue', 'angular', 'web development', 'frontend', 'backend', 'wordpress', 'next.js', 'tailwind', 'bootstrap', 'rest api', 'laravel'] },
-  { name: 'Database Management', keywords: ['sql', 'mysql', 'database', 'oracle', 'mongodb', 'postgresql', 'data management', 'firebase', 'nosql'] },
-  { name: 'Networking', keywords: ['networking', 'cisco', 'network', 'router', 'firewall', 'network security', 'lan', 'wan', 'ip addressing', 'network administration'] },
-  { name: 'Design', keywords: ['figma', 'design', 'ui', 'ux', 'photoshop', 'adobe', 'wireframe', 'prototyping', 'illustrator', 'canva', 'graphic design', 'video editing'] },
-  { name: 'Project Management', keywords: ['project management', 'agile', 'scrum', 'planning', 'scheduling', 'kanban', 'jira', 'trello', 'coordination', 'risk management'] },
-  { name: 'Communication', keywords: ['communication', 'presentation', 'writing', 'leadership', 'teamwork', 'collaboration', 'public speaking', 'negotiation', 'interpersonal skills'] },
-  { name: 'Customer Service & Support', keywords: ['customer service', 'technical support', 'call center', 'chat support', 'email support', 'crm', 'zendesk', 'helpdesk', 'client relations', 'complaint handling', 'customer support'] },
-  { name: 'Virtual Assistance', keywords: ['virtual assistant', 'remote work', 'scheduling', 'email management', 'calendar management', 'data entry', 'transcription', 'social media management', 'administrative support'] },
-  { name: 'Healthcare', keywords: ['patient care', 'nursing', 'clinical', 'medical assistant', 'first aid', 'cpr', 'pharmacy', 'healthcare', 'medical billing', 'emr', 'vital signs'] },
-  { name: 'Manufacturing & Engineering', keywords: ['quality control', 'production', 'autocad', 'cad', 'assembly', 'lean manufacturing', 'six sigma', 'machining', 'inventory management', 'process improvement', 'quality assurance'] },
-  { name: 'Finance & Accounting', keywords: ['accounting', 'bookkeeping', 'quickbooks', 'payroll', 'taxation', 'auditing', 'financial analysis', 'budgeting', 'reconciliation', 'accounts payable', 'accounts receivable'] },
-  { name: 'Marketing & Sales', keywords: ['digital marketing', 'social media marketing', 'seo', 'content creation', 'sales', 'branding', 'copywriting', 'market research', 'advertising', 'lead generation'] },
-  { name: 'Administrative & Office', keywords: ['clerical', 'office administration', 'filing', 'records management', 'ms office', 'excel', 'word', 'powerpoint', 'documentation', 'data entry'] },
-  { name: 'Human Resources', keywords: ['recruitment', 'employee relations', 'onboarding', 'hr policies', 'talent acquisition', 'performance management', 'compensation', 'training and development'] },
-  { name: 'Education & Training', keywords: ['teaching', 'lesson planning', 'tutoring', 'curriculum development', 'classroom management', 'training', 'mentoring', 'facilitation'] },
-  { name: 'Construction & Trades', keywords: ['construction', 'carpentry', 'welding', 'electrical work', 'plumbing', 'site supervision', 'blueprint reading', 'safety compliance'] },
-];
-
-// Keyword list entries are lowercase match patterns, not display-ready
-// labels (e.g. "sql", "c++", "next.js") — this maps the ones that don't
-// title-case cleanly to how they're actually written.
-const SKILL_LABEL_OVERRIDES = {
-  javascript: 'JavaScript', typescript: 'TypeScript', 'c++': 'C++', 'c#': 'C#', php: 'PHP',
-  html: 'HTML', css: 'CSS', node: 'Node.js', vue: 'Vue.js', wordpress: 'WordPress', 'next.js': 'Next.js', 'rest api': 'REST API',
-  sql: 'SQL', mysql: 'MySQL', mongodb: 'MongoDB', postgresql: 'PostgreSQL', nosql: 'NoSQL',
-  lan: 'LAN', wan: 'WAN', 'ip addressing': 'IP Addressing',
-  ui: 'UI', ux: 'UX', jira: 'JIRA', crm: 'CRM', cpr: 'CPR', emr: 'EMR',
-  autocad: 'AutoCAD', cad: 'CAD', quickbooks: 'QuickBooks', seo: 'SEO', 'ms office': 'MS Office',
-};
-
-const skillLabel = (keyword) => SKILL_LABEL_OVERRIDES[keyword] || keyword.replace(/\b\w/g, (c) => c.toUpperCase());
-
-const normalizeSkillText = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-
-function textContainsSkill(userSkillsText, skill) {
-  const norm = normalizeSkillText(skill);
-  // Symbol-heavy keywords like "C++" or "C#" strip down to a bare "c" once
-  // punctuation is removed, which then matches almost any text — too short
-  // to be a meaningful signal, so skip them rather than false-positive.
-  if (norm.length < 2) return false;
-  return normalizeSkillText(userSkillsText).includes(norm);
-}
-
 function cosineSimilarity(a, b) {
   let dot = 0, normA = 0, normB = 0;
   for (let i = 0; i < a.length; i++) {
@@ -1092,4 +1046,256 @@ const getCareerRecommendations = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations };
+// Proxies the Job Connect search bar to Careerjet's public job search API.
+// Careerjet has no notion of a per-alumnus "match %" or required skills, so
+// those are derived locally from the alumnus's own Employment Details
+// skills (same parseSkillList/textContainsSkill helpers career-path scoring
+// uses) rather than fabricated. If Careerjet is unreachable or not yet
+// configured with an affid, this responds 200 with an empty result set and
+// `unavailable: true` instead of failing the whole page.
+const EMPLOYMENT_TYPE_LABELS = {
+  'full-time': 'Full-time',
+  'part-time': 'Part-time',
+  permanent: 'Permanent',
+  contract: 'Contract',
+  temporary: 'Temporary',
+  internship: 'Internship/Training',
+  volunteer: 'Volunteer',
+};
+const CONTRACT_PERIOD_BY_TYPE = { 'full-time': 'f', 'part-time': 'p' };
+const CONTRACT_TYPE_BY_TYPE = { permanent: 'p', contract: 'c', temporary: 't', internship: 'i', volunteer: 'v' };
+
+const searchJobs = async (req, res) => {
+  try {
+    const { keywords = '', location = '', type = '', page = 1, pagesize = 20, sort = 'relevance' } = req.query;
+
+    const employment = await AlumniEmployment.findOne({ alumni_id: req.user.id }).lean();
+    const userSkillsText = employment?.skills || '';
+
+    // With no explicit search typed, "Recommended for You" is only
+    // meaningful if the Careerjet query itself is seeded from the
+    // alumnus's own profile — an empty keyword search just returns
+    // Careerjet's generic global feed, which has nothing to do with them.
+    const hasExplicitSearch = !!keywords.trim();
+    const firstUserSkill = userSkillsText.split(/[,;\n]/)[0]?.trim() || '';
+    const profileKeywords = employment?.job_title?.trim() || firstUserSkill;
+    const baseKeywords = hasExplicitSearch ? keywords.trim() : profileKeywords;
+
+    const referrerUrl = `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}/alumni/job-connect`;
+    const userIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+
+    let data;
+    try {
+      data = await careerjetService.searchJobs({
+        keywords: baseKeywords,
+        location,
+        contracttype: CONTRACT_TYPE_BY_TYPE[type] || '',
+        contractperiod: CONTRACT_PERIOD_BY_TYPE[type] || '',
+        page,
+        pagesize,
+        sort,
+        userIp,
+        userAgent: req.headers['user-agent'],
+        referrerUrl,
+      });
+    } catch (apiErr) {
+      console.error('Careerjet search failed:', apiErr.message);
+      return res.json({ jobs: [], total: 0, page: Number(page), pages: 0, unavailable: true });
+    }
+
+    // Careerjet filters by contracttype/contractperiod server-side but
+    // doesn't echo either back per listing — since the filter was applied,
+    // every result here genuinely matches it, so labeling them is honest
+    // (unlike guessing a "work setup" from the description text used to be).
+    const typeLabel = EMPLOYMENT_TYPE_LABELS[type] || '';
+
+    const jobs = (data.jobs || []).map((job) => {
+      const jobText = `${job.title || ''} ${job.description || ''}`;
+
+      // What this specific posting is actually asking for, read off the
+      // shared skill vocabulary (Careerjet gives no structured skill tags).
+      const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
+      const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
+      const matchedCount = skills.filter((s) => s.matched).length;
+
+      return {
+        title: job.title,
+        company: job.company || 'Company not listed',
+        location: job.locations || location || 'Philippines',
+        type: typeLabel,
+        posted: job.date || '',
+        url: job.url,
+        description: job.description || '',
+        salary: job.salary || '',
+        match: skills.length ? Math.round((matchedCount / skills.length) * 100) : null,
+        skills,
+      };
+    });
+
+    // "Recommended for You" only makes sense as jobs with an actual match —
+    // a real search (user typed something) still shows everything Careerjet
+    // returned, just ranked best-match-first.
+    jobs.sort((a, b) => (b.match ?? -1) - (a.match ?? -1));
+    const finalJobs = hasExplicitSearch ? jobs : jobs.filter((j) => (j.match ?? 0) > 0);
+
+    res.json({
+      jobs: finalJobs,
+      total: finalJobs.length,
+      page: data.page || Number(page),
+      pages: data.pages ?? 1,
+      hasProfile: !!profileKeywords,
+    });
+  } catch (err) {
+    console.error('searchJobs error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const getSavedJobs = async (req, res) => {
+  try {
+    const jobs = await SavedJob.find({ alumni_id: req.user.id }).sort({ createdAt: -1 }).lean();
+    res.json({ jobs });
+  } catch (err) {
+    console.error('getSavedJobs error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// Single toggle endpoint (save if not already saved, unsave if it is) keyed
+// on the job's Careerjet url — simpler for the frontend than two separate
+// save/unsave calls that both need to know the current saved state first.
+const toggleSavedJob = async (req, res) => {
+  try {
+    const { url, title, company, location, type, posted, description, salary, match, skills } = req.body;
+    if (!url || !title) {
+      return res.status(400).json({ message: 'Job url and title are required.' });
+    }
+
+    const existing = await SavedJob.findOne({ alumni_id: req.user.id, url });
+    if (existing) {
+      await existing.deleteOne();
+      return res.json({ saved: false });
+    }
+
+    await SavedJob.create({
+      alumni_id: req.user.id, title, company, location, type, posted, url, description, salary, match, skills,
+    });
+    res.json({ saved: true });
+  } catch (err) {
+    console.error('toggleSavedJob error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const getJobAlertsPref = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('jobAlertsEnabled').lean();
+    res.json({ enabled: user?.jobAlertsEnabled !== false });
+  } catch (err) {
+    console.error('getJobAlertsPref error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const updateJobAlertsPref = async (req, res) => {
+  try {
+    const enabled = !!req.body.enabled;
+    await User.findByIdAndUpdate(req.user.id, { jobAlertsEnabled: enabled });
+    res.json({ enabled });
+  } catch (err) {
+    console.error('updateJobAlertsPref error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const getMyResume = async (req, res) => {
+  try {
+    const existing = await Resume.findOne({ alumni_id: req.user.id }).lean();
+    if (existing) {
+      return res.json({ resume: existing, isSaved: true });
+    }
+
+    // No resume saved yet — suggest a starting point built from the
+    // alumnus's actual profile (skills, education) instead of a placeholder
+    // they'd have to overwrite by hand. Nothing here is persisted until
+    // they actually click Save.
+    const [user, employment, tracer] = await Promise.all([
+      User.findById(req.user.id).select('firstName middleInitial lastName email course graduationYear').lean(),
+      AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
+      TracerStudyResponse.findOne({ alumni_id: req.user.id }).lean(),
+    ]);
+
+    const fullName = [user?.firstName, user?.middleInitial ? `${user.middleInitial}.` : '', user?.lastName].filter(Boolean).join(' ');
+
+    const experienceLines = [];
+    if (employment?.job_title) {
+      experienceLines.push([employment.job_title, employment.company_name].filter((v) => v && v !== 'N/A').join(' - '));
+      const meta = [employment.employment_type, employment.years_in_current_job].filter(Boolean).join(' · ');
+      if (meta) experienceLines.push(meta);
+    }
+
+    const educationLines = [];
+    if (user?.course) educationLines.push(`${user.course} - Tarlac State University`);
+    if (user?.graduationYear) educationLines.push(`Batch ${user.graduationYear}`);
+
+    // Templated from real fields (course, job title, company, skills) — not
+    // fabricated content, just a natural-language stitch of what's already
+    // on file, the same way the placeholder mock read before it was per-user.
+    const topSkills = (employment?.skills || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean).slice(0, 3);
+    const jobTitleArticle = employment?.job_title && /^[aeiou]/i.test(employment.job_title) ? 'an' : 'a';
+    const summaryLead = [
+      user?.course ? `${user.course} graduate of Tarlac State University` : null,
+      employment?.job_title
+        ? `with experience as ${jobTitleArticle} ${employment.job_title}${employment.company_name && employment.company_name !== 'N/A' ? ` at ${employment.company_name}` : ''}`
+        : (employment?.experience ? `with ${employment.experience.toLowerCase()} of professional experience` : null),
+    ].filter(Boolean).join(' ');
+    let summary = summaryLead ? `${summaryLead}.` : '';
+    if (topSkills.length) summary += `${summary ? ' ' : ''}Skilled in ${topSkills.join(', ')}.`;
+
+    const suggested = {
+      name: fullName,
+      address: '',
+      phone: tracer?.contactNumber || '',
+      email: user?.email || '',
+      linkedin: '',
+      summary,
+      skills: employment?.skills || '',
+      experience: experienceLines.join('\n'),
+      education: educationLines.join('\n'),
+      // TracerStudyResponse.professionalCertifications is a Yes/No survey
+      // answer ("do you have certifications"), not the actual certification
+      // names — there's no field anywhere with real cert titles, so this is
+      // left blank rather than showing a misleading "Yes"/"No" bullet.
+      certifications: '',
+      projects: '',
+      languages: '',
+    };
+
+    res.json({ resume: suggested, isSaved: false });
+  } catch (err) {
+    console.error('getMyResume error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const RESUME_FIELDS = ['name', 'address', 'phone', 'email', 'linkedin', 'summary', 'skills', 'experience', 'education', 'certifications', 'projects', 'languages'];
+
+const updateMyResume = async (req, res) => {
+  try {
+    const updates = {};
+    for (const field of RESUME_FIELDS) {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+    const resume = await Resume.findOneAndUpdate(
+      { alumni_id: req.user.id },
+      { $set: updates },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    res.json({ resume });
+  } catch (err) {
+    console.error('updateMyResume error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, searchJobs, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume };
