@@ -20,6 +20,11 @@ const userSchema = new mongoose.Schema({
 
   isTwoFactorEnabled: { type: Boolean, default: true },
 
+  // Job Connect: whether the daily job-alert sweep (services/jobAlertService)
+  // should notify this alumnus about new Careerjet postings matching their
+  // profile. Defaults true to match Job Connect's "Job alerts: On" default.
+  jobAlertsEnabled: { type: Boolean, default: true },
+
   // Stored during the window between password-verified and OTP-verified
   twoFactorOTP:         { type: String },
   twoFactorOTPExpiry:   { type: Date },

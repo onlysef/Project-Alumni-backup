@@ -4,7 +4,9 @@ dotenv.config();
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
+const cron = require('node-cron');
 const connectDB = require('./config/db');
+const { runJobAlerts } = require('./services/jobAlertService');
 const authRoutes        = require('./routes/auth');
 const adminRoutes       = require('./routes/admin');
 const alumniRoutes      = require('./routes/alumni');
@@ -61,6 +63,11 @@ if (require.main === module) {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+
+    // Daily Job Connect alert sweep, 8:00 AM Manila time.
+    cron.schedule('0 8 * * *', () => {
+      runJobAlerts().catch((err) => console.error('runJobAlerts failed:', err));
+    }, { timezone: 'Asia/Manila' });
   });
 }
 

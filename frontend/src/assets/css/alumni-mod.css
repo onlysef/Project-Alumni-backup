@@ -844,7 +844,7 @@
 .career-skill-tags-full span.skill-missing { padding: 5px 9px; border-radius: 12px; border: 1px dashed #cdbec2; background: #fff; color: #8a777d; font-size: 10px; font-weight: 700; }
 
 /* Job Connect */
-.job-connect-page { width: 100%; max-width: none; }.job-connect-hero { display: flex; align-items: center; justify-content: space-between; padding: 25px 30px; border-radius: 11px 11px 0 0; background: linear-gradient(120deg,#71001d,#4c0014); color:#fff; }.job-connect-hero span,.job-list-head span,.application-tracker > div span { color:#edc45e;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em }.job-connect-hero h1{margin:5px 0;font-size:25px}.job-connect-hero p{margin:0;color:rgba(255,255,255,.72);font-size:11px}.job-connect-hero button{padding:9px 13px;border:1px solid rgba(255,255,255,.25);border-radius:20px;background:rgba(255,255,255,.1);color:#fff;font-size:10px}.job-search-bar{display:grid;grid-template-columns:1fr 150px 120px;gap:10px;padding:15px;background:#fff;border:1px solid #e4d9dc;border-top:0;border-radius:0 0 10px 10px}.job-search-bar label{position:relative}.job-search-bar label span{position:absolute;left:12px;top:8px;color:#8d7b80;font-size:18px}.job-search-bar input,.job-search-bar select{width:100%;height:38px;border:1px solid #d5c8cc;border-radius:5px;padding:0 12px;font-size:11px}.job-search-bar input{padding-left:38px}.job-search-bar button{border:0;border-radius:5px;background:#70001d;color:#fff;font-size:10px;font-weight:800}.job-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.job-stats>div{display:flex;align-items:center;gap:10px;padding:13px 16px;border:1px solid #e4d9dc;border-radius:7px;background:#fff}.job-stats strong{color:#70001d;font-size:20px}.job-stats span{color:#776a6e;font-size:9px}.job-connect-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:18px}.job-list-head{display:flex;justify-content:space-between;align-items:end;margin:8px 0 12px}.job-list-head h2,.application-tracker h2{margin:4px 0 0;color:#5e0019;font-size:18px}.job-list-head>b{color:#8e7e83;font-size:10px}.job-connect-list{display:grid;gap:12px}.connect-job-card{display:grid;grid-template-columns:58px minmax(0,1fr) 105px;gap:14px;padding:17px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.job-company-logo{display:grid;place-items:center;width:54px;height:54px;border-radius:8px;background:#70001d;color:#f0cd70;font-weight:900}.connect-job-title{display:flex;justify-content:space-between;gap:10px}.connect-job-title h3{margin:0;color:#3e3337;font-size:14px}.connect-job-title p{margin:3px 0;color:#776a6e;font-size:10px}.connect-job-title>span{color:#278246;font-size:10px;font-weight:800}.job-facts{display:flex;flex-wrap:wrap;gap:12px;margin:9px 0;color:#776a6e;font-size:9px}.job-required{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.job-required b{margin-right:3px;color:#695a5f;font-size:9px}.job-required span{padding:4px 7px;border-radius:10px;background:#f3e9ec;color:#70001d;font-size:8px;font-weight:700}.connect-job-main>small{display:block;margin-top:10px;color:#a08f94;font-size:8px}.connect-job-actions{display:grid;align-content:center;gap:7px}.connect-job-actions button{padding:7px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer}.save-job{border:1px solid #cdbec2;background:#fff;color:#65575b}.save-job.saved{border-color:#c49b34;background:#fff8df;color:#755b1d}.apply-job{border:1px solid #70001d;background:#70001d;color:#fff}.view-job{border:0;background:transparent;color:#70001d}.job-connect-side{display:grid;align-content:start;gap:12px}.application-tracker,.job-profile-card{padding:19px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.application-tracker>div{margin-bottom:17px}.tracker-row{display:grid;grid-template-columns:16px 1fr auto;align-items:center;padding:9px 0;border-bottom:1px solid #eee7e9;color:#8b7b80;font-size:10px}.tracker-row i{width:8px;height:8px;border-radius:50%;background:#d9cdd0}.tracker-row.active i{background:#70001d}.tracker-row b{color:#70001d}.job-profile-card{text-align:center}.profile-ring{position:relative;display:grid;place-items:center;width:70px;height:70px;margin:0 auto 10px;border-radius:50%;background:conic-gradient(#70001d calc(var(--pct,0) * 3.6deg),#e8c55f 0deg)}.profile-ring::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#fff}.profile-ring strong{position:relative;z-index:1;color:#70001d;font-size:16px}.job-profile-card h3{margin:0;color:#4e4145;font-size:13px}.job-profile-card p{color:#817177;font-size:9px;line-height:1.5}.job-profile-card button{width:100%;padding:8px;border:0;border-radius:4px;background:#70001d;color:#fff;font-size:9px;font-weight:800}.job-tip-card{padding:15px;border-left:4px solid #d5aa3e;border-radius:6px;background:#fff8e5;color:#6b5a31}.job-tip-card b{font-size:10px}.job-tip-card p{margin:5px 0 0;font-size:9px;line-height:1.5}.job-empty{display:grid;place-items:center;min-height:220px;background:#fff;border:1px dashed #d4c6ca;border-radius:8px;color:#7c6d72}.job-empty span{margin-top:-80px;font-size:10px}
+.job-connect-page { width: 100%; max-width: none; }.job-connect-hero { display: flex; align-items: center; justify-content: space-between; padding: 25px 30px; border-radius: 11px 11px 0 0; background: linear-gradient(120deg,#71001d,#4c0014); color:#fff; }.job-connect-hero span,.job-list-head span,.application-tracker > div span { color:#edc45e;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em }.job-connect-hero h1{margin:5px 0;font-size:25px}.job-connect-hero p{margin:0;color:rgba(255,255,255,.72);font-size:11px}.job-alerts-toggle{padding:9px 13px;border:1px solid rgba(255,255,255,.25);border-radius:20px;background:rgba(255,255,255,.1);color:#fff;font-size:10px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,color .15s}.job-alerts-toggle.on{border-color:#edc45e;background:#edc45e;color:#5e0019}.job-search-bar{display:grid;grid-template-columns:1fr 150px 120px;gap:10px;padding:15px;background:#fff;border:1px solid #e4d9dc;border-top:0;border-radius:0 0 10px 10px}.job-search-bar label{position:relative}.job-search-bar label svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;fill:none;stroke:#8d7b80;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}.job-search-bar input,.job-search-bar select{width:100%;height:38px;border:1px solid #d5c8cc;border-radius:5px;padding:0 12px;font-size:11px}.job-search-bar input{padding-left:34px}.job-search-bar button{border:0;border-radius:5px;background:#70001d;color:#fff;font-size:10px;font-weight:800}.job-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}.job-stats>div{display:flex;align-items:center;gap:10px;padding:13px 16px;border:1px solid #e4d9dc;border-radius:7px;background:#fff}.job-stats strong{color:#70001d;font-size:20px}.job-stats span{color:#776a6e;font-size:9px}.job-connect-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:18px}.job-list-head{display:flex;justify-content:space-between;align-items:end;margin:8px 0 12px}.job-list-head h2,.application-tracker h2{margin:4px 0 0;color:#5e0019;font-size:18px}.job-list-head>b{color:#8e7e83;font-size:10px}.job-connect-list{display:grid;gap:12px}.connect-job-card{display:grid;grid-template-columns:58px minmax(0,1fr) 105px;gap:14px;padding:17px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.job-company-logo{display:grid;place-items:center;width:54px;height:54px;border-radius:8px;background:#70001d;color:#f0cd70;font-weight:900}.connect-job-title{display:flex;justify-content:space-between;gap:10px}.connect-job-title h3{margin:0;color:#3e3337;font-size:14px}.connect-job-title p{margin:3px 0;color:#776a6e;font-size:10px}.connect-job-title>span{color:#278246;font-size:10px;font-weight:800}.job-facts{display:flex;flex-wrap:wrap;gap:12px;margin:9px 0;color:#776a6e;font-size:9px}.job-required{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.job-required b{margin-right:3px;color:#695a5f;font-size:9px}.job-required span{padding:4px 7px;border-radius:10px;background:#f3e9ec;color:#70001d;font-size:8px;font-weight:700}.connect-job-main>small{display:block;margin-top:10px;color:#a08f94;font-size:8px}.connect-job-actions{display:grid;align-content:center;gap:7px}.connect-job-actions button{padding:7px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer}.save-job{border:1px solid #cdbec2;background:#fff;color:#65575b}.save-job.saved{border-color:#c49b34;background:#fff8df;color:#755b1d}.apply-job{border:1px solid #70001d;background:#70001d;color:#fff;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:5px;white-space:nowrap;cursor:pointer}.view-job{border:0;background:transparent;color:#70001d;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:4px;white-space:nowrap;cursor:pointer}.apply-job svg,.view-job svg{width:11px;height:11px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}.job-connect-side{display:grid;align-content:start;gap:12px}.application-tracker,.job-profile-card{padding:19px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.application-tracker>div{margin-bottom:17px}.tracker-row{display:grid;grid-template-columns:16px 1fr auto;align-items:center;padding:9px 0;border-bottom:1px solid #eee7e9;color:#8b7b80;font-size:10px}.tracker-row i{width:8px;height:8px;border-radius:50%;background:#d9cdd0}.tracker-row.active i{background:#70001d}.tracker-row b{color:#70001d}.job-profile-card{text-align:center}.profile-ring{position:relative;display:grid;place-items:center;width:70px;height:70px;margin:0 auto 10px;border-radius:50%;background:conic-gradient(#70001d calc(var(--pct,0) * 3.6deg),#e8c55f 0deg)}.profile-ring::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#fff}.profile-ring strong{position:relative;z-index:1;color:#70001d;font-size:16px}.job-profile-card h3{margin:0;color:#4e4145;font-size:13px}.job-profile-card p{color:#817177;font-size:9px;line-height:1.5}.job-profile-card button{width:100%;padding:8px;border:0;border-radius:4px;background:#70001d;color:#fff;font-size:9px;font-weight:800}.job-tip-card{padding:15px;border-left:4px solid #d5aa3e;border-radius:6px;background:#fff8e5;color:#6b5a31}.job-tip-card b{font-size:10px}.job-tip-card p{margin:5px 0 0;font-size:9px;line-height:1.5}.job-empty{display:grid;place-items:center;min-height:220px;background:#fff;border:1px dashed #d4c6ca;border-radius:8px;color:#7c6d72}.job-empty span{margin-top:-80px;font-size:10px}
 
 @media (max-width: 760px) {
   .alumni-page-content { padding: 18px; }
@@ -889,12 +889,17 @@
 .job-connect-page .connect-job-title h3 { font-size: 18px; }
 .job-connect-page .connect-job-title p { color: #30272a; font-size: 10px; line-height: 1.25; }
 .job-connect-page .connect-job-description { max-width: 470px; margin: 17px 0; color: #3f3538; font-size: 10px; }
-.connect-posted { position: absolute; top: 4px; right: 10px; padding: 7px 10px; border-radius: 3px; background: #70001d; color: #f1cf70; font-size: 8px; font-weight: 800; }
+.connect-posted { display: inline-block; margin-right: 6px; margin-bottom: 8px; padding: 7px 10px; border-radius: 3px; background: #70001d; color: #f1cf70; font-size: 8px; font-weight: 800; }
+.connect-posted.connect-saved-date { background: #d1a530; color: #4c3a08; }
 .connect-card-buttons { display: flex; align-items: center; gap: 12px; }
 .connect-card-buttons .apply-job { padding: 9px 20px; border-radius: 4px; font-size: 10px; font-weight: 800; }
 .connect-card-buttons .view-job { padding: 8px; font-size: 10px; }
-.connect-save-icon { margin-left: auto; border: 0; background: transparent; color: #70001d; font-size: 18px; cursor: pointer; }
+.connect-save-icon { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; margin-left: auto; border: 0; background: transparent; color: #70001d; font-size: 10px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.connect-save-icon svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .connect-save-icon.saved { color: #d1a530; }
+.job-stat-clickable { cursor: pointer; transition: border-color .15s, background .15s; }
+.job-stat-clickable:hover { border-color: #d1a530; background: #fffaf0; }
+.job-view-toggle { border: 1px solid #70001d; border-radius: 20px; padding: 6px 14px; background: transparent; color: #70001d; font-size: 9px; font-weight: 800; cursor: pointer; }
 .job-connect-page .connect-skill-gap { margin: 0; padding: 23px 16px; }
 .job-connect-page .connect-skill-gap {
   background-color: #70001d !important;
@@ -1001,6 +1006,8 @@
 .connect-skill-gap > b { display: block; margin-bottom: 18px; text-align: center; font-size: 11px; }
 .connect-skill-gap > div { display: flex; flex-wrap: wrap; gap: 5px; }
 .connect-skill-gap span { padding: 5px 7px; border-radius: 12px; background: #fff; color: #4d313a; font-size: 8px; font-weight: 700; }
+.connect-skill-gap span.skill-have { background: #eaf7ee; color: #1f6b3a; }
+.connect-skill-gap span.skill-missing { background: transparent; border: 1px dashed rgba(255,255,255,.5); color: #fff; }
 .connect-skill-gap small { display: block; margin-top: 15px; color: rgba(255,255,255,.7); font-size: 7px; line-height: 1.5; }
 
 @media (max-width: 760px) {
@@ -1171,6 +1178,43 @@
   background: #70001d;
   color: #fff;
 }
+.resume-export-wrap {
+  position: relative;
+}
+.resume-export-wrap .resume-export {
+  width: 100%;
+}
+.resume-export-menu {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 4px;
+  min-width: 140px;
+  padding: 6px;
+  border: 1px solid #e1d5d8;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(61, 24, 35, .16);
+}
+.resume-export-menu button {
+  min-height: auto;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #4d3f43;
+  font-size: 10px;
+  font-weight: 700;
+  text-align: left;
+  justify-content: flex-start;
+  cursor: pointer;
+}
+.resume-export-menu button:hover {
+  background: #f6ecee;
+  color: #70001d;
+}
 .resume-preview-overlay {
   position: fixed;
   inset: 0;
@@ -1257,6 +1301,26 @@
 .resume-preview-full .resume-entry-meta {
   font-size: 10px !important;
 }
+
+.job-details-body { max-height: calc(90vh - 86px); overflow-y: auto; padding: 22px 24px; }
+.job-details-meta { margin: 0 0 10px; color: #776a6e; font-size: 11px; }
+.job-details-match { margin: 0 0 14px; color: #278246; font-size: 11px; font-weight: 700; }
+.job-details-match strong { font-size: 15px; }
+.job-details-description { margin: 0 0 18px; color: #4d3f43; font-size: 12px; line-height: 1.6; }
+.job-details-description p { margin: 0 0 12px; }
+.job-details-description ul,
+.job-details-description ol { margin: 0 0 14px; padding-left: 20px; }
+.job-details-description li { margin: 0 0 6px; }
+.job-details-description h3,
+.job-details-description h4 { margin: 14px 0 6px; color: #3e3337; font-size: 12.5px; font-weight: 800; }
+.job-details-description > :first-child { margin-top: 0; }
+.job-details-skills { padding: 16px; border-radius: 8px; background: #70001d; color: #fff; }
+.job-details-skills > b { display: block; margin-bottom: 12px; font-size: 11px; }
+.job-details-skills > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.job-details-skills span { padding: 5px 9px; border-radius: 12px; background: #fff; color: #4d313a; font-size: 9px; font-weight: 700; }
+.job-details-skills span.skill-have { background: #eaf7ee; color: #1f6b3a; }
+.job-details-skills span.skill-missing { background: transparent; border: 1px dashed rgba(255,255,255,.5); color: #fff; }
+.job-details-apply { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-top: 18px; padding: 10px 22px; font-size: 11px; white-space: nowrap; }
 
 /* Alumni responsive fixes */
 .alumni-app.sidebar-collapsed .alumni-nav-group > a b {
@@ -1928,7 +1992,7 @@ body.dark-mode .career-skill-tags-full span.skill-missing { border-color: rgba(2
 
 /* Job Connect */
 body.dark-mode .job-search-bar { background: #241116; border-color: rgba(250, 200, 83, .18); }
-body.dark-mode .job-search-bar label span { color: #b99ba4; }
+body.dark-mode .job-search-bar label svg { stroke: #b99ba4; }
 body.dark-mode .job-search-bar input,
 body.dark-mode .job-search-bar select { border-color: rgba(250, 200, 83, .22); background: #321820; color: #f8eef1; }
 body.dark-mode .job-stats > div { border-color: rgba(250, 200, 83, .18); background: #241116; }
@@ -1946,7 +2010,11 @@ body.dark-mode .connect-job-title p,
 body.dark-mode .connect-job-description { color: #d4bdc3; }
 body.dark-mode .job-facts { color: #d4bdc3; }
 body.dark-mode .job-required b { color: #e7cfd4; }
+body.dark-mode .job-stat-clickable:hover { border-color: #d1a530; background: #2c1a08; }
+body.dark-mode .job-view-toggle { border-color: rgba(250, 200, 83, .4); color: #fac853; }
 body.dark-mode .job-required span { background: #3a2027; color: #f6d98a; }
+body.dark-mode .job-details-meta { color: #d4bdc3; }
+body.dark-mode .job-details-description { color: #f0e4e7; }
 body.dark-mode .connect-job-main > small { color: #b99ba4; }
 body.dark-mode .save-job { border-color: rgba(250, 200, 83, .3); background: #241116; color: #e7cfd4; }
 body.dark-mode .save-job.saved { border-color: #d1a530; background: #3a2c10; color: #f6d98a; }
@@ -1976,6 +2044,9 @@ body.dark-mode .resume-editor input,
 body.dark-mode .resume-editor textarea { border-color: rgba(250, 200, 83, .22); background: #321820; color: #f8eef1; }
 body.dark-mode .resume-edit,
 body.dark-mode .resume-preview-btn { border-color: rgba(250, 200, 83, .3); background: #241116; color: #fac853; }
+body.dark-mode .resume-export-menu { border-color: rgba(250, 200, 83, .18); background: #241116; box-shadow: 0 10px 24px rgba(0, 0, 0, .4); }
+body.dark-mode .resume-export-menu button { color: #f0e4e7; }
+body.dark-mode .resume-export-menu button:hover { background: #321820; color: #fac853; }
 body.dark-mode .resume-preview-overlay { background: rgba(10, 2, 5, .7); }
 body.dark-mode .resume-preview-modal { background: #1c0d11; box-shadow: 0 24px 70px rgba(0, 0, 0, .6); }
 body.dark-mode .resume-preview-modal-head { border-color: rgba(250, 200, 83, .18); background: #241116; }
