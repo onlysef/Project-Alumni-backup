@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { apiFetch } from "../../services/api.js";
+import { JobCard, ArrowIcon, formatSavedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
 
 const initialResume = {
   name: "Juan Dela Cruz",
@@ -35,9 +36,12 @@ export default function JobConnect() {
   const [hasProfile, setHasProfile] = useState(true);
   const [detailsJob, setDetailsJob] = useState(null);
 
-  const [view, setView] = useState("recommended"); // "recommended" | "saved"
+  const [view, setView] = useState("recommended"); // "recommended" | "saved" | "applications"
   const [savedJobs, setSavedJobs] = useState([]);
   const savedUrls = new Set(savedJobs.map(j => j.url));
+
+  const [applications, setApplications] = useState([]);
+  const appliedUrls = new Set(applications.map(a => a.url));
 
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(true);
 
@@ -78,9 +82,30 @@ export default function JobConnect() {
     }).catch(() => {});
   }
 
-  useEffect(() => { runSearch(search, jobType); loadSavedJobs(); loadJobAlertsPref(); loadResume(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  function loadApplications() {
+    apiFetch("/alumni/applications").then((d) => setApplications(d.applications || [])).catch(() => {});
+  }
 
-  const results = view === "saved" ? savedJobs : jobs;
+  // Fired the moment "Apply now" is clicked (card and details modal both) —
+  // fire-and-forget alongside the actual navigation to Careerjet, so it
+  // never blocks or interferes with the external link opening.
+  function logApply(job) {
+    apiFetch("/alumni/applications", { method: "POST", body: job })
+      .then((d) => {
+        if (!d.application) return;
+        setApplications((prev) => prev.some((a) => a.url === job.url) ? prev : [d.application, ...prev]);
+      })
+      .catch(() => {});
+  }
+
+  function updateApplicationStatus(id, status) {
+    setApplications((prev) => prev.map((a) => (a._id === id ? { ...a, status } : a)));
+    apiFetch(`/alumni/applications/${id}/status`, { method: "PATCH", body: { status } }).catch(() => loadApplications());
+  }
+
+  useEffect(() => { runSearch(search, jobType); loadSavedJobs(); loadJobAlertsPref(); loadResume(); loadApplications(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const results = view === "saved" ? savedJobs : view === "applications" ? applications : jobs;
   const descriptionBlocks = detailsJob ? structureDescription(detailsJob.description) : [];
 
   function toggleSave(job) {
@@ -145,15 +170,18 @@ export default function JobConnect() {
     <div className="job-stats">
       <div><strong>{jobs.length}</strong><span>Recommended jobs</span></div>
       <div className="job-stat-clickable" onClick={() => setView("saved")}><strong>{savedJobs.length}</strong><span>Saved jobs</span></div>
-      <div><strong>2</strong><span>Applications sent</span></div>
-      <div><strong>1</strong><span>Interview scheduled</span></div>
+      <div className="job-stat-clickable" onClick={() => setView("applications")}><strong>{applications.length}</strong><span>Applications sent</span></div>
+      <div className="job-stat-clickable" onClick={() => setView("applications")}><strong>{applications.filter(a => a.status === "Interview Scheduled").length}</strong><span>Interview scheduled</span></div>
     </div>
 
     <div className="job-connect-layout">
       <main>
         <div className="job-list-head">
-          <div><span>{view === "saved" ? "Your bookmarks" : "Personalized matches"}</span><h2>{view === "saved" ? "Saved Jobs" : "Recommended for You"}</h2></div>
-          {view === "saved" ? (
+          <div>
+            <span>{view === "saved" ? "Your bookmarks" : view === "applications" ? "Your progress" : "Personalized matches"}</span>
+            <h2>{view === "saved" ? "Saved Jobs" : view === "applications" ? "Your Applications" : "Recommended for You"}</h2>
+          </div>
+          {view !== "recommended" ? (
             <button type="button" className="job-view-toggle" onClick={() => setView("recommended")}>Back to Recommended</button>
           ) : (
             <b>{results.length} results</b>
@@ -172,10 +200,18 @@ export default function JobConnect() {
         {view === "saved" && !results.length && (
           <div className="job-empty"><b>No saved jobs yet</b><span>Click "Save" on a job to bookmark it here.</span></div>
         )}
+        {view === "applications" && !results.length && (
+          <div className="job-empty"><b>No applications yet</b><span>Clicking "Apply now" on a job logs it here automatically.</span></div>
+        )}
 
         {((view === "recommended" && !error && !loading && !unavailable) || view === "saved") && !!results.length && (
           <div className="job-connect-list">
-            {results.map(job => <JobCard key={job.url || job.title} job={job} saved={savedUrls.has(job.url)} onToggleSave={() => toggleSave(job)} onViewDetails={() => setDetailsJob(job)} />)}
+            {results.map(job => <JobCard key={job.url || job.title} job={job} saved={savedUrls.has(job.url)} onToggleSave={() => toggleSave(job)} onViewDetails={() => setDetailsJob(job)} onApply={() => logApply(job)} />)}
+          </div>
+        )}
+        {view === "applications" && !!results.length && (
+          <div className="job-connect-list">
+            {results.map(app => <ApplicationCard key={app._id || app.url} app={app} onStatusChange={(status) => updateApplicationStatus(app._id, status)} onViewDetails={() => setDetailsJob(app)} />)}
           </div>
         )}
       </main>
@@ -257,7 +293,7 @@ export default function JobConnect() {
                 <div>{detailsJob.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
               </div>
             )}
-            <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer">Apply now on Careerjet <ArrowIcon /></a>
+            <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
           </div>
         </div>
       </div>
@@ -265,104 +301,36 @@ export default function JobConnect() {
   </div>;
 }
 
-function truncate(value, max) {
-  return value.length > max ? `${value.slice(0, max).trim()}…` : value;
-}
 
-function formatSavedDate(iso) {
-  return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
-}
+const APPLICATION_STATUSES = ["Applied", "Interview Scheduled", "Offer Received", "Rejected", "Withdrawn"];
 
-// Careerjet's description field has no real structural markup — only
-// inline <b> keyword-highlight tags — but the original paragraph/bullet
-// boundaries survive as runs of 2+ raw spaces once tags are stripped, so
-// that's the only signal available to rebuild readable structure from.
-function splitDescriptionSegments(value) {
-  const withoutInlineTags = String(value || "").replace(/<\/?(b|strong|em|i)>/gi, "");
-  const withoutOtherTags = withoutInlineTags.replace(/<[^>]*>/g, " ");
-  return withoutOtherTags
-    .split(/\s{2,}/)
-    .map((s) => s.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-}
-
-const SECTION_HEADER_PATTERN = /^(key responsibilities|responsibilities|duties|required qualifications(\s*&?\s*experience)?|minimum qualifications|qualifications|preferred qualifications|key competencies|competencies|core competencies|requirements?|about (the )?(role|company|us|team)|benefits|perks|what you.ll (do|need)|what we.re looking for|why join us|job description|role overview|overview|primary details|skills|technical skills|soft skills|nice to have|good to have|education|experience|job summary|position summary|summary)\s*[:&]?\s*$/i;
-
-function isHeaderSegment(segment) {
-  return SECTION_HEADER_PATTERN.test(segment);
-}
-
-// Groups the flat segment list into intro paragraphs, then bullet lists
-// under whichever section header preceded them (postings are consistently
-// shaped: intro text, then Header, then its bullet items, repeat).
-function structureDescription(value) {
-  const segments = splitDescriptionSegments(value);
-  const blocks = [];
-  let currentList = null;
-  let sawHeader = false;
-  for (const segment of segments) {
-    if (isHeaderSegment(segment)) {
-      sawHeader = true;
-      currentList = null;
-      blocks.push({ type: "header", text: segment.replace(/[:&]\s*$/, "").trim() });
-      continue;
-    }
-    if (sawHeader) {
-      if (!currentList) {
-        currentList = { type: "list", items: [] };
-        blocks.push(currentList);
-      }
-      currentList.items.push(segment);
-    } else {
-      blocks.push({ type: "para", text: segment });
-    }
-  }
-  return blocks;
-}
-
-// Compact card preview: just the intro prose before the first section
-// header (if any), truncated — avoids gluing unrelated bullet items
-// together the way a naive whitespace-collapse would.
-function descriptionPreview(value, max) {
-  const segments = splitDescriptionSegments(value);
-  const intro = [];
-  for (const segment of segments) {
-    if (isHeaderSegment(segment)) break;
-    intro.push(segment);
-  }
-  const text = (intro.length ? intro : segments).join(" ");
-  return truncate(text, max);
-}
-
-function JobCard({ job, saved, onToggleSave, onViewDetails }) {
-  const description = descriptionPreview(job.description, 220);
+function ApplicationCard({ app, onStatusChange, onViewDetails }) {
+  const description = descriptionPreview(app.description, 220);
   return <article className="connect-job-card">
-    {job.match !== null && job.match !== undefined && (
-      <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
+    {app.match !== null && app.match !== undefined && (
+      <div className="connect-match-ribbon"><strong>{app.match}%</strong><span>Match</span></div>
     )}
-    <div className="job-company-logo"><img src={alumniLogo} alt={`${job.company} logo`} /></div>
+    <div className="job-company-logo"><img src={alumniLogo} alt={`${app.company} logo`} /></div>
     <div className="connect-job-main">
-      {job.posted && <span className="connect-posted">Posted: {job.posted}</span>}
-      {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
-      <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div></div>
+      <span className="connect-posted">Applied {formatSavedDate(app.appliedAt || app.createdAt)}</span>
+      <div className="connect-job-title">
+        <div><h3>{app.title}</h3><p>{app.company}<br />{[app.location, app.type].filter(Boolean).join(" | ")}</p></div>
+        <select className="application-status-select" value={app.status} onChange={e => onStatusChange(e.target.value)} aria-label="Application status">
+          {APPLICATION_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
       {description && <p className="connect-job-description">{description}</p>}
       <div className="connect-card-buttons">
-        <a className="apply-job" href={job.url} target="_blank" rel="noopener noreferrer">Apply now</a>
+        <a className="apply-job" href={app.url} target="_blank" rel="noopener noreferrer">View posting</a>
         <button className="view-job" type="button" onClick={onViewDetails}>See details <ArrowIcon /></button>
-        <button className={`connect-save-icon${saved ? " saved" : ""}`} type="button" onClick={onToggleSave} aria-label={saved ? "Remove from saved jobs" : "Save job"}>
-          <BookmarkIcon filled={saved} /><span>{saved ? "Saved" : "Save"}</span>
-        </button>
       </div>
       <small className="job-partner">via Careerjet</small>
     </div>
-    {job.skills?.length > 0 && (
+    {app.skills?.length > 0 && (
       <aside className="connect-skill-gap">
         <b>Skill Gap</b>
-        <div>{job.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
-        <small>
-          {job.skills.some(s => s.matched) ? "Highlighted skills are already on your profile — the rest are worth adding." : "These skills are requested for this role but aren't on your profile yet."}
-          {job.createdAt && " (based on your profile as of when you saved this job)"}
-        </small>
+        <div>{app.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+        <small>Based on your profile as of when you applied.</small>
       </aside>
     )}
   </article>;
@@ -410,14 +378,6 @@ function ResumeEditor({ value, onChange }) {
 function ResumeSection({ title, show = true, children }) {
   if (!show) return null;
   return <section className="resume-format-section"><h3>{title}</h3>{children}</section>;
-}
-
-function BookmarkIcon({ filled }) {
-  return <svg viewBox="0 0 24 24" aria-hidden="true" style={{ fill: filled ? "currentColor" : "none" }}><path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1Z" /></svg>;
-}
-
-function ArrowIcon() {
-  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
 }
 
 function SearchIcon() {

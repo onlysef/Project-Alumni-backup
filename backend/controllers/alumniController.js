@@ -10,6 +10,7 @@ const Announcement         = require('../models/Announcement');
 const Job                  = require('../models/Job');
 const SavedJob              = require('../models/SavedJob');
 const Resume                = require('../models/Resume');
+const JobApplication        = require('../models/JobApplication');
 const Event                = require('../models/Event');
 const { getTracerFormConfig } = require('./tracerFormConfigController');
 const { getEmbedding }        = require('../services/embeddingService');
@@ -506,12 +507,16 @@ function computeMatchScore(me, candidate, myEmp, theirEmp) {
     reasons.push('same industry');
   }
 
+  // textContainsSkill normalizes away punctuation/spacing before comparing
+  // (the same helper Job Connect uses against job postings) — a plain
+  // exact-string .includes() here meant "React.js" and "ReactJS" never
+  // matched each other, so real overlap almost never triggered in practice.
   const mySkills = parseSkillList(myEmp?.skills);
-  const theirSkills = parseSkillList(theirEmp?.skills);
-  if (mySkills.length && theirSkills.length) {
-    const overlap = mySkills.filter((s) => theirSkills.includes(s)).length;
+  const theirSkillsText = theirEmp?.skills || '';
+  if (mySkills.length && theirSkillsText.trim()) {
+    const overlap = mySkills.filter((s) => textContainsSkill(theirSkillsText, s)).length;
     if (overlap > 0) {
-      score += Math.round((overlap / Math.max(mySkills.length, theirSkills.length)) * 10);
+      score += Math.round((overlap / mySkills.length) * 10);
       reasons.push('overlapping skills');
     }
   }
@@ -567,6 +572,84 @@ const updateMyEmployment = async (req, res) => {
   }
 };
 
+// Home's "Recommended jobs" card used to count the employer-posted internal
+// Job model — but alumni have no route to browse those at all (Job is only
+// wired into the employer/admin routers), so it was always disconnected
+// from what "Browse jobs" (Job Connect, now Careerjet-backed) actually
+// shows. This counts real Careerjet matches instead, the same way Job
+// Connect's own "Recommended for You" does. Home polls every 30s, so the
+// result is cached per alumnus for a while rather than hitting Careerjet
+// on every poll.
+// Shared with searchJobs's own default "Recommended for You" view — Home
+// used to compute this with a different pagesize/sort than Job Connect
+// itself, so the two numbers could legitimately disagree even though they
+// claim to mean the same thing. Same pool size, same Careerjet sort, same
+// scoring function now, so they can't drift apart again.
+const RECOMMENDED_POOL_SIZE = 50;
+
+function scoreCareerjetJobs(rawJobs, { userSkillsText, location, typeLabel }) {
+  return rawJobs.map((job) => {
+    const jobText = `${job.title || ''} ${job.description || ''}`;
+    const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
+    const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
+    const matchedCount = skills.filter((s) => s.matched).length;
+    return {
+      title: job.title,
+      company: job.company || 'Company not listed',
+      location: job.locations || location || 'Philippines',
+      type: typeLabel || '',
+      posted: job.date || '',
+      url: job.url,
+      description: job.description || '',
+      salary: job.salary || '',
+      match: skills.length ? Math.round((matchedCount / skills.length) * 100) : null,
+      skills,
+    };
+  });
+}
+
+// Highest match first; within the same score, the more recently posted
+// listing wins so a fresh posting doesn't get buried behind an old one.
+function sortJobsByMatchThenDate(jobs) {
+  return jobs.sort((a, b) => {
+    const matchDiff = (b.match ?? -1) - (a.match ?? -1);
+    if (matchDiff !== 0) return matchDiff;
+    return new Date(b.posted || 0) - new Date(a.posted || 0);
+  });
+}
+
+const recommendedJobsCountCache = new Map(); // alumniId -> { count, expiresAt }
+const RECOMMENDED_COUNT_TTL_MS = 20 * 60 * 1000;
+
+async function getRecommendedJobsCount(alumniId, employment) {
+  const cacheKey = String(alumniId);
+  const cached = recommendedJobsCountCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.count;
+
+  const userSkillsText = employment?.skills || '';
+  const firstUserSkill = userSkillsText.split(/[,;\n]/)[0]?.trim() || '';
+  const keywords = employment?.job_title?.trim() || firstUserSkill;
+  if (!keywords) {
+    recommendedJobsCountCache.set(cacheKey, { count: 0, expiresAt: Date.now() + RECOMMENDED_COUNT_TTL_MS });
+    return 0;
+  }
+
+  try {
+    const referrerUrl = `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}/alumni/job-connect`;
+    const data = await careerjetService.searchJobs({
+      keywords, location: '', page: 1, pagesize: RECOMMENDED_POOL_SIZE, sort: 'date',
+      userIp: '127.0.0.1', userAgent: 'AlumniPortal-HomeSummary/1.0', referrerUrl,
+    });
+    const jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location: '', typeLabel: '' });
+    const count = jobs.filter((j) => (j.match ?? 0) > 0).length;
+    recommendedJobsCountCache.set(cacheKey, { count, expiresAt: Date.now() + RECOMMENDED_COUNT_TTL_MS });
+    return count;
+  } catch (err) {
+    console.error('getRecommendedJobsCount Careerjet error:', err.message);
+    return cached ? cached.count : 0;
+  }
+}
+
 // GET /api/alumni/home-summary
 // Single call backing the alumni Home page's quick-stat cards, profile
 // strength ring, and "similar paths" list — these used to be hardcoded
@@ -592,10 +675,9 @@ const getHomeSummary = async (req, res) => {
     // thing on the page.
     const upcomingEventsFilter = { visibility: { $in: eventVisibilities }, event_datetime: { $gte: new Date() } };
 
-    const [announcementsCount, recentEventsCount, recommendedJobsCount, employment, networkMatchesCount, similarAlumni, recentAnnouncements, recentJobs, recentEvents] = await Promise.all([
+    const [announcementsCount, recentEventsCount, employment, networkMatchesCount, similarAlumni, recentAnnouncements, recentJobs, recentEvents] = await Promise.all([
       Announcement.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
       Event.countDocuments(recentEventsFilter),
-      Job.countDocuments({ status: 'open' }),
       AlumniEmployment.findOne({ alumni_id: alumniId }).lean(),
       me?.course ? User.countDocuments({ role: 'alumni', course: me.course, _id: { $ne: alumniId } }) : 0,
       // Scored below to surface the 3 closest matches rather than just the
@@ -614,6 +696,8 @@ const getHomeSummary = async (req, res) => {
       Job.find({ status: 'open', createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: -1 }).limit(6).select('title location createdAt').lean(),
       Event.find(upcomingEventsFilter).sort({ event_datetime: 1 }).limit(6).select('title location createdAt event_datetime').lean(),
     ]);
+
+    const recommendedJobsCount = await getRecommendedJobsCount(alumniId, employment);
 
     const similarIds = similarAlumni.map((a) => a._id);
     const similarEmployments = similarIds.length
@@ -1084,6 +1168,16 @@ const searchJobs = async (req, res) => {
     const referrerUrl = `${(process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')}/alumni/job-connect`;
     const userIp = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
 
+    // For the default "Recommended for You" view, ask Careerjet to sort by
+    // date rather than its own relevance score (otherwise a brand-new
+    // posting ranked lower for relevance would never make it into the pool
+    // at all), and use the same pool size Home's recommended-jobs count
+    // uses so the two numbers can't disagree. A real search (explicit
+    // keywords) keeps relevance sorting and the caller's own pagesize,
+    // since that's an actual search, not the recommendation feed.
+    const careerjetSort = hasExplicitSearch ? sort : 'date';
+    const effectivePagesize = hasExplicitSearch ? pagesize : RECOMMENDED_POOL_SIZE;
+
     let data;
     try {
       data = await careerjetService.searchJobs({
@@ -1092,8 +1186,8 @@ const searchJobs = async (req, res) => {
         contracttype: CONTRACT_TYPE_BY_TYPE[type] || '',
         contractperiod: CONTRACT_PERIOD_BY_TYPE[type] || '',
         page,
-        pagesize,
-        sort,
+        pagesize: effectivePagesize,
+        sort: careerjetSort,
         userIp,
         userAgent: req.headers['user-agent'],
         referrerUrl,
@@ -1109,33 +1203,12 @@ const searchJobs = async (req, res) => {
     // (unlike guessing a "work setup" from the description text used to be).
     const typeLabel = EMPLOYMENT_TYPE_LABELS[type] || '';
 
-    const jobs = (data.jobs || []).map((job) => {
-      const jobText = `${job.title || ''} ${job.description || ''}`;
-
-      // What this specific posting is actually asking for, read off the
-      // shared skill vocabulary (Careerjet gives no structured skill tags).
-      const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
-      const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
-      const matchedCount = skills.filter((s) => s.matched).length;
-
-      return {
-        title: job.title,
-        company: job.company || 'Company not listed',
-        location: job.locations || location || 'Philippines',
-        type: typeLabel,
-        posted: job.date || '',
-        url: job.url,
-        description: job.description || '',
-        salary: job.salary || '',
-        match: skills.length ? Math.round((matchedCount / skills.length) * 100) : null,
-        skills,
-      };
-    });
+    const jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location, typeLabel });
 
     // "Recommended for You" only makes sense as jobs with an actual match —
     // a real search (user typed something) still shows everything Careerjet
     // returned, just ranked best-match-first.
-    jobs.sort((a, b) => (b.match ?? -1) - (a.match ?? -1));
+    sortJobsByMatchThenDate(jobs);
     const finalJobs = hasExplicitSearch ? jobs : jobs.filter((j) => (j.match ?? 0) > 0);
 
     res.json({
@@ -1298,4 +1371,63 @@ const updateMyResume = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, searchJobs, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume };
+const getApplications = async (req, res) => {
+  try {
+    const applications = await JobApplication.find({ alumni_id: req.user.id }).sort({ appliedAt: -1 }).lean();
+    res.json({ applications });
+  } catch (err) {
+    console.error('getApplications error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// Fired the moment "Apply now" is clicked — upsert (not create) so
+// re-clicking Apply on the same listing never duplicates it or resets a
+// status the alumnus already updated.
+const logApplication = async (req, res) => {
+  try {
+    const { url, title, company, location, type, posted, description, salary, match, skills } = req.body;
+    if (!url || !title) {
+      return res.status(400).json({ message: 'Job url and title are required.' });
+    }
+
+    const application = await JobApplication.findOneAndUpdate(
+      { alumni_id: req.user.id, url },
+      { $setOnInsert: {
+        alumni_id: req.user.id, title, company, location, type, posted, url, description, salary, match, skills,
+        status: 'Applied', appliedAt: new Date(),
+      } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    res.json({ application });
+  } catch (err) {
+    console.error('logApplication error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const APPLICATION_STATUSES = ['Applied', 'Interview Scheduled', 'Offer Received', 'Rejected', 'Withdrawn'];
+
+const updateApplicationStatus = async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!APPLICATION_STATUSES.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status.' });
+    }
+
+    const application = await JobApplication.findOneAndUpdate(
+      { _id: req.params.id, alumni_id: req.user.id },
+      { status },
+      { new: true },
+    );
+    if (!application) {
+      return res.status(404).json({ message: 'Application not found.' });
+    }
+    res.json({ application });
+  } catch (err) {
+    console.error('updateApplicationStatus error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, searchJobs, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, getApplications, logApplication, updateApplicationStatus };
