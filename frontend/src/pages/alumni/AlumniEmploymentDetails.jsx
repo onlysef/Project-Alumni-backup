@@ -185,7 +185,17 @@ export default function AlumniEmploymentDetails() {
               </select>
             </Field></div></div>
           <div className="employment-block"><h3>Qualifications</h3><div className="employment-fields">
-            <Field label="Skills"><input disabled={!editing} placeholder="e.g. Python, Java, PHP" value={form.skills} onChange={e => update("skills", e.target.value)} /></Field>
+            <Field label="Skills">
+              {editing ? (
+                <input placeholder="e.g. Python, Java, PHP" value={form.skills} onChange={e => update("skills", e.target.value)} />
+              ) : (
+                <div className="skills-chip-list">
+                  {form.skills
+                    ? form.skills.split(",").map(s => s.trim()).filter(Boolean).map(skill => <span key={skill} className="skill-chip">{skill}</span>)
+                    : <span className="skills-empty">Not yet updated</span>}
+                </div>
+              )}
+            </Field>
             <Field label="Experience">
               <select disabled={!editing} value={form.experience} onChange={e => update("experience", e.target.value)}>
                 <option value="">Select experience level</option>

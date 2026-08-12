@@ -626,6 +626,9 @@
 .employment-field input, .employment-field select { width: 100%; min-width: 0; height: 39px; padding: 0 11px; border: 1px solid #cdbdc1; border-radius: 5px; outline: 0; background: #fff; color: #30272a; font: inherit; font-size: 12px; }
 .employment-field input:focus, .employment-field select:focus { border-color: #770022; box-shadow: 0 0 0 3px rgba(119,0,34,.08); }
 .employment-field input:disabled, .employment-field select:disabled { background: #f7f4f5; color: #655b5e; }
+.skills-chip-list { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 39px; padding: 8px 11px; border: 1px solid #cdbdc1; border-radius: 5px; background: #f7f4f5; }
+.skill-chip { padding: 4px 10px; border-radius: 12px; border: 1px solid #e1d0d4; background: #fff; color: #4d3f43; font-size: 11px; font-weight: 700; }
+.skills-empty { color: #92838a; font-size: 12px; font-style: italic; }
 .employment-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 26px; }
 .primary-employment-btn, .secondary-employment-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 8px 13px; border-radius: 5px; font-size: 11px; font-weight: 800; line-height: 1; cursor: pointer; }
 .primary-employment-btn img, .secondary-employment-btn img { display: block; width: 14px; height: 14px; flex: 0 0 auto; }
@@ -894,6 +897,29 @@
 .connect-card-buttons { display: flex; align-items: center; gap: 12px; }
 .connect-card-buttons .apply-job { padding: 9px 20px; border-radius: 4px; font-size: 10px; font-weight: 800; }
 .connect-card-buttons .view-job { padding: 8px; font-size: 10px; }
+.connect-job-title > div:first-child { min-width: 0; flex: 1 1 auto; }
+.application-status-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 104px;
+  max-width: 104px;
+  height: 23px;
+  padding: 0 16px 0 8px;
+  border: 1px solid #cdbdc1;
+  border-radius: 12px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2370001d' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 5px center;
+  background-size: 9px;
+  color: #4d3f43;
+  font: inherit;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 21px;
+  cursor: pointer;
+}
+.application-status-select:focus { outline: 0; border-color: #770022; box-shadow: 0 0 0 3px rgba(119,0,34,.08); }
 .connect-save-icon { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 4px; margin-left: auto; border: 0; background: transparent; color: #70001d; font-size: 10px; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .connect-save-icon svg { width: 13px; height: 13px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .connect-save-icon.saved { color: #d1a530; }
@@ -1913,6 +1939,9 @@ body.dark-mode .employment-field input:focus,
 body.dark-mode .employment-field select:focus { border-color: #fac853; box-shadow: 0 0 0 3px rgba(250, 200, 83, .15); }
 body.dark-mode .employment-field input:disabled,
 body.dark-mode .employment-field select:disabled { background: #2b141a; color: #a98d93; }
+body.dark-mode .skills-chip-list { border-color: rgba(250, 200, 83, .22); background: #2b141a; }
+body.dark-mode .skill-chip { border-color: rgba(250, 200, 83, .22); background: #3a2027; color: #f0e4e7; }
+body.dark-mode .skills-empty { color: #a98d93; }
 body.dark-mode .secondary-employment-btn { border-color: rgba(250, 200, 83, .3); background: #241116; color: #e7cfd4; }
 body.dark-mode .profile-course,
 body.dark-mode .profile-email { color: rgba(255, 255, 255, .7); }
@@ -2028,6 +2057,8 @@ body.dark-mode .job-partner { color: #f6a8c0 !important; }
 body.dark-mode .job-view-more { color: #fac853; }
 body.dark-mode .connect-save-icon { color: #fac853; }
 body.dark-mode .connect-save-icon.saved { color: #d1a530; }
+body.dark-mode .application-status-select { border-color: rgba(250, 200, 83, .22); background-color: #321820; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fac853' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 6px center; background-size: 11px; color: #f8eef1; }
+body.dark-mode .application-status-select:focus { border-color: #fac853; box-shadow: 0 0 0 3px rgba(250, 200, 83, .15); }
 
 /* Resume creation */
 body.dark-mode .resume-preview { border-color: rgba(250, 200, 83, .2); background: #241116; color: #f3e7ea; box-shadow: 0 10px 20px rgba(0, 0, 0, .35); }
