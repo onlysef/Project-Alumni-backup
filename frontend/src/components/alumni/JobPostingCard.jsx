@@ -1,0 +1,125 @@
+import React from "react";
+import alumniLogo from "../../assets/images/alumni-removebg.png";
+
+// Shared between Job Connect's own list and the Announcements page's "Job
+// Postings" preview, so both surfaces render the exact same card instead of
+// two hand-maintained designs drifting apart from each other.
+
+export function truncate(value, max) {
+  return value.length > max ? `${value.slice(0, max).trim()}…` : value;
+}
+
+export function formatSavedDate(iso) {
+  return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Careerjet's description field has no real structural markup — only
+// inline <b> keyword-highlight tags — but the original paragraph/bullet
+// boundaries survive as runs of 2+ raw spaces once tags are stripped, so
+// that's the only signal available to rebuild readable structure from.
+export function splitDescriptionSegments(value) {
+  const withoutInlineTags = String(value || "").replace(/<\/?(b|strong|em|i)>/gi, "");
+  const withoutOtherTags = withoutInlineTags.replace(/<[^>]*>/g, " ");
+  return withoutOtherTags
+    .split(/\s{2,}/)
+    .map((s) => s.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+}
+
+export const SECTION_HEADER_PATTERN = /^(key responsibilities|responsibilities|duties|required qualifications(\s*&?\s*experience)?|minimum qualifications|qualifications|preferred qualifications|key competencies|competencies|core competencies|requirements?|about (the )?(role|company|us|team)|benefits|perks|what you.ll (do|need)|what we.re looking for|why join us|job description|role overview|overview|primary details|skills|technical skills|soft skills|nice to have|good to have|education|experience|job summary|position summary|summary)\s*[:&]?\s*$/i;
+
+export function isHeaderSegment(segment) {
+  return SECTION_HEADER_PATTERN.test(segment);
+}
+
+// Groups the flat segment list into intro paragraphs, then bullet lists
+// under whichever section header preceded them (postings are consistently
+// shaped: intro text, then Header, then its bullet items, repeat).
+export function structureDescription(value) {
+  const segments = splitDescriptionSegments(value);
+  const blocks = [];
+  let currentList = null;
+  let sawHeader = false;
+  for (const segment of segments) {
+    if (isHeaderSegment(segment)) {
+      sawHeader = true;
+      currentList = null;
+      blocks.push({ type: "header", text: segment.replace(/[:&]\s*$/, "").trim() });
+      continue;
+    }
+    if (sawHeader) {
+      if (!currentList) {
+        currentList = { type: "list", items: [] };
+        blocks.push(currentList);
+      }
+      currentList.items.push(segment);
+    } else {
+      blocks.push({ type: "para", text: segment });
+    }
+  }
+  return blocks;
+}
+
+// Compact card preview: just the intro prose before the first section
+// header (if any), truncated — avoids gluing unrelated bullet items
+// together the way a naive whitespace-collapse would.
+export function descriptionPreview(value, max) {
+  const segments = splitDescriptionSegments(value);
+  const intro = [];
+  for (const segment of segments) {
+    if (isHeaderSegment(segment)) break;
+    intro.push(segment);
+  }
+  const text = (intro.length ? intro : segments).join(" ");
+  return truncate(text, max);
+}
+
+export function BookmarkIcon({ filled }) {
+  return <svg viewBox="0 0 24 24" aria-hidden="true" style={{ fill: filled ? "currentColor" : "none" }}><path d="M6 3.5h12a1 1 0 0 1 1 1V21l-7-4-7 4V4.5a1 1 0 0 1 1-1Z" /></svg>;
+}
+
+export function ArrowIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
+}
+
+// Careerjet's search API has no company-logo field, and free logo lookup
+// services aren't viable here — unavatar.io's guess-the-domain approach
+// often misses (tried and reverted), and its free tier caps out at 25
+// requests before a ~24h lockout, which a single page of job cards would
+// blow through instantly. The TSU logo placeholder stays until there's a
+// real, reliable source of per-company logos.
+export function JobCard({ job, saved, onToggleSave, onViewDetails, onApply }) {
+  const description = descriptionPreview(job.description, 220);
+  return <article className="connect-job-card">
+    {job.match !== null && job.match !== undefined && (
+      <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
+    )}
+    <div className="job-company-logo"><img src={alumniLogo} alt={`${job.company} logo`} /></div>
+    <div className="connect-job-main">
+      {job.posted && <span className="connect-posted">Posted: {job.posted}</span>}
+      {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
+      <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div></div>
+      {description && <p className="connect-job-description">{description}</p>}
+      <div className="connect-card-buttons">
+        <a className="apply-job" href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>Apply now</a>
+        <button className="view-job" type="button" onClick={onViewDetails}>See details <ArrowIcon /></button>
+        {onToggleSave && (
+          <button className={`connect-save-icon${saved ? " saved" : ""}`} type="button" onClick={onToggleSave} aria-label={saved ? "Remove from saved jobs" : "Save job"}>
+            <BookmarkIcon filled={saved} /><span>{saved ? "Saved" : "Save"}</span>
+          </button>
+        )}
+      </div>
+      <small className="job-partner">via Careerjet</small>
+    </div>
+    {job.skills?.length > 0 && (
+      <aside className="connect-skill-gap">
+        <b>Skill Gap</b>
+        <div>{job.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+        <small>
+          {job.skills.some(s => s.matched) ? "Highlighted skills are already on your profile — the rest are worth adding." : "These skills are requested for this role but aren't on your profile yet."}
+          {job.createdAt && " (based on your profile as of when you saved this job)"}
+        </small>
+      </aside>
+    )}
+  </article>;
+}

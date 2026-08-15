@@ -10,6 +10,7 @@ import SuggestedAlumni from "./SuggestedAlumni.jsx";
 import AlumniOffice from "./AlumniOffice.jsx";
 import CareerRecommendation from "./CareerRecommendation.jsx";
 import JobConnect from "./JobConnect.jsx";
+import { JobCard } from "../../components/alumni/JobPostingCard.jsx";
 
 const HOME_ICONS = {
   viewSuggested: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2370001d' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12s3.4-5 9-5 9 5 9 5-3.4 5-9 5-9-5-9-5z'/%3E%3Ccircle cx='12' cy='12' r='2.4'/%3E%3C/svg%3E",
@@ -63,9 +64,36 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(true);
   const [commentsModal, setCommentsModal] = useState(null);
-  const [appliedJobs, setAppliedJobs] = useState([]);
+  const [appliedUrls, setAppliedUrls] = useState([]);
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
+  const [jobPostings, setJobPostings] = useState([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [savedJobs, setSavedJobs] = useState([]);
+  const savedUrls = new Set(savedJobs.map((j) => j.url));
+
+  useEffect(() => {
+    fetch(`${API}/alumni/jobs/search`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => setJobPostings(d.jobs || []))
+      .catch(() => {})
+      .finally(() => setJobsLoading(false));
+    fetch(`${API}/alumni/jobs/saved`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => setSavedJobs(d.jobs || []))
+      .catch(() => {});
+  }, []);
+
+  function toggleSaveJob(job) {
+    const wasSaved = savedUrls.has(job.url);
+    fetch(`${API}/alumni/jobs/saved/toggle`, {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify(job),
+    })
+      .then(() => setSavedJobs((prev) => wasSaved ? prev.filter((j) => j.url !== job.url) : [{ ...job, createdAt: new Date().toISOString() }, ...prev]))
+      .catch(() => {});
+  }
 
   useEffect(() => {
     fetch(`${API}/alumni/announcements?limit=20`, { headers: authHeaders() })
@@ -168,13 +196,24 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   const openJobDetails = (job) => setModal({
     eyebrow: "Job details",
     title: job.title,
-    body: `${job.company} - ${job.place}. ${job.title === "Web Developer" ? "This role focuses on responsive web applications, API integration, and Git-based collaboration." : "This role focuses on digital product design, prototyping, and user research."}`,
+    body: stripHtmlShort(job.description, 400) || `${job.company} - ${[job.location, job.type].filter(Boolean).join(" / ")}`,
     action: "Go to Job Connect",
     onAction: () => navigate("/alumni/dashboard?section=jobconnect"),
   });
+  // The shared JobCard's "Apply now" is a real <a href={job.url}
+  // target="_blank"> — the browser already opens the real Careerjet
+  // posting on click, so this only needs to log it (same as Job Connect's
+  // own Apply button) so it shows up in "Your Applications" too, instead of
+  // a separate fake "submitted" toast that recorded nothing.
   const applyJob = (job) => {
-    setAppliedJobs(prev => prev.includes(job.title) ? prev : [...prev, job.title]);
-    setModal({ eyebrow: job.title, title: "Application submitted", body: `Your application for ${job.title} at ${job.company} has been recorded.` });
+    if (!appliedUrls.includes(job.url)) {
+      setAppliedUrls(prev => [...prev, job.url]);
+      fetch(`${API}/alumni/applications`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(job),
+      }).catch(() => {});
+    }
   };
   const openEventDetails = (ev) => setModal({
     eyebrow: "Event details",
@@ -216,11 +255,23 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     </section>}
 
     {visible("Job Postings") && <section className="announcement-section"><div className="section-heading"><h3>Job Postings</h3>{filter === "Job Postings" && <span>Tip: Complete your profile to get more accurate job recommendations.</span>}</div>
-      <JobCard match="75%" title="Web Developer" company="Tech Solutions Inc." place="Manila / Remote" date="March 05, 2026" skills={["React.js", "REST API", "Git"]} applied={appliedJobs.includes("Web Developer")} onApply={applyJob} onDetails={openJobDetails} />
-      {filter === "Job Postings" && <>
-        <JobCard match="50%" title="UI / UX Designer" company="Digital Creative Studio" place="Clark, Pampanga | Full-Time" date="April 01, 2026" skills={["Figma", "Prototyping", "UX Research"]} variant="purple" applied={appliedJobs.includes("UI / UX Designer")} onApply={applyJob} onDetails={openJobDetails} />
+      {jobsLoading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading job postings…</p>}
+      {!jobsLoading && jobPostings.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No matching job postings yet — complete your Employment Details to get recommendations.</p>}
+      {!jobsLoading && jobPostings.length > 0 && (
+        // Reuses Job Connect's own card sizing (scoped under .job-connect-page)
+        // so this preview looks identical to the real list, not a smaller
+        // hand-tuned variant that can drift out of sync with it.
+        <div className="job-connect-page">
+          <div className="job-connect-list">
+            {jobPostings.slice(0, filter === "Job Postings" ? jobPostings.length : 3).map((job) => (
+              <JobCard key={job.url} job={job} saved={savedUrls.has(job.url)} onToggleSave={() => toggleSaveJob(job)} onApply={() => applyJob(job)} onViewDetails={() => openJobDetails(job)} />
+            ))}
+          </div>
+        </div>
+      )}
+      {filter === "Job Postings" && !jobsLoading && jobPostings.length > 0 && (
         <button className="view-more" type="button" onClick={() => navigate("/alumni/dashboard?section=jobconnect")}>View More Job Postings</button>
-      </>}
+      )}
     </section>}
 
     {visible("Events") && <section className="announcement-section"><h3>Events</h3>
@@ -409,10 +460,11 @@ function AlumniHome({ navigate }) {
   </div>;
 }
 
-function JobCard({ match, title, company, place, date, skills, variant = "blue", applied = false, onApply, onDetails }) {
-  const job = { title, company, place, date, skills };
-  return <article className="job-match-card"><div className="match-ribbon">{match}<small>Match</small></div><LogoImage variant={variant} /><div className="job-main"><span className="posted">Posted: {date}</span><h2>{title}</h2><div className="company">{company}<br />{place}</div><p>{title === "Web Developer" ? "We are looking for a Web Developer skilled in building responsive and dynamic web applications." : "Create user-centered designs and improve digital experiences."}</p><div className="job-actions"><button className={`primary-card-btn${applied ? " applied" : ""}`} type="button" onClick={() => onApply(job)}>{applied ? "Applied" : "Apply now"}</button><button className="details-btn" type="button" onClick={() => onDetails(job)}>See details {"->"}</button></div></div><aside className="skill-gap"><b>Skill Gap</b><div>{skills.map(s => <span key={s}>{s}</span>)}</div><small>These skills are highly requested by the employer based on your current profile.</small></aside></article>;
+function stripHtmlShort(value, max = 160) {
+  const text = String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return text.length > max ? `${text.slice(0, max).trim()}…` : text;
 }
+
 
 function EventCard({ title, text, time, place, date, second, image, reminded = false, onReminder, onDetails }) {
   return <article className="announcement-card event-card"><EventImage date={date} second={second} image={image} title={title} /><div className="announcement-body"><button className={`card-bell${reminded ? " active" : ""}`} type="button" onClick={onReminder} aria-label={reminded ? "Remove reminder" : "Set reminder"}>{reminded ? "On" : "Remind"}</button><h2>{title}</h2><p>{text}</p><div className="event-detail">Time: <b>{time}</b></div><div className="event-detail">Location: <b>{place}</b></div><button className="primary-card-btn next-btn" type="button" onClick={onDetails}><span>View Details</span><Icon name="icon-arrow-right" /></button></div></article>;
