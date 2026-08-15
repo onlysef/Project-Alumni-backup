@@ -52,6 +52,7 @@ const BLANK = {
   status: "Employed", company: "", position: "", industry: "", location: "",
   hired: "", salary: "", skills: "", experience: "",
 };
+const EMPLOYMENT_PROFILE_KEY = "alumniEmploymentProfile";
 
 // AlumniEmployment defaults company_name to 'N/A' and employment_status to
 // 'Not Yet Updated' rather than leaving them blank — those aren't real
@@ -129,7 +130,12 @@ export default function AlumniEmploymentDetails() {
       .catch(() => setEducation("Not yet updated"));
   }, [token]);
 
-  const update = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const update = (key, value) => setForm((prev) => {
+    const next = { ...prev, [key]: value };
+    localStorage.setItem(EMPLOYMENT_PROFILE_KEY, JSON.stringify(mapFormToEmployment(next)));
+    window.dispatchEvent(new CustomEvent("alumni-employment-updated", { detail: mapFormToEmployment(next) }));
+    return next;
+  });
 
   async function submit(event) {
     event.preventDefault();
@@ -145,6 +151,8 @@ export default function AlumniEmploymentDetails() {
       const mapped = mapEmploymentToForm(data.employment);
       setForm(mapped);
       setSaved(mapped);
+      localStorage.setItem(EMPLOYMENT_PROFILE_KEY, JSON.stringify(data.employment));
+      window.dispatchEvent(new CustomEvent("alumni-employment-updated", { detail: data.employment }));
       setEditing(false);
     } finally {
       setSaving(false);
@@ -154,6 +162,9 @@ export default function AlumniEmploymentDetails() {
   const displayName = user?.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : "Alumni";
   const initials = `${(user?.firstName || "?")[0] || ""}${(user?.lastName || "")[0] || ""}`.toUpperCase();
   const courseLine = [user?.college, user?.course].filter(Boolean).join(" - ") + (user?.graduationYear ? ` ${user.graduationYear}` : "");
+  // Reflect edits in the Current Profile card as they are entered. Once edit
+  // mode ends, the card falls back to the values confirmed by the server.
+  const profile = editing ? form : saved;
 
   if (loading) return <div className="alumni-page-content employment-details-page"><p style={{ color: "#76656a" }}>Loading…</p></div>;
 
@@ -194,7 +205,7 @@ export default function AlumniEmploymentDetails() {
               </select>
             </Field>
           </div></div>
-          <div className="employment-actions">{editing ? <><button type="button" className="secondary-employment-btn" onClick={() => { setForm(saved); setEditing(false); }}><img src={EMPLOYMENT_ICONS.cancel} alt="" aria-hidden="true" />Cancel</button><button className="primary-employment-btn" type="submit" disabled={saving}><img src={EMPLOYMENT_ICONS.save} alt="" aria-hidden="true" />{saving ? "Saving…" : "Save Changes"}</button></> : <button type="button" className="primary-employment-btn" onClick={() => setEditing(true)}><img src={EMPLOYMENT_ICONS.edit} alt="" aria-hidden="true" />Edit Details</button>}</div>
+          <div className="employment-actions">{editing ? <><button type="button" className="secondary-employment-btn" onClick={() => { setForm(saved); const restored = mapFormToEmployment(saved); localStorage.setItem(EMPLOYMENT_PROFILE_KEY, JSON.stringify(restored)); window.dispatchEvent(new CustomEvent("alumni-employment-updated", { detail: restored })); setEditing(false); }}><img src={EMPLOYMENT_ICONS.cancel} alt="" aria-hidden="true" />Cancel</button><button className="primary-employment-btn" type="submit" disabled={saving}><img src={EMPLOYMENT_ICONS.save} alt="" aria-hidden="true" />{saving ? "Saving…" : "Save Changes"}</button></> : <button type="button" className="primary-employment-btn" onClick={() => setEditing(true)}><img src={EMPLOYMENT_ICONS.edit} alt="" aria-hidden="true" />Edit Details</button>}</div>
         </form>
       </section>
 
@@ -205,9 +216,9 @@ export default function AlumniEmploymentDetails() {
         <p className="profile-course">{courseLine}</p>
         <p className="profile-email">{user?.email || ""}</p>
         <div className="profile-divider" />
-        <ProfileRow icon={<RoleIcon />} label="Current role" value={saved.position ? `${saved.position}${saved.company ? ` - ${saved.company}` : ""}` : "Not yet updated"} />
-        <ProfileRow icon={<SkillsIcon />} label="Skills" value={saved.skills || "Not yet updated"} />
-        <ProfileRow icon={<ExperienceIcon />} label="Experience" value={saved.experience || "Not yet updated"} />
+        <ProfileRow icon={<RoleIcon />} label="Current role" value={profile.position ? `${profile.position}${profile.company ? ` - ${profile.company}` : ""}` : "Not yet updated"} />
+        <ProfileRow icon={<SkillsIcon />} label="Skills" value={profile.skills || "Not yet updated"} />
+        <ProfileRow icon={<ExperienceIcon />} label="Experience" value={profile.experience || "Not yet updated"} />
         <ProfileRow icon={<HistoryIcon />} label="Education" value={education || "Not yet updated"} />
       </aside>
     </div>
