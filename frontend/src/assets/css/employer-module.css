@@ -1,0 +1,351 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif:wght@700&display=swap');
+
+:root {
+  --employer-maroon: #650018;
+  --employer-maroon-deep: #47000f;
+  --employer-gold: #e3b94f;
+  --employer-ink: #2d2427;
+  --employer-muted: #766a6e;
+  --employer-line: #e6dadd;
+  --employer-soft: #f7f3f4;
+}
+
+.employer-app, .employer-app * { box-sizing: border-box; }
+.employer-app { min-height: 100vh; background: radial-gradient(circle at 88% 7%, rgba(227,185,79,.07), transparent 23%), linear-gradient(180deg,#fdfcfc,#faf8f9); color: var(--employer-ink); font-family: 'Manrope', sans-serif; }
+.employer-glyph { display: block; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+
+.employer-sidebar {
+  position: fixed; z-index: 60; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 236px; overflow: hidden;
+  background: linear-gradient(180deg, #630018 0%, #560016 67%, #8b321d 87%, #d4a63d 100%); color: #fff;
+  box-shadow: 8px 0 28px rgba(72,0,17,.12);
+}
+.employer-sidebar::before { position: absolute; right: -82px; bottom: 58px; width: 210px; height: 210px; border: 1px solid rgba(255,218,116,.14); border-radius: 50%; box-shadow: 0 0 0 28px rgba(255,218,116,.035), 0 0 0 58px rgba(255,218,116,.025); content: ""; pointer-events: none; }
+.employer-sidebar > * { position: relative; z-index: 1; }
+.employer-brand { display: flex; align-items: center; gap: 12px; min-height: 122px; padding: 24px 20px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.employer-brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid rgba(229,190,84,.65); border-radius: 50%; outline: 1px solid rgba(229,190,84,.16); outline-offset: 4px; color: var(--employer-gold); background: rgba(58,0,14,.2); font-family: 'Noto Serif', serif; font-size: 13px; }
+.employer-brand strong { display: block; color: #f2ca62; font-family: 'Noto Serif', serif; font-size: 17px; line-height: 1.28; }
+.employer-brand span { display: block; margin-top: 7px; color: rgba(255,255,255,.56); font-size: 7px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.employer-sidebar nav { display: grid; gap: 7px; padding: 24px 14px; }
+.employer-sidebar nav a { display: flex; align-items: center; gap: 13px; min-height: 46px; padding: 0 17px; border-radius: 12px; color: rgba(255,255,255,.7); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-decoration: none; text-transform: uppercase; transition: background .18s, color .18s, transform .18s; }
+.employer-sidebar nav a:hover { background: rgba(255,255,255,.1); color: #fff; transform: translateX(2px); }
+.employer-sidebar nav a.active { position: relative; background: #fff; color: var(--employer-maroon); box-shadow: 0 8px 18px rgba(44,0,10,.18); }
+.employer-sidebar nav a.active::after { position: absolute; right: 11px; width: 5px; height: 5px; border-radius: 50%; background: var(--employer-gold); box-shadow: 0 0 0 3px rgba(227,185,79,.18); content: ""; }
+.employer-logout { display: flex; align-items: center; gap: 13px; width: calc(100% - 28px); min-height: 44px; margin: auto 14px 18px; padding: 0 17px; border: 0; border-radius: 12px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.72); font: 700 11px 'Manrope'; text-transform: uppercase; cursor: pointer; }
+.employer-logout:hover { background: rgba(255,255,255,.16); color: #fff; }
+
+.employer-shell { min-height: 100vh; margin-left: 236px; }
+.employer-topbar { position: sticky; z-index: 40; top: 0; display: flex; align-items: center; height: 64px; padding: 0 28px; border-bottom: 1px solid rgba(239,199,93,.26); background: linear-gradient(90deg,#650018,#74001d 64%,#650018); color: #fff; box-shadow: 0 3px 15px rgba(76,0,18,.16); }
+.employer-topbar h1 { margin: 0; color: #efc75d; font-family: 'Noto Serif', serif; font-size: 18px; }
+.employer-top-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.employer-top-actions > button, .employer-menu-btn { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; color: rgba(255,255,255,.8); cursor: pointer; }
+.employer-top-actions > button:hover, .employer-menu-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
+.employer-profile { display: grid; place-items: center; width: 36px; height: 36px; margin-left: 8px; border: 1px solid rgba(255,255,255,.24); border-radius: 10px; background: linear-gradient(145deg,#333,#111); color: #fff; font-size: 12px; font-weight: 800; }
+.employer-menu-btn { display: none; margin-right: 8px; }
+.employer-main .employer-content { height: calc(100vh - 70px); height: calc(100dvh - 70px); min-height: 0; overflow-y: auto; padding: 28px clamp(22px,3vw,46px) 56px; }
+.employer-shared-sidebar, .employer-shared-topbar { font-family: Arial, Helvetica, sans-serif; }
+.employer-shared-sidebar .alumni-brand { cursor: default; }
+.employer-shared-sidebar .alumni-brand:hover { filter: none; transform: none; }
+.employer-shared-topbar .admin-svg-icon { width: 18px; height: 18px; }
+.employer-page { width: 100%; max-width: 1380px; margin: 0 auto; }
+
+.employer-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); width: 100%; margin-bottom: 22px; overflow: hidden; border-radius: 8px; background: linear-gradient(115deg,#6e001b,#540013); box-shadow: 0 8px 22px rgba(88,0,21,.13); }
+.employer-stats article { position: relative; min-height: 112px; overflow: hidden; padding: 23px 30px; color: #fff; transition: background .18s; }
+.employer-stats article::after { position: absolute; right: -30px; bottom: -55px; width: 120px; height: 120px; border: 1px solid rgba(244,205,102,.12); border-radius: 50%; content: ""; }
+.employer-stats article:hover { background: rgba(255,255,255,.035); }
+.employer-stats article + article::before { position: absolute; inset: 18px auto 18px 0; width: 1px; background: rgba(255,255,255,.28); content: ""; }
+.employer-stats span { display: block; color: rgba(255,255,255,.78); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.employer-stats strong { display: block; margin: 5px 0 2px; color: #f0ca62; font-size: 26px; line-height: 1; }
+.employer-stats small { color: rgba(255,255,255,.48); font-size: 9px; }
+
+.employer-toolbar { position: relative; display: grid; grid-template-columns: auto 160px 160px minmax(230px,1fr); align-items: center; gap: 10px; margin-bottom: 18px; overflow: hidden; padding: 13px 16px; border: 1px solid var(--employer-line); border-radius: 10px; background: rgba(255,255,255,.94); box-shadow: 0 6px 20px rgba(56,27,36,.045); }
+.employer-toolbar::before { position: absolute; inset: 0 auto 0 0; width: 3px; background: linear-gradient(#6c001a,#d5a63f); content: ""; }
+.employer-toolbar > strong { margin-right: 4px; color: #4a3f42; font-size: 11px; text-transform: uppercase; }
+.employer-toolbar select, .employer-toolbar input, .employer-modal-card input, .employer-modal-card select, .employer-modal-card textarea, .appointment-composer input, .appointment-composer select, .applicant-profile-modal select { width: 100%; border: 1px solid #d9cbcf; border-radius: 7px; outline: none; background: #fff; color: #44383c; font: 500 11px 'Manrope'; transition: border .16s, box-shadow .16s; }
+.employer-toolbar select, .employer-toolbar input { height: 38px; padding: 0 12px; }
+.employer-toolbar input:focus, .employer-toolbar select:focus, .employer-modal-card input:focus, .employer-modal-card select:focus, .employer-modal-card textarea:focus, .appointment-composer input:focus, .appointment-composer select:focus { border-color: #8c1735; box-shadow: 0 0 0 3px rgba(101,0,24,.08); }
+.employer-search { position: relative; display: block; }
+.employer-search input { padding-right: 36px; }
+.employer-search > span:last-child { position: absolute; top: 50%; right: 13px; color: #5b4e52; font-size: 18px; transform: translateY(-54%); pointer-events: none; }
+
+.employer-panel { overflow: hidden; border: 1px solid var(--employer-line); border-radius: 10px; background: #fff; box-shadow: 0 9px 28px rgba(56,27,36,.055); }
+.employer-panel-heading { display: flex; align-items: end; justify-content: space-between; padding: 18px 20px 15px; border-bottom: 1px solid #eee6e8; }
+.employer-panel-heading h2, .applicant-overview h2, .appointment-composer h2 { margin: 3px 0 0; color: #3e3135; font-size: 18px; }
+.employer-panel-heading > span { color: #897a7f; font-size: 10px; font-weight: 700; }
+.eyebrow { color: #9a6f00; font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.employer-table-wrap { width: 100%; overflow-x: auto; }
+.employer-table { width: 100%; border-collapse: collapse; color: #443a3d; font-size: 11px; }
+.employer-jobs-page .employer-table { min-width: 700px; }
+.applicant-table { min-width: 820px; }
+.appointment-table { min-width: 940px; }
+.employer-table th { height: 42px; padding: 0 20px; background: #670018; color: #f0c85e; font-size: 9px; font-weight: 800; letter-spacing: .04em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+.employer-table td { height: 58px; padding: 10px 20px; border-bottom: 1px solid #ece5e7; vertical-align: middle; }
+.employer-table tbody tr:last-child td { border-bottom: 0; }
+.employer-table tbody tr:nth-child(even) { background: #fdfbfc; }
+.employer-table tbody tr:hover { background: #f9f3f5; }
+.employer-table td small { display: block; margin-top: 4px; color: #8b7e82; font-size: 8px; }
+.employer-title-link { padding: 0; border: 0; background: transparent; color: #382d31; font: 700 11px 'Manrope'; cursor: pointer; }
+.employer-title-link:hover { color: #770020; text-decoration: underline; }
+.employer-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 68px; min-height: 25px; padding: 0 10px; border-radius: 6px; font-size: 9px; font-weight: 800; }
+.employer-badge.active, .employer-badge.applicant-shortlisted, .employer-badge.appointment-completed { background: #dff4e5; color: #25763b; }
+.employer-badge.closed, .employer-badge.applicant-reviewed, .employer-badge.appointment-cancelled { background: #eee9eb; color: #6e6266; }
+.employer-badge.applicant-new, .employer-badge.appointment-upcoming { background: #fff3cf; color: #80600e; }
+.new-applicant-pill { display: inline-flex; margin-left: 8px; padding: 3px 7px; border-radius: 8px; background: #670018; color: #fff; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.employer-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 3px; }
+.employer-row-actions button { display: grid; place-items: center; width: 30px; height: 30px; padding: 7px; border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.employer-row-actions button:hover { background: #f2e8eb; }
+.employer-row-actions .admin-svg-icon { width: 15px; height: 15px; }
+.employer-empty { padding: 35px; color: #8c7d82; text-align: center; }
+
+.employer-primary-btn, .employer-secondary-btn, .employer-danger-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 39px; padding: 0 17px; border-radius: 7px; font: 800 10px 'Manrope'; cursor: pointer; }
+.employer-primary-btn { border: 1px solid #670018; background: #670018; color: #fff; box-shadow: 0 5px 12px rgba(103,0,24,.14); }
+.employer-primary-btn:hover { background: #820021; }
+.employer-secondary-btn { border: 1px solid #d8c9cd; background: #fff; color: #625459; }
+.employer-danger-btn { border: 1px solid #a61d35; background: #a61d35; color: #fff; }
+.create-job-btn { margin-top: 16px; }
+.employer-dashboard-lower { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(280px,.7fr); gap: 16px; margin-top: 22px; }
+.employer-insight-card { padding: 20px; border: 1px solid var(--employer-line); border-radius: 10px; background: rgba(255,255,255,.94); box-shadow: 0 7px 24px rgba(56,27,36,.045); }
+.employer-insight-heading { display: flex; align-items: center; justify-content: space-between; }
+.employer-insight-heading h2, .employer-quick-card h2 { margin: 3px 0 0; color: #3e3135; font-size: 18px; }
+.employer-insight-heading > strong { color: #690019; font-size: 24px; }
+.employer-pipeline-bar { height: 8px; margin: 18px 0 14px; overflow: hidden; border-radius: 5px; background: #eee7e9; }
+.employer-pipeline-bar span { display: block; height: 100%; min-width: 8px; border-radius: inherit; background: linear-gradient(90deg,#690019,#bd6d2f,#e0b64d); }
+.employer-pipeline-legend { display: flex; flex-wrap: wrap; gap: 16px; }
+.employer-pipeline-legend span { display: flex; align-items: center; gap: 6px; color: #7d7074; font-size: 9px; }
+.employer-pipeline-legend i { width: 7px; height: 7px; border-radius: 50%; }
+.employer-pipeline-legend .is-new { background: #d6a93f; }.employer-pipeline-legend .is-active { background: #2f8a4c; }.employer-pipeline-legend .is-total { background: #6d001b; }
+.employer-pipeline-legend b { color: #44373b; }
+.employer-quick-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; background: linear-gradient(135deg,#fff,#fbf5f7); }
+.employer-quick-card p { margin: 6px 0 0; color: #817479; font-size: 9px; line-height: 1.55; }
+.employer-quick-card > div:last-child { display: grid; min-width: 150px; }
+.employer-quick-card a { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #eadfe2; color: #690019; font-size: 9px; font-weight: 800; text-decoration: none; }
+.employer-quick-card a:last-child { border-bottom: 0; }
+
+.employer-modal { position: fixed; z-index: 120; inset: 0; display: grid; place-items: center; padding: 20px; }
+.employer-modal-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: rgba(44,14,23,.52); backdrop-filter: blur(3px); cursor: default; }
+.employer-modal-card { position: relative; width: min(620px,100%); max-height: calc(100vh - 40px); overflow-y: auto; padding: 30px; border-radius: 14px; background: #fff; box-shadow: 0 24px 70px rgba(37,4,14,.27); }
+.employer-modal-card h2 { margin: 4px 34px 22px 0; color: #3b2e32; font-size: 22px; }
+.employer-modal-close { position: absolute; top: 16px; right: 16px; display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 8px; background: #f6eff1; color: #6a0019; font-size: 22px; cursor: pointer; }
+.employer-modal-card label, .appointment-composer label, .applicant-profile-modal > label { display: grid; gap: 7px; margin-bottom: 15px; color: #65575b; font-size: 10px; font-weight: 700; }
+.employer-modal-card input, .employer-modal-card select, .appointment-composer input, .appointment-composer select, .applicant-profile-modal select { min-height: 41px; padding: 0 12px; }
+.employer-modal-card textarea { min-height: 100px; padding: 12px; resize: vertical; }
+.employer-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.employer-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.employer-detail-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.employer-detail-grid > div { padding: 14px; border: 1px solid #eadfe2; border-radius: 8px; background: #fcfafb; }
+.employer-detail-grid span { display: block; margin-bottom: 5px; color: #917f84; font-size: 8px; font-weight: 700; text-transform: uppercase; }
+.employer-detail-grid strong { font-size: 11px; }
+.employer-detail-copy { margin: 18px 0 0; color: #75686c; font-size: 11px; line-height: 1.7; }
+
+.applicant-overview { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; padding: 22px 24px; border: 1px solid var(--employer-line); border-radius: 10px; background: linear-gradient(105deg,#fff 60%,#fcf5f7); box-shadow: 0 7px 24px rgba(56,27,36,.04); }
+.applicant-overview h2 { font-size: 22px; }
+.applicant-overview p, .appointment-composer > div > p { margin: 6px 0 0; color: #817479; font-size: 10px; }
+.applicant-overview-stats { display: flex; overflow: hidden; border-radius: 9px; background: #680019; box-shadow: 0 7px 18px rgba(88,0,21,.12); }
+.applicant-overview-stat { position: relative; display: grid; min-width: 112px; padding: 15px 16px; color: #fff; text-align: center; }
+.applicant-overview-stat + .applicant-overview-stat::before { position: absolute; inset: 13px auto 13px 0; width: 1px; background: rgba(255,255,255,.2); content: ""; }
+.applicant-overview-stat strong { color: #f0c75c; font-size: 24px; }
+.applicant-overview-stat span { color: rgba(255,255,255,.66); font-size: 8px; font-weight: 700; text-transform: uppercase; }
+.applicants-toolbar { grid-template-columns: 190px 170px minmax(260px,1fr); }
+.applicant-profile-head { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.applicant-profile-head h2 { margin: 3px 0; }
+.applicant-profile-head p { margin: 0; color: #88797e; font-size: 10px; }
+.applicant-avatar { display: grid; place-items: center; width: 55px; height: 55px; border-radius: 50%; background: #670018; color: #f0c760; font-weight: 800; }
+.applicant-skills { margin: 18px 0; }
+.applicant-skills > span { color: #7d6e73; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.applicant-skills div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.applicant-skills b { padding: 6px 9px; border-radius: 12px; background: #f5e9ec; color: #71001b; font-size: 9px; }
+
+.applicant-profile-layer { z-index: 125; }
+.applicant-profile-card { width: min(470px,100%); padding: 34px 32px 32px; border: 1px solid #b5abad; }
+.applicant-profile-identity { display: flex; align-items: center; gap: 18px; padding: 4px 8px 20px; }
+.applicant-profile-identity h2 { margin: 0 30px 3px 0; color: #650018; font-size: 22px; line-height: 1.15; }
+.applicant-profile-identity a { display: block; color: #650018; font-size: 10px; font-weight: 700; text-decoration: none; }
+.applicant-profile-identity strong { display: block; margin-top: 4px; color: #650018; font-size: 10px; letter-spacing: .02em; }
+.applicant-portrait { flex: 0 0 auto; width: 78px; height: 78px; }
+.applicant-portrait svg { display: block; width: 100%; height: 100%; }
+.applicant-profile-facts { display: grid; gap: 15px; padding: 19px 24px; border: 1px solid #aca4a6; border-radius: 8px; background: linear-gradient(145deg,#fff,#fdfbfc); }
+.applicant-profile-facts section { margin: 0; }
+.applicant-profile-facts h3 { margin: 0 0 8px; color: #32292c; font-size: 12px; text-transform: capitalize; }
+.applicant-profile-facts p, .applicant-profile-facts ul { margin: 0; color: #50464a; font-size: 10px; line-height: 1.55; }
+.applicant-profile-facts ul { padding-left: 18px; list-style: none; }
+.applicant-profile-facts li::before { margin-right: 9px; content: "–"; }
+.applicant-profile-facts li span { color: #185ba8; }
+.applicant-profile-actions { display: grid; gap: 13px; margin-top: 22px; }
+.applicant-profile-actions .employer-primary-btn { width: 100%; min-height: 50px; border-radius: 7px; letter-spacing: .08em; text-decoration: none; text-transform: capitalize; }
+
+.applicant-resume-layer { z-index: 145; padding: 18px; }
+.applicant-resume-layer .employer-modal-backdrop { background: rgba(36,12,19,.68); }
+.applicant-resume-shell { position: relative; width: min(760px,100%); max-height: calc(100vh - 36px); overflow-y: auto; padding: 18px; border-radius: 13px; background: #dedbdd; box-shadow: 0 28px 80px rgba(31,3,12,.38); }
+.applicant-resume-shell > .employer-modal-close { position: sticky; z-index: 2; top: 0; float: right; margin: -5px -5px -36px 0; background: #650018; color: #fff; }
+.applicant-resume-document { min-height: 900px; padding: 46px 56px; border: 1px solid #858083; border-radius: 8px; background: #fff; color: #201c1e; font-size: 10px; line-height: 1.45; box-shadow: 0 2px 10px rgba(37,24,29,.09); }
+.applicant-resume-document header { width: 64%; margin: 0 auto 24px; }
+.applicant-resume-document header h2 { margin: 0 0 10px; font-size: 21px; font-weight: 600; letter-spacing: .04em; text-align: left; text-transform: uppercase; }
+.applicant-resume-document header p { margin: 4px 0; }
+.applicant-resume-document section { margin-top: 15px; }
+.applicant-resume-document section h3 { margin: 0 0 8px; padding-bottom: 3px; border-bottom: 1px solid #999296; font-size: 13px; font-weight: 600; text-transform: capitalize; }
+.applicant-resume-document section p { margin: 0; }
+.applicant-resume-document section ul { margin: 7px 0 0; padding-left: 15px; }
+.applicant-resume-document section li { margin: 5px 0; }
+.applicant-resume-document .resume-job { margin: 10px 0 12px; }
+.applicant-resume-document .resume-job > b, .applicant-resume-document .resume-job > span { display: block; }
+.applicant-resume-document .resume-job > span { margin-top: 2px; }
+.resume-two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+
+.appointments-toolbar { grid-template-columns: minmax(260px,1fr) 170px 170px 190px; }
+.compact-date-filter { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 7px; margin: 0; color: #66575c; font-size: 9px; font-weight: 700; }
+.appointment-composer { position: relative; display: grid; grid-template-columns: 210px minmax(0,1fr); gap: 28px; margin-bottom: 22px; overflow: hidden; padding: 24px; border: 1px solid #d8c4c9; border-left: 4px solid #670018; border-radius: 10px; background: linear-gradient(110deg,#fff,#fff 78%,#fcf6f8); box-shadow: 0 8px 26px rgba(59,19,30,.055); }
+.appointment-composer::after { position: absolute; right: -46px; bottom: -84px; width: 190px; height: 190px; border: 1px solid rgba(111,0,27,.055); border-radius: 50%; box-shadow: 0 0 0 24px rgba(111,0,27,.018); content: ""; pointer-events: none; }
+.appointment-composer > * { position: relative; z-index: 1; }
+.appointment-composer form { min-width: 0; }
+.appointment-form-row { display: grid; grid-template-columns: 140px 120px 150px minmax(170px,1fr); gap: 10px; }
+.appointment-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.employer-toast { position: absolute; right: 24px; bottom: 22px; transform: translateY(calc(100% + 13px)); padding: 9px 13px; border-radius: 7px; background: #2f7b43; color: #fff; font-size: 9px; font-weight: 700; box-shadow: 0 8px 20px rgba(32,104,52,.2); }
+.appointment-list-panel { margin-top: 28px; }
+
+.employer-notification-empty { margin: 0; padding: 24px 18px; color: #8b7e82; font-size: 12px; text-align: center; }
+.employer-app > .toast { font-family: 'Manrope', sans-serif; }
+.topbar-modal-actions button:disabled { opacity: .48; cursor: not-allowed; }
+
+body.compact-employer .employer-table td { height: 46px; padding-top: 6px; padding-bottom: 6px; }
+
+body.dark-mode .employer-app { background: radial-gradient(circle at 88% 7%, rgba(227,185,79,.06), transparent 24%), #190d11; color: #f4e9ec; }
+body.dark-mode .employer-main,
+body.dark-mode .employer-main .employer-content { background: transparent; }
+body.dark-mode .employer-toolbar,
+body.dark-mode .employer-panel,
+body.dark-mode .employer-insight-card,
+body.dark-mode .applicant-overview,
+body.dark-mode .appointment-composer,
+body.dark-mode .employer-modal-card,
+body.dark-mode .applicant-profile-facts,
+body.dark-mode .applicant-resume-shell { border-color: #4a2c35; background: #26151b; color: #f4e9ec; box-shadow: 0 9px 28px rgba(0,0,0,.22); }
+body.dark-mode .employer-quick-card { background: linear-gradient(135deg,#26151b,#2c171e); }
+body.dark-mode .employer-panel-heading,
+body.dark-mode .employer-table td,
+body.dark-mode .employer-quick-card a,
+body.dark-mode .applicant-profile-facts > section { border-color: #452831; }
+body.dark-mode .employer-panel-heading h2,
+body.dark-mode .employer-insight-heading h2,
+body.dark-mode .employer-quick-card h2,
+body.dark-mode .applicant-overview h2,
+body.dark-mode .appointment-composer h2,
+body.dark-mode .employer-modal-card h2,
+body.dark-mode .employer-title-link,
+body.dark-mode .employer-detail-grid strong,
+body.dark-mode .applicant-profile-facts h3 { color: #f4e9ec; }
+body.dark-mode .employer-toolbar > strong,
+body.dark-mode .employer-table,
+body.dark-mode .employer-table td,
+body.dark-mode .employer-detail-copy,
+body.dark-mode .applicant-profile-facts p,
+body.dark-mode .applicant-profile-facts ul { color: #ddcbd0; }
+body.dark-mode .employer-panel-heading > span,
+body.dark-mode .employer-table td small,
+body.dark-mode .applicant-overview p,
+body.dark-mode .appointment-composer > div > p,
+body.dark-mode .employer-quick-card p,
+body.dark-mode .employer-notification-empty { color: #bca5ac; }
+body.dark-mode .employer-table tbody tr:nth-child(even) { background: #2a171d; }
+body.dark-mode .employer-table tbody tr:hover { background: #321b23; }
+body.dark-mode .employer-toolbar input,
+body.dark-mode .employer-toolbar select,
+body.dark-mode .employer-modal-card input,
+body.dark-mode .employer-modal-card select,
+body.dark-mode .employer-modal-card textarea,
+body.dark-mode .appointment-composer input,
+body.dark-mode .appointment-composer select,
+body.dark-mode .applicant-profile-modal select { border-color: #5a3741; background: #1d1014; color: #f4e9ec; }
+body.dark-mode .employer-secondary-btn,
+body.dark-mode .employer-modal-close { border-color: #5a3741; background: #321b23; color: #f1c75c; }
+body.dark-mode .employer-detail-grid > div { border-color: #4a2c35; background: #211217; }
+body.dark-mode .employer-row-actions button:hover { background: #3b2029; }
+body.dark-mode .employer-table th:first-child { background: #670018; }
+body.dark-mode .employer-table td:first-child { background: #26151b; }
+body.dark-mode .employer-table tbody tr:nth-child(even) td:first-child { background: #2a171d; }
+body.dark-mode .employer-table tbody tr:hover td:first-child { background: #321b23; }
+body.dark-mode .applicant-resume-document { background: #fff; color: #201c1e; }
+body.dark-mode .applicant-resume-document h2,
+body.dark-mode .applicant-resume-document h3,
+body.dark-mode .applicant-resume-document p,
+body.dark-mode .applicant-resume-document li,
+body.dark-mode .applicant-resume-document span,
+body.dark-mode .applicant-resume-document b { color: #201c1e; }
+
+@media (max-width: 1050px) {
+  .employer-sidebar { transform: translateX(-105%); transition: transform .22s ease; }
+  .employer-sidebar.is-open { transform: translateX(0); }
+  .employer-sidebar-backdrop { position: fixed; z-index: 55; inset: 0; border: 0; background: rgba(28,5,12,.42); }
+  .employer-shell { margin-left: 0; }
+  .employer-menu-btn { display: grid; }
+  .appointment-composer { grid-template-columns: 1fr; }
+  .appointment-form-row { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .employer-dashboard-lower { grid-template-columns: 1fr; }
+  .appointments-toolbar { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .appointments-toolbar .employer-search { grid-column: 1 / -1; }
+}
+
+@media (max-width: 900px) {
+  .employer-toolbar, .applicants-toolbar { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .employer-toolbar > strong, .employer-search { grid-column: 1 / -1; }
+  .applicant-overview { display: grid; }
+  .applicant-overview-stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); width: 100%; }
+  .applicant-overview-stat { min-width: 0; }
+}
+
+@media (max-width: 760px) {
+  .employer-main .employer-content { padding: 18px 14px 42px; }
+  .employer-topbar { height: 58px; padding: 0 14px; }
+  .employer-topbar h1 { font-size: 16px; }
+  .employer-top-actions > button { display: none; }
+  .employer-stats { grid-template-columns: 1fr; }
+  .employer-stats article { min-height: 84px; padding: 17px 20px; }
+  .employer-stats article + article::before { inset: 0 20px auto; width: auto; height: 1px; }
+  .employer-toolbar, .applicants-toolbar, .appointments-toolbar { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .employer-toolbar > strong, .employer-search { grid-column: 1 / -1; }
+  .employer-panel-heading { padding: 15px; }
+  .employer-table th, .employer-table td { padding-left: 14px; padding-right: 14px; }
+  .applicant-overview { align-items: flex-start; }
+  .applicant-overview-stats { display: grid; grid-template-columns: repeat(3,1fr); width: 100%; }
+  .applicant-overview-stat { min-width: 0; }
+  .appointment-form-row { grid-template-columns: 1fr; }
+  .employer-table th:first-child, .employer-table td:first-child { position: sticky; left: 0; z-index: 1; background: #fff; box-shadow: 8px 0 12px -12px rgba(52,19,29,.45); }
+  .employer-table th:first-child { z-index: 2; background: #670018; }
+  .employer-table tbody tr:nth-child(even) td:first-child { background: #fdfbfc; }
+  .employer-table tbody tr:hover td:first-child { background: #f9f3f5; }
+}
+
+@media (max-width: 600px) {
+  .employer-shared-topbar { padding-inline: 10px; }
+  .employer-shared-topbar .title-wrap { flex: 1 1 auto; min-width: 0; gap: 8px; overflow: visible; }
+  .employer-shared-topbar .hamburger { flex: 0 0 22px; }
+  .employer-shared-topbar .title-wrap h2 { flex: 0 1 auto; min-width: 0; max-width: none; font-size: 14px; line-height: 1.2; white-space: nowrap; overflow: visible; text-overflow: clip; }
+  .employer-shared-topbar .top-actions { flex: 0 0 auto; gap: 7px; margin-left: 8px; }
+  .employer-shared-topbar .divider { height: 18px; }
+}
+
+@media (max-width: 360px) {
+  .employer-shared-topbar .title-wrap h2 { font-size: 13px; }
+  .employer-shared-topbar .top-actions { gap: 5px; margin-left: 5px; }
+  .employer-shared-topbar .divider { display: none; }
+}
+
+@media (max-width: 520px) {
+  .employer-sidebar { width: min(84vw,280px); }
+  .employer-toolbar, .applicants-toolbar, .appointments-toolbar, .employer-form-grid, .employer-detail-grid { grid-template-columns: 1fr; }
+  .employer-toolbar > *, .employer-search { grid-column: 1; }
+  .applicant-overview { display: grid; }
+  .employer-quick-card { display: grid; }
+  .applicant-overview-stat { min-width: 0; }
+  .appointment-composer, .employer-modal-card { padding: 20px; }
+  .employer-modal-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .applicant-profile-identity { align-items: flex-start; padding-inline: 0; }
+  .applicant-portrait { width: 64px; height: 64px; }
+  .applicant-profile-identity h2 { font-size: 18px; }
+  .applicant-profile-facts { padding: 17px; }
+  .applicant-resume-shell { padding: 8px; }
+  .applicant-resume-document { min-height: 0; padding: 38px 24px; }
+  .applicant-resume-document header { width: 100%; }
+  .resume-two-column { grid-template-columns: 1fr; gap: 0; }
+  .employer-panel-heading { align-items: flex-start; gap: 12px; }
+  .employer-panel-heading > span { white-space: nowrap; }
+}

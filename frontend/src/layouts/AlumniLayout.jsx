@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { AlumniSidebar } from "../components/alumni/AlumniSidebar.jsx";
 import { AlumniTopbar } from "../components/alumni/AlumniTopbar.jsx";
@@ -11,14 +11,21 @@ export default function AlumniLayout() {
   const location = useLocation();
   const { firstLogin, tracerStudyCompleted } = useAuth();
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("alumniDashboardSettings")) || {};
-      return { theme: saved.theme ?? "light" };
+      return { theme: saved.theme ?? "light", emailAlerts: saved.emailAlerts ?? true, dashboardNotifications: saved.dashboardNotifications ?? true };
     } catch {
-      return { theme: "light" };
+      return { theme: "light", emailAlerts: true, dashboardNotifications: true };
     }
   });
+  const showToast = useCallback((message) => {
+    setToast(message);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(""), 2400);
+  }, []);
   const section = new URLSearchParams(location.search).get("section") || "home";
   const title = TITLES[section] || "Home";
 
@@ -66,9 +73,10 @@ export default function AlumniLayout() {
       <AlumniSidebar collapsed={collapsed} restricted={restricted} restrictedLabel={restrictedStep} onNavigate={() => window.innerWidth <= 600 && setCollapsed(true)} />
       {!collapsed && <div className="sidebar-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />}
       <main className="main">
-        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} />
+        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} showToast={showToast} />
         <Outlet context={{ section, sidebarCollapsed: collapsed, settings, setSettings }} />
       </main>
+      <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">{toast}</div>
     </div>
   );
 }

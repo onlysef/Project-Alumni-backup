@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
+import { Modal } from "../common/Primitives.jsx";
+import { DashboardSettingsForm } from "../admin/AdminTopbar.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
@@ -12,7 +15,7 @@ function fmtNotifTime(d) {
   return new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
 }
 
-export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setSettings }) {
+export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast = () => {} }) {
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -35,9 +38,17 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
   function openNotifications() {
     const opening = panel !== "notifications";
     setPanel(opening ? "notifications" : null);
-    if (opening && unread > 0) {
+  }
+
+  async function markAllRead() {
+    try {
+      const response = await fetch(`${API}/alumni/notifications/read`, { method: "PATCH", headers: authHeaders() });
+      if (!response.ok) throw new Error("Unable to update notifications");
       setUnread(0);
-      fetch(`${API}/alumni/notifications/read`, { method: "PATCH", headers: authHeaders() }).catch(() => {});
+      setNotifications((current) => current.map((item) => ({ ...item, is_read: true })));
+      showToast("Notifications marked as read.");
+    } catch {
+      showToast("Could not mark notifications as read.");
     }
   }
 
@@ -45,6 +56,7 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
     if (!panel) return undefined;
 
     const closeOnOutside = (event) => {
+      if (event.target instanceof Element && event.target.closest(".topbar-modal")) return;
       if (actionsRef.current && !actionsRef.current.contains(event.target)) {
         setPanel(null);
       }
@@ -61,11 +73,14 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
     };
   }, [panel]);
 
+  const badge = settings?.dashboardNotifications ? unread : 0;
+
   return (
+    <>
     <header className="topbar alumni-topbar">
       <div className="title-wrap"><button className="hamburger" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={onToggleSidebar}><Icon name="icon-8" /></button><h2>{title}</h2></div>
       <div className="top-actions alumni-actions" ref={actionsRef}>
-        <button className="icon-btn has-badge" data-count={unread > 9 ? "9+" : unread} aria-label="Notifications" onClick={openNotifications}><Icon name="icon-9" /></button>
+        <button className="icon-btn has-badge" data-count={badge > 9 ? "9+" : badge} aria-label="Notifications" onClick={openNotifications}><Icon name="icon-9" /></button>
         <button className="icon-btn" aria-label="Settings" onClick={() => setPanel(panel === "settings" ? null : "settings")}><Icon name="icon-10" /></button>
         <button
           className="alumni-avatar"
@@ -74,59 +89,28 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
         >
           {user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}
         </button>
-        {panel && (
+        {panel === "account" && (
           <div className={`alumni-top-panel${panel === "account" ? " account-panel" : ""}`}>
-            {panel === "notifications" && (
-              <>
-                <strong>Notifications</strong>
-                {notifications.length === 0 && <p>You have no new notifications.</p>}
-                {notifications.length > 0 && (
-                  <ul className="alumni-notif-list">
-                    {notifications.map((n) => (
-                      <li key={n._id} className={n.is_read ? "" : "unread"}>
-                        <b>{n.title}</b>
-                        <span>{n.message}</span>
-                        <time>{fmtNotifTime(n.createdAt)}</time>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-            {panel === "settings" && (
-              <>
-                <strong>Settings</strong>
-                <p>Account preferences and security.</p>
-                <div className="setting-row theme-setting">
-                  <span>
-                    <strong>Theme</strong>
-                    <small>Switch the dashboard between light and dark mode.</small>
-                  </span>
-                  <div className="theme-options">
-                    {["light", "dark"].map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        className={`theme-chip${settings?.theme === t ? " active" : ""}`}
-                        onClick={() => setSettings?.((p) => ({ ...p, theme: t }))}
-                      >
-                        {t === "light" ? "Light" : "Dark"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* "Account Settings" and "Log out" used to live here,
-                    duplicating the Account Settings panel (avatar click)
-                    and the sidebar's own Logout button — this now holds
-                    an actual account-security preference instead. */}
-                <TwoFactorToggle />
-              </>
-            )}
-            {panel === "account" && <AccountSettingsPanel />}
+            {panel === "account" && <AccountSettingsPanel onClose={() => setPanel(null)} />}
           </div>
         )}
       </div>
     </header>
+    <Modal open={panel === "notifications"} onClose={() => setPanel(null)} className="topbar-popover notifications-popover">
+      <section className="tracer-modal topbar-modal" role="dialog" aria-modal="true">
+        <div className="modal-head"><h3>Notifications</h3><button type="button" aria-label="Close notifications" onClick={() => setPanel(null)}>×</button></div>
+        <div className="notification-list">
+          {notifications.length === 0 ? <p style={{ padding: "20px", textAlign: "center", color: "#999", fontSize: "13px" }}>No notifications yet.</p> : notifications.map((n, i) => (
+            <article key={n._id ?? i} className={`notification-item${n.is_read ? "" : " is-unread"}`}><strong>{n.title || "Notification"}</strong><span>{n.message || n.body}</span><time>{fmtNotifTime(n.createdAt)}</time></article>
+          ))}
+        </div>
+        <div className="modal-actions topbar-modal-actions"><button type="button" disabled={!unread} onClick={markAllRead}>Mark All Read</button><button type="button" onClick={() => setPanel(null)}>Close</button></div>
+      </section>
+    </Modal>
+    <Modal open={panel === "settings"} onClose={() => setPanel(null)} className="topbar-popover settings-popover">
+      <DashboardSettingsForm settings={settings} onSave={(next) => { setSettings(next); setPanel(null); showToast("Settings saved."); }} onChangeTheme={(theme) => document.body.classList.toggle("dark-mode", theme === "dark")} onClose={() => { document.body.classList.toggle("dark-mode", settings?.theme === "dark"); setPanel(null); }} showToast={showToast} emailAlertDescription="Send account, job, and alumni updates to your email." notificationDescription="Show badges for new alumni notifications." />
+    </Modal>
+    </>
   );
 }
 
@@ -182,7 +166,203 @@ function TwoFactorToggle() {
   );
 }
 
-function AccountSettingsPanel() {
+function AccountSettingsPanel({ onClose }) {
+  const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const [employment, setEmployment] = useState(null);
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState("");
+  const [securityOpen, setSecurityOpen] = useState(false);
+  const initials = `${(user?.firstName || "?")[0] || ""}${(user?.lastName || "")[0] || ""}`.toUpperCase();
+  const previewMode = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === "true";
+
+  useEffect(() => {
+    try {
+      const cached = JSON.parse(localStorage.getItem("alumniEmploymentProfile"));
+      if (cached) setEmployment(cached);
+    } catch {}
+    const syncEmployment = (event) => setEmployment(event.detail || null);
+    window.addEventListener("alumni-employment-updated", syncEmployment);
+    fetch(`${API}/alumni/employment`, { headers: authHeaders() })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load profile details.");
+        return response.json();
+      })
+      .then((data) => setEmployment(data.employment || null))
+      .catch(() => {
+        if (previewMode && !localStorage.getItem("alumniEmploymentProfile")) {
+          setEmployment({
+            employment_status: "Employed",
+            job_title: "Software Engineer",
+            company_name: "Agritech Solutions",
+            work_location: "Tarlac City",
+            skills: "Python, Java, PHP",
+          });
+        }
+      });
+    return () => window.removeEventListener("alumni-employment-updated", syncEmployment);
+  }, [previewMode]);
+
+  function handlePhotoChange(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (loadEvent) => {
+      const avatarUrl = loadEvent.target.result;
+      setAvatarSaving(true);
+      setAvatarMsg("");
+      try {
+        const response = await fetch(`${API}/alumni/avatar`, {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify({ avatarUrl }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || "Could not update photo.");
+        updateUser({ avatarUrl: data.avatarUrl });
+        setAvatarMsg("Photo updated.");
+      } catch (error) {
+        if (previewMode) {
+          updateUser({ avatarUrl });
+          setAvatarMsg("Photo preview updated.");
+        } else {
+          setAvatarMsg(error.message);
+        }
+      } finally {
+        setAvatarSaving(false);
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+
+  const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Alumni";
+  const course = user?.course || (previewMode ? "BSIT" : "Course not yet updated");
+  const graduationYear = user?.graduationYear || (previewMode ? 2024 : null);
+  const currentRole = employment?.job_title || "Role not yet updated";
+  const company = employment?.company_name && employment.company_name !== "N/A" ? employment.company_name : "Company not yet updated";
+  const location = employment?.work_location || "Location not yet updated";
+  const skills = employment?.skills || "Skills not yet updated";
+  const completeFields = [
+    user?.firstName,
+    user?.lastName,
+    user?.email,
+    course && !course.includes("not yet"),
+    graduationYear,
+    employment?.job_title,
+    employment?.company_name && employment.company_name !== "N/A",
+    employment?.work_location,
+    employment?.skills,
+  ];
+  const completeness = Math.round((completeFields.filter(Boolean).length / completeFields.length) * 100);
+
+  function openFullProfile() {
+    navigate("/alumni/dashboard?section=employment");
+    onClose?.();
+  }
+
+  return <div className="account-profile-panel">
+    <div className="account-profile-cover">
+      <span>My Alumni Profile</span>
+      <small>{employment?.employment_status || "TSU Alumni"}</small>
+    </div>
+
+    <div className="account-profile-identity">
+      <div className="account-profile-avatar-wrap">
+        <div className="account-settings-avatar account-profile-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}</div>
+        <button type="button" className="account-photo-shortcut" aria-label="Change profile photo" disabled={avatarSaving} onClick={() => fileInputRef.current?.click()}>✎</button>
+      </div>
+      <div>
+        <h3>{displayName}</h3>
+        <p>{currentRole}</p>
+        <span>{course}{graduationYear ? ` · Class of ${graduationYear}` : ""}</span>
+      </div>
+    </div>
+
+    <div className="account-profile-completeness">
+      <div><span>Profile completion</span><strong>{completeness}%</strong></div>
+      <i><span style={{ width: `${completeness}%` }} /></i>
+    </div>
+
+    <div className="account-profile-actions">
+      <button type="button" onClick={openFullProfile}>Edit Profile</button>
+      <button type="button" className="secondary" disabled={avatarSaving} onClick={() => fileInputRef.current?.click()}>{avatarSaving ? "Uploading…" : "Change Photo"}</button>
+      <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
+    </div>
+    {avatarMsg && <span className="account-settings-hint account-profile-message">{avatarMsg}</span>}
+
+    <div className="account-profile-facts">
+      <ProfileFact icon={<WorkIcon />} label="Current workplace" value={company} />
+      <ProfileFact icon={<PinIcon />} label="Location" value={location} />
+      <ProfileFact icon={<SkillIcon />} label="Skills" value={skills} wide />
+      <ProfileFact icon={<MailIcon />} label="Email" value={user?.email || "Email not available"} wide />
+    </div>
+
+    <button type="button" className={`account-security-toggle${securityOpen ? " open" : ""}`} aria-expanded={securityOpen} onClick={() => setSecurityOpen((current) => !current)}>
+      <span><LockIcon /><span><strong>Security</strong><small>Change your account password</small></span></span>
+      <b>{securityOpen ? "−" : "+"}</b>
+    </button>
+    {securityOpen && <AccountSecurityForm />}
+  </div>;
+}
+
+function AccountSecurityForm() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function submit(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    setMessage("");
+    setError("");
+    if (newPassword.length < 8) { setError("New password must be at least 8 characters."); return; }
+    if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
+    setSaving(true);
+    try {
+      const response = await fetch(`${API}/alumni/password`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Failed to update password.");
+      setMessage("Password updated.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (submitError) {
+      setError(submitError.message || "Could not connect to server.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <form onSubmit={submit} className="account-settings-password-form account-security-form">
+    {error && <div className="account-settings-error">{error}</div>}
+    {message && <div className="account-settings-success">{message}</div>}
+    <label><span>Current Password</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>
+    <label><span>New Password</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="At least 8 characters" required /></label>
+    <label><span>Confirm New Password</span><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></label>
+    <button type="submit" className="primary-card-btn" disabled={saving}>{saving ? "Saving…" : "Update Password"}</button>
+  </form>;
+}
+
+function ProfileFact({ icon, label, value, wide = false }) {
+  return <div className={wide ? "wide" : ""}><i>{icon}</i><span><small>{label}</small><strong>{value}</strong></span></div>;
+}
+
+function WorkIcon() { return <svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="2"/><path d="M9 7V5h6v2M4 12h16"/></svg>; }
+function PinIcon() { return <svg viewBox="0 0 24 24"><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>; }
+function SkillIcon() { return <svg viewBox="0 0 24 24"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M14 5l-4 14"/></svg>; }
+function MailIcon() { return <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>; }
+function LockIcon() { return <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>; }
+
+function LegacyAccountSettingsPanel() {
   const { user, updateUser } = useAuth();
   const initials = `${(user?.firstName || "?")[0] || ""}${(user?.lastName || "")[0] || ""}`.toUpperCase();
 

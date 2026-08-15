@@ -2,10 +2,13 @@ const express = require('express');
 const router  = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { postJob, getMyJobs, getActivePartnerships, closeJob, deleteJob } = require('../controllers/jobController');
+const { getCoordinatorNotifications, markNotificationsRead } = require('../controllers/eventController');
 
 router.use(protect, authorize('employer'));
 
 router.get('/partnerships',    getActivePartnerships);
+router.get('/notifications',   getCoordinatorNotifications);
+router.patch('/notifications/read', markNotificationsRead);
 router.get('/jobs',            getMyJobs);
 router.post('/jobs',           postJob);
 router.patch('/jobs/:id/close', closeJob);

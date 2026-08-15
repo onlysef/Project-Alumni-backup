@@ -565,6 +565,50 @@ const updateMyEmployment = async (req, res) => {
       { $set: updates },
       { upsert: true, new: true }
     );
+
+    // Employment Details is part of the alumnus profile. Keep the submitted
+    // tracer response and the normalized Graduate profile in step with it so
+    // admin/coordinator views, analytics, and recommendations do not continue
+    // showing the older employment information.
+    const tracerEmploymentStatus = updates.employment_status === 'Unemployed' ? 'No' : 'Yes';
+    const tracerPatch = {
+      employmentStatus: tracerEmploymentStatus,
+      companyName: updates.employment_status === 'Unemployed' ? '' : updates.company_name,
+      placeOfWork: updates.employment_status === 'Unemployed' ? '' : updates.work_location,
+      occupationTitle: updates.employment_status === 'Unemployed' ? '' : updates.job_title,
+      industryField: updates.employment_status === 'Unemployed' ? '' : updates.industry,
+    };
+    await TracerStudyResponse.updateOne(
+      { alumni_id: req.user.id },
+      { $set: tracerPatch }
+    );
+
+    try {
+      const profileUser = await User.findById(req.user.id).select('email').lean();
+      if (profileUser?.email) {
+        const graduate = await Graduate.findOne({ email: profileUser.email.toLowerCase().trim() });
+        if (graduate) {
+          graduate.employmentStatus = tracerPatch.employmentStatus;
+          graduate.workLocation = tracerPatch.placeOfWork || null;
+          graduate.jobTitle = tracerPatch.occupationTitle || null;
+          graduate.industry = tracerPatch.industryField || null;
+          graduate.data = {
+            ...(graduate.data || {}),
+            employmentStatus: tracerPatch.employmentStatus,
+            companyName: tracerPatch.companyName,
+            placeOfWork: tracerPatch.placeOfWork,
+            occupationTitle: tracerPatch.occupationTitle,
+            industryField: tracerPatch.industryField,
+            skills: updates.skills,
+            experience: updates.experience,
+          };
+          await graduate.save();
+        }
+      }
+    } catch (syncErr) {
+      console.error('Employment profile sync failed (non-blocking):', syncErr.message);
+    }
+
     res.json({ employment: emp });
   } catch (err) {
     console.error('updateMyEmployment error:', err);
@@ -772,7 +816,7 @@ const getSuggestedAlumni = async (req, res) => {
     const { course, year, search } = req.query;
     const limit = Math.min(600, Math.max(1, parseInt(req.query.limit, 10) || 60));
 
-    const match = { role: 'alumni', _id: { $ne: req.user.id } };
+    const match = { role: 'alumni', status: 'active', _id: { $ne: req.user.id } };
     if (course && course !== 'All') match.course = course;
     if (year && year !== 'All') match.graduationYear = Number(year);
 
@@ -780,8 +824,8 @@ const getSuggestedAlumni = async (req, res) => {
       User.findById(req.user.id).select('course graduationYear').lean(),
       AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
       User.find(match, 'firstName lastName course graduationYear avatarUrl').sort({ lastName: 1 }).lean(),
-      User.distinct('course', { role: 'alumni', course: { $nin: [null, ''] } }),
-      User.distinct('graduationYear', { role: 'alumni', graduationYear: { $ne: null } }),
+      User.distinct('course', { role: 'alumni', status: 'active', course: { $nin: [null, ''] } }),
+      User.distinct('graduationYear', { role: 'alumni', status: 'active', graduationYear: { $ne: null } }),
     ]);
 
     const ids = users.map((u) => u._id);
