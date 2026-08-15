@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { apiFetch } from "../../services/api.js";
-import { JobCard, ArrowIcon, formatSavedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
+import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
 
 const initialResume = {
   name: "Juan Dela Cruz",
@@ -168,7 +168,7 @@ export default function JobConnect() {
     </section>
 
     <div className="job-stats">
-      <div><strong>{jobs.length}</strong><span>Recommended jobs</span></div>
+      <div className="job-stat-clickable" onClick={() => setView("recommended")}><strong>{jobs.length}</strong><span>Recommended jobs</span></div>
       <div className="job-stat-clickable" onClick={() => setView("saved")}><strong>{savedJobs.length}</strong><span>Saved jobs</span></div>
       <div className="job-stat-clickable" onClick={() => setView("applications")}><strong>{applications.length}</strong><span>Applications sent</span></div>
       <div className="job-stat-clickable" onClick={() => setView("applications")}><strong>{applications.filter(a => a.status === "Interview Scheduled").length}</strong><span>Interview scheduled</span></div>
@@ -271,7 +271,7 @@ export default function JobConnect() {
           </div>
           <div className="job-details-body">
             <p className="job-details-meta">
-              {[detailsJob.location, detailsJob.type, detailsJob.posted && `Posted ${detailsJob.posted}`].filter(Boolean).join(" · ")}
+              {[detailsJob.location, detailsJob.type, detailsJob.posted && `Posted ${formatPostedDate(detailsJob.posted)}`].filter(Boolean).join(" · ")}
             </p>
             {detailsJob.match !== null && detailsJob.match !== undefined && (
               <p className="job-details-match"><strong>{detailsJob.match}%</strong> match to your profile</p>
@@ -444,7 +444,7 @@ function buildResumeHtml(resume) {
     p { margin: 4px 0; color: #4d474a; font-size: 12px; }
     ul { margin: 0; padding-left: 18px; }
     li { margin: 5px 0; color: #4d474a; font-size: 12px; line-height: 1.45; }
-    .contact { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9d1d4; }
+    .contact { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9d1d4; text-align: center; }
     .contact p { margin: 4px 0 0; }
     .section { margin-top: 18px; }
     .entry-title { margin: 0 0 2px; color: #242024; font-size: 13px; font-weight: 800; }
@@ -545,11 +545,14 @@ function downloadResumePdf(resume) {
 
   const lines = (value) => String(value || "").split("\n").map((l) => l.trim()).filter(Boolean);
 
-  // Name + contact line
+  // Name + contact line — centered to match the in-app Preview modal
+  // (.resume-preview-full .resume-contact { text-align: center }), which
+  // this used to leave left-aligned instead.
+  const centerX = pageWidth / 2;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
   doc.setTextColor(22, 19, 21);
-  doc.text(resume.name || "", marginX, y);
+  doc.text(resume.name || "", centerX, y, { align: "center" });
   y += 22;
 
   const contactLine = [resume.address, resume.phone, resume.email, resume.linkedin].filter(Boolean).join("   |   ");
@@ -557,7 +560,7 @@ function downloadResumePdf(resume) {
   doc.setFontSize(10);
   doc.setTextColor(77, 71, 74);
   const contactWrapped = doc.splitTextToSize(contactLine, contentWidth);
-  doc.text(contactWrapped, marginX, y);
+  doc.text(contactWrapped, centerX, y, { align: "center" });
   y += contactWrapped.length * 13 + 8;
 
   doc.setDrawColor(217, 209, 212);

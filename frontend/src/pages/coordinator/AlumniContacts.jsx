@@ -16,6 +16,8 @@ function initials(name = "") {
   return String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "A";
 }
 
+const YEAR_OPTIONS = Array.from({ length: 2025 - 2000 + 1 }, (_, i) => 2025 - i);
+
 export default function AlumniContacts() {
   const { showToast } = useOutletContext();
   const [contacts, setContacts] = useState([]);
@@ -75,10 +77,9 @@ export default function AlumniContacts() {
           <span>Filter by</span>
           <select value={year} onChange={(e) => setYear(e.target.value)}>
             <option value="">Year</option>
-            <option value="2022">2022</option>
-            <option value="2023">2023</option>
-            <option value="2024">2024</option>
-            <option value="2025">2025</option>
+            {YEAR_OPTIONS.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
           </select>
           <input
             placeholder="Search"
@@ -165,7 +166,9 @@ export default function AlumniContacts() {
               <button type="button" aria-label="Close profile" onClick={() => setSelectedContact(null)}>×</button>
             </div>
             <div className="coord-profile-summary">
-              <div className="coord-profile-avatar" aria-hidden="true">{initials(selectedContact.name)}</div>
+              <div className="coord-profile-avatar" aria-hidden="true">
+                {selectedContact.avatarUrl ? <img src={selectedContact.avatarUrl} alt="" /> : initials(selectedContact.name)}
+              </div>
               <div>
                 <strong>{selectedContact.name}</strong>
                 <span>{selectedContact.title || "No position provided"}</span>

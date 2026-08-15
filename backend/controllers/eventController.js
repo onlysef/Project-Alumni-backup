@@ -5,6 +5,23 @@ const AttendanceLog  = require('../models/AttendanceLog');
 const EventFeedback  = require('../models/EventFeedback');
 const User           = require('../models/User');
 
+const COLLEGE_CODES = ['CPAG', 'CCS', 'COS', 'CIT', 'COE', 'CBA', 'COED', 'CASS', 'CCJE', 'CAFA'];
+
+// The `college` field (who can manage this event in the coordinator UI —
+// getEvents/getAttendanceEvents filter by it) used to always default to the
+// creator's own college, ignoring `visibility` (the audience field alumni
+// routes filter by) entirely. That meant an admin picking a specific
+// college in the "Colleges" dropdown produced an event that college's
+// alumni could see (getAlumniEvents reads visibility) but that college's
+// coordinators could never see or manage (getEvents reads college) — nobody
+// could take attendance for it. A coordinator always owns events under
+// their own college regardless of visibility, same as before; only an
+// admin's choice of a specific college now carries through to `college`.
+function resolveEventCollege(user, visibility) {
+  if (user.college) return user.college;
+  return COLLEGE_CODES.includes(visibility) ? visibility : '';
+}
+
 // GET /coordinator/events
 const getEvents = async (req, res) => {
   try {
@@ -39,6 +56,7 @@ const createEvent = async (req, res) => {
     if (!title?.trim())    return res.status(400).json({ message: 'Title is required.' });
     if (!event_datetime)   return res.status(400).json({ message: 'Date & time is required.' });
 
+    const eventVisibility = visibility || 'Public';
     const event = await Event.create({
       title:          title.trim(),
       description:    description?.trim() || '',
@@ -46,9 +64,9 @@ const createEvent = async (req, res) => {
       location:       location?.trim()    || '',
       event_datetime: new Date(event_datetime),
       end_datetime:   end_datetime ? new Date(end_datetime) : null,
-      visibility:     visibility || 'Public',
+      visibility:     eventVisibility,
       capacity:       Number(capacity) || 0,
-      college:        req.user.college || '',
+      college:        resolveEventCollege(req.user, eventVisibility),
       created_by:     req.user.id,
     });
 
@@ -99,7 +117,10 @@ const updateEvent = async (req, res) => {
     if (location       !== undefined) updates.location       = location.trim();
     if (event_datetime !== undefined) updates.event_datetime = new Date(event_datetime);
     if (end_datetime   !== undefined) updates.end_datetime   = end_datetime ? new Date(end_datetime) : null;
-    if (visibility     !== undefined) updates.visibility     = visibility;
+    if (visibility     !== undefined) {
+      updates.visibility = visibility;
+      updates.college    = resolveEventCollege(req.user, visibility);
+    }
     if (capacity       !== undefined) updates.capacity       = Number(capacity) || 0;
 
     const event = await Event.findByIdAndUpdate(req.params.id, updates, { new: true });

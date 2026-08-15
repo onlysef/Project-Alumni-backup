@@ -311,7 +311,7 @@ router.get('/alumni', async (req, res) => {
     if (course) match.course = course;
     if (year)   match.graduationYear = Number(year);
 
-    let users = await User.find(match, 'firstName lastName email course graduationYear').sort({ lastName: 1 }).lean();
+    let users = await User.find(match, 'firstName lastName email course graduationYear avatarUrl').sort({ lastName: 1 }).lean();
 
     if (search) {
       const q = search.toLowerCase();
@@ -352,6 +352,7 @@ router.get('/alumni', async (req, res) => {
         year:   u.graduationYear || '',
         title:  jobTitle || emp?.employment_status || '',
         phone,
+        avatarUrl: u.avatarUrl || '',
       };
     });
 

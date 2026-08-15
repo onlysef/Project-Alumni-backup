@@ -3852,7 +3852,9 @@ body.dark-mode .coord-notice-error { background: #3b0000; color: #f87171; border
     color: #fff;
     font-size: 18px;
     font-weight: 800;
+    overflow: hidden;
 }
+.coord-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .coord-profile-summary > div:last-child { display: grid; gap: 4px; }
 .coord-profile-summary strong { color: var(--maroon); font-size: 16px; }
 .coord-profile-summary span { color: #76656a; font-size: 12px; }

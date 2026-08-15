@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useId } from "react";
+import { createPortal } from "react-dom";
 import Icon from "../common/Icon.jsx";
 import { actionLabels } from "../../data.js";
 
@@ -29,9 +30,29 @@ function broadcastOpen(id) {
   openListeners.forEach((fn) => fn(id));
 }
 
+// Estimated dropdown height (item height + gap, roughly matching the CSS in
+// admin-mod.css's .action-menu-item/.action-menu-list) — used to decide
+// whether there's room to open downward before the menu actually renders
+// and has a real height to measure.
+const MENU_ITEM_HEIGHT = 38;
+const MENU_PADDING = 14;
+const MENU_WIDTH = 160; // matches .action-menu-list's min-width in admin-mod.css
+
 export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
   const [localOpen, setLocalOpen] = useState(false);
+  // Table rows sit inside a shared stacking context, and neighboring rows'
+  // own trigger buttons (each just as "positioned" as this one, whether via
+  // position:relative or an implicit transform-based context from CSS
+  // transitions) can end up painting on top of an open dropdown that's
+  // still a normal in-row descendant — no z-index on the dropdown alone can
+  // reliably out-rank a sibling row's own content from inside a table. A
+  // portal renders the open menu directly under <body>, entirely outside
+  // the table, so it's never competing with row content for stacking at
+  // all — positioned via fixed coordinates read off the trigger instead of
+  // the CSS `top`/`bottom: 100%` anchoring that only worked in-place.
+  const [menuPos, setMenuPos] = useState(null); // { top, left, direction } | null
   const ref = useRef(null);
+  const menuRef = useRef(null);
   const id = useId();
 
   const controlled = isOpen !== undefined;
@@ -40,14 +61,51 @@ export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
   const open     = controlled ? isOpen   : localOpen;
   const setOpen  = controlled ? onToggle : setLocalOpen;
 
+  function computeMenuPos() {
+    if (!ref.current) return null;
+    const rect = ref.current.getBoundingClientRect();
+    const estimatedHeight = actions.length * MENU_ITEM_HEIGHT + MENU_PADDING;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const direction = spaceBelow < estimatedHeight ? "up" : "down";
+    const left = Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 6);
+    // .action-menu-list's own CSS class sets `top: calc(100% + 6px)` — that
+    // only made sense back when the list was positioned in-place inside
+    // .action-menu. Now that it's portaled to <body> with fixed coordinates,
+    // "up" must explicitly override it back to "auto"; leaving it
+    // undefined doesn't clear a class-level rule, it just leaves that CSS
+    // in effect (percentages resolve against the viewport for a fixed
+    // element with no positioned ancestor, so it rendered far off-screen).
+    return {
+      left: Math.max(6, left),
+      top:    direction === "down" ? rect.bottom + 6 : "auto",
+      bottom: direction === "up"   ? window.innerHeight - rect.top + 6 : "auto",
+    };
+  }
+
   useEffect(() => {
     if (!open) return;
     const onDoc = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+      if (ref.current?.contains(e.target)) return;
+      if (menuRef.current?.contains(e.target)) return;
+      setOpen(false);
     };
     document.addEventListener("click", onDoc);
     return () => document.removeEventListener("click", onDoc);
   }, [open, setOpen]);
+
+  // Reposition (or close, if it scrolled far enough that the trigger isn't
+  // where the menu was anchored to anymore) rather than leaving a stale,
+  // detached menu floating over the wrong row.
+  useEffect(() => {
+    if (!open) return;
+    function reposition() { setMenuPos(computeMenuPos()); }
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", reposition);
+    return () => {
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", reposition);
+    };
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (controlled) return; // parent already coordinates single-open itself
@@ -58,6 +116,7 @@ export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
 
   function handleTriggerClick(e) {
     e.stopPropagation();
+    if (!open) setMenuPos(computeMenuPos()); // about to open — anchor to the trigger's current position
     if (controlled) {
       setOpen((o) => !o);
       return;
@@ -81,10 +140,11 @@ export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
       >
         <Icon name="icon-24" />
       </button>
-      {open && (
+      {open && menuPos && createPortal(
         <div
-          className="action-menu-list"
-          style={{ top: "auto", bottom: "calc(100% + 6px)" }}
+          className="action-menu-list action-menu-list-portal"
+          ref={menuRef}
+          style={{ position: "fixed", left: menuPos.left, right: "auto", top: menuPos.top, bottom: menuPos.bottom }}
           onClick={(e) => e.stopPropagation()}
         >
           {actions.map((a) => (
@@ -98,7 +158,8 @@ export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
               <span>{actionLabels[a]}</span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </span>
   );
