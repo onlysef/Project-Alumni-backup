@@ -102,6 +102,8 @@ body {
 
 /* Footer identity — sits at the bottom of the page */
 .login-footer {
+  flex: 0 0 auto;
+  position: static;
   text-align: center;
   padding: 12px 16px;
   color: var(--frame);
@@ -583,17 +585,6 @@ input[type="text"] {
   border-radius: 10px;
 }
 
-.login-footer {
-  position: fixed;
-  z-index: 2;
-  left: clamp(50px, 8vw, 140px);
-  bottom: clamp(32px, 6vh, 72px);
-  max-width: 48vw;
-  padding: 0;
-  color: #4d3d3f;
-  text-align: left;
-}
-
 @media (max-width: 880px) {
   html, body {
     min-height: 100%;
@@ -620,16 +611,10 @@ input[type="text"] {
   }
 
   .login-footer {
-    position: relative;
-    left: auto;
-    bottom: auto;
-    z-index: 2;
     max-width: none;
-    margin-top: -46px;
-    padding: 14px 28px 28px;
-    color: #fff;
+    padding: 14px 28px;
+    color: #4d3d3f;
     text-align: center;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
   }
 }
 
@@ -671,7 +656,7 @@ input[type="text"] {
     grid-template-columns: minmax(0, 1fr);
     justify-items: stretch;
     gap: 26px;
-    padding: 34px 28px 76px;
+    padding: 34px 28px;
     border-radius: 22px;
   }
 
@@ -702,17 +687,12 @@ input[type="text"] {
   }
 
   .login-footer {
-    position: absolute;
-    left: 50%;
-    bottom: 42px;
     width: min(560px, calc(100% - 80px));
     max-width: none;
-    margin: 0;
-    padding: 0;
-    transform: translateX(-50%);
+    margin: 0 auto;
+    padding: 12px 0;
     color: #4d3d3f;
     text-align: center;
-    text-shadow: none;
   }
 }
 
@@ -723,7 +703,7 @@ input[type="text"] {
 
   .card {
     gap: 18px;
-    padding: 18px 14px 82px;
+    padding: 18px 14px;
     border-radius: 18px;
   }
 
@@ -736,7 +716,6 @@ input[type="text"] {
   }
 
   .login-footer {
-    bottom: 34px;
     width: calc(100% - 56px);
     font-size: 8px;
     line-height: 12px;
@@ -746,20 +725,16 @@ input[type="text"] {
 /* Keep short landscape screens scrollable instead of clipping the cards. */
 @media (min-width: 1051px) and (max-height: 760px) {
   .page {
-    min-height: 700px;
+    min-height: 0;
     align-items: flex-start;
   }
 
   .card {
-    min-height: 650px;
+    min-height: 0;
     padding-top: 34px;
     padding-bottom: 34px;
   }
 
-  .login-footer {
-    position: absolute;
-    bottom: 26px;
-  }
 }
 
 /* Subtle page and dialog motion */
