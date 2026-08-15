@@ -18,11 +18,18 @@ function mapProgramToCourse(programsCompleted) {
   return '';
 }
 
-// Resolves company_name, work_location, and graduation_year from extra_answers by label matching
-async function resolveExtraFromTracer(extraAnswers, college = 'CCS') {
+// Resolves company_name, work_location, and graduation_year from extra_answers by label matching.
+// `prefetchedCfg` lets a caller that's resolving this for many tracers in a
+// loop (syncTracerToEmployment) pass the same config in once instead of
+// this function re-querying the identical TracerFormConfig doc on every
+// single call — the config doesn't vary per-tracer within one sync run.
+async function resolveExtraFromTracer(extraAnswers, college = 'CCS', prefetchedCfg = null) {
   try {
-    let cfg = await TracerFormConfig.findOne({ college }).lean();
-    if (!cfg) cfg = await TracerFormConfig.findOne({ college: 'CCS' }).lean();
+    let cfg = prefetchedCfg;
+    if (!cfg) {
+      cfg = await TracerFormConfig.findOne({ college }).lean();
+      if (!cfg) cfg = await TracerFormConfig.findOne({ college: 'CCS' }).lean();
+    }
     if (!cfg?.config?.pages) return {};
     const result = {};
     for (const page of cfg.config.pages) {
@@ -920,17 +927,43 @@ function mapTracerStatus(tracerStatus) {
 // POST /api/admin/employment/sync-tracer
 // Reads every existing TracerStudyResponse and pushes employment fields into AlumniEmployment.
 // Safe to run multiple times (upsert). Called on mount so stale records catch up automatically.
+//
+// This used to reprocess EVERY tracer response, every time, sequentially —
+// each with its own TracerFormConfig lookup and up to 3 more DB round-trips
+// — regardless of whether anything had actually changed since the last
+// sync. With 258 responses that took 30+ seconds on every single Employment
+// Details page load. Now it only touches tracers whose response was
+// updated more recently than the last sync recorded on that alumnus's
+// AlumniEmployment (tracer_synced_at) — a page load with nothing new to
+// sync does two cheap lookup queries and no per-tracer writes at all — and
+// the config lookup that used to repeat per-tracer happens once up front.
 const syncTracerToEmployment = async (req, res) => {
   try {
     const responses = await TracerStudyResponse.find().lean();
-    let updated = 0;
+    if (!responses.length) return res.json({ updated: 0, skipped: 0 });
 
-    for (const tracer of responses) {
+    const alumniIds = responses.map((t) => t.alumni_id);
+    const existing = await AlumniEmployment.find(
+      { alumni_id: { $in: alumniIds } },
+      'alumni_id tracer_synced_at'
+    ).lean();
+    const syncedAtMap = new Map(existing.map((e) => [String(e.alumni_id), e.tracer_synced_at]));
+
+    const pending = responses.filter((tracer) => {
+      const syncedAt = syncedAtMap.get(String(tracer.alumni_id));
+      return !syncedAt || new Date(tracer.updatedAt) > new Date(syncedAt);
+    });
+
+    if (!pending.length) return res.json({ updated: 0, skipped: responses.length });
+
+    let cfg = await TracerFormConfig.findOne({ college: 'CCS' }).lean();
+
+    await Promise.all(pending.map(async (tracer) => {
       const extraAnswers = (tracer.extra_answers instanceof Map)
         ? Object.fromEntries(tracer.extra_answers)
         : (tracer.extra_answers || {});
 
-      const extraResolved = await resolveExtraFromTracer(extraAnswers);
+      const extraResolved = await resolveExtraFromTracer(extraAnswers, 'CCS', cfg);
 
       const reasonsArr = Array.isArray(tracer.reasonsNotEmployed) ? tracer.reasonsNotEmployed : [];
       const jrd = String(tracer.jobRelatedToDegree || '').toLowerCase().trim();
@@ -944,6 +977,7 @@ const syncTracerToEmployment = async (req, res) => {
         employment_type:       tracer.presentEmploymentType || '',
         years_in_current_job:  tracer.yearsInCurrentJob     || '',
         last_updated:          new Date(),
+        tracer_synced_at:      new Date(),
         ...extraResolved,
       };
 
@@ -960,11 +994,9 @@ const syncTracerToEmployment = async (req, res) => {
           await User.findByIdAndUpdate(tracer.alumni_id, { graduationYear: extraResolved.graduation_year });
         }
       }
+    }));
 
-      updated++;
-    }
-
-    res.json({ updated });
+    res.json({ updated: pending.length, skipped: responses.length - pending.length });
   } catch (err) {
     console.error('syncTracerToEmployment error:', err);
     res.status(500).json({ message: 'Server error.' });

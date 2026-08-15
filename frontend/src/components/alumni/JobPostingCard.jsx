@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
+import { API, authHeaders } from "../../services/api.js";
 
 // Shared between Job Connect's own list and the Announcements page's "Job
 // Postings" preview, so both surfaces render the exact same card instead of
@@ -11,6 +12,19 @@ export function truncate(value, max) {
 
 export function formatSavedDate(iso) {
   return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Careerjet's `date` field comes back as a raw server timestamp string
+// (e.g. "Sat, 15 Aug 2026 05:23:51 GMT") — shown as-is before, which meant
+// job cards displayed that literal string instead of a readable date. Falls
+// back to the raw value if it's ever unparseable rather than showing
+// "Invalid Date".
+export function formatPostedDate(value) {
+  if (!value) return value;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime())
+    ? value
+    : d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
 // Careerjet's description field has no real structural markup — only
@@ -82,6 +96,48 @@ export function ArrowIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
 }
 
+// Skill-gap tips are personalized per job (see backend getJobSkillTip) and
+// each costs a real ~4s LLM call — a results page can list 20+ jobs at
+// once, so fetching this the moment every card mounts would fire that many
+// calls in parallel for no reason (most never get scrolled to). Instead
+// each card only asks for its tip once it actually scrolls into view, and
+// the result is cached by job URL so it isn't re-fetched if the same job
+// scrolls in and out of view again, or appears in more than one list (Job
+// Connect and the Announcements "Job Postings" preview share this card).
+const skillTipCache = new Map();
+
+function useSkillTip(job) {
+  const [tip, setTip] = useState(() => skillTipCache.get(job.url) ?? null);
+  const ref = useRef(null);
+  const fetchedRef = useRef(skillTipCache.has(job.url));
+
+  useEffect(() => {
+    if (fetchedRef.current || !job.skills?.length || !ref.current) return undefined;
+    const el = ref.current;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || fetchedRef.current) return;
+      fetchedRef.current = true;
+      observer.disconnect();
+      const matched = job.skills.filter((s) => s.matched).map((s) => s.name);
+      const missing = job.skills.filter((s) => !s.matched).map((s) => s.name);
+      const params = new URLSearchParams({ title: job.title, matched: matched.join(","), missing: missing.join(",") });
+      fetch(`${API}/alumni/jobs/skill-tip?${params}`, { headers: authHeaders() })
+        .then((r) => r.json())
+        .then((d) => {
+          if (!d?.tip) return;
+          skillTipCache.set(job.url, d.tip);
+          setTip(d.tip);
+        })
+        .catch(() => {});
+    }, { rootMargin: "200px" });
+    observer.observe(el);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- job.url stably identifies which job this is; re-running on every new job.skills/title array reference would tear down and rebuild the observer for no reason.
+  }, [job.url]);
+
+  return { tip, ref };
+}
+
 // Careerjet's search API has no company-logo field, and free logo lookup
 // services aren't viable here — unavatar.io's guess-the-domain approach
 // often misses (tried and reverted), and its free tier caps out at 25
@@ -90,13 +146,14 @@ export function ArrowIcon() {
 // real, reliable source of per-company logos.
 export function JobCard({ job, saved, onToggleSave, onViewDetails, onApply }) {
   const description = descriptionPreview(job.description, 220);
+  const { tip: skillTip, ref: skillGapRef } = useSkillTip(job);
   return <article className="connect-job-card">
     {job.match !== null && job.match !== undefined && (
       <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
     )}
     <div className="job-company-logo"><img src={alumniLogo} alt={`${job.company} logo`} /></div>
     <div className="connect-job-main">
-      {job.posted && <span className="connect-posted">Posted: {job.posted}</span>}
+      {job.posted && <span className="connect-posted">Posted: {formatPostedDate(job.posted)}</span>}
       {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
       <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div></div>
       {description && <p className="connect-job-description">{description}</p>}
@@ -112,11 +169,11 @@ export function JobCard({ job, saved, onToggleSave, onViewDetails, onApply }) {
       <small className="job-partner">via Careerjet</small>
     </div>
     {job.skills?.length > 0 && (
-      <aside className="connect-skill-gap">
+      <aside className="connect-skill-gap" ref={skillGapRef}>
         <b>Skill Gap</b>
         <div>{job.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
         <small>
-          {job.skills.some(s => s.matched) ? "Highlighted skills are already on your profile — the rest are worth adding." : "These skills are requested for this role but aren't on your profile yet."}
+          {skillTip || (job.skills.some(s => s.matched) ? "Highlighted skills are already on your profile — the rest are worth adding." : "These skills are requested for this role but aren't on your profile yet.")}
           {job.createdAt && " (based on your profile as of when you saved this job)"}
         </small>
       </aside>

@@ -2,6 +2,15 @@ const Graduate = require('../models/Graduate');
 const User = require('../models/User');
 const { runWithCollegeScope } = require('../utils/collegeScope');
 
+// filters.gender gets interpolated into a `^...$` $regex at every gender
+// call site below — harmless for "Male"/"Female", but the real stored value
+// "LGBTQIA+" contains a literal "+", a regex quantifier. Unescaped, `^LGBTQIA+$`
+// means "one or more A" instead of a literal trailing "+", so it silently
+// never matched the actual data. Every one of those call sites needs this.
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ─── Intent Detection ─────────────────────────────────────────────────────────
 
 const TOPIC_PATTERNS = {
@@ -34,7 +43,16 @@ const TOPIC_PATTERNS = {
   work_location:   /\b(local(?:ly)?|abroad|work location|place of work|overseas)\b/i,
   by_program:      /\b(by program|by course|per program|per course|each program|program breakdown)\b/i,
   by_year:         /\b(by (batch|year|graduation)|per (batch|year)|each (batch|year)|year breakdown|batch breakdown)\b/i,
-  gender:          /\b(gender|\bmale\b|\bfemale\b|\bmen\b|\bwomen\b)\b/i,
+  // lgbt\w* also covers "lgbtq"/"lgbtqia"/"lgbtqia+" (the actual stored
+  // value) — the survey's gender field only has one umbrella option for
+  // this ("LGBTQIA+"), not separate gay/lesbian/trans/etc. categories, so
+  // any of these terms in a question all resolve to that same value.
+  // Kept OUTSIDE the \b(...)\b wrapper the other alternatives share — real
+  // messages run it into an adjacent word with no space ("manyLGBT"), and a
+  // leading \b there requires a word boundary immediately before "lgbt"
+  // that a glued-together typing like that never has. "lgbt" as a raw
+  // substring is distinctive enough there's no realistic false-positive risk.
+  gender:          /\b(gender|\bmale\b|\bfemale\b|\bmen\b|\bwomen\b|\bqueer\b|\bgay\b|\blesbian\b|transgender|non.?binary)\b|lgbt\w*/i,
 };
 
 function normalizeQuestion(q) {
@@ -347,6 +365,9 @@ function extractFilters(question) {
   // first for clarity anyway.
   if (/\bfemale\b|\bwomen\b/i.test(question))      filters.gender = 'Female';
   else if (/\bmale\b|\bmen\b/i.test(question))     filters.gender = 'Male';
+  // Matches TOPIC_PATTERNS.gender's lgbt\w*/queer/gay/lesbian/transgender/
+  // non-binary set — all map to the survey's single umbrella option.
+  else if (/lgbt\w*|\bqueer\b|\bgay\b|\blesbian\b|transgender|non.?binary/i.test(question)) filters.gender = 'LGBTQIA+';
 
   // Exclude self-employed modifier
   if (/\b(don'?t|do\s+not|exclude|not\s+includ|without).{0,25}self[- ]?employ/i.test(question)) {
@@ -452,9 +473,12 @@ function filterLabel(filters) {
 // Prefix like "female " / "male " for a sentence's grammatical subject —
 // mirrors queryCount()'s established convention. Applied individually (not
 // folded into filterLabel()) so it doesn't risk double-mentioning gender in
-// queryCount()/queryNames(), which already handle it themselves.
+// queryCount()/queryNames(), which already handle it themselves. Lowercasing
+// reads fine for ordinary words ("male", "female") but flattens the acronym
+// "LGBTQIA+" into "lgbtqia+" — kept uppercase like any other acronym instead.
 function genderPrefix(filters) {
-  return filters.gender ? `${filters.gender.toLowerCase()} ` : '';
+  if (!filters.gender) return '';
+  return filters.gender.toUpperCase() === 'LGBTQIA+' ? 'LGBTQIA+ ' : `${filters.gender.toLowerCase()} `;
 }
 
 function pct(n, total) {
@@ -517,7 +541,7 @@ function stablePipeline(filters) {
   // "male"/"female" qualifier and answered for everyone instead, with no
   // indication anything was dropped. Adding it here as a stable pre-filter
   // fixes every function that uses stablePipeline() in one place.
-  if (filters.gender)        match.gender        = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)        match.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
   return [{ $match: match }, ...DEDUP];
 }
 
@@ -700,7 +724,11 @@ async function queryGender(filters) {
   if (filters.gender) {
     const match = rows.find(r => r._id === filters.gender.toLowerCase());
     const count = match?.count ?? 0;
-    const text = `There are **${count}** ${filters.gender.toLowerCase()} graduate${count !== 1 ? 's' : ''} in the tracer study database${lbl} (${pct(count, total)} of ${total} respondents with gender recorded).`;
+    // Prefer the actual stored casing ("LGBTQIA+") over a blanket
+    // .toLowerCase() of the filter — that read fine for "male"/"female" but
+    // flattened "LGBTQIA+" into "lgbtqia+" in the narrated sentence.
+    const label = match?.display || filters.gender.toLowerCase();
+    const text = `There are **${count}** ${label} graduate${count !== 1 ? 's' : ''} in the tracer study database${lbl} (${pct(count, total)} of ${total} respondents with gender recorded).`;
     return text;
   }
 
@@ -772,7 +800,7 @@ async function queryJobRelevance(filters) {
 async function queryJobAlignmentByProgram(filters) {
   const stableMatch = {};
   if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
-  if (filters.gender)        stableMatch.gender        = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -987,7 +1015,7 @@ async function queryWorkLocation(filters) {
 async function queryByProgram(filters) {
   const stableMatch = {};
   if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
-  if (filters.gender)        stableMatch.gender        = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1027,7 +1055,7 @@ async function queryByProgram(filters) {
 async function queryEmploymentRateByProgram(filters) {
   const stableMatch = {};
   if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
-  if (filters.gender)        stableMatch.gender        = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1077,7 +1105,7 @@ async function queryEmploymentRateByProgram(filters) {
 async function queryProgramRateExtreme(filters, direction, metric) {
   const stableMatch = {};
   if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
-  if (filters.gender)        stableMatch.gender        = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1130,7 +1158,7 @@ async function queryProgramRateExtreme(filters, direction, metric) {
 async function queryWorkLocationByProgram(filters, location) {
   const stableMatch = {};
   if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
-  if (filters.gender)        stableMatch.gender        = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1164,7 +1192,7 @@ async function queryByYear(filters) {
   // a single exact year (that would collapse the grouping to one row).
   const stableMatch = {};
   if (filters.program)  stableMatch.program       = { $regex: filters.program, $options: 'i' };
-  if (filters.gender)   stableMatch.gender         = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)   stableMatch.gender         = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
   if (filters.yearFrom) stableMatch.yearGraduated  = { $gte: filters.yearFrom };
 
   const rows = await Graduate.aggregate([
@@ -1201,7 +1229,7 @@ async function queryByYear(filters) {
 async function queryYearWithMostGraduates(filters, direction) {
   const stableMatch = {};
   if (filters.program) stableMatch.program = { $regex: filters.program, $options: 'i' };
-  if (filters.gender)  stableMatch.gender  = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)  stableMatch.gender  = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1232,7 +1260,7 @@ async function queryYearWithMostGraduates(filters, direction) {
 async function queryYearRateExtreme(filters, direction, metric) {
   const stableMatch = {};
   if (filters.program) stableMatch.program = { $regex: filters.program, $options: 'i' };
-  if (filters.gender)  stableMatch.gender  = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)  stableMatch.gender  = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1282,7 +1310,7 @@ async function queryYearRateExtreme(filters, direction, metric) {
 async function queryYearJobAlignment(filters, direction) {
   const stableMatch = {};
   if (filters.program) stableMatch.program = { $regex: filters.program, $options: 'i' };
-  if (filters.gender)  stableMatch.gender  = { $regex: `^${filters.gender}$`, $options: 'i' };
+  if (filters.gender)  stableMatch.gender  = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },

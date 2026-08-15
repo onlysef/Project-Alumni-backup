@@ -7,6 +7,7 @@ export default function CareerRecommendation() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [nextStepLoading, setNextStepLoading] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
 
@@ -15,7 +16,27 @@ export default function CareerRecommendation() {
     setError("");
     fetch(`${API}/alumni/career-recommendations`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => setData(d))
+      .then((d) => {
+        setData(d);
+        // The personalized "next step" sentence is a slow (~4s) AI call —
+        // the main response above already comes back with a fast template
+        // fallback for it so the career cards render immediately; this
+        // fetches the personalized version in the background and swaps it
+        // in once ready, without blocking anything the user is looking at.
+        const topCareer = d?.careers?.[0];
+        if (topCareer) {
+          setNextStepLoading(true);
+          const params = new URLSearchParams({ title: topCareer.title, match: topCareer.match });
+          if (topCareer.missing) params.set("missing", topCareer.missing);
+          fetch(`${API}/alumni/career-recommendations/next-step?${params}`, { headers: authHeaders() })
+            .then((r) => r.json())
+            .then((ns) => {
+              if (ns?.nextStep) setData((prev) => (prev ? { ...prev, nextStep: ns.nextStep } : prev));
+            })
+            .catch(() => {})
+            .finally(() => setNextStepLoading(false));
+        }
+      })
       .catch(() => setError("Could not load career recommendations right now."))
       .finally(() => setLoading(false));
   }

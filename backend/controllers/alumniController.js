@@ -7,7 +7,6 @@ const TracerFormConfig     = require('../models/TracerFormConfig');
 const Graduate             = require('../models/Graduate');
 const EmbeddingDocument    = require('../models/EmbeddingDocument');
 const Announcement         = require('../models/Announcement');
-const Job                  = require('../models/Job');
 const SavedJob              = require('../models/SavedJob');
 const Resume                = require('../models/Resume');
 const JobApplication        = require('../models/JobApplication');
@@ -558,7 +557,17 @@ const updateMyEmployment = async (req, res) => {
       experience:        experience || '',
       last_updated:      new Date(),
     };
+    // Every other field above always lands in `updates`, so clearing one in
+    // the form correctly overwrites it back to blank/null. date_employed
+    // used to be skipped entirely whenever it was falsy — indistinguishable
+    // from the alumnus never having touched it at all — so clearing an
+    // already-set date silently left the stale value in the database and
+    // reappeared as soon as the page reloaded. 'date_employed' in req.body
+    // tells an explicit clear (frontend now sends null, not undefined —
+    // JSON.stringify drops undefined-valued keys entirely) apart from a
+    // caller that never mentioned this field.
     if (date_employed) updates.date_employed = new Date(date_employed);
+    else if ('date_employed' in req.body) updates.date_employed = null;
 
     const emp = await AlumniEmployment.findOneAndUpdate(
       { alumni_id: req.user.id },
@@ -662,20 +671,29 @@ function sortJobsByMatchThenDate(jobs) {
   });
 }
 
-const recommendedJobsCountCache = new Map(); // alumniId -> { count, expiresAt }
+const recommendedJobsCache = new Map(); // alumniId -> { jobs, expiresAt }
 const RECOMMENDED_COUNT_TTL_MS = 20 * 60 * 1000;
 
-async function getRecommendedJobsCount(alumniId, employment) {
+// Shared by Home's "Recommended jobs" count AND its "What needs your
+// attention" recent-updates feed — both need the same Careerjet-backed,
+// per-alumnus scored job list, so this fetches (and caches) it once instead
+// of hitting Careerjet twice on every Home load/30s poll. Previously the
+// updates feed queried the internal employer-posted `Job` model instead
+// (see routes/employer.js) — but alumni have no route to browse those at
+// all, Job Connect is 100% Careerjet-backed, so a "New Job" update built
+// from that model pointed at a listing that could never actually be found
+// on the page it linked to.
+async function getRecommendedJobsForAlumni(alumniId, employment) {
   const cacheKey = String(alumniId);
-  const cached = recommendedJobsCountCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.count;
+  const cached = recommendedJobsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.jobs;
 
   const userSkillsText = employment?.skills || '';
   const firstUserSkill = userSkillsText.split(/[,;\n]/)[0]?.trim() || '';
   const keywords = employment?.job_title?.trim() || firstUserSkill;
   if (!keywords) {
-    recommendedJobsCountCache.set(cacheKey, { count: 0, expiresAt: Date.now() + RECOMMENDED_COUNT_TTL_MS });
-    return 0;
+    recommendedJobsCache.set(cacheKey, { jobs: [], expiresAt: Date.now() + RECOMMENDED_COUNT_TTL_MS });
+    return [];
   }
 
   try {
@@ -684,13 +702,13 @@ async function getRecommendedJobsCount(alumniId, employment) {
       keywords, location: '', page: 1, pagesize: RECOMMENDED_POOL_SIZE, sort: 'date',
       userIp: '127.0.0.1', userAgent: 'AlumniPortal-HomeSummary/1.0', referrerUrl,
     });
-    const jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location: '', typeLabel: '' });
-    const count = jobs.filter((j) => (j.match ?? 0) > 0).length;
-    recommendedJobsCountCache.set(cacheKey, { count, expiresAt: Date.now() + RECOMMENDED_COUNT_TTL_MS });
-    return count;
+    const jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location: '', typeLabel: '' })
+      .filter((j) => (j.match ?? 0) > 0);
+    recommendedJobsCache.set(cacheKey, { jobs, expiresAt: Date.now() + RECOMMENDED_COUNT_TTL_MS });
+    return jobs;
   } catch (err) {
-    console.error('getRecommendedJobsCount Careerjet error:', err.message);
-    return cached ? cached.count : 0;
+    console.error('getRecommendedJobsForAlumni Careerjet error:', err.message);
+    return cached ? cached.jobs : [];
   }
 }
 
@@ -719,7 +737,7 @@ const getHomeSummary = async (req, res) => {
     // thing on the page.
     const upcomingEventsFilter = { visibility: { $in: eventVisibilities }, event_datetime: { $gte: new Date() } };
 
-    const [announcementsCount, recentEventsCount, employment, networkMatchesCount, similarAlumni, recentAnnouncements, recentJobs, recentEvents] = await Promise.all([
+    const [announcementsCount, recentEventsCount, employment, networkMatchesCount, similarAlumni, recentAnnouncements, recentEvents] = await Promise.all([
       Announcement.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
       Event.countDocuments(recentEventsFilter),
       AlumniEmployment.findOne({ alumni_id: alumniId }).lean(),
@@ -737,11 +755,21 @@ const getHomeSummary = async (req, res) => {
             .lean()
         : [],
       Announcement.find({ createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: -1 }).limit(6).select('title type createdAt').lean(),
-      Job.find({ status: 'open', createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: -1 }).limit(6).select('title location createdAt').lean(),
       Event.find(upcomingEventsFilter).sort({ event_datetime: 1 }).limit(6).select('title location createdAt event_datetime').lean(),
     ]);
 
-    const recommendedJobsCount = await getRecommendedJobsCount(alumniId, employment);
+    // Careerjet results are already sorted freshest-first (sort: 'date' in
+    // getRecommendedJobsForAlumni) — same list backs both the count card and
+    // the first few entries of the recent-updates feed below. Careerjet's
+    // `posted` timestamp reflects when a listing was fetched, which is
+    // effectively "now" on almost every call — mixed unfiltered into the
+    // recentUpdates merge below (newest-first, capped to 6), that would let
+    // Jobs claim every single slot and bury real campus News/Events that
+    // are just as relevant but dated days or weeks ago. Capped to 2 here so
+    // the feed stays a genuine mix instead of an all-jobs list.
+    const recommendedJobs = await getRecommendedJobsForAlumni(alumniId, employment);
+    const recommendedJobsCount = recommendedJobs.length;
+    const recentJobs = recommendedJobs.slice(0, 2);
 
     const similarIds = similarAlumni.map((a) => a._id);
     const similarEmployments = similarIds.length
@@ -786,7 +814,7 @@ const getHomeSummary = async (req, res) => {
       // reusing it as the subtitle just repeated the "News" kind label.
       ...recentAnnouncements.map((a) => ({ kind: 'News', title: a.title, subtitle: '', createdAt: a.createdAt, section: 'announcements' })),
       ...recentEvents.map((e) => ({ kind: 'Event', title: e.title, subtitle: e.location || 'Event', createdAt: e.createdAt, section: 'announcements&filter=Events' })),
-      ...recentJobs.map((j) => ({ kind: 'Job', title: j.title, subtitle: j.location || 'Open position', createdAt: j.createdAt, section: 'jobconnect' })),
+      ...recentJobs.map((j) => ({ kind: 'Job', title: j.title, subtitle: j.location || 'Open position', createdAt: j.posted, section: 'jobconnect' })),
     ]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 6);
@@ -915,6 +943,58 @@ Write ONE short, specific, encouraging sentence (max 25 words) telling this alum
     return null;
   }
 }
+
+// Job Connect's "Skill Gap" card used to show one of two fixed sentences
+// ("Highlighted skills are already on your profile — the rest are worth
+// adding." / "These skills are requested for this role but aren't on your
+// profile yet.") for every job, regardless of which specific skills were
+// actually missing. This asks the chat model for a sentence naming the
+// actual gap for THIS posting instead, falling back to those same two
+// templates if the call fails.
+async function generateSkillGapTip({ jobTitle, matchedSkills, missingSkills }) {
+  try {
+    const prompt = `Job posting: "${jobTitle}".
+Skills this alumnus already has that the posting asks for: ${matchedSkills.length ? matchedSkills.join(', ') : 'none'}.
+Skills the posting asks for that they don't have yet: ${missingSkills.length ? missingSkills.join(', ') : 'none — they cover everything listed'}.
+Write ONE short, specific, encouraging sentence (max 20 words) telling this alumnus what to focus on to be a stronger fit for this specific job. No preamble, no quotes, just the sentence.`;
+
+    const completion = await hf.chatCompletion({
+      model: CAREER_CHAT_MODEL,
+      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      messages: [
+        { role: 'system', content: 'You are a concise, encouraging career advisor for a university alumni portal.' },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 50,
+    });
+
+    const text = completion.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, '');
+    return text || null;
+  } catch (err) {
+    console.error('generateSkillGapTip failed, using template fallback:', err.message);
+    return null;
+  }
+}
+
+// GET /api/alumni/jobs/skill-tip?title=&matched=&missing=
+// Lazily generates the personalized skill-gap sentence for one job card —
+// the frontend only calls this once a card actually scrolls into view (see
+// JobPostingCard.jsx), so a results page with 20+ jobs never fires 20+ of
+// these ~4s LLM calls at once just because they're all rendered in the DOM.
+const getJobSkillTip = async (req, res) => {
+  try {
+    const { title } = req.query;
+    if (!title) return res.status(400).json({ message: 'title is required.' });
+    const matchedSkills = String(req.query.matched || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const missingSkills = String(req.query.missing || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+    const tip = await generateSkillGapTip({ jobTitle: title, matchedSkills, missingSkills });
+    res.json({ tip });
+  } catch (err) {
+    console.error('getJobSkillTip error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
 
 // Derived from a real dataset (Kaggle: "Candidate Job Role Dataset",
 // ckshetty/candidate-job-role-dataset — 1000 candidate rows across 22 job
@@ -1102,30 +1182,9 @@ const getCareerRecommendations = async (req, res) => {
     const userCourse = me?.course || '';
     const experienceScore = computeExperienceScore(employment);
 
-    // CS (cosine similarity) is only the embedding-dependent piece of the
-    // formula — Sr, Er, and Xr don't need the Hugging Face API at all, so if
-    // it fails (network/HF down), CS just falls back to a neutral 0.5
-    // instead of the whole recommendation failing.
-    let cosineScores = null;
-    try {
-      const profileText = [
-        userCourse && `Course: ${userCourse}.`,
-        userJobTitle && `Current role: ${userJobTitle}.`,
-        userIndustry && `Industry: ${userIndustry}.`,
-        userSkillsText && `Skills: ${userSkillsText}.`,
-      ].filter(Boolean).join(' ') || 'No profile information provided yet.';
-
-      const [profileEmbedding, careerEmbeddings] = await Promise.all([
-        getEmbedding(profileText),
-        getCareerEmbeddings(),
-      ]);
-      cosineScores = careerEmbeddings.map((vec) => normalizeCosine(cosineSimilarity(profileEmbedding, vec)));
-    } catch (embedErr) {
-      console.error('career recommendation embedding failed, CS defaults to neutral:', embedErr.message);
-    }
-
-    // S = Sr*40% + Er*20% + Xr*30% + CS*10%
-    const careers = CAREER_PATHS
+    // S = Sr*40% + Er*20% + Xr*30% + CS*10%. Sr/Er/Xr are pure sync
+    // computation — only CS needs the embedding call.
+    const rankCareers = (cosineScores) => CAREER_PATHS
       .map((career, i) => ({
         career,
         result: computeCareerScore(career, {
@@ -1153,12 +1212,39 @@ const getCareerRecommendations = async (req, res) => {
         };
       });
 
+    const profileText = [
+      userCourse && `Course: ${userCourse}.`,
+      userJobTitle && `Current role: ${userJobTitle}.`,
+      userIndustry && `Industry: ${userIndustry}.`,
+      userSkillsText && `Skills: ${userSkillsText}.`,
+    ].filter(Boolean).join(' ') || 'No profile information provided yet.';
+
+    // CS (cosine similarity) is only the embedding-dependent piece of the
+    // formula — Sr, Er, and Xr don't need the Hugging Face API at all, so if
+    // it fails (network/HF down), CS just falls back to a neutral 0.5
+    // instead of the whole recommendation failing.
+    const embeddingResult = await Promise.all([getEmbedding(profileText), getCareerEmbeddings()])
+      .then(([profileEmbedding, careerEmbeddings]) =>
+        careerEmbeddings.map((vec) => normalizeCosine(cosineSimilarity(profileEmbedding, vec))))
+      .catch((embedErr) => {
+        console.error('career recommendation embedding failed, CS defaults to neutral:', embedErr.message);
+        return null;
+      });
+
+    const careers = rankCareers(embeddingResult);
     const topCareer = careers[0];
+    // The personalized "next step" sentence is a separate, much slower
+    // Hugging Face chat completion (~4s vs ~1s for the embeddings above) —
+    // it used to be awaited right here, making the whole page wait on it
+    // even though the career cards themselves were already done. It's now
+    // fetched lazily by the frontend via GET .../career-recommendations/next-step
+    // (see getCareerNextStep below) so the cards render immediately; this
+    // template line is what the panel shows until that call resolves (and
+    // what it falls back to if the call fails).
     const nextStep = topCareer
-      ? (await generateNextStepSuggestion({ topCareer, userCourse, userJobTitle, userSkillsText }))
-        || (topCareer.missing
-          ? `Complete a course in ${topCareer.missing} to qualify for more ${topCareer.title} roles.`
-          : 'Keep your Employment Details up to date to get sharper career matches.')
+      ? (topCareer.missing
+        ? `Complete a course in ${topCareer.missing} to qualify for more ${topCareer.title} roles.`
+        : 'Keep your Employment Details up to date to get sharper career matches.')
       : 'Fill out your Employment Details to start getting career recommendations.';
 
     res.json({
@@ -1170,6 +1256,36 @@ const getCareerRecommendations = async (req, res) => {
     });
   } catch (err) {
     console.error('getCareerRecommendations error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/alumni/career-recommendations/next-step?title=&match=&missing=
+// Lazily generates the personalized "next step" sentence for the top career
+// getCareerRecommendations already picked (passed back via query params, so
+// this skips redoing the embedding call) — split out so the slow ~4s LLM
+// call never blocks the career cards themselves. Falls back client-side to
+// the template nextStep already returned above if this fails or is slow.
+const getCareerNextStep = async (req, res) => {
+  try {
+    const { title, match, missing } = req.query;
+    if (!title) return res.status(400).json({ message: 'title is required.' });
+
+    const [me, employment] = await Promise.all([
+      User.findById(req.user.id).select('course').lean(),
+      AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
+    ]);
+
+    const nextStep = await generateNextStepSuggestion({
+      topCareer: { title, match: Number(match) || 0, missing: missing || null },
+      userCourse: me?.course || '',
+      userJobTitle: cleanEmploymentValue(employment?.job_title),
+      userSkillsText: employment?.skills || '',
+    });
+
+    res.json({ nextStep });
+  } catch (err) {
+    console.error('getCareerNextStep error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -1325,6 +1441,27 @@ const updateJobAlertsPref = async (req, res) => {
   }
 };
 
+// Resume's second experience line is meant to read as a date range, the
+// same convention every resume template on the page (preview, PDF, .doc)
+// follows — showing the raw employment_type/years_in_current_job bucket
+// values there instead ("Regular/Permanent · 2 to 3 years") looked like a
+// broken date line, since those are internal HR classifications, not dates.
+// date_employed is a real timestamp, so prefer an actual "Month Year –
+// Present" line built from it; years_in_current_job (an imprecise bucket
+// like "2 to 3 years", not a start date) is only the fallback when no
+// date_employed is on file at all.
+function formatEmploymentDuration(employment) {
+  if (employment?.date_employed) {
+    const start = new Date(employment.date_employed);
+    if (!Number.isNaN(start.getTime())) {
+      const startLabel = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      const stillThere = employment.employment_status === 'Employed' || employment.employment_status === 'Self-employed';
+      return stillThere ? `${startLabel} - Present` : startLabel;
+    }
+  }
+  return employment?.years_in_current_job || '';
+}
+
 const getMyResume = async (req, res) => {
   try {
     const existing = await Resume.findOne({ alumni_id: req.user.id }).lean();
@@ -1346,8 +1483,13 @@ const getMyResume = async (req, res) => {
 
     const experienceLines = [];
     if (employment?.job_title) {
-      experienceLines.push([employment.job_title, employment.company_name].filter((v) => v && v !== 'N/A').join(' - '));
-      const meta = [employment.employment_type, employment.years_in_current_job].filter(Boolean).join(' · ');
+      const titleLine = [employment.job_title, employment.company_name].filter((v) => v && v !== 'N/A').join(' - ');
+      // Employment type ("Regular/Permanent", "Contractual", ...) reads
+      // naturally as a qualifier on the role itself, next to the title —
+      // not on the date line below, which is reserved for an actual date
+      // range (see formatEmploymentDuration).
+      experienceLines.push(employment.employment_type ? `${titleLine} (${employment.employment_type})` : titleLine);
+      const meta = formatEmploymentDuration(employment);
       if (meta) experienceLines.push(meta);
     }
 
@@ -1358,7 +1500,11 @@ const getMyResume = async (req, res) => {
     // Templated from real fields (course, job title, company, skills) — not
     // fabricated content, just a natural-language stitch of what's already
     // on file, the same way the placeholder mock read before it was per-user.
-    const topSkills = (employment?.skills || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean).slice(0, 3);
+    // employment.skills is stored as one comma-separated line — split it out
+    // so ResumePreview/PDF/.doc (which all render one bullet per newline)
+    // list each skill as its own bullet instead of a single run-on bullet.
+    const skillsList = (employment?.skills || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+    const topSkills = skillsList.slice(0, 3);
     const jobTitleArticle = employment?.job_title && /^[aeiou]/i.test(employment.job_title) ? 'an' : 'a';
     const summaryLead = [
       user?.course ? `${user.course} graduate of Tarlac State University` : null,
@@ -1376,7 +1522,7 @@ const getMyResume = async (req, res) => {
       email: user?.email || '',
       linkedin: '',
       summary,
-      skills: employment?.skills || '',
+      skills: skillsList.join('\n'),
       experience: experienceLines.join('\n'),
       education: educationLines.join('\n'),
       // TracerStudyResponse.professionalCertifications is a Yes/No survey
@@ -1474,4 +1620,4 @@ const updateApplicationStatus = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, searchJobs, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, getApplications, logApplication, updateApplicationStatus };
+module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, getApplications, logApplication, updateApplicationStatus };

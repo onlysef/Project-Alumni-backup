@@ -25,6 +25,12 @@ const alumniEmploymentSchema = new mongoose.Schema({
   skills:                { type: String, default: '' },
   experience:            { type: String, default: '' },
   last_updated:          { type: Date, default: Date.now },
+  // Set only by syncTracerToEmployment — tracks which version of this
+  // alumnus's TracerStudyResponse (by its updatedAt) has already been
+  // pulled in, so that admin-controller sync can skip tracers that haven't
+  // changed since last time instead of re-processing all of them on every
+  // Employment Details page load.
+  tracer_synced_at:      { type: Date, default: null },
 }, { timestamps: true });
 
 alumniEmploymentSchema.index({ employment_status: 1 });

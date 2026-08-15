@@ -6619,6 +6619,14 @@
 
         /* ===== Kebab action menu ===== */
         .action-menu { position: relative; display: inline-block; }
+        /* Rendered through a portal straight into <body> (see ActionMenu.jsx)
+           instead of positioned in-place inside the row — neighboring rows'
+           own trigger buttons could otherwise end up painting over an open
+           dropdown from a table stacking context no amount of z-index on
+           the dropdown alone could escape. Needs its own z-index here since
+           it's no longer nested under .action-menu's — just high enough to
+           clear normal page content, comfortably under modal overlays (9999). */
+        .action-menu-list-portal { z-index: 500; }
 
         .admin-table .action-menu-trigger,
         .action-menu-trigger {
@@ -9467,7 +9475,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 }
 
 .dropdown-menu,
-.action-menu,
+.action-menu-list,
 .report-filter-menu,
 .assistant-menu.show,
 .ac-menu {

@@ -80,7 +80,11 @@ function mapFormToEmployment(form) {
     job_title: form.position,
     industry: form.industry,
     work_location: form.location,
-    date_employed: form.hired || undefined,
+    // null (not undefined) when cleared — JSON.stringify drops
+    // undefined-valued keys entirely, which the backend can't tell apart
+    // from this field never having been mentioned at all, so clearing an
+    // already-set date silently failed to persist.
+    date_employed: form.hired || null,
     salary_range: form.salary,
     skills: form.skills,
     experience: form.experience,
