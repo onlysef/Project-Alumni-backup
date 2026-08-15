@@ -35,6 +35,8 @@ const TracerStudyForm         = lazy(() => import("../pages/alumni/TracerStudyFo
 
 // Employer pages
 const EmployerDashboard       = lazy(() => import("../pages/employer/EmployerDashboard"));
+const EmployerApplicants      = lazy(() => import("../pages/employer/EmployerApplicants"));
+const EmployerAppointments    = lazy(() => import("../pages/employer/EmployerAppointments"));
 
 const ROLE_PATHS = {
   admin: "/admin/dashboard",
@@ -154,6 +156,8 @@ export default function AppRoutes() {
           >
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<EmployerDashboard />} />
+            <Route path="applicants" element={<EmployerApplicants />} />
+            <Route path="appointments" element={<EmployerAppointments />} />
           </Route>
         </Routes>
         </Suspense>
