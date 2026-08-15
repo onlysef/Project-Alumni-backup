@@ -267,7 +267,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
 
 function AlumniHome({ navigate }) {
   const { user, token } = useAuth();
-  const name = user?.firstName || "there";
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.name || "Alumnus";
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [selectedAlumnus, setSelectedAlumnus] = useState(null);
