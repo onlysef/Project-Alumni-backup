@@ -2053,3 +2053,318 @@ body.dark-mode .resume-preview-modal-head { border-color: rgba(250, 200, 83, .18
 body.dark-mode .resume-preview-modal-head span { color: #f6d98a; }
 body.dark-mode .resume-preview-modal-head h2 { color: #fff6f8; }
 body.dark-mode .resume-preview-modal-head button { border-color: rgba(250, 200, 83, .3); background: #241116; color: #fac853; }
+
+/* Interactive alumni network */
+.network-page { position: relative; }
+.network-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 27px 30px;
+  border-radius: 13px;
+  background:
+    radial-gradient(circle at 92% 18%, rgba(244, 207, 107, .2), transparent 25%),
+    linear-gradient(120deg, #780020, #4d0014);
+  color: #fff;
+  box-shadow: 0 12px 30px rgba(81, 0, 22, .16);
+}
+.network-hero > div:first-child > span { color: #efc85f; font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.network-hero h1 { margin: 6px 0; font-size: 25px; }
+.network-hero p { max-width: 650px; margin: 0; color: rgba(255,255,255,.7); font-size: 11px; line-height: 1.6; }
+.network-summary { display: grid; grid-template-columns: repeat(3, 94px); overflow: hidden; border: 1px solid rgba(255,255,255,.17); border-radius: 10px; background: rgba(255,255,255,.08); backdrop-filter: blur(5px); }
+.network-summary > div { position: relative; display: grid; place-items: center; min-height: 70px; padding: 10px; text-align: center; }
+.network-summary > div + div::before { position: absolute; inset: 12px auto 12px 0; width: 1px; background: rgba(255,255,255,.18); content: ""; }
+.network-summary strong { color: #f3cb62; font-size: 21px; }
+.network-summary span { color: rgba(255,255,255,.67); font-size: 8px; font-weight: 800; text-transform: uppercase; }
+
+.network-tabs { display: flex; gap: 4px; margin: 18px 0 16px; padding: 4px; border: 1px solid #e2d5d9; border-radius: 9px; background: #fff; }
+.network-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 37px; padding: 0 17px; border: 0; border-radius: 6px; background: transparent; color: #76666b; font-size: 10px; font-weight: 800; cursor: pointer; }
+.network-tabs button:hover { background: #f8f0f2; color: #70001d; }
+.network-tabs button.active { background: #70001d; color: #fff; box-shadow: 0 4px 10px rgba(91,0,24,.14); }
+.network-tabs button span { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: #eee3e6; color: #70001d; font-size: 8px; }
+.network-tabs button.active span { background: #efc85f; color: #4e0014; }
+.alumni-discovery-tabs button { min-width: 145px; }
+
+.network-heading { margin-top: 22px; }
+.interactive-directory-grid { grid-template-columns: repeat(auto-fill, minmax(275px, 1fr)); gap: 14px; }
+.interactive-person-card {
+  position: relative;
+  grid-template-columns: 62px minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  min-height: 202px;
+  padding: 20px;
+  border-radius: 11px;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.interactive-person-card:hover { border-color: #d4b9c0; transform: translateY(-3px); box-shadow: 0 11px 25px rgba(62,0,17,.1); }
+.interactive-person-card .person-info { padding-top: 3px; }
+.interactive-person-card .person-info h3 { padding-right: 22px; font-size: 15px; }
+.interactive-person-card .person-info strong { font-size: 10px; }
+.interactive-person-card .person-info p { margin: 5px 0; }
+.interactive-person-card .person-match { margin-top: 7px; color: #947016; line-height: 1.35; }
+.interactive-person-card .directory-avatar { width: 58px; height: 58px; }
+.dismiss-suggestion,
+.interactive-person-card button.dismiss-suggestion {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f3ecee;
+  color: #8c777d;
+  font-size: 17px;
+  cursor: pointer;
+}
+.interactive-person-card button.dismiss-suggestion:hover { background: #eadcdf; color: #70001d; }
+.person-card-actions { display: grid; grid-template-columns: 1fr 1fr; grid-column: 1 / -1; gap: 8px; align-self: end; width: 100%; margin-top: 19px; }
+.interactive-person-card .person-card-actions button { min-height: 35px; padding: 7px 10px; border-radius: 6px; font-size: 9px; font-weight: 800; cursor: pointer; }
+.interactive-person-card .person-card-actions button:disabled { opacity: .65; cursor: not-allowed; }
+.interactive-person-card .network-primary { border: 1px solid #70001d; background: #70001d; color: #fff; }
+.interactive-person-card .network-primary:hover:not(:disabled) { background: #8b0025; }
+.interactive-person-card .network-primary.pending { border-color: #d9c9cd; background: #eee6e8; color: #75666b; }
+.interactive-person-card .network-secondary { border: 1px solid #d3c3c7; background: #fff; color: #70001d; }
+.interactive-person-card .network-secondary:hover { background: #faf3f5; }
+.interactive-person-card .network-secondary.is-saved { border-color: #d5aa3e; background: #fff7dc; color: #735714; }
+.interactive-person-card .network-text-btn { grid-column: 1 / -1; min-height: 25px; border: 0; background: transparent; color: #7a6870; }
+.interactive-person-card .network-text-btn:hover { color: #70001d; text-decoration: underline; }
+.interactive-person-card .network-text-btn.danger { color: #a33b4c; }
+.interactive-person-card .network-text-btn.confirming { border: 1px solid #b32b43; background: #b32b43; color: #fff; text-decoration: none; }
+.connected-label { display: inline-flex; align-items: center; justify-content: center; min-height: 35px; border-radius: 6px; background: #e5f5e9; color: #26733c; font-size: 9px; font-weight: 900; }
+.request-person-card,
+.connected-person-card { min-height: 190px; }
+
+.network-empty { align-content: center; gap: 10px; }
+.network-empty span { margin: 0; color: #9a898e; }
+.network-profile-modal { width: min(530px, calc(100vw - 28px)); }
+.network-profile-summary { align-items: center; padding: 22px; }
+.directory-avatar.large { width: 76px; height: 76px; font-size: 20px; }
+.network-profile-summary > div:last-child { display: grid; gap: 4px; }
+.network-profile-summary > div:last-child strong { font-size: 18px; }
+.network-profile-summary > div:last-child small { color: #8d7c81; font-size: 10px; }
+.profile-match-banner { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 0 20px 16px; padding: 11px 13px; border-radius: 7px; background: #fff6dc; }
+.profile-match-banner strong { color: #765811; font-size: 11px; }
+.profile-match-banner span { color: #8b7337; font-size: 9px; text-align: right; }
+.profile-detail-wide { grid-column: 1 / -1; }
+.network-profile-actions .danger { background: #b32b43; color: #fff; }
+.network-toast { position: fixed; z-index: 180; right: 24px; bottom: 24px; max-width: min(340px, calc(100vw - 32px)); padding: 12px 16px; border-radius: 8px; background: #2f7b43; color: #fff; font-size: 11px; font-weight: 800; opacity: 0; pointer-events: none; transform: translateY(10px); transition: opacity .18s ease, transform .18s ease; box-shadow: 0 10px 28px rgba(18,70,34,.22); }
+.network-toast.show { opacity: 1; transform: translateY(0); }
+
+body.dark-mode .network-tabs { border-color: rgba(250,200,83,.18); background: #241116; }
+body.dark-mode .network-tabs button { color: #d4bdc3; }
+body.dark-mode .network-tabs button:hover { background: #321820; color: #fac853; }
+body.dark-mode .network-tabs button.active { background: #fac853; color: #31000a; }
+body.dark-mode .interactive-person-card:hover { border-color: rgba(250,200,83,.4); }
+body.dark-mode .interactive-person-card button.dismiss-suggestion { background: #321820; color: #c9adb5; }
+body.dark-mode .interactive-person-card .network-secondary { border-color: rgba(250,200,83,.28); background: #241116; color: #fac853; }
+body.dark-mode .interactive-person-card .network-secondary.is-saved { border-color: #d1a530; background: #3a2c10; color: #f6d98a; }
+
+/* Alumni account profile popover */
+.alumni-top-panel.account-panel {
+  width: min(400px, calc(100vw - 16px));
+  max-height: calc(100vh - 72px);
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 13px;
+}
+.account-profile-panel { background: #fff; }
+.account-profile-cover {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-height: 82px;
+  padding: 18px 20px;
+  background:
+    radial-gradient(circle at 88% 15%, rgba(244,205,96,.22), transparent 28%),
+    linear-gradient(120deg,#780020,#4d0014);
+}
+.account-profile-cover > span { color: #f2c95f; font-size: 10px; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
+.account-profile-cover > small { padding: 5px 9px; border: 1px solid rgba(255,255,255,.2); border-radius: 12px; background: rgba(255,255,255,.09); color: #fff; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.account-profile-identity { display: grid; grid-template-columns: 76px minmax(0,1fr); align-items: start; gap: 14px; margin-top: -34px; padding: 0 20px 14px; }
+.account-profile-identity > div:last-child { min-width: 0; padding-top: 42px; }
+.account-profile-avatar-wrap { position: relative; width: 76px; height: 76px; }
+.account-settings-avatar.account-profile-avatar { width: 76px; height: 76px; border: 4px solid #fff; background: #f3d286; box-shadow: 0 6px 16px rgba(61,0,16,.16); font-size: 23px; }
+.alumni-top-panel button.account-photo-shortcut {
+  position: absolute;
+  right: -2px;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #70001d;
+  color: #fff;
+  font-size: 11px;
+}
+.account-profile-identity h3 { margin: 0 0 3px; color: #302428; font-size: 18px; line-height: 1.2; }
+.account-profile-identity p { margin: 0 0 4px; color: #70001d; font-size: 11px; font-weight: 800; }
+.account-profile-identity span { color: #8b7a7f; font-size: 9px; }
+.account-profile-completeness { margin: 0 20px 14px; padding: 11px 13px; border: 1px solid #eadde0; border-radius: 8px; background: #fcf8f9; }
+.account-profile-completeness > div { display: flex; justify-content: space-between; margin-bottom: 8px; }
+.account-profile-completeness span { color: #78686d; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.account-profile-completeness strong { color: #70001d; font-size: 11px; }
+.account-profile-completeness > i { display: block; height: 6px; overflow: hidden; border-radius: 5px; background: #eadfe2; }
+.account-profile-completeness > i span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#70001d,#d6aa3d); }
+.account-profile-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 20px 15px; }
+.alumni-top-panel .account-profile-actions button { min-height: 36px; border: 1px solid #70001d; border-radius: 6px; background: #70001d; color: #fff; font-size: 9px; font-weight: 900; }
+.alumni-top-panel .account-profile-actions button.secondary { border-color: #d6c6ca; background: #fff; color: #70001d; }
+.account-profile-message { margin: -7px 20px 12px; }
+.account-profile-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 15px 20px; border-top: 1px solid #eee4e7; background: #fcfafb; }
+.account-profile-facts > div { display: grid; grid-template-columns: 27px minmax(0,1fr); gap: 8px; min-width: 0; padding: 10px; border: 1px solid #eadfe2; border-radius: 7px; background: #fff; }
+.account-profile-facts > div.wide { grid-column: 1 / -1; }
+.account-profile-facts i { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 7px; background: #f5e9ec; color: #70001d; }
+.account-profile-facts svg,
+.account-security-toggle svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.account-profile-facts span { min-width: 0; }
+.account-profile-facts small { display: block; margin-bottom: 3px; color: #9a898e; font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.account-profile-facts strong { display: block; overflow: hidden; color: #43363b; font-size: 9px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.account-profile-facts .wide strong { white-space: normal; word-break: break-word; }
+.alumni-top-panel button.account-security-toggle { display: flex; align-items: center; justify-content: space-between; width: calc(100% - 40px); margin: 14px 20px 18px; padding: 11px 12px; border: 1px solid #e2d5d9; border-radius: 8px; background: #fff; color: #4d3e43; text-align: left; }
+.account-security-toggle > span { display: flex; align-items: center; gap: 10px; }
+.account-security-toggle > span > svg { width: 18px; height: 18px; color: #70001d; }
+.account-security-toggle strong { display: block; color: #4d3e43; font-size: 10px; }
+.account-security-toggle small { display: block; margin-top: 2px; color: #938287; font-size: 8px; }
+.account-security-toggle b { color: #70001d; font-size: 16px; }
+.alumni-top-panel button.account-security-toggle:hover,
+.alumni-top-panel button.account-security-toggle.open { border-color: #c9adb5; background: #fbf5f7; }
+.account-security-form { margin: -7px 20px 20px; padding: 14px; border: 1px solid #eadde0; border-radius: 8px; background: #fcfafb; }
+.account-security-form label { gap: 5px; }
+.account-security-form input { min-height: 36px; }
+.account-security-form .primary-card-btn { min-height: 38px; }
+
+body.dark-mode .account-profile-panel { background: #241116; }
+body.dark-mode .account-profile-identity h3 { color: #fff6f8; }
+body.dark-mode .account-profile-identity p { color: #fac853; }
+body.dark-mode .account-profile-identity span { color: #d4bdc3; }
+body.dark-mode .account-settings-avatar.account-profile-avatar,
+body.dark-mode .alumni-top-panel button.account-photo-shortcut { border-color: #241116; }
+body.dark-mode .account-profile-completeness,
+body.dark-mode .account-profile-facts,
+body.dark-mode .account-profile-facts > div,
+body.dark-mode .account-security-form { border-color: rgba(250,200,83,.18); background: #2d171e; }
+body.dark-mode .account-profile-completeness span,
+body.dark-mode .account-profile-facts small,
+body.dark-mode .account-security-toggle small { color: #c7adb4; }
+body.dark-mode .account-profile-completeness strong,
+body.dark-mode .account-profile-facts i { color: #fac853; }
+body.dark-mode .account-profile-completeness > i { background: #47242e; }
+body.dark-mode .account-profile-facts { border-top-color: rgba(250,200,83,.16); }
+body.dark-mode .account-profile-facts i { background: #3a2027; }
+body.dark-mode .account-profile-facts strong { color: #f4e8eb; }
+body.dark-mode .alumni-top-panel .account-profile-actions button.secondary,
+body.dark-mode .alumni-top-panel button.account-security-toggle { border-color: rgba(250,200,83,.25); background: #241116; color: #fac853; }
+body.dark-mode .account-security-toggle strong { color: #f4e8eb; }
+body.dark-mode .account-security-toggle b,
+body.dark-mode .account-security-toggle > span > svg { color: #fac853; }
+
+@media (max-width: 520px) {
+  .alumni-top-panel.account-panel { position: fixed; top: 62px; right: 8px; width: calc(100vw - 16px); max-height: calc(100vh - 70px); }
+  .account-profile-cover { min-height: 75px; padding: 16px; }
+  .account-profile-identity { padding-inline: 16px; }
+  .account-profile-completeness { margin-inline: 16px; }
+  .account-profile-actions { padding-inline: 16px; }
+  .account-profile-facts { padding-inline: 16px; }
+  .alumni-top-panel button.account-security-toggle { width: calc(100% - 32px); margin-inline: 16px; }
+  .account-security-form { margin-inline: 16px; }
+}
+body.dark-mode .interactive-person-card .network-primary.pending { border-color: #4c343b; background: #321f25; color: #c9b4ba; }
+body.dark-mode .connected-label { background: rgba(39,130,70,.2); color: #9ee4b4; }
+body.dark-mode .profile-match-banner { background: rgba(250,200,83,.12); }
+body.dark-mode .profile-match-banner strong { color: #fac853; }
+body.dark-mode .profile-match-banner span,
+body.dark-mode .network-profile-summary > div:last-child small { color: #d4bdc3; }
+
+@media (max-width: 800px) {
+  .network-hero { align-items: flex-start; flex-direction: column; }
+  .network-summary { width: 100%; grid-template-columns: repeat(3, 1fr); }
+  .network-tabs { overflow-x: auto; }
+  .network-tabs button { flex: 1 0 auto; }
+}
+
+@media (max-width: 520px) {
+  .network-hero { padding: 22px 20px; }
+  .network-hero h1 { font-size: 21px; }
+  .network-summary strong { font-size: 18px; }
+  .network-tabs { margin-top: 13px; }
+  .network-tabs button { padding-inline: 11px; }
+  .interactive-directory-grid { grid-template-columns: 1fr; }
+  .interactive-person-card { grid-template-columns: 54px minmax(0, 1fr); min-height: 194px; padding: 17px; }
+  .interactive-person-card .directory-avatar { width: 50px; height: 50px; }
+  .person-card-actions { grid-column: 1 / -1; }
+  .network-profile-actions { display: grid; grid-template-columns: 1fr; }
+  .network-toast { right: 16px; bottom: 16px; }
+}
+
+/* Shared sidebar branding — Alumni, Admin, Coordinator, and Employer use the
+   same markup, so keep one final source of truth after the role stylesheets. */
+.app:not(.sidebar-collapsed) .sidebar > .brand {
+  width: 100%;
+  padding: 0 20px 10px;
+  box-sizing: border-box;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .brand-text,
+.app:not(.sidebar-collapsed) .sidebar .tsu-top-brand-link {
+  display: block;
+  width: 100%;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .tsu-top-brand-link {
+  margin: 0 0 6px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .toptsu-logo {
+  display: block;
+  width: 100%;
+  max-width: 158px;
+  height: 42px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .alumni-brand {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  width: calc(100% + 7px);
+  min-height: 42px;
+  margin: 0 0 0 -7px;
+  padding: 5px 7px;
+  box-sizing: border-box;
+  border-radius: 9px;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .alumni-logo {
+  display: block;
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .alumni-brand p {
+  margin: 0;
+  color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+@media (max-width: 600px) {
+  .app:not(.sidebar-collapsed) .sidebar > .brand { padding-inline: 20px; }
+}
