@@ -162,7 +162,7 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
       </Modal>
 
       <Modal open={panel === "settings"} onClose={closeSettings} className="topbar-popover settings-popover">
-        <SettingsForm
+        <DashboardSettingsForm
           settings={settings}
           onSave={(s) => {
             setSettings(s);
@@ -180,7 +180,15 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
   );
 }
 
-function SettingsForm({ settings, onSave, onChangeTheme, onClose, showToast }) {
+export function DashboardSettingsForm({
+  settings,
+  onSave,
+  onChangeTheme,
+  onClose,
+  showToast,
+  emailAlertDescription = "Send account and tracer updates to admin email.",
+  notificationDescription = "Show badges for pending reviews and new posts.",
+}) {
   const [local, setLocal] = useState(settings);
   useEffect(() => setLocal(settings), [settings]);
   return (
@@ -218,7 +226,7 @@ function SettingsForm({ settings, onSave, onChangeTheme, onClose, showToast }) {
           </div>
         </div>
         <label className="setting-row">
-          <span><strong>Email alerts</strong><small>Send account and tracer updates to admin email.</small></span>
+          <span><strong>Email alerts</strong><small>{emailAlertDescription}</small></span>
           <input
             type="checkbox"
             checked={local.emailAlerts}
@@ -226,7 +234,7 @@ function SettingsForm({ settings, onSave, onChangeTheme, onClose, showToast }) {
           />
         </label>
         <label className="setting-row">
-          <span><strong>Dashboard notifications</strong><small>Show badges for pending reviews and new posts.</small></span>
+          <span><strong>Dashboard notifications</strong><small>{notificationDescription}</small></span>
           <input
             type="checkbox"
             checked={local.dashboardNotifications}
