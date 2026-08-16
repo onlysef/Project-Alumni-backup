@@ -16,7 +16,19 @@ const EventInterested    = require('../models/EventInterested');
 const Notification       = require('../models/Notification');
 const Graduate           = require('../models/Graduate');
 const EmbeddingDocument  = require('../models/EmbeddingDocument');
+const SavedJob           = require('../models/SavedJob');
+const JobApplication     = require('../models/JobApplication');
+const JobAlertSeen       = require('../models/JobAlertSeen');
+const Resume             = require('../models/Resume');
+const ImportedFile       = require('../models/ImportedFile');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
+const { matchesFileSignature } = require('../utils/fileSignature');
+
+// Same pattern as the schema-level match validator on User.email — checked
+// here too so a malformed address in a single-account create or a bulk
+// import row gets a clean 400/skip instead of surfacing as a raw Mongoose
+// ValidationError.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -61,6 +73,9 @@ const createUser = async (req, res) => {
     const { firstName, middleInitial, lastName, email, role, college, course, graduationYear, track } = req.body;
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
+    }
+    if (!EMAIL_RE.test(email.trim())) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
     }
     // College is the basis for every college-scoping check in the system
     // (coordinator data access, alumni tracer form, employment records) — an
@@ -199,13 +214,22 @@ const deleteUser = async (req, res) => {
       ActivityLog.deleteMany({ user_id: req.params.id }),
       EmploymentActivity.deleteMany({ user_id: req.params.id }),
       Notification.deleteMany({ user_id: req.params.id }),
+      SavedJob.deleteMany({ alumni_id: req.params.id }),
+      JobApplication.deleteMany({ alumni_id: req.params.id }),
+      JobAlertSeen.deleteMany({ alumni_id: req.params.id }),
+      Resume.deleteOne({ alumni_id: req.params.id }),
       (async () => {
         if (!user.email) return;
-        // Graduate.email isn't schema-normalized to lowercase (bulk-imported
-        // rows keep the source spreadsheet's original casing), so an exact
-        // match here silently misses records and leaves them orphaned.
+        // Prefer the indexed user_id FK (set whenever a live tracer/employment
+        // action touched this record); Graduate.email isn't schema-normalized
+        // to lowercase (bulk-imported rows keep the source spreadsheet's
+        // original casing), so an exact match there would still silently miss
+        // records — kept as a fallback for rows that predate user_id.
         const graduate = await Graduate.findOneAndDelete({
-          $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, user.email.toLowerCase().trim()] },
+          $or: [
+            { user_id: req.params.id },
+            { $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, user.email.toLowerCase().trim()] } },
+          ],
         });
         if (graduate) {
           await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
@@ -225,14 +249,42 @@ const deleteUser = async (req, res) => {
 
 // POST /api/admin/users/import
 const importUsers = async (req, res) => {
+  let importedFile = null;
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
 
-    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
-    const sheet    = workbook.Sheets[workbook.SheetNames[0]];
-    const rows     = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+    const ext = req.file.originalname.split('.').pop().toLowerCase();
+    if (!matchesFileSignature(req.file.buffer, ext)) {
+      return res.status(400).json({ message: `File content doesn't match a .${ext} file.` });
+    }
 
-    if (!rows.length) return res.status(400).json({ message: 'Spreadsheet is empty.' });
+    // Bulk account imports had no file-level audit trail at all — only the
+    // per-row email-uniqueness check, with no record of who imported what
+    // file or when. Same tracking record the AI document-ingestion pipeline
+    // already uses for this.
+    const contentHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+    importedFile = await ImportedFile.create({
+      file_name:    req.file.originalname,
+      file_type:    ext === 'csv' ? 'csv' : 'excel',
+      content_hash: contentHash,
+      status:       'processing',
+      imported_by:  req.user.id,
+    });
+
+    let workbook, sheet, rows;
+    try {
+      workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
+      sheet    = workbook.Sheets[workbook.SheetNames[0]];
+      rows     = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+    } catch (parseErr) {
+      await ImportedFile.updateOne({ _id: importedFile._id }, { status: 'failed', error_message: parseErr.message });
+      return res.status(400).json({ message: 'Could not read that spreadsheet. It may be corrupted.' });
+    }
+
+    if (!rows.length) {
+      await ImportedFile.updateOne({ _id: importedFile._id }, { status: 'failed', error_message: 'Spreadsheet is empty.' });
+      return res.status(400).json({ message: 'Spreadsheet is empty.' });
+    }
 
     const created = [];
     const skipped = [];
@@ -254,6 +306,10 @@ const importUsers = async (req, res) => {
 
       if (!firstName || !lastName || !email) {
         failed.push({ email: email || '(blank)', reason: 'Missing firstName, lastName, or email.' });
+        continue;
+      }
+      if (!EMAIL_RE.test(email)) {
+        failed.push({ email, name: `${firstName} ${lastName}`, reason: 'Invalid email format.' });
         continue;
       }
 
@@ -290,6 +346,10 @@ const importUsers = async (req, res) => {
     }
 
     if (!toInsert.length) {
+      await ImportedFile.updateOne(
+        { _id: importedFile._id },
+        { status: 'done', ingested_at: new Date(), raw_row_count: rows.length, chunk_count: 0 }
+      );
       return res.status(200).json({
         message: `Import complete. 0 users imported${skipped.length ? `, ${skipped.length} skipped` : ''}${failed.length ? `, ${failed.length} failed` : ''}.`,
         created, skipped, failed,
@@ -347,6 +407,11 @@ const importUsers = async (req, res) => {
       ...(failed.length > 0  ? [`${failed.length} failed`]   : []),
     ];
 
+    await ImportedFile.updateOne(
+      { _id: importedFile._id },
+      { status: 'done', ingested_at: new Date(), raw_row_count: rows.length, chunk_count: created.length }
+    );
+
     res.status(200).json({
       message: `Import complete. ${parts.join(', ')}.`,
       created,
@@ -355,6 +420,9 @@ const importUsers = async (req, res) => {
     });
   } catch (err) {
     console.error('importUsers error:', err);
+    if (importedFile) {
+      await ImportedFile.updateOne({ _id: importedFile._id }, { status: 'failed', error_message: err.message }).catch(() => {});
+    }
     if (!res.headersSent) res.status(500).json({ message: err.message || 'Server error.' });
   }
 };

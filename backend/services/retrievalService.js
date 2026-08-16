@@ -53,7 +53,22 @@ async function retrieveContext(queryText, options = {}) {
   ];
 
   const results = await EmbeddingDocument.aggregate(pipeline);
-  return results;
+
+  // $vectorSearch can return near/exact-duplicate chunks (e.g. the same
+  // content re-ingested under a different file_id) as separate hits — both
+  // would otherwise occupy separate slots in the top-K context for zero
+  // added information. Results already arrive best-score-first, so keeping
+  // the first occurrence of each distinct content string keeps the
+  // highest-scoring copy and drops the redundant ones.
+  const seenContent = new Set();
+  const deduped = [];
+  for (const chunk of results) {
+    const key = (chunk.content || '').trim();
+    if (key && seenContent.has(key)) continue;
+    if (key) seenContent.add(key);
+    deduped.push(chunk);
+  }
+  return deduped;
 }
 
 module.exports = { retrieveContext };

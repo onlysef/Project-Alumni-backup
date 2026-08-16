@@ -67,9 +67,8 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
 
   const closeSettings = useCallback(() => {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");
-    document.body.classList.toggle("compact-admin", settings.compactTables ?? false);
     setPanel(null);
-  }, [settings.theme, settings.compactTables]);
+  }, [settings.theme]);
 
   useEffect(() => {
     if (!panel) return;

@@ -8,9 +8,19 @@ const { getCollegeScopeEmails } = require('../utils/collegeScope');
 // `data` holds the raw row; normalized fields are extracted for fast aggregation.
 const GraduateSchema = new mongoose.Schema(
   {
-    fileId:    { type: mongoose.Schema.Types.ObjectId, ref: 'ImportedFile', default: null, index: true },
+    fileId:    { type: mongoose.Schema.Types.ObjectId, ref: 'ImportedFile', default: null },
     rowIndex:  { type: Number },
     data:      { type: mongoose.Schema.Types.Mixed, required: true },
+
+    // Real FK to the matching User account, when one exists — nullable,
+    // because plenty of Graduate rows are historical bulk-import data with
+    // no registered account at all (and may never get one). Set directly by
+    // submitTracerStudy/updateMyEmployment (an authenticated session, not a
+    // guess) whenever a live alumni action touches this record; backfilled
+    // for older rows by scripts/backfillGraduateUserId.js. Correlation used
+    // to be by email string alone, which silently desyncs if a User's email
+    // is ever edited without the matching Graduate row being updated too.
+    user_id:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
 
     // ─── Identity ──────────────────────────────────────────────────────────────
     name:          { type: String, trim: true, default: null },
@@ -19,8 +29,8 @@ const GraduateSchema = new mongoose.Schema(
     gender:        { type: String, trim: true, default: null },
 
     // ─── Academic ─────────────────────────────────────────────────────────────
-    program:       { type: String, trim: true, index: true, default: null },
-    yearGraduated: { type: Number, index: true, default: null },
+    program:       { type: String, trim: true, default: null },
+    yearGraduated: { type: Number, default: null },
 
     // ─── Employment ───────────────────────────────────────────────────────────
     employmentStatus: { type: String, trim: true, index: true, default: null }, // Yes / No / Employed / Unemployed

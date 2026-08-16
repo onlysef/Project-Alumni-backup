@@ -111,6 +111,11 @@ const STOPWORDS = new Set([
   // at all. Filler/conversational verbs like this are never a typo of a
   // short demographic noun, same reasoning as the other entries here.
   'mean', 'means', 'meant',
+  // Ordinary English words that sit exactly 1 edit away from an unrelated
+  // VOCABULARY term: "word" -> "work", "rule" -> "role", "filed" -> "field",
+  // "late" -> "rate" (single-letter substitution). None of these are ever a
+  // typo of the domain term they'd get rewritten to.
+  'word', 'words', 'rule', 'rules', 'filed', 'late',
 ]);
 
 // Damerau-Levenshtein (optimal string alignment): like Levenshtein but also

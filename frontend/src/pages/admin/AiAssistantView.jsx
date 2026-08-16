@@ -631,7 +631,16 @@ export default function AiAssistantView() {
           if (!line.startsWith("data: ")) continue;
           try {
             const payload = JSON.parse(line.slice(6));
-            if (payload.token) {
+            if (payload.reset) {
+              // The server discarded a partial answer and is retrying from
+              // scratch (e.g. after a rate-limit mid-stream) — clear what's
+              // shown so far instead of letting the retry's tokens pile
+              // onto it as a garbled, doubled-up answer.
+              fullAnswer = "";
+              setMessages((m) =>
+                m.map((msg) => (msg.id === streamingId ? { ...msg, text: "" } : msg))
+              );
+            } else if (payload.token) {
               fullAnswer += payload.token;
               setMessages((m) =>
                 m.map((msg) =>

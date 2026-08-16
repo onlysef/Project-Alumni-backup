@@ -4,8 +4,11 @@ const userSchema = new mongoose.Schema({
   firstName:    { type: String, required: true, trim: true },
   middleInitial: { type: String, default: '', trim: true },
   lastName:   { type: String, required: true, trim: true },
-  email:      { type: String, required: true, unique: true, lowercase: true, trim: true },
-  password:   { type: String, required: true },
+  email:      {
+    type: String, required: true, unique: true, lowercase: true, trim: true,
+    match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please enter a valid email address.'],
+  },
+  password:   { type: String, required: true, select: false },
   role:       { type: String, enum: ['admin', 'alumni', 'coordinator', 'employer'], default: 'alumni' },
   status:     { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
   avatarUrl:      { type: String, default: '' },

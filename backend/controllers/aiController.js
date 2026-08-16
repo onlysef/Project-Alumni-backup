@@ -7,6 +7,7 @@ const Graduate      = require('../models/Graduate');
 const { generateAnswer }  = require('../services/ragService');
 const { getEmbedding }    = require('../services/embeddingService');
 const { parseFile }       = require('../utils/fileParser');
+const { matchesFileSignature } = require('../utils/fileSignature');
 const logger               = require('../utils/logger');
 
 const hf = new HfInference(process.env.HF_API_KEY);
@@ -74,6 +75,12 @@ const chat = async (req, res) => {
       { college },
       (token) => {
         res.write(`data: ${JSON.stringify({ token })}\n\n`);
+      },
+      () => {
+        // A partial answer already reached the client and is being retried
+        // from scratch — tell it to discard that fragment before more
+        // tokens arrive, instead of appending a second answer onto it.
+        res.write(`data: ${JSON.stringify({ reset: true })}\n\n`);
       }
     );
 
@@ -106,6 +113,9 @@ const ingestFile = [
     const allowedExts = ['xlsx', 'xls', 'csv', 'docx', 'pdf'];
     if (!allowedExts.includes(ext)) {
       return res.status(400).json({ message: `Unsupported file type: .${ext}` });
+    }
+    if (!matchesFileSignature(buffer, ext)) {
+      return res.status(400).json({ message: `File content doesn't match a .${ext} file.` });
     }
 
     // Re-uploading the exact same file (even under a different name) used to

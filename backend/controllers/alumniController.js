@@ -176,10 +176,25 @@ const updatePassword = async (req, res) => {
 };
 
 // PUT /api/alumni/avatar
+// Frontend sends this straight from FileReader.readAsDataURL(), so a
+// legitimate upload always looks like "data:image/<type>;base64,<data>" —
+// anything else is either not an image or not a data URI at all.
+const AVATAR_DATA_URI_RE = /^data:image\/(png|jpe?g|gif|webp);base64,([a-zA-Z0-9+/]+=*)$/;
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB decoded
+
 const updateAvatar = async (req, res) => {
   try {
     const { avatarUrl } = req.body;
     if (typeof avatarUrl !== 'string') return res.status(400).json({ message: 'avatarUrl is required.' });
+
+    const match = avatarUrl.match(AVATAR_DATA_URI_RE);
+    if (!match) return res.status(400).json({ message: 'Avatar must be a PNG, JPEG, GIF, or WEBP image.' });
+
+    const decodedSize = Buffer.byteLength(match[2], 'base64');
+    if (decodedSize > MAX_AVATAR_BYTES) {
+      return res.status(400).json({ message: 'Avatar image must be smaller than 2MB.' });
+    }
+
     await User.findByIdAndUpdate(req.user.id, { avatarUrl });
     res.json({ avatarUrl });
   } catch (err) {
@@ -370,6 +385,7 @@ const submitTracerStudy = async (req, res) => {
     try {
       if (updatedUser?.email) {
         const graduatePatch = {
+          user_id:          alumniId,
           name:             `${updatedUser.firstName} ${updatedUser.lastName}`.trim(),
           email:            updatedUser.email.toLowerCase().trim(),
           contact:          body.contactNumber || null,
@@ -400,8 +416,12 @@ const submitTracerStudy = async (req, res) => {
           data: body,
         };
 
+        // Matches an existing row by user_id (already linked) OR by email
+        // (a bulk-imported row that predates this account, or a legacy
+        // record from before user_id existed) — either way, $set below
+        // stamps user_id onto it going forward.
         const graduateDoc = await Graduate.findOneAndUpdate(
-          { email: graduatePatch.email },
+          { $or: [{ user_id: alumniId }, { email: graduatePatch.email }] },
           { $set: graduatePatch },
           { upsert: true, new: true }
         );
@@ -595,8 +615,12 @@ const updateMyEmployment = async (req, res) => {
     try {
       const profileUser = await User.findById(req.user.id).select('email').lean();
       if (profileUser?.email) {
-        const graduate = await Graduate.findOne({ email: profileUser.email.toLowerCase().trim() });
+        const graduate = await Graduate.findOne({
+          $or: [{ user_id: req.user.id }, { email: profileUser.email.toLowerCase().trim() }],
+        });
         if (graduate) {
+          // Backfills user_id onto a row that was only ever matched by email.
+          graduate.user_id = req.user.id;
           graduate.employmentStatus = tracerPatch.employmentStatus;
           graduate.workLocation = tracerPatch.placeOfWork || null;
           graduate.jobTitle = tracerPatch.occupationTitle || null;
