@@ -20,6 +20,7 @@ const SavedJob           = require('../models/SavedJob');
 const JobApplication     = require('../models/JobApplication');
 const JobAlertSeen       = require('../models/JobAlertSeen');
 const Resume             = require('../models/Resume');
+const Interview          = require('../models/Interview');
 const ImportedFile       = require('../models/ImportedFile');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 const { matchesFileSignature } = require('../utils/fileSignature');
@@ -152,7 +153,7 @@ const getUsers = async (req, res) => {
 // PATCH /api/admin/users/:id
 const updateUser = async (req, res) => {
   try {
-    const { firstName, middleInitial, lastName, email, role, status, college, course, graduationYear, track } = req.body;
+    const { firstName, middleInitial, lastName, email, role, status, college, course, graduationYear, track, partnershipId } = req.body;
     const updates = {};
     if (firstName      !== undefined) updates.firstName      = firstName.trim();
     if (middleInitial  !== undefined) updates.middleInitial  = middleInitial.trim();
@@ -164,6 +165,9 @@ const updateUser = async (req, res) => {
     if (course         !== undefined) updates.course         = course ? course.trim().toUpperCase() : course;
     if (graduationYear !== undefined) updates.graduationYear = graduationYear ? Number(graduationYear) : undefined;
     if (track          !== undefined) updates.track          = (updates.course ?? course) === 'BSIT' ? (track || '') : '';
+    // Links an employer account to the partner company it's allowed to post
+    // jobs under — job creation is blocked until this is set. '' unlinks.
+    if (partnershipId  !== undefined) updates.partnershipId  = partnershipId || null;
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -218,6 +222,7 @@ const deleteUser = async (req, res) => {
       JobApplication.deleteMany({ alumni_id: req.params.id }),
       JobAlertSeen.deleteMany({ alumni_id: req.params.id }),
       Resume.deleteOne({ alumni_id: req.params.id }),
+      Interview.deleteMany({ $or: [{ alumni_id: req.params.id }, { employer_id: req.params.id }] }),
       (async () => {
         if (!user.email) return;
         // Prefer the indexed user_id FK (set whenever a live tracer/employment

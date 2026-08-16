@@ -44,6 +44,7 @@ function mapUser(u) {
     track:          u.track          || "",
     graduationYear: u.graduationYear || "",
     company:        u.company        || "",
+    partnershipId:  u.partnershipId  || "",
   };
 }
 
@@ -77,9 +78,14 @@ export default function AccountsView() {
   const [confirm, setConfirm]         = useState(null);
   const [selected, setSelected]       = useState(new Set());
   const [bulkBusy, setBulkBusy]       = useState(false);
+  const [partnerships, setPartnerships] = useState([]);
 
   useEffect(() => {
       fetchUsers();
+      fetch(`${API}/admin/partnerships`, { headers: authHeaders() })
+        .then((res) => res.json())
+        .then((data) => setPartnerships(data.partnerships ?? []))
+        .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -434,6 +440,7 @@ export default function AccountsView() {
 
       <AdminEntryModal
         entry={entry}
+        partnerships={partnerships}
         onClose={() => setEntry(null)}
         onSubmit={async (data) => {
           if (entry.row) {
@@ -454,6 +461,9 @@ export default function AccountsView() {
                 if (data.course)         payload.course         = data.course;
                 if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
                 payload.track = data.course === "BSIT" ? (data.track || "") : "";
+              }
+              if (data.role.toLowerCase() === "employer") {
+                payload.partnershipId = data.partnershipId || "";
               }
               const res = await fetch(`${API}/admin/users/${entry.row.id}`, {
                 method: "PATCH",
@@ -683,13 +693,15 @@ export function ImportModal({ open, onClose, onDone, showToast }) {
 
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 
-export function AdminEntryModal({ entry, onClose, onSubmit }) {
+export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] }) {
   const [role,    setRole]    = React.useState(entry?.row?.role    || "Alumni");
   const [college, setCollege] = React.useState(entry?.row?.college || "");
+  const [partnershipId, setPartnershipId] = React.useState(entry?.row?.partnershipId || "");
 
   React.useEffect(() => {
     setRole(entry?.row?.role       || "Alumni");
     setCollege(entry?.row?.college || "");
+    setPartnershipId(entry?.row?.partnershipId || "");
   }, [entry]);
 
   if (!entry) return null;
@@ -717,6 +729,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
               status:         f.status        ? f.status.value         : undefined,
               college:        f.college       ? f.college.value        : undefined,
               graduationYear: f.graduationYear ? f.graduationYear.value : undefined,
+              partnershipId:  f.partnershipId ? f.partnershipId.value  : undefined,
             });
           }}
         >
@@ -753,6 +766,14 @@ export function AdminEntryModal({ entry, onClose, onSubmit }) {
                 <select name="college" value={college} onChange={(e) => setCollege(e.target.value)} required>
                   <option value="">— Select college —</option>
                   {COLLEGES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </label>
+            )}
+            {isEdit && role === "Employer" && (
+              <label>Partner Company
+                <select name="partnershipId" value={partnershipId} onChange={(e) => setPartnershipId(e.target.value)}>
+                  <option value="">— Not linked to a partnership —</option>
+                  {partnerships.map((p) => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
                 </select>
               </label>
             )}

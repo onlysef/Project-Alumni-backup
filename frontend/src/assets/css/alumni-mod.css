@@ -261,6 +261,38 @@
 .completed-event p { margin: 0; color: #76656a; font-size: 12px; }
 .completed-event > span { flex-shrink: 0; padding: 4px 12px; border-radius: 999px; background: #71bf70; color: #fff; font-size: 11px; font-weight: 700; }
 
+/* Event feedback status/actions on a "Recently Completed" card */
+.completed-event-feedback { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; max-width: 170px; text-align: right; }
+.feedback-status-pill { padding: 4px 12px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.feedback-status-pill.fb-submitted { background: #71bf70; color: #fff; }
+.feedback-status-pill.fb-available { background: #f0b429; color: #4a3400; }
+.feedback-status-pill.fb-unavailable { background: #ece6e8; color: #7a6b70; }
+.completed-event-feedback small { color: #948589; font-size: 10px; line-height: 1.4; }
+.completed-event-feedback .primary-card-btn,
+.completed-event-feedback .details-btn { padding: 6px 14px; font-size: 11px; }
+
+/* Event feedback form / response modal */
+.event-feedback-modal { width: min(480px, 92vw); max-height: 86vh; overflow-y: auto; }
+.event-feedback-fields { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.event-feedback-error { margin: 10px 0 0; color: #b3261e; font-size: 12px; font-weight: 600; }
+.event-feedback-comments { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: #54484c; }
+.event-feedback-comments textarea { padding: 10px 12px; border: 1px solid #d8c9cd; border-radius: 6px; font: 400 13px 'Manrope', sans-serif; resize: vertical; }
+.event-feedback-readonly { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.event-feedback-comments-readonly { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.event-feedback-comments-readonly span { font-weight: 700; color: #54484c; }
+.event-feedback-comments-readonly p { margin: 0; color: #2f292b; white-space: pre-wrap; }
+.event-feedback-submitted-at { margin: 0; color: #948589; font-size: 11px; }
+
+/* Star rating control */
+.star-rating { display: flex; align-items: center; gap: 10px; }
+.star-rating-sm { gap: 8px; }
+.star-rating-label { flex: 1; color: #54484c; font-size: 12px; font-weight: 700; }
+.star-rating-stars { display: flex; gap: 2px; }
+.star-rating .star { padding: 2px; border: 0; background: transparent; color: #d8c9cd; font-size: 22px; line-height: 1; cursor: pointer; }
+.star-rating-sm .star { font-size: 17px; }
+.star-rating .star.filled { color: #f0b429; }
+.star-rating .star:disabled { cursor: default; }
+
 /* Alumni home */
 .alumni-home-page {
   width: 100%;
@@ -891,6 +923,10 @@
 .job-connect-page .connect-job-main { position: relative; align-self: center; padding: 22px 20px; }
 .job-connect-page .connect-job-title h3 { font-size: 18px; }
 .job-connect-page .connect-job-title p { color: #30272a; font-size: 10px; line-height: 1.25; }
+.connect-applied-badge { flex: 0 0 auto; align-self: flex-start; padding: 5px 10px; border-radius: 12px; background: #eaf7ee; color: #1f6b3a; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.apply-job.already-applied { border-color: #cdbec2; background: #f3edef; color: #65575b; }
+body.dark-mode .connect-applied-badge { background: #1a3324; color: #7fd39f; }
+body.dark-mode .apply-job.already-applied { border-color: #4a3d41; background: #2a2226; color: #d4bdc3; }
 .job-connect-page .connect-job-description { max-width: 470px; margin: 17px 0; color: #3f3538; font-size: 10px; }
 .connect-posted { display: inline-block; margin-right: 6px; margin-bottom: 8px; padding: 7px 10px; border-radius: 3px; background: #70001d; color: #f1cf70; font-size: 8px; font-weight: 800; }
 .connect-posted.connect-saved-date { background: #d1a530; color: #4c3a08; }
@@ -926,6 +962,12 @@
 .job-stat-clickable { cursor: pointer; transition: border-color .15s, background .15s; }
 .job-stat-clickable:hover { border-color: #d1a530; background: #fffaf0; }
 .job-view-toggle { border: 1px solid #70001d; border-radius: 20px; padding: 6px 14px; background: transparent; color: #70001d; font-size: 9px; font-weight: 800; cursor: pointer; }
+.job-source-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+.job-source-filter button { border: 1px solid #d9cbcf; border-radius: 20px; padding: 7px 14px; background: #fff; color: #65575b; font-size: 10px; font-weight: 700; cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.job-source-filter button:hover { border-color: #70001d; color: #70001d; }
+.job-source-filter button.active { border-color: #70001d; background: #70001d; color: #fff; }
+body.dark-mode .job-source-filter button { border-color: #4a3d41; background: #2a2226; color: #d4bdc3; }
+body.dark-mode .job-source-filter button.active { border-color: #fac853; background: #fac853; color: #3a2e10; }
 .job-connect-page .connect-skill-gap { margin: 0; padding: 23px 16px; }
 .job-connect-page .connect-skill-gap {
   background-color: #70001d !important;
@@ -1882,6 +1924,17 @@ body.dark-mode .alumni-action-modal h2 { color: #fac853; }
 body.dark-mode .alumni-action-modal p { color: #e7cfd4; }
 body.dark-mode .completed-event b { color: #fff6f8; }
 body.dark-mode .completed-event p { color: #d4bdc3; }
+body.dark-mode .feedback-status-pill.fb-unavailable { background: #351721; color: #d4bdc3; }
+body.dark-mode .feedback-status-pill.fb-available { background: #fac853; color: #31000a; }
+body.dark-mode .completed-event-feedback small { color: #b99ba4; }
+body.dark-mode .event-feedback-comments,
+body.dark-mode .star-rating-label { color: #e7cfd4; }
+body.dark-mode .event-feedback-comments textarea { border-color: rgba(250, 200, 83, .3); background: #2f171e; color: #f3e7ea; }
+body.dark-mode .event-feedback-comments-readonly span { color: #e7cfd4; }
+body.dark-mode .event-feedback-comments-readonly p { color: #f3e7ea; }
+body.dark-mode .event-feedback-submitted-at { color: #b99ba4; }
+body.dark-mode .star-rating .star { color: #4a2c35; }
+body.dark-mode .star-rating .star.filled { color: #fac853; }
 body.dark-mode .announcement-filter-bar { background: #321820; border-color: rgba(250, 200, 83, .14); }
 body.dark-mode .announcement-filter-bar button { border-color: rgba(250, 200, 83, .25); background: #241116; color: #e7cfd4; }
 body.dark-mode .announcement-filter-bar button.active { border-color: #fac853; background: #fac853; color: #31000a; }

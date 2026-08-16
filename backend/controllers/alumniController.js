@@ -10,12 +10,15 @@ const Announcement         = require('../models/Announcement');
 const SavedJob              = require('../models/SavedJob');
 const Resume                = require('../models/Resume');
 const JobApplication        = require('../models/JobApplication');
+const Job                   = require('../models/Job');
 const Event                = require('../models/Event');
+const Notification         = require('../models/Notification');
 const { getTracerFormConfig } = require('./tracerFormConfigController');
 const { getEmbedding }        = require('../services/embeddingService');
 const careerjetService         = require('../services/careerjetService');
 const { tracerRowToText }     = require('../utils/fileParser');
 const { sendInquiryEmail }    = require('../utils/emailService');
+const { getResumeForAlumnus } = require('../utils/resumeBuilder');
 const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill } = require('../utils/skillMatching');
 
 // The set of keys that the TracerStudyResponse schema handles directly.
@@ -681,6 +684,33 @@ function scoreCareerjetJobs(rawJobs, { userSkillsText, location, typeLabel }) {
       salary: job.salary || '',
       match: skills.length ? Math.round((matchedCount / skills.length) * 100) : null,
       skills,
+    };
+  });
+}
+
+// Same shape/scoring as scoreCareerjetJobs, for jobs posted by TSU partner
+// employers through the internal Job model instead of pulled from
+// Careerjet. `internal: true` + a synthetic "url" (Job has no real external
+// posting to link to) is what JobCard uses to render "Apply now" as an
+// in-app application instead of an outbound link.
+function scoreInternalJobs(rawJobs, { userSkillsText }) {
+  return rawJobs.map((job) => {
+    const jobText = `${job.title || ''} ${job.description || ''}`;
+    const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
+    const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
+    const matchedCount = skills.filter((s) => s.matched).length;
+    return {
+      title: job.title,
+      company: job.partnershipId?.name || 'Company not listed',
+      location: job.location || 'Philippines',
+      type: job.jobType || '',
+      posted: job.createdAt || '',
+      url: `internal:${job._id}`,
+      description: job.description || '',
+      salary: '',
+      match: skills.length ? Math.round((matchedCount / skills.length) * 100) : null,
+      skills,
+      internal: true,
     };
   });
 }
@@ -1420,6 +1450,30 @@ const searchJobs = async (req, res) => {
   }
 };
 
+// GET /api/alumni/jobs/partner-postings — jobs posted by TSU partner
+// employers through the Employer portal (routes/employer.js postJob), not
+// pulled from Careerjet. Shown as a separate section on Job Connect since
+// "Apply now" here logs an in-app application instead of opening an
+// external link.
+const getPartnerJobPostings = async (req, res) => {
+  try {
+    const employment = await AlumniEmployment.findOne({ alumni_id: req.user.id }).lean();
+    const userSkillsText = employment?.skills || '';
+
+    const rawJobs = await Job.find({ status: 'open' })
+      .populate('partnershipId', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const jobs = scoreInternalJobs(rawJobs, { userSkillsText });
+    sortJobsByMatchThenDate(jobs);
+    res.json({ jobs });
+  } catch (err) {
+    console.error('getPartnerJobPostings error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 const getSavedJobs = async (req, res) => {
   try {
     const jobs = await SavedJob.find({ alumni_id: req.user.id }).sort({ createdAt: -1 }).lean();
@@ -1477,100 +1531,14 @@ const updateJobAlertsPref = async (req, res) => {
   }
 };
 
-// Resume's second experience line is meant to read as a date range, the
-// same convention every resume template on the page (preview, PDF, .doc)
-// follows — showing the raw employment_type/years_in_current_job bucket
-// values there instead ("Regular/Permanent · 2 to 3 years") looked like a
-// broken date line, since those are internal HR classifications, not dates.
-// date_employed is a real timestamp, so prefer an actual "Month Year –
-// Present" line built from it; years_in_current_job (an imprecise bucket
-// like "2 to 3 years", not a start date) is only the fallback when no
-// date_employed is on file at all.
-function formatEmploymentDuration(employment) {
-  if (employment?.date_employed) {
-    const start = new Date(employment.date_employed);
-    if (!Number.isNaN(start.getTime())) {
-      const startLabel = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      const stillThere = employment.employment_status === 'Employed' || employment.employment_status === 'Self-employed';
-      return stillThere ? `${startLabel} - Present` : startLabel;
-    }
-  }
-  return employment?.years_in_current_job || '';
-}
-
 const getMyResume = async (req, res) => {
   try {
-    const existing = await Resume.findOne({ alumni_id: req.user.id }).lean();
-    if (existing) {
-      return res.json({ resume: existing, isSaved: true });
-    }
-
-    // No resume saved yet — suggest a starting point built from the
-    // alumnus's actual profile (skills, education) instead of a placeholder
-    // they'd have to overwrite by hand. Nothing here is persisted until
-    // they actually click Save.
-    const [user, employment, tracer] = await Promise.all([
-      User.findById(req.user.id).select('firstName middleInitial lastName email course graduationYear').lean(),
-      AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
-      TracerStudyResponse.findOne({ alumni_id: req.user.id }).lean(),
-    ]);
-
-    const fullName = [user?.firstName, user?.middleInitial ? `${user.middleInitial}.` : '', user?.lastName].filter(Boolean).join(' ');
-
-    const experienceLines = [];
-    if (employment?.job_title) {
-      const titleLine = [employment.job_title, employment.company_name].filter((v) => v && v !== 'N/A').join(' - ');
-      // Employment type ("Regular/Permanent", "Contractual", ...) reads
-      // naturally as a qualifier on the role itself, next to the title —
-      // not on the date line below, which is reserved for an actual date
-      // range (see formatEmploymentDuration).
-      experienceLines.push(employment.employment_type ? `${titleLine} (${employment.employment_type})` : titleLine);
-      const meta = formatEmploymentDuration(employment);
-      if (meta) experienceLines.push(meta);
-    }
-
-    const educationLines = [];
-    if (user?.course) educationLines.push(`${user.course} - Tarlac State University`);
-    if (user?.graduationYear) educationLines.push(`Batch ${user.graduationYear}`);
-
-    // Templated from real fields (course, job title, company, skills) — not
-    // fabricated content, just a natural-language stitch of what's already
-    // on file, the same way the placeholder mock read before it was per-user.
-    // employment.skills is stored as one comma-separated line — split it out
-    // so ResumePreview/PDF/.doc (which all render one bullet per newline)
-    // list each skill as its own bullet instead of a single run-on bullet.
-    const skillsList = (employment?.skills || '').split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
-    const topSkills = skillsList.slice(0, 3);
-    const jobTitleArticle = employment?.job_title && /^[aeiou]/i.test(employment.job_title) ? 'an' : 'a';
-    const summaryLead = [
-      user?.course ? `${user.course} graduate of Tarlac State University` : null,
-      employment?.job_title
-        ? `with experience as ${jobTitleArticle} ${employment.job_title}${employment.company_name && employment.company_name !== 'N/A' ? ` at ${employment.company_name}` : ''}`
-        : (employment?.experience ? `with ${employment.experience.toLowerCase()} of professional experience` : null),
-    ].filter(Boolean).join(' ');
-    let summary = summaryLead ? `${summaryLead}.` : '';
-    if (topSkills.length) summary += `${summary ? ' ' : ''}Skilled in ${topSkills.join(', ')}.`;
-
-    const suggested = {
-      name: fullName,
-      address: '',
-      phone: tracer?.contactNumber || '',
-      email: user?.email || '',
-      linkedin: '',
-      summary,
-      skills: skillsList.join('\n'),
-      experience: experienceLines.join('\n'),
-      education: educationLines.join('\n'),
-      // TracerStudyResponse.professionalCertifications is a Yes/No survey
-      // answer ("do you have certifications"), not the actual certification
-      // names — there's no field anywhere with real cert titles, so this is
-      // left blank rather than showing a misleading "Yes"/"No" bullet.
-      certifications: '',
-      projects: '',
-      languages: '',
-    };
-
-    res.json({ resume: suggested, isSaved: false });
+    const { resume, isSaved } = await getResumeForAlumnus(req.user.id);
+    // Job Connect's resume tool always needs something to render into its
+    // editable fields, even for a brand-new alumnus with an empty profile —
+    // only the employer-facing view (getApplicantResume) treats "nothing on
+    // file at all" as null.
+    res.json({ resume: resume || {}, isSaved });
   } catch (err) {
     console.error('getMyResume error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -1617,14 +1585,43 @@ const logApplication = async (req, res) => {
       return res.status(400).json({ message: 'Job url and title are required.' });
     }
 
+    // "internal:<jobId>" is how partner-postings (scoreInternalJobs) tag a
+    // job with no real external URL — recovering the real Job's _id here is
+    // what lets the employer who posted it actually see this application.
+    const internalMatch = /^internal:([a-f0-9]{24})$/.exec(url);
+    const job_id = internalMatch ? internalMatch[1] : null;
+
+    // Needed to tell a brand-new application apart from a repeat "Apply now"
+    // click on one already logged — only the former should notify the
+    // employer, otherwise re-opening the same job page would spam them.
+    const alreadyApplied = await JobApplication.exists({ alumni_id: req.user.id, url });
+
     const application = await JobApplication.findOneAndUpdate(
       { alumni_id: req.user.id, url },
       { $setOnInsert: {
-        alumni_id: req.user.id, title, company, location, type, posted, url, description, salary, match, skills,
+        alumni_id: req.user.id, job_id, title, company, location, type, posted, url, description, salary, match, skills,
         status: 'Applied', appliedAt: new Date(),
       } },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );
+
+    // Employers otherwise have no way to know a new candidate showed up
+    // short of manually revisiting the Applicants page — nothing about
+    // applying to an internal (partner-posted) job ever notified them.
+    if (!alreadyApplied && job_id) {
+      const job = await Job.findById(job_id).select('postedBy title');
+      if (job) {
+        const alumnus = await User.findById(req.user.id).select('firstName lastName');
+        await Notification.create({
+          user_id: job.postedBy,
+          title:   'New Applicant',
+          message: `${alumnus.firstName} ${alumnus.lastName} applied for ${job.title}.`,
+          is_read: false,
+          type:    'application',
+        });
+      }
+    }
+
     res.json({ application });
   } catch (err) {
     console.error('logApplication error:', err);
@@ -1656,4 +1653,4 @@ const updateApplicationStatus = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, getApplications, logApplication, updateApplicationStatus };
+module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, getApplications, logApplication, updateApplicationStatus };

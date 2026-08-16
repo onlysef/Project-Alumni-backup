@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { apiFetch } from "../../services/api.js";
@@ -22,6 +23,7 @@ const initialResume = {
 const RESUME_FIELDS = ["name", "address", "phone", "email", "linkedin", "summary", "skills", "experience", "education", "certifications", "projects", "languages"];
 
 export default function JobConnect() {
+  const { showToast } = useOutletContext() || {};
   const [search, setSearch] = useState("");
   const [jobType, setJobType] = useState("");
   const [resume, setResume] = useState(initialResume);
@@ -35,6 +37,10 @@ export default function JobConnect() {
   const [unavailable, setUnavailable] = useState(false);
   const [hasProfile, setHasProfile] = useState(true);
   const [detailsJob, setDetailsJob] = useState(null);
+
+  const [partnerJobs, setPartnerJobs] = useState([]);
+  const [partnerJobsLoading, setPartnerJobsLoading] = useState(true);
+  const [sourceFilter, setSourceFilter] = useState("all"); // "all" | "partner" | "careerjet"
 
   const [view, setView] = useState("recommended"); // "recommended" | "saved" | "applications"
   const [savedJobs, setSavedJobs] = useState([]);
@@ -56,6 +62,14 @@ export default function JobConnect() {
 
   function loadSavedJobs() {
     apiFetch("/alumni/jobs/saved").then((d) => setSavedJobs(d.jobs || [])).catch(() => {});
+  }
+
+  function loadPartnerJobs() {
+    setPartnerJobsLoading(true);
+    apiFetch("/alumni/jobs/partner-postings")
+      .then((d) => setPartnerJobs(d.jobs || []))
+      .catch(() => {})
+      .finally(() => setPartnerJobsLoading(false));
   }
 
   function loadJobAlertsPref() {
@@ -88,14 +102,20 @@ export default function JobConnect() {
 
   // Fired the moment "Apply now" is clicked (card and details modal both) —
   // fire-and-forget alongside the actual navigation to Careerjet, so it
-  // never blocks or interferes with the external link opening.
+  // never blocks or interferes with the external link opening. Internal
+  // (TSU partner) postings have no external tab opening to signal "yes,
+  // that worked" the way Careerjet applies do, so this needs its own
+  // explicit confirmation — shown once per job, not on a repeat click of
+  // something already applied to.
   function logApply(job) {
+    const alreadyApplied = appliedUrls.has(job.url);
     apiFetch("/alumni/applications", { method: "POST", body: job })
       .then((d) => {
         if (!d.application) return;
         setApplications((prev) => prev.some((a) => a.url === job.url) ? prev : [d.application, ...prev]);
+        if (!alreadyApplied) showToast?.(`Applied to ${job.title}.`);
       })
-      .catch(() => {});
+      .catch(() => showToast?.("Could not log your application. Please try again."));
   }
 
   function updateApplicationStatus(id, status) {
@@ -103,9 +123,26 @@ export default function JobConnect() {
     apiFetch(`/alumni/applications/${id}/status`, { method: "PATCH", body: { status } }).catch(() => loadApplications());
   }
 
-  useEffect(() => { runSearch(search, jobType); loadSavedJobs(); loadJobAlertsPref(); loadResume(); loadApplications(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { runSearch(search, jobType); loadSavedJobs(); loadPartnerJobs(); loadJobAlertsPref(); loadResume(); loadApplications(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const results = view === "saved" ? savedJobs : view === "applications" ? applications : jobs;
+  // Careerjet + TSU partner postings shown as one ranked list instead of two
+  // stacked sections — partner postings used to end up buried below dozens
+  // of Careerjet results with no way to jump straight to them.
+  const combinedJobs = useMemo(() => {
+    const tagged = [
+      ...partnerJobs.map((j) => ({ ...j, source: "partner" })),
+      ...jobs.map((j) => ({ ...j, source: "careerjet" })),
+    ];
+    return tagged.sort((a, b) => {
+      const matchDiff = (b.match ?? -1) - (a.match ?? -1);
+      if (matchDiff !== 0) return matchDiff;
+      return new Date(b.posted || 0) - new Date(a.posted || 0);
+    });
+  }, [jobs, partnerJobs]);
+  const recommendedResults = sourceFilter === "all" ? combinedJobs : combinedJobs.filter((j) => j.source === sourceFilter);
+  const recommendedLoading = loading || partnerJobsLoading;
+
+  const results = view === "saved" ? savedJobs : view === "applications" ? applications : recommendedResults;
   const descriptionBlocks = detailsJob ? structureDescription(detailsJob.description) : [];
 
   function toggleSave(job) {
@@ -188,14 +225,22 @@ export default function JobConnect() {
           )}
         </div>
 
+        {view === "recommended" && (
+          <div className="job-source-filter" role="tablist" aria-label="Filter by job source">
+            <button type="button" role="tab" aria-selected={sourceFilter === "all"} className={sourceFilter === "all" ? "active" : ""} onClick={() => setSourceFilter("all")}>All Jobs ({combinedJobs.length})</button>
+            <button type="button" role="tab" aria-selected={sourceFilter === "partner"} className={sourceFilter === "partner" ? "active" : ""} onClick={() => setSourceFilter("partner")}>TSU Partner Companies ({partnerJobs.length})</button>
+            <button type="button" role="tab" aria-selected={sourceFilter === "careerjet"} className={sourceFilter === "careerjet" ? "active" : ""} onClick={() => setSourceFilter("careerjet")}>Careerjet ({jobs.length})</button>
+          </div>
+        )}
+
         {view === "recommended" && error && <div className="job-empty"><b>{error}</b><span>Try searching again in a moment.</span></div>}
-        {view === "recommended" && !error && unavailable && <div className="job-empty"><b>Job search is temporarily unavailable</b><span>Careerjet isn't configured or didn't respond — please try again later.</span></div>}
-        {view === "recommended" && !error && loading && <div className="job-empty"><b>Loading jobs…</b><span>Fetching the latest postings from Careerjet.</span></div>}
-        {view === "recommended" && !error && !loading && !unavailable && !results.length && !search.trim() && !hasProfile && (
+        {view === "recommended" && !error && unavailable && sourceFilter !== "partner" && <div className="job-empty"><b>Job search is temporarily unavailable</b><span>Careerjet isn't configured or didn't respond — please try again later.</span></div>}
+        {view === "recommended" && !error && recommendedLoading && <div className="job-empty"><b>Loading jobs…</b><span>Fetching recommended postings.</span></div>}
+        {view === "recommended" && !error && !recommendedLoading && !results.length && !search.trim() && !hasProfile && (
           <div className="job-empty"><b>Complete your Employment Details</b><span>Add your job title and skills so we can recommend jobs that actually match you.</span></div>
         )}
-        {view === "recommended" && !error && !loading && !unavailable && !results.length && (search.trim() || hasProfile) && (
-          <div className="job-empty"><b>No matching jobs found</b><span>Try another search or employment type.</span></div>
+        {view === "recommended" && !error && !recommendedLoading && !results.length && (search.trim() || hasProfile) && (
+          <div className="job-empty"><b>No matching jobs found</b><span>Try another search, employment type, or source filter.</span></div>
         )}
         {view === "saved" && !results.length && (
           <div className="job-empty"><b>No saved jobs yet</b><span>Click "Save" on a job to bookmark it here.</span></div>
@@ -204,9 +249,9 @@ export default function JobConnect() {
           <div className="job-empty"><b>No applications yet</b><span>Clicking "Apply now" on a job logs it here automatically.</span></div>
         )}
 
-        {((view === "recommended" && !error && !loading && !unavailable) || view === "saved") && !!results.length && (
+        {((view === "recommended" && !error && !recommendedLoading) || view === "saved") && !!results.length && (
           <div className="job-connect-list">
-            {results.map(job => <JobCard key={job.url || job.title} job={job} saved={savedUrls.has(job.url)} onToggleSave={() => toggleSave(job)} onViewDetails={() => setDetailsJob(job)} onApply={() => logApply(job)} />)}
+            {results.map(job => <JobCard key={job.url || job.title} job={job} saved={savedUrls.has(job.url)} applied={appliedUrls.has(job.url)} onToggleSave={() => toggleSave(job)} onViewDetails={() => setDetailsJob(job)} onApply={() => logApply(job)} />)}
           </div>
         )}
         {view === "applications" && !!results.length && (

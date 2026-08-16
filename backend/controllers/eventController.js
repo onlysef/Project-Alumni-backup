@@ -4,6 +4,7 @@ const Notification   = require('../models/Notification');
 const AttendanceLog  = require('../models/AttendanceLog');
 const EventFeedback  = require('../models/EventFeedback');
 const User           = require('../models/User');
+const { isEventEnded } = require('./feedbackController');
 
 const COLLEGE_CODES = ['CPAG', 'CCS', 'COS', 'CIT', 'COE', 'CBA', 'COED', 'CASS', 'CCJE', 'CAFA'];
 
@@ -212,16 +213,27 @@ const getAlumniEvents = async (req, res) => {
       .lean();
 
     const eventIds = events.map((e) => e._id);
-    const [counts, mine] = await Promise.all([
+    const [counts, mine, myAttendance, myFeedback] = await Promise.all([
       EventInterested.aggregate([
         { $match: { event_id: { $in: eventIds } } },
         { $group: { _id: '$event_id', count: { $sum: 1 } } },
       ]),
       EventInterested.find({ event_id: { $in: eventIds }, alumni_id: req.user.id }).select('event_id').lean(),
+      // Scoped to this one alumnus across all their visible events — two
+      // bulk queries here instead of a per-event lookup, same batching
+      // pattern as `mine` above.
+      AttendanceLog.find({ event_id: { $in: eventIds }, alumni_id: req.user.id }).select('event_id status').lean(),
+      EventFeedback.find({ event_id: { $in: eventIds }, alumni_id: req.user.id }).select('event_id').lean(),
     ]);
     const countMap = {};
     counts.forEach((c) => { countMap[String(c._id)] = c.count; });
     const mySet = new Set(mine.map((m) => String(m.event_id)));
+    // A logged "Absent" row means the coordinator recorded this alumnus as
+    // expected-but-not-present — that's not attendance, so it doesn't count
+    // toward feedback eligibility below.
+    const attendedMap = {};
+    myAttendance.forEach((a) => { attendedMap[String(a.event_id)] = a.status !== 'Absent'; });
+    const feedbackSubmittedSet = new Set(myFeedback.map((f) => String(f.event_id)));
 
     // There's no scheduler/cron in this app to fire a reminder exactly N
     // hours before an event, so the reminder is generated lazily here: any
@@ -251,12 +263,50 @@ const getAlumniEvents = async (req, res) => {
       if (toCreate.length) await Notification.insertMany(toCreate);
     }
 
+    // Same lazy-generation approach as the reminder above — there's no
+    // scheduler to fire this right when an event ends, so it's checked
+    // whenever this alumnus next loads their events: any event they
+    // attended that has since ended, with feedback still not submitted,
+    // gets a one-time "Feedback Available" notification.
+    const feedbackReady = events.filter((e) => attendedMap[String(e._id)] && isEventEnded(e) && !feedbackSubmittedSet.has(String(e._id)));
+    if (feedbackReady.length) {
+      const alreadyNotified = await Notification.find({
+        user_id: req.user.id,
+        type: 'feedback_available',
+        event_id: { $in: feedbackReady.map((e) => e._id) },
+      }).select('event_id').lean();
+      const notifiedSet = new Set(alreadyNotified.map((n) => String(n.event_id)));
+      const toNotify = feedbackReady
+        .filter((e) => !notifiedSet.has(String(e._id)))
+        .map((e) => ({
+          user_id:  req.user.id,
+          title:    'Feedback Available',
+          message:  `"${e.title}" has ended — share your feedback to help us plan better events.`,
+          is_read:  false,
+          event_id: e._id,
+          type:     'feedback_available',
+        }));
+      if (toNotify.length) await Notification.insertMany(toNotify);
+    }
+
     res.json({
-      events: events.map((e) => ({
-        ...e,
-        interested_count: countMap[String(e._id)] || 0,
-        isInterestedByMe: mySet.has(String(e._id)),
-      })),
+      events: events.map((e) => {
+        const attended = !!attendedMap[String(e._id)];
+        // "Not Available" until the event has ended AND this alumnus
+        // attended — the frontend never has to independently decide this,
+        // it just renders whatever the backend already resolved.
+        let feedbackStatus = 'not_available';
+        if (isEventEnded(e) && attended) {
+          feedbackStatus = feedbackSubmittedSet.has(String(e._id)) ? 'submitted' : 'available';
+        }
+        return {
+          ...e,
+          interested_count: countMap[String(e._id)] || 0,
+          isInterestedByMe: mySet.has(String(e._id)),
+          attended,
+          feedbackStatus,
+        };
+      }),
     });
   } catch (err) {
     console.error('getAlumniEvents error:', err);
