@@ -141,6 +141,69 @@ const recordAttendance = async (req, res) => {
   }
 };
 
+const VALID_STATUSES = ['Present', 'Late', 'Excused', 'Absent'];
+
+// PATCH /coordinator/attendance/:id — correct a mis-recorded status/time.
+// If the correction makes this "Absent", any feedback this alumnus already
+// submitted for the event no longer satisfies the rule it was gated on
+// (must have attended) — same reasoning submitEventFeedback and
+// getAlumniEvents already apply, so it's removed here too rather than left
+// as an orphaned response tied to attendance that's since been retracted.
+const updateAttendance = async (req, res) => {
+  try {
+    const { status, time_in } = req.body;
+    if (status !== undefined && !VALID_STATUSES.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status.' });
+    }
+
+    const log = await AttendanceLog.findById(req.params.id);
+    if (!log) return res.status(404).json({ message: 'Attendance record not found.' });
+
+    const event = await Event.findById(log.event_id, 'college').lean();
+    if (req.user.college && event?.college && event.college !== req.user.college) {
+      return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+    }
+
+    if (status  !== undefined) log.status  = status;
+    if (time_in !== undefined) log.time_in = time_in;
+    await log.save();
+
+    let feedbackRemoved = false;
+    if (log.status === 'Absent') {
+      const result = await EventFeedback.deleteOne({ event_id: log.event_id, alumni_id: log.alumni_id });
+      feedbackRemoved = result.deletedCount > 0;
+    }
+
+    res.json({ message: 'Attendance updated.', log, feedbackRemoved });
+  } catch (err) {
+    console.error('updateAttendance error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// DELETE /coordinator/attendance/:id — same feedback-cascade reasoning as
+// updateAttendance above: no attendance record at all means the "must have
+// attended" rule feedback was gated on no longer holds.
+const deleteAttendance = async (req, res) => {
+  try {
+    const log = await AttendanceLog.findById(req.params.id);
+    if (!log) return res.status(404).json({ message: 'Attendance record not found.' });
+
+    const event = await Event.findById(log.event_id, 'college').lean();
+    if (req.user.college && event?.college && event.college !== req.user.college) {
+      return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+    }
+
+    await log.deleteOne();
+    const result = await EventFeedback.deleteOne({ event_id: log.event_id, alumni_id: log.alumni_id });
+
+    res.json({ message: 'Attendance record deleted.', feedbackRemoved: result.deletedCount > 0 });
+  } catch (err) {
+    console.error('deleteAttendance error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // GET /coordinator/attendance/:eventId/records
 const getAttendanceRecords = async (req, res) => {
   try {
@@ -312,6 +375,8 @@ module.exports = {
   getAttendanceEvents,
   searchAlumni,
   recordAttendance,
+  updateAttendance,
+  deleteAttendance,
   getAttendanceRecords,
   getAttendanceStats,
   getEventDetails,

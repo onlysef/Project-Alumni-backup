@@ -14,6 +14,12 @@ const userSchema = new mongoose.Schema({
   avatarUrl:      { type: String, default: '' },
   college:        { type: String, default: '' },
   company:        { type: String, default: '' },
+  // Real FK to the employer's own Partnership record — job posting used to
+  // let ANY logged-in employer pick ANY partner company from a free
+  // dropdown, since nothing actually tied an employer account to a specific
+  // company. Set at signup by registerPartner (or by an admin for
+  // manually-created accounts); only meaningful for role: 'employer'.
+  partnershipId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Partnership', default: null },
   course:         { type: String },
   track:          { type: String, enum: ['TSM', 'WMA', 'NA', ''], default: '' },
   graduationYear: { type: Number },

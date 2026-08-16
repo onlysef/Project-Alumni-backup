@@ -68,6 +68,18 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
     localStorage.removeItem("auth_first_login");
+    // The AC AI Assistant keeps its in-progress conversation in localStorage
+    // (acCurrentChat_<role>_<user>) so a refresh doesn't lose it — but
+    // logging out should still start the next session fresh instead of
+    // resuming whatever was left open. Saved/named History entries
+    // (acChatHistory_*) are a deliberate save, not an accidental leftover
+    // draft, so those are left alone.
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith("acCurrentChat_")) localStorage.removeItem(key);
+      }
+    } catch {}
     window.location.href = LOGIN_URL;
   }
 

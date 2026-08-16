@@ -7,9 +7,10 @@ const {
   getInterestedAlumni, getCoordinatorNotifications, markNotificationsRead,
 } = require('../controllers/eventController');
 const {
-  getAttendanceEvents, searchAlumni, recordAttendance,
+  getAttendanceEvents, searchAlumni, recordAttendance, updateAttendance, deleteAttendance,
   getAttendanceRecords, getAttendanceStats, getEventDetails, exportAttendance,
 } = require('../controllers/attendanceController');
+const { getEventFeedbackSummary } = require('../controllers/feedbackController');
 const User = require('../models/User');
 const AlumniEmployment = require('../models/AlumniEmployment');
 const TracerStudyResponse = require('../models/TracerStudyResponse');
@@ -286,10 +287,13 @@ router.post('/employment/notify',  (req, res) => {
 router.get('/attendance/events',                   getAttendanceEvents);
 router.get('/attendance/alumni-search',            searchAlumni);
 router.post('/attendance',                         recordAttendance);
+router.patch('/attendance/:id',                    updateAttendance);
+router.delete('/attendance/:id',                   deleteAttendance);
 router.get('/attendance/:eventId/records',         getAttendanceRecords);
 router.get('/attendance/:eventId/stats',           getAttendanceStats);
 router.get('/attendance/:eventId/details',         getEventDetails);
 router.get('/attendance/:eventId/export',          exportAttendance);
+router.get('/attendance/:eventId/feedback',         getEventFeedbackSummary);
 
 // Events
 router.get('/events',                    getEvents);

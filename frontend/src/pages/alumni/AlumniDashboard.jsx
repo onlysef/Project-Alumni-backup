@@ -67,6 +67,8 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   const [appliedUrls, setAppliedUrls] = useState([]);
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
+  const [feedbackModal, setFeedbackModal] = useState(null);
+  const [responseModal, setResponseModal] = useState(null);
   const [jobPostings, setJobPostings] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [savedJobs, setSavedJobs] = useState([]);
@@ -119,6 +121,63 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
       const data = await res.json();
       if (res.ok) setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: data.interested } : e));
     } catch { /* keep optimistic state on network failure */ }
+  }
+
+  function openGiveFeedback(ev) {
+    setFeedbackModal({
+      event: ev,
+      rating: 0,
+      ratings: { organization: 0, content: 0, venue: 0, satisfaction: 0 },
+      comments: "",
+      submitting: false,
+      error: "",
+    });
+  }
+
+  function patchFeedbackModal(patch) {
+    setFeedbackModal((m) => (m ? { ...m, ...patch, error: "" } : m));
+  }
+
+  async function submitGivenFeedback() {
+    if (!feedbackModal) return;
+    if (!feedbackModal.rating) {
+      setFeedbackModal((m) => (m ? { ...m, error: "Please give an overall rating." } : m));
+      return;
+    }
+    setFeedbackModal((m) => (m ? { ...m, submitting: true, error: "" } : m));
+    try {
+      const res = await fetch(`${API}/alumni/events/${feedbackModal.event._id}/feedback`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating: feedbackModal.rating,
+          ratings: feedbackModal.ratings,
+          feedback: feedbackModal.comments,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setFeedbackModal((m) => (m ? { ...m, submitting: false, error: data.message || "Could not submit feedback." } : m));
+        return;
+      }
+      // Same event object shape getAlumniEvents already returns — flips the
+      // card straight to "Submitted" without a full refetch.
+      setEvents((prev) => prev.map((e) => e._id === feedbackModal.event._id ? { ...e, feedbackStatus: "submitted" } : e));
+      setFeedbackModal(null);
+    } catch {
+      setFeedbackModal((m) => (m ? { ...m, submitting: false, error: "Network error. Please try again." } : m));
+    }
+  }
+
+  async function openViewResponse(ev) {
+    setResponseModal({ event: ev, loading: true, data: null });
+    try {
+      const res  = await fetch(`${API}/alumni/events/${ev._id}/feedback`, { headers: authHeaders() });
+      const data = await res.json();
+      setResponseModal((m) => (m && m.event._id === ev._id) ? { ...m, loading: false, data: res.ok ? data.feedback : null } : m);
+    } catch {
+      setResponseModal((m) => (m ? { ...m, loading: false, data: null } : m));
+    }
   }
 
   async function toggleLikeNews(ann) {
@@ -298,13 +357,24 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
           <article className="completed-event" key={ev._id}>
             <EventImage date={fmtEventDate(ev.event_datetime)} image={ev.image} title={ev.title} />
             <div><b>{ev.title}</b><p>{fmtEventDate(ev.event_datetime)} · {ev.interested_count} interested</p></div>
-            <span>Completed</span>
+            <EventFeedbackAction event={ev} onGiveFeedback={() => openGiveFeedback(ev)} onViewResponse={() => openViewResponse(ev)} />
           </article>
         ))}
       </>}
     </section>}
 
     {modal && <ActionModal modal={modal} onClose={() => setModal(null)} />}
+    {feedbackModal && (
+      <EventFeedbackFormModal
+        state={feedbackModal}
+        onClose={() => setFeedbackModal(null)}
+        onChange={patchFeedbackModal}
+        onSubmit={submitGivenFeedback}
+      />
+    )}
+    {responseModal && (
+      <EventFeedbackResponseModal state={responseModal} onClose={() => setResponseModal(null)} />
+    )}
     {commentsModal && (
       <CommentsModal
         state={commentsModal}
@@ -467,7 +537,99 @@ function stripHtmlShort(value, max = 160) {
 
 
 function EventCard({ title, text, time, place, date, second, image, reminded = false, onReminder, onDetails }) {
-  return <article className="announcement-card event-card"><EventImage date={date} second={second} image={image} title={title} /><div className="announcement-body"><button className={`card-bell${reminded ? " active" : ""}`} type="button" onClick={onReminder} aria-label={reminded ? "Remove reminder" : "Set reminder"}>{reminded ? "On" : "Remind"}</button><h2>{title}</h2><p>{text}</p><div className="event-detail">Time: <b>{time}</b></div><div className="event-detail">Location: <b>{place}</b></div><button className="primary-card-btn next-btn" type="button" onClick={onDetails}><span>View Details</span><Icon name="icon-arrow-right" /></button></div></article>;
+  return <article className="announcement-card event-card"><EventImage date={date} second={second} image={image} title={title} /><div className="announcement-body"><button className={`card-bell${reminded ? " active" : ""}`} type="button" onClick={onReminder} aria-label={reminded ? "Remove reminder" : "Set reminder"}>{reminded ? "On" : "Remind"}</button><h2>{title}</h2><p>{text}</p><div className="event-detail">Time: <b>{time}</b></div><div className="event-detail">Location: <b>{place}</b></div><div className="event-detail">Feedback: <b>Not Available</b></div><button className="primary-card-btn next-btn" type="button" onClick={onDetails}><span>View Details</span><Icon name="icon-arrow-right" /></button></div></article>;
+}
+
+// Drives the status pill + action button on a "Recently Completed" event
+// card — entirely from what the backend already resolved (ev.attended,
+// ev.feedbackStatus). Never independently re-derives "has this ended" or
+// "did they attend" on the frontend — the backend is the actual gate.
+function EventFeedbackAction({ event, onGiveFeedback, onViewResponse }) {
+  if (event.feedbackStatus === "submitted") {
+    return <div className="completed-event-feedback">
+      <span className="feedback-status-pill fb-submitted">Feedback: Submitted</span>
+      <button type="button" className="details-btn" onClick={onViewResponse}>View Response</button>
+    </div>;
+  }
+  if (event.feedbackStatus === "available") {
+    return <div className="completed-event-feedback">
+      <span className="feedback-status-pill fb-available">Feedback: Available</span>
+      <button type="button" className="primary-card-btn" onClick={onGiveFeedback}>Give Feedback</button>
+    </div>;
+  }
+  return <div className="completed-event-feedback">
+    <span className="feedback-status-pill fb-unavailable">Feedback: Not Available</span>
+    <small>{event.attended
+      ? "Feedback will open once this event has fully ended."
+      : "Feedback is only available to alumni who attended this event."}</small>
+  </div>;
+}
+
+function StarRating({ label, value, onChange, size = "md", readOnly = false }) {
+  return <div className={`star-rating star-rating-${size}`}>
+    {label && <span className="star-rating-label">{label}</span>}
+    <div className="star-rating-stars" role={readOnly ? undefined : "radiogroup"} aria-label={label || "Rating"}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className={`star${n <= (value || 0) ? " filled" : ""}`}
+          aria-label={`${n} star${n > 1 ? "s" : ""}`}
+          aria-pressed={n === value}
+          disabled={readOnly}
+          onClick={() => !readOnly && onChange(n)}
+        >★</button>
+      ))}
+    </div>
+  </div>;
+}
+
+function EventFeedbackFormModal({ state, onClose, onChange, onSubmit }) {
+  const { event, rating, ratings, comments, submitting, error } = state;
+  return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={`Give feedback for ${event.title}`}>
+    <div className="alumni-action-modal event-feedback-modal">
+      <div><span>Event feedback</span><h2>{event.title}</h2><p>Share your experience — this helps us plan better events.</p></div>
+      <div className="event-feedback-fields">
+        <StarRating label="Overall event rating" value={rating} onChange={(v) => onChange({ rating: v })} />
+        <StarRating label="Event organization" size="sm" value={ratings.organization} onChange={(v) => onChange({ ratings: { ...ratings, organization: v } })} />
+        <StarRating label="Event content / program" size="sm" value={ratings.content} onChange={(v) => onChange({ ratings: { ...ratings, content: v } })} />
+        <StarRating label="Venue / arrangement" size="sm" value={ratings.venue} onChange={(v) => onChange({ ratings: { ...ratings, venue: v } })} />
+        <StarRating label="Overall satisfaction" size="sm" value={ratings.satisfaction} onChange={(v) => onChange({ ratings: { ...ratings, satisfaction: v } })} />
+        <label className="event-feedback-comments">
+          <span>Suggestions / comments</span>
+          <textarea rows="4" value={comments} onChange={(e) => onChange({ comments: e.target.value })} placeholder="Anything you'd like to share?" />
+        </label>
+      </div>
+      {error && <p className="event-feedback-error">{error}</p>}
+      <div className="alumni-action-modal-buttons">
+        <button type="button" className="details-btn" onClick={onClose} disabled={submitting}>Cancel</button>
+        <button type="button" className="primary-card-btn" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting…" : "Submit Feedback"}</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function EventFeedbackResponseModal({ state, onClose }) {
+  const { event, loading, data } = state;
+  return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={`Your feedback for ${event.title}`}>
+    <div className="alumni-action-modal event-feedback-modal">
+      <div><span>Your feedback</span><h2>{event.title}</h2></div>
+      {loading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading…</p>}
+      {!loading && !data && <p style={{ color: "#76656a", fontSize: 13 }}>Could not load your response.</p>}
+      {!loading && data && <div className="event-feedback-readonly">
+        <StarRating label="Overall event rating" value={data.rating} readOnly onChange={() => {}} />
+        {data.ratings?.organization ? <StarRating label="Event organization" size="sm" value={data.ratings.organization} readOnly onChange={() => {}} /> : null}
+        {data.ratings?.content ? <StarRating label="Event content / program" size="sm" value={data.ratings.content} readOnly onChange={() => {}} /> : null}
+        {data.ratings?.venue ? <StarRating label="Venue / arrangement" size="sm" value={data.ratings.venue} readOnly onChange={() => {}} /> : null}
+        {data.ratings?.satisfaction ? <StarRating label="Overall satisfaction" size="sm" value={data.ratings.satisfaction} readOnly onChange={() => {}} /> : null}
+        {data.feedback && <div className="event-feedback-comments-readonly"><span>Your comments</span><p>{data.feedback}</p></div>}
+        <p className="event-feedback-submitted-at">Submitted {new Date(data.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}</p>
+      </div>}
+      <div className="alumni-action-modal-buttons">
+        <button type="button" className="details-btn" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  </div>;
 }
 
 function ActionModal({ modal, onClose }) {

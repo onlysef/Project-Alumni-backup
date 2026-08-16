@@ -144,7 +144,7 @@ function useSkillTip(job) {
 // requests before a ~24h lockout, which a single page of job cards would
 // blow through instantly. The TSU logo placeholder stays until there's a
 // real, reliable source of per-company logos.
-export function JobCard({ job, saved, onToggleSave, onViewDetails, onApply }) {
+export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onApply }) {
   const description = descriptionPreview(job.description, 220);
   const { tip: skillTip, ref: skillGapRef } = useSkillTip(job);
   return <article className="connect-job-card">
@@ -155,10 +155,14 @@ export function JobCard({ job, saved, onToggleSave, onViewDetails, onApply }) {
     <div className="connect-job-main">
       {job.posted && <span className="connect-posted">Posted: {formatPostedDate(job.posted)}</span>}
       {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
-      <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div></div>
+      <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div>{applied && <span className="connect-applied-badge">✓ Applied</span>}</div>
       {description && <p className="connect-job-description">{description}</p>}
       <div className="connect-card-buttons">
-        <a className="apply-job" href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>Apply now</a>
+        {job.internal ? (
+          <button className={`apply-job${applied ? " already-applied" : ""}`} type="button" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</button>
+        ) : (
+          <a className={`apply-job${applied ? " already-applied" : ""}`} href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</a>
+        )}
         <button className="view-job" type="button" onClick={onViewDetails}>See details <ArrowIcon /></button>
         {onToggleSave && (
           <button className={`connect-save-icon${saved ? " saved" : ""}`} type="button" onClick={onToggleSave} aria-label={saved ? "Remove from saved jobs" : "Save job"}>
@@ -166,7 +170,7 @@ export function JobCard({ job, saved, onToggleSave, onViewDetails, onApply }) {
           </button>
         )}
       </div>
-      <small className="job-partner">via Careerjet</small>
+      <small className="job-partner">{job.internal ? "Posted by a TSU partner employer" : "via Careerjet"}</small>
     </div>
     {job.skills?.length > 0 && (
       <aside className="connect-skill-gap" ref={skillGapRef}>

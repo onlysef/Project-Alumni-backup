@@ -48,6 +48,15 @@ export default function EventParticipation() {
   // ── View Event modal ─────────────────────────────────────────
   const [viewEvent, setViewEvent] = useState(null);
 
+  // ── View Feedback modal ──────────────────────────────────────
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+  const [feedbackSummary, setFeedbackSummary] = useState(null);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+
+  // ── Edit attendance record ───────────────────────────────────
+  const [editRecord, setEditRecord] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
+
   // ── Load events on mount ─────────────────────────────────────
   useEffect(() => {
     const targetId = location.state?.eventId ? String(location.state.eventId) : null;
@@ -191,6 +200,60 @@ export default function EventParticipation() {
       const data = await authGet(`/coordinator/attendance/${selectedEventId}/details`);
       setViewEvent(data.event ?? null);
     } catch { showToast?.("Failed to load event details."); }
+  }
+
+  function openEditAttendance(record) {
+    setEditRecord({ id: record._id, name: record.name, status: record.status, time_in: record.time_in });
+  }
+
+  async function saveEditAttendance() {
+    if (!editRecord) return;
+    setEditSaving(true);
+    try {
+      const data = await apiFetch(`/coordinator/attendance/${editRecord.id}`, {
+        method: "PATCH",
+        body: { status: editRecord.status, time_in: editRecord.time_in },
+      });
+      showToast?.(data.feedbackRemoved
+        ? "Attendance updated. Their existing feedback was removed since they're no longer marked as attended."
+        : "Attendance updated.");
+      setEditRecord(null);
+      loadStats(selectedEventId);
+      loadRecords(selectedEventId, page, appliedSearch);
+    } catch (err) {
+      showToast?.(err.message || "Failed to update attendance.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function deleteAttendanceRecord(record) {
+    if (!window.confirm(`Remove the attendance record for ${record.name}?`)) return;
+    try {
+      const data = await apiFetch(`/coordinator/attendance/${record._id}`, { method: "DELETE" });
+      showToast?.(data.feedbackRemoved
+        ? "Attendance record deleted. Their submitted feedback was removed as well."
+        : "Attendance record deleted.");
+      loadStats(selectedEventId);
+      loadRecords(selectedEventId, page, appliedSearch);
+    } catch (err) {
+      showToast?.(err.message || "Failed to delete attendance record.");
+    }
+  }
+
+  async function handleViewFeedback() {
+    if (!selectedEventId) return;
+    setFeedbackModalOpen(true);
+    setFeedbackLoading(true);
+    setFeedbackSummary(null);
+    try {
+      const data = await authGet(`/coordinator/attendance/${selectedEventId}/feedback`);
+      setFeedbackSummary(data);
+    } catch {
+      showToast?.("Failed to load feedback.");
+    } finally {
+      setFeedbackLoading(false);
+    }
   }
 
   function handleExport(format) {
@@ -398,11 +461,12 @@ export default function EventParticipation() {
                 <th>Time In</th>
                 <th>Status</th>
                 <th>Feedback</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {records.length === 0 ? (
-                <tr><td colSpan={5} className="coord-employ-empty">No records found.</td></tr>
+                <tr><td colSpan={6} className="coord-employ-empty">No records found.</td></tr>
               ) : (
                 records.map(r => (
                   <tr key={String(r._id)}>
@@ -415,6 +479,16 @@ export default function EventParticipation() {
                       </span>
                     </td>
                     <td data-label="Feedback">{r.feedback ? "Yes" : ""}</td>
+                    <td data-label="Action">
+                      <div className="coord-row-actions">
+                        <button type="button" aria-label={`Edit attendance for ${r.name}`} onClick={() => openEditAttendance(r)}>
+                          <Icon name="icon-edit" />
+                        </button>
+                        <button type="button" aria-label={`Delete attendance for ${r.name}`} onClick={() => deleteAttendanceRecord(r)}>
+                          <Icon name="icon-delete" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -442,8 +516,48 @@ export default function EventParticipation() {
           <button type="button" className="btn btn-secondary" onClick={handleViewEvent}>
             <Icon name="icon-view" /> View Event
           </button>
+          <button type="button" className="btn btn-secondary" onClick={handleViewFeedback}>
+            <Icon name="icon-view" /> View Feedback
+          </button>
         </div>
       </section>
+
+      {/* ── Edit Attendance Modal ── */}
+      {editRecord && (
+        <div className="coord-modal-backdrop" onClick={() => setEditRecord(null)}>
+          <div className="coord-modal coord-modal-sm" onClick={e => e.stopPropagation()}>
+            <div className="coord-modal-head">
+              <h3>Edit Attendance</h3>
+              <button type="button" onClick={() => setEditRecord(null)}>&times;</button>
+            </div>
+            <div className="coord-modal-body">
+              <p className="coord-modal-subtitle">{editRecord.name}</p>
+              <label className="coord-field"><span>Status</span>
+                <select value={editRecord.status} onChange={e => setEditRecord(r => ({ ...r, status: e.target.value }))}>
+                  <option>Present</option>
+                  <option>Late</option>
+                  <option>Excused</option>
+                  <option>Absent</option>
+                </select>
+              </label>
+              <label className="coord-field"><span>Time In</span>
+                <input value={editRecord.time_in} onChange={e => setEditRecord(r => ({ ...r, time_in: e.target.value }))} />
+              </label>
+              {editRecord.status === "Absent" && (
+                <p style={{ margin: "4px 0 0", padding: "8px 12px", background: "#fff3cd", borderLeft: "3px solid #d69e2e", borderRadius: 4, fontSize: 12, color: "#7d5a00" }}>
+                  Marking this alumnus "Absent" will also remove any feedback they already submitted for this event, since feedback requires having attended.
+                </p>
+              )}
+            </div>
+            <div className="coord-modal-foot">
+              <button type="button" className="btn btn-primary" onClick={saveEditAttendance} disabled={editSaving}>
+                <Icon name="icon-save" /> {editSaving ? "Saving…" : "Save Changes"}
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditRecord(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── View Event Modal ── */}
       {viewEvent && (
@@ -469,6 +583,77 @@ export default function EventParticipation() {
             </div>
             <div className="coord-modal-foot">
               <button type="button" className="btn btn-secondary" onClick={() => setViewEvent(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── View Feedback Modal ── */}
+      {feedbackModalOpen && (
+        <div className="coord-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}>
+          <div className="coord-modal coord-feedback-modal" onClick={e => e.stopPropagation()}>
+            <div className="coord-modal-head">
+              <h3>Event Feedback</h3>
+              <button type="button" onClick={() => setFeedbackModalOpen(false)}>&times;</button>
+            </div>
+            <div className="coord-modal-body" style={{ gap: 14 }}>
+              {feedbackLoading && <p className="coord-employ-empty">Loading…</p>}
+              {!feedbackLoading && !feedbackSummary && <p className="coord-employ-empty">Could not load feedback for this event.</p>}
+              {!feedbackLoading && feedbackSummary && (() => {
+                const s = feedbackSummary;
+                const categoryLabels = { organization: "Organization", content: "Content / Program", venue: "Venue / Arrangement", satisfaction: "Satisfaction" };
+                return <>
+                  <h4 style={{ margin: 0, color: "var(--maroon)", fontSize: 15 }}>{s.event.title}</h4>
+                  <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted, #76656a)" }}>
+                    {s.event.event_datetime ? fmtDate(s.event.event_datetime) : "—"}
+                  </p>
+
+                  <div className="coord-feedback-stats-grid">
+                    <div><strong>{s.total_attendees}</strong><span>Attendance</span></div>
+                    <div><strong>{s.total_responses}</strong><span>Feedback Responses</span></div>
+                    <div><strong>{s.response_rate}%</strong><span>Response Rate</span></div>
+                    <div><strong>{s.average_rating != null ? `${s.average_rating} / 5` : "—"}</strong><span>Average Overall Rating</span></div>
+                  </div>
+
+                  {Object.entries(categoryLabels).some(([key]) => s.average_category_ratings[key] != null) && (
+                    <div className="coord-feedback-category-grid">
+                      {Object.entries(categoryLabels).map(([key, label]) => (
+                        s.average_category_ratings[key] != null && (
+                          <div key={key}><span>{label}</span><strong>{s.average_category_ratings[key]} / 5</strong></div>
+                        )
+                      ))}
+                    </div>
+                  )}
+
+                  <h4 style={{ margin: "6px 0 0", fontSize: 13 }}>Individual Responses</h4>
+                  {s.responses.length === 0 && <p className="coord-employ-empty">No feedback submitted yet for this event.</p>}
+                  {s.responses.length > 0 && (
+                    <div className="coord-feedback-response-list">
+                      {s.responses.map((r) => (
+                        <article className="coord-feedback-response-card" key={r._id}>
+                          <div className="coord-feedback-response-head">
+                            <strong>{r.name}</strong>
+                            <span>{r.course || "—"}</span>
+                            <span className="coord-feedback-response-rating">{r.rating} / 5</span>
+                          </div>
+                          {Object.entries(categoryLabels).some(([key]) => r.ratings?.[key]) && (
+                            <div className="coord-feedback-response-breakdown">
+                              {Object.entries(categoryLabels).map(([key, label]) => (
+                                r.ratings?.[key] ? <span key={key}>{label}: {r.ratings[key]}/5</span> : null
+                              ))}
+                            </div>
+                          )}
+                          {r.feedback && <p className="coord-feedback-response-comment">{r.feedback}</p>}
+                          <time>{new Date(r.submittedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</time>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </>;
+              })()}
+            </div>
+            <div className="coord-modal-foot">
+              <button type="button" className="btn btn-secondary" onClick={() => setFeedbackModalOpen(false)}>Close</button>
             </div>
           </div>
         </div>

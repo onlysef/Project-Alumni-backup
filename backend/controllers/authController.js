@@ -349,6 +349,13 @@ const registerPartner = async (req, res) => {
     const existing = await User.findOne({ email: email.toLowerCase().trim() });
     if (existing) return res.status(400).json({ message: 'Email is already registered.' });
 
+    const partnership = await Partnership.create({
+      name:    company.trim(),
+      type:    partnerType,
+      contact: email.toLowerCase().trim(),
+      status:  'Pending',
+    });
+
     const hashed = await bcrypt.hash(password, 10);
     await User.create({
       firstName: firstName.trim(),
@@ -359,13 +366,7 @@ const registerPartner = async (req, res) => {
       status:    'pending',
       firstLogin: false,
       company:   company.trim(),
-    });
-
-    await Partnership.create({
-      name:    company.trim(),
-      type:    partnerType,
-      contact: email.toLowerCase().trim(),
-      status:  'Pending',
+      partnershipId: partnership._id,
     });
 
     res.status(201).json({ message: 'Registration submitted. Please wait for admin approval before logging in.' });
