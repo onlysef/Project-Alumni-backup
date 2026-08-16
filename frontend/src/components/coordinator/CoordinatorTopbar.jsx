@@ -33,7 +33,11 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
     }
   }, []);
 
-  useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
+  useEffect(() => {
+    fetchNotifs();
+    const poll = window.setInterval(fetchNotifs, 60_000);
+    return () => window.clearInterval(poll);
+  }, [fetchNotifs]);
 
   // Re-fetch every time the notifications panel is opened
   useEffect(() => {
@@ -212,14 +216,6 @@ function SettingsForm({ settings, onSave, onChangeTheme, onClose, showToast }) {
             ))}
           </div>
         </div>
-        <label className="setting-row">
-          <span><strong>Email alerts</strong><small>Send account and tracer updates to admin email.</small></span>
-          <input
-            type="checkbox"
-            checked={!!local.emailAlerts}
-            onChange={(e) => setLocal((p) => ({ ...p, emailAlerts: e.target.checked }))}
-          />
-        </label>
         <label className="setting-row">
           <span><strong>Dashboard notifications</strong><small>Show badges for pending reviews and new posts.</small></span>
           <input

@@ -186,8 +186,12 @@ export function DashboardSettingsForm({
   onChangeTheme,
   onClose,
   showToast,
-  emailAlertDescription = "Send account and tracer updates to admin email.",
   notificationDescription = "Show badges for pending reviews and new posts.",
+  // Alumni already have their own password-change form under the account
+  // panel (avatar icon → Security) — showing a second one here too was
+  // duplicate UI for the same action. Admin/coordinator have no equivalent
+  // account panel, so this stays true (shown) for them.
+  showChangePassword = true,
 }) {
   const [local, setLocal] = useState(settings);
   useEffect(() => setLocal(settings), [settings]);
@@ -226,14 +230,6 @@ export function DashboardSettingsForm({
           </div>
         </div>
         <label className="setting-row">
-          <span><strong>Email alerts</strong><small>{emailAlertDescription}</small></span>
-          <input
-            type="checkbox"
-            checked={local.emailAlerts}
-            onChange={(e) => setLocal((p) => ({ ...p, emailAlerts: e.target.checked }))}
-          />
-        </label>
-        <label className="setting-row">
           <span><strong>Dashboard notifications</strong><small>{notificationDescription}</small></span>
           <input
             type="checkbox"
@@ -241,7 +237,7 @@ export function DashboardSettingsForm({
             onChange={(e) => setLocal((p) => ({ ...p, dashboardNotifications: e.target.checked }))}
           />
         </label>
-        <ChangePasswordSection showToast={showToast} />
+        {showChangePassword && <ChangePasswordSection showToast={showToast} />}
         <div className="modal-actions">
           <button type="button" onClick={onClose}>Cancel</button>
           <button type="submit">Save Settings</button>

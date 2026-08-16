@@ -343,7 +343,7 @@ export default function TracerStudyForm() {
         const raw = data.data;
         const STORED_KEYS = [
           "contactNumber", "gender", "programsCompleted", "professionalExam",
-          "professionalExamName", "employmentStatus", "placeOfWork", "occupationTitle",
+          "professionalExamName", "employmentStatus", "companyName", "placeOfWork", "occupationTitle",
           "industryField", "presentEmploymentType", "jobRelatedToDegree",
           "yearsInCurrentJob", "reasonsNotEmployed", "furtherEducation",
           "furtherEducationType", "pursuedTrainings", "trainingType",

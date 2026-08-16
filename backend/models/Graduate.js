@@ -54,7 +54,6 @@ const GraduateSchema = new mongoose.Schema(
 
 GraduateSchema.index({ fileId: 1, rowIndex: 1 });
 GraduateSchema.index({ program: 1, employmentStatus: 1 });
-GraduateSchema.index({ industry: 1 });
 GraduateSchema.index({ yearGraduated: 1, employmentStatus: 1 });
 
 // Enforces the AC AI Assistant's college scope (see utils/collegeScope.js)

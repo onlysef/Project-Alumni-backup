@@ -1335,6 +1335,18 @@ const searchJobs = async (req, res) => {
     // uses so the two numbers can't disagree. A real search (explicit
     // keywords) keeps relevance sorting and the caller's own pagesize,
     // since that's an actual search, not the recommendation feed.
+    // The plain "Recommended for You" view (no explicit search, no
+    // location/type filters) is exactly what Home already computes and
+    // caches per-alumnus — reusing it here means this page and Home can
+    // never show two different job lists, and it skips a duplicate Careerjet
+    // round-trip on every visit within the cache window instead of hitting
+    // the external API fresh every single time.
+    if (!hasExplicitSearch && !location && !type) {
+      const jobs = await getRecommendedJobsForAlumni(req.user.id, employment);
+      sortJobsByMatchThenDate(jobs);
+      return res.json({ jobs, total: jobs.length, page: 1, pages: 1, hasProfile: !!profileKeywords });
+    }
+
     const careerjetSort = hasExplicitSearch ? sort : 'date';
     const effectivePagesize = hasExplicitSearch ? pagesize : RECOMMENDED_POOL_SIZE;
 

@@ -56,7 +56,7 @@ const login = async (req, res) => {
       user.twoFactorOTPAttempts = 0;
       await user.save();
 
-      console.log(`[2FA] OTP for ${user.email}: ${otp}`);
+      console.log(`[2FA] OTP sent to ${user.email}`);
       await sendOTPEmail(
         user.email,
         'Your Two-Factor Authentication Code',
@@ -184,7 +184,7 @@ const resendTwoFactor = async (req, res) => {
     user.twoFactorOTPAttempts = 0;
     await user.save();
 
-    console.log(`[2FA resend] OTP for ${user.email}: ${otp}`);
+    console.log(`[2FA resend] OTP sent to ${user.email}`);
     await sendOTPEmail(
       user.email,
       'Your Two-Factor Authentication Code',

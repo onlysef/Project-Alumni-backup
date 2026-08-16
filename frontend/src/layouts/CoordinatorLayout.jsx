@@ -26,11 +26,10 @@ export default function CoordinatorLayout() {
       return {
         theme: saved.theme ?? "light",
         compactTables: true,
-        emailAlerts: saved.emailAlerts ?? true,
-        dashboardNotifications: true,
+        dashboardNotifications: saved.dashboardNotifications ?? true,
       };
     } catch {
-      return { theme: "light", dashboardNotifications: true, compactTables: true, emailAlerts: true };
+      return { theme: "light", dashboardNotifications: true, compactTables: true };
     }
   });
 

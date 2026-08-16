@@ -184,7 +184,6 @@ export default function EmployerTopbar({
           onChangeTheme={(theme) => document.body.classList.toggle("dark-mode", theme === "dark")}
           onClose={closeSettings}
           showToast={showToast}
-          emailAlertDescription="Receive job application and interview updates by email."
           notificationDescription="Show badges for new applicants and appointment updates."
         />
       </Modal>

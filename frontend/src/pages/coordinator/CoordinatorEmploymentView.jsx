@@ -50,8 +50,10 @@ export default function CoordinatorEmploymentView() {
   const [notifying, setNotifying] = useState(false);
   const [confirm, setConfirm] = useState({ open: false, message: "", onConfirm: null });
   const debounceRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const [emp, act] = await Promise.all([
@@ -60,13 +62,15 @@ export default function CoordinatorEmploymentView() {
         }),
         apiFetch("/coordinator/employment/activity", { params: { limit: 10 } }),
       ]);
+      if (requestIdRef.current !== requestId) return; // a newer request already landed
       setRows(emp.records ?? []);
       setPagination(emp.pagination ?? null);
       setActivities(act.activities ?? []);
     } catch {
+      if (requestIdRef.current !== requestId) return;
       showToast?.("Failed to load employment data.");
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [appliedSearch, course, page]);
 

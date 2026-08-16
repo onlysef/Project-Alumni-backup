@@ -29,17 +29,21 @@ export default function AlumniContacts() {
   const [pagination, setPagination] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const debounceRef = useRef(null);
+  const requestIdRef = useRef(0);
 
   const load = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
     try {
       const data = await apiFetch("/coordinator/alumni", { params: { year, search: appliedSearch, page, limit: 10 } });
+      if (requestIdRef.current !== requestId) return; // a newer request already landed
       setContacts(data.contacts ?? []);
       setPagination(data.pagination ?? null);
     } catch {
+      if (requestIdRef.current !== requestId) return;
       showToast?.("Failed to load contacts.");
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   }, [year, appliedSearch, page]);
 
