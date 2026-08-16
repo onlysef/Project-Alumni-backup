@@ -6,3 +6,4 @@ dist/
 .claude/
 *.log
 backend/server.err
+frontend/.vite/
