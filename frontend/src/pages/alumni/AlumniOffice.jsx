@@ -208,12 +208,14 @@ function AppointmentForm({ settings }) {
 
   useEffect(() => {
     if (!staffId || !date) { setBookedTimes([]); return; }
+    let active = true;
     setSlotsLoading(true);
     fetch(`${API}/alumni/appointments/booked-slots?staff_id=${staffId}&date=${date}`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => setBookedTimes(d.times || []))
-      .catch(() => setBookedTimes([]))
-      .finally(() => setSlotsLoading(false));
+      .then((d) => { if (active) setBookedTimes(d.times || []); })
+      .catch(() => { if (active) setBookedTimes([]); })
+      .finally(() => { if (active) setSlotsLoading(false); });
+    return () => { active = false; };
   }, [staffId, date]);
 
   const isToday = date === todayISO();

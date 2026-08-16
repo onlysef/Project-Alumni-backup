@@ -1,12 +1,3 @@
-export const coordinatorViewRoutes = {
-  dashboard:    "Coordinator Dashboard",
-  events:       "Event Management",
-  participation:"Event Participation",
-  employment:   "Employment Details",
-  contacts:     "Alumni Contacts",
-  about:        "Alumni Association Inc.",
-};
-
 export const coordinatorNavItems = [
   { view: "dashboard",    icon: "icon-1", label: "Dashboard" },
   { view: "events",       icon: "icon-5", label: "Event Management" },

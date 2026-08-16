@@ -16,9 +16,9 @@ export default function AlumniLayout() {
   const [settings, setSettings] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("alumniDashboardSettings")) || {};
-      return { theme: saved.theme ?? "light", emailAlerts: saved.emailAlerts ?? true, dashboardNotifications: saved.dashboardNotifications ?? true };
+      return { theme: saved.theme ?? "light", dashboardNotifications: saved.dashboardNotifications ?? true };
     } catch {
-      return { theme: "light", emailAlerts: true, dashboardNotifications: true };
+      return { theme: "light", dashboardNotifications: true };
     }
   });
   const showToast = useCallback((message) => {

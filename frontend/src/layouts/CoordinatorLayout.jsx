@@ -25,12 +25,10 @@ export default function CoordinatorLayout() {
       const saved = JSON.parse(localStorage.getItem("aptmsCoordinatorSettings")) || {};
       return {
         theme: saved.theme ?? "light",
-        compactTables: true,
-        emailAlerts: saved.emailAlerts ?? true,
-        dashboardNotifications: true,
+        dashboardNotifications: saved.dashboardNotifications ?? true,
       };
     } catch {
-      return { theme: "light", dashboardNotifications: true, compactTables: true, emailAlerts: true };
+      return { theme: "light", dashboardNotifications: true };
     }
   });
 
@@ -61,8 +59,7 @@ export default function CoordinatorLayout() {
 
   useEffect(() => {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");
-    document.body.classList.toggle("compact-admin", settings.compactTables);
-  }, [settings.theme, settings.compactTables]);
+  }, [settings.theme]);
 
   useEffect(() => {
     const title = PATH_TITLES[location.pathname] || "Coordinator Dashboard";

@@ -31,11 +31,10 @@ export default function EmployerLayout() {
       return {
         theme: saved.theme ?? "light",
         compactTables: saved.compactTables ?? false,
-        emailAlerts: saved.emailAlerts ?? true,
         dashboardNotifications: saved.dashboardNotifications ?? true,
       };
     } catch {
-      return { theme: "light", compactTables: false, emailAlerts: true, dashboardNotifications: true };
+      return { theme: "light", compactTables: false, dashboardNotifications: true };
     }
   });
   const { pathname } = useLocation();

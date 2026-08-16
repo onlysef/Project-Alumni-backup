@@ -63,26 +63,39 @@ export default function EventParticipation() {
   }, []);
 
   // ── Load stats when event changes ─────────────────────────────
+  const statsRequestIdRef = useRef(0);
   const loadStats = useCallback(async (eventId) => {
     if (!eventId) return;
+    const requestId = ++statsRequestIdRef.current;
     try {
       const data = await authGet(`/coordinator/attendance/${eventId}/stats`);
+      if (statsRequestIdRef.current !== requestId) return; // a newer request already landed
       setStats(data);
-    } catch { setStats(null); }
+    } catch {
+      if (statsRequestIdRef.current !== requestId) return;
+      setStats(null);
+    }
   }, []);
 
   // ── Load records ─────────────────────────────────────────────
+  const recordsRequestIdRef = useRef(0);
   const loadRecords = useCallback(async (eventId, pg, search) => {
     if (!eventId) return;
+    const requestId = ++recordsRequestIdRef.current;
     setTableLoading(true);
     try {
       const params = new URLSearchParams({ page: pg, limit: 10 });
       if (search) params.set("search", search);
       const data = await authGet(`/coordinator/attendance/${eventId}/records?${params}`);
+      if (recordsRequestIdRef.current !== requestId) return; // a newer request already landed
       setRecords(data.records ?? []);
       setPagination(data.pagination ?? null);
-    } catch { showToast?.("Failed to load records."); }
-    finally { setTableLoading(false); }
+    } catch {
+      if (recordsRequestIdRef.current !== requestId) return;
+      showToast?.("Failed to load records.");
+    } finally {
+      if (recordsRequestIdRef.current === requestId) setTableLoading(false);
+    }
   }, []);
 
   useEffect(() => {

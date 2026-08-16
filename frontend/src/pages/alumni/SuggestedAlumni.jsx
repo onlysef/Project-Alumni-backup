@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { API, authHeaders } from "../../services/api.js";
 import { Modal } from "../../components/common/Primitives.jsx";
+import { useAuth } from "../../context/AuthContext";
 
 const AVATAR_COLORS = ["", "blue", "pink", "green", "purple", "orange", "rose", "navy"];
 const PAGE_SIZE = 60;
-const SAVED_KEY = "savedAlumniSuggestions";
 const DEV_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === "true";
 
 const PREVIEW_SUGGESTIONS = [
@@ -26,9 +26,9 @@ function initials(name = "") {
   return name.split(" ").filter(Boolean).map((word) => word[0]).join("").slice(0, 2).toUpperCase();
 }
 
-function readSavedProfiles() {
+function readSavedProfiles(savedKey) {
   try {
-    const value = JSON.parse(localStorage.getItem(SAVED_KEY));
+    const value = JSON.parse(localStorage.getItem(savedKey));
     return Array.isArray(value) ? value : [];
   } catch {
     return [];
@@ -36,6 +36,8 @@ function readSavedProfiles() {
 }
 
 export default function SuggestedAlumni() {
+  const { user } = useAuth();
+  const savedKey = `savedAlumniSuggestions_${user?.id || "anon"}`;
   const [activeView, setActiveView] = useState("suggestions");
   const [course, setCourse] = useState("All");
   const [year, setYear] = useState("All");
@@ -44,7 +46,7 @@ export default function SuggestedAlumni() {
   const [appliedSearch, setAppliedSearch] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [alumni, setAlumni] = useState([]);
-  const [savedProfiles, setSavedProfiles] = useState(readSavedProfiles);
+  const [savedProfiles, setSavedProfiles] = useState(() => readSavedProfiles(savedKey));
   const [dismissedIds, setDismissedIds] = useState(() => new Set());
   const [total, setTotal] = useState(0);
   const [filterOptions, setFilterOptions] = useState({ courses: [], years: [] });
@@ -141,13 +143,16 @@ export default function SuggestedAlumni() {
   }, [savedProfiles, search]);
 
   const savedIds = useMemo(() => new Set(savedProfiles.map((person) => person._id)), [savedProfiles]);
-  const topMatch = visibleSuggestions[0]?.matchScore || 0;
+  const topMatch = useMemo(
+    () => visibleSuggestions.reduce((max, person) => Math.max(max, Number(person.matchScore || 0)), 0),
+    [visibleSuggestions]
+  );
 
   function toggleSaved(person) {
     setSavedProfiles((current) => {
       const exists = current.some((item) => item._id === person._id);
       const next = exists ? current.filter((item) => item._id !== person._id) : [{ ...person }, ...current];
-      localStorage.setItem(SAVED_KEY, JSON.stringify(next));
+      localStorage.setItem(savedKey, JSON.stringify(next));
       showNotice(exists ? `${person.name} removed from saved profiles.` : `${person.name} saved for later.`);
       return next;
     });

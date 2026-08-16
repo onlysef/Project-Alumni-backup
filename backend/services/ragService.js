@@ -447,8 +447,9 @@ async function buildListAllContext() {
   return { names, total: names.length };
 }
 
-async function streamHF(messages, onToken, retries = 3, maxTokens = 512) {
+async function streamHF(messages, onToken, retries = 3, maxTokens = 512, onReset = null) {
   for (let attempt = 1; attempt <= retries; attempt++) {
+    let sentAny = false;
     try {
       let fullAnswer = '';
       const stream = hf.chatCompletionStream({
@@ -460,12 +461,18 @@ async function streamHF(messages, onToken, retries = 3, maxTokens = 512) {
       for await (const chunk of stream) {
         const token = chunk.choices[0]?.delta?.content || '';
         fullAnswer += token;
-        if (onToken && token) onToken(token);
+        if (onToken && token) { onToken(token); sentAny = true; }
       }
       return fullAnswer;
     } catch (err) {
       const isRateLimit = err?.statusCode === 429 || err?.statusCode === 503 || /rate|limit|overload/i.test(err?.message || '');
       if (isRateLimit && attempt < retries) {
+        // If tokens from this failed attempt already reached the client, a
+        // plain retry would stream a second full answer appended after that
+        // fragment — garbled, doubled-up output, since already-flushed SSE
+        // data can't be un-sent. Tell the client to discard what it's shown
+        // so far before the retry starts streaming a clean answer.
+        if (sentAny && onReset) onReset();
         // Was 2000ms/attempt (2s, 4s, 6s...) — a full round of retries could
         // add 6+ seconds of pure backoff on top of the request time itself.
         // 800ms/attempt keeps a real gap for the provider to recover from a
@@ -478,7 +485,7 @@ async function streamHF(messages, onToken, retries = 3, maxTokens = 512) {
   }
 }
 
-async function generateAnswer(question, chatHistory = [], filters = {}, onToken = null) {
+async function generateAnswer(question, chatHistory = [], filters = {}, onToken = null, onReset = null) {
   const startedAt  = Date.now();
 
   // Correct typos in domain keywords ONCE, upstream of everything — classify(),
@@ -705,7 +712,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         { role: 'user', content: question },
       ];
 
-      const fullAnswer = await streamHF(messages, onToken);
+      const fullAnswer = await streamHF(messages, onToken, 3, 512, onReset);
       return finish({ answer: fullAnswer, sources: ['imported_file'], type: 'statistics' });
     }
   }
@@ -804,7 +811,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // qualitative answers run far longer than needed. 350 still gives real
   // room for summarizing multiple alumni's feedback in one answer, just
   // without the extreme worst-case tail latency of the uncapped default.
-  const fullAnswer = await streamHF(messages, onToken, 3, 350);
+  const fullAnswer = await streamHF(messages, onToken, 3, 350, onReset);
   const sources = [...new Set(confidentChunks.map(c => c.source_type))];
   return finish({ answer: fullAnswer, sources, type: 'rag' });
 }

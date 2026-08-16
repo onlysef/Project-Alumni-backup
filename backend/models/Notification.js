@@ -9,4 +9,7 @@ const schema = new mongoose.Schema({
   type:     { type: String, default: 'event' },
 }, { timestamps: true });
 
+// Every unread-badge/list query filters on these two together.
+schema.index({ user_id: 1, is_read: 1 });
+
 module.exports = mongoose.model('Notification', schema);

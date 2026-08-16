@@ -4,3 +4,6 @@ dist/
 .env.production
 .env.local
 .claude/
+*.log
+backend/server.err
+frontend/.vite/

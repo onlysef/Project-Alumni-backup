@@ -18,6 +18,11 @@ connectDB();
 
 const app = express();
 
+// Deployed behind Vercel's proxy — without this, express-rate-limit can't
+// tell one visitor's IP from another (everyone looks like the proxy) and
+// refuses to start in production.
+app.set('trust proxy', 1);
+
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'http://localhost:5173',

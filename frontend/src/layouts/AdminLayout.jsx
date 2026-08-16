@@ -27,11 +27,10 @@ export default function AdminLayout() {
       return {
         theme: saved.theme ?? "light",
         compactTables: saved.compactTables ?? false,
-        emailAlerts: true,
-        dashboardNotifications: true,
+        dashboardNotifications: saved.dashboardNotifications ?? true,
       };
     } catch {
-      return { theme: "light", emailAlerts: true, dashboardNotifications: true, compactTables: false };
+      return { theme: "light", dashboardNotifications: true, compactTables: false };
     }
   });
 

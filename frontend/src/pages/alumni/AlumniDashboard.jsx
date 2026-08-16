@@ -233,7 +233,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     {visible("News") && <section className="announcement-section"><h3>News</h3>
       {newsLoading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading news…</p>}
       {!newsLoading && news.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No news posted yet.</p>}
-      {!newsLoading && news.slice(0, filter === "News" ? news.length : 1).map((ann) => (
+      {!newsLoading && news.slice(0, filter === "News" ? news.length : 3).map((ann) => (
         <article className="announcement-card" key={ann._id}>
           {ann.imageUrl
             ? <div className="announcement-image"><img src={ann.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
@@ -277,7 +277,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     {visible("Events") && <section className="announcement-section"><h3>Events</h3>
       {eventsLoading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading events…</p>}
       {!eventsLoading && upcomingEvents.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No upcoming events yet.</p>}
-      {upcomingEvents.map((ev, i) => (
+      {upcomingEvents.slice(0, filter === "Events" ? upcomingEvents.length : 3).map((ev, i) => (
         <EventCard
           key={ev._id}
           second={i % 2 === 1}

@@ -26,7 +26,7 @@ const login = async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required.' });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
     if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
 
     const match = await bcrypt.compare(password, user.password);
@@ -56,7 +56,7 @@ const login = async (req, res) => {
       user.twoFactorOTPAttempts = 0;
       await user.save();
 
-      console.log(`[2FA] OTP for ${user.email}: ${otp}`);
+      console.log(`[2FA] OTP sent to ${user.email}`);
       await sendOTPEmail(
         user.email,
         'Your Two-Factor Authentication Code',
@@ -184,7 +184,7 @@ const resendTwoFactor = async (req, res) => {
     user.twoFactorOTPAttempts = 0;
     await user.save();
 
-    console.log(`[2FA resend] OTP for ${user.email}: ${otp}`);
+    console.log(`[2FA resend] OTP sent to ${user.email}`);
     await sendOTPEmail(
       user.email,
       'Your Two-Factor Authentication Code',
@@ -338,6 +338,9 @@ const registerPartner = async (req, res) => {
 
     if (!firstName || !lastName || !company || !partnerType || !email || !password) {
       return res.status(400).json({ message: 'All fields are required.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
     }
     if (password.length < 8) {
       return res.status(400).json({ message: 'Password must be at least 8 characters.' });
