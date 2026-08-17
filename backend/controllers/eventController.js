@@ -23,6 +23,39 @@ function resolveEventCollege(user, visibility) {
   return COLLEGE_CODES.includes(visibility) ? visibility : '';
 }
 
+// resolveEventCollege() above only locks down the MANAGEMENT field
+// (`college` — who can edit/take attendance) to the coordinator's own
+// college; it never restricted the AUDIENCE field (`visibility` — who sees
+// it in getAlumniEvents). A coordinator could set visibility to a different
+// college's code entirely (e.g. a CPAG coordinator posting `visibility:
+// 'CCS'`), producing an event only CCS alumni see, that CCS's own
+// coordinators have no access to manage — a college-scope bypass via the
+// audience field instead of the management field. 'Public'/'Private'/'All
+// Alumni' are all still allowed unrestricted since none of them single out
+// a SPECIFIC other college.
+function assertVisibilityAllowed(user, visibility) {
+  if (!user.college || !visibility) return null;
+  const isCollegeSpecific = COLLEGE_CODES.includes(visibility) || /\sAlumni$/.test(visibility);
+  if (!isCollegeSpecific) return null;
+  const ownCollegeVariant = visibility === user.college || visibility === `${user.college} Alumni`;
+  if (ownCollegeVariant) return null;
+  return `You can only target your own college (${user.college}) or a general audience (Public / All Alumni) — not "${visibility}".`;
+}
+
+// createEvent's "New Event" broadcast used to notify EVERY active alumnus
+// regardless of the event's visibility — a college-scoped event (visibility
+// 'CPAG', say) still paged alumni in every other college, even though
+// getAlumniEvents would never actually show them that event. Mirrors
+// getAlumniEvents' own visibility→audience mapping so a notification only
+// ever reaches alumni who can actually see the event it's about.
+function notifiableAlumniFilter(visibility) {
+  if (visibility === 'Public' || visibility === 'All Alumni') return { role: 'alumni', status: 'active' };
+  const collegeMatch = visibility && visibility.match(/^([A-Z]+)(?:\sAlumni)?$/);
+  const college = collegeMatch && COLLEGE_CODES.includes(collegeMatch[1]) ? collegeMatch[1] : null;
+  if (college) return { role: 'alumni', status: 'active', college };
+  return null; // 'Private' (or any unrecognized value) — no one sees this event, so no one is notified
+}
+
 // GET /coordinator/events
 const getEvents = async (req, res) => {
   try {
@@ -58,6 +91,9 @@ const createEvent = async (req, res) => {
     if (!event_datetime)   return res.status(400).json({ message: 'Date & time is required.' });
 
     const eventVisibility = visibility || 'Public';
+    const visibilityError = assertVisibilityAllowed(req.user, eventVisibility);
+    if (visibilityError) return res.status(403).json({ message: visibilityError });
+
     const event = await Event.create({
       title:          title.trim(),
       description:    description?.trim() || '',
@@ -74,7 +110,9 @@ const createEvent = async (req, res) => {
     // Respond immediately — notifications run in background
     res.status(201).json({ event: { ...event.toObject(), interested_count: 0 } });
 
-    User.find({ role: 'alumni', status: 'active' }, '_id').lean()
+    const notifyFilter = notifiableAlumniFilter(eventVisibility);
+    if (!notifyFilter) return;
+    User.find(notifyFilter, '_id').lean()
       .then(alumni => {
         if (!alumni.length) return;
         return Notification.insertMany(alumni.map(a => ({
@@ -119,6 +157,8 @@ const updateEvent = async (req, res) => {
     if (event_datetime !== undefined) updates.event_datetime = new Date(event_datetime);
     if (end_datetime   !== undefined) updates.end_datetime   = end_datetime ? new Date(end_datetime) : null;
     if (visibility     !== undefined) {
+      const visibilityError = assertVisibilityAllowed(req.user, visibility);
+      if (visibilityError) return res.status(403).json({ message: visibilityError });
       updates.visibility = visibility;
       updates.college    = resolveEventCollege(req.user, visibility);
     }

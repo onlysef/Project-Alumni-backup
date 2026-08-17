@@ -5,8 +5,8 @@ const User = require('../models/User');
 const Partnership = require('../models/Partnership');
 const { generateOTP, sendOTPEmail } = require('../utils/emailService');
 
-const signToken = (userId, role, college = '') =>
-  jwt.sign({ id: userId, role, college }, process.env.JWT_SECRET, {
+const signToken = (userId, role, college = '', tokenVersion = 0) =>
+  jwt.sign({ id: userId, role, college, tokenVersion }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
@@ -71,7 +71,7 @@ const login = async (req, res) => {
       });
     }
 
-    const token = signToken(user._id, user.role, user.college || '');
+    const token = signToken(user._id, user.role, user.college || '', user.tokenVersion || 0);
     res.json({
       message: 'Login successful.',
       token,
@@ -139,7 +139,7 @@ const verifyTwoFactor = async (req, res) => {
     user.twoFactorOTPAttempts = 0;
     await user.save();
 
-    const token = signToken(user._id, user.role, user.college || '');
+    const token = signToken(user._id, user.role, user.college || '', user.tokenVersion || 0);
     res.json({
       message: 'Login successful.',
       token,
@@ -302,6 +302,10 @@ const resetPassword = async (req, res) => {
     user.password = await bcrypt.hash(newPassword, 12);
     user.resetToken = undefined;
     user.resetTokenExpiry = undefined;
+    // Invalidate any session issued before this reset — a forgotten-password
+    // reset is often used specifically to lock out someone else who has the
+    // old password, so the old session has to stop working immediately.
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
     res.json({ message: 'Password reset successfully.' });

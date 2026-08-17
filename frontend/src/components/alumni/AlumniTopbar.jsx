@@ -331,6 +331,11 @@ function AccountSecurityForm() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Failed to update password.");
+      // The backend invalidates every other session on the account by
+      // bumping its token version, and issues this session a fresh token
+      // carrying the new version — without storing it, the very next
+      // authenticated request from this tab would fail with "invalid token".
+      if (data.token) localStorage.setItem("auth_token", data.token);
       setMessage("Password updated.");
       setCurrentPassword("");
       setNewPassword("");

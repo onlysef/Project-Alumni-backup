@@ -3,6 +3,7 @@ dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const compression = require('compression');
 const cron = require('node-cron');
 const connectDB = require('./config/db');
@@ -22,6 +23,13 @@ const app = express();
 // tell one visitor's IP from another (everyone looks like the proxy) and
 // refuses to start in production.
 app.set('trust proxy', 1);
+
+// Standard hardening (X-Content-Type-Options, X-Frame-Options, HSTS, etc.)
+// — this API never serves HTML itself, so the default CSP is a no-op in
+// practice, but the rest closes a real defense-in-depth gap for the HTML-
+// injection surfaces elsewhere in the app (emailService.js) and stops this
+// origin from being framed.
+app.use(helmet());
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -61,7 +69,17 @@ app.get('/api/health', (req, res) => {
 // Return JSON for all errors (prevents HTML body-parser errors from breaking res.json() on the client)
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
-  res.status(status).json({ message: err.message || 'Internal server error.' });
+  console.error('Unhandled error:', err);
+  // A 4xx here is always a deliberate, safe, user-facing message (CORS
+  // rejection above, a malformed-body error from express.json, etc.) — a
+  // 500 means something genuinely unexpected happened (a Mongoose
+  // CastError/ValidationError from a route with no try/catch, a third-
+  // party library throwing), and nothing guarantees its raw .message is
+  // safe to hand to an API consumer. Every controller already catches its
+  // own errors and returns its own safe message, so this only changes
+  // behavior for the unhandled case this comment describes.
+  const exposeMessage = status < 500 || process.env.NODE_ENV !== 'production';
+  res.status(status).json({ message: exposeMessage ? (err.message || 'Internal server error.') : 'Internal server error.' });
 });
 
 if (require.main === module) {

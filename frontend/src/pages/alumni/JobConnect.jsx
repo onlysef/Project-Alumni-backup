@@ -5,19 +5,19 @@ import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { apiFetch } from "../../services/api.js";
 import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
 
-const initialResume = {
-  name: "Juan Dela Cruz",
-  address: "Tarlac City, Tarlac",
-  phone: "0912 345 6789",
-  email: "jdelacruz@gmail.com",
-  linkedin: "linkedin.com/in/juandelacruz",
-  summary: "Detail-oriented software engineer with experience building responsive web applications and collaborating with cross-functional teams.",
-  skills: "Python\nJava\nPHP and C++\nReact.js\nREST API\nGit",
-  experience: "Software Engineer - Agritech Solutions, Tarlac City\nJune 2024 - Present\nBuilt responsive dashboard features for alumni and employer workflows.\nCollaborated with teammates to improve usability and data entry speed.",
-  education: "BS Information Technology - Tarlac State University\n2023 - 2024",
-  certifications: "Web Development Fundamentals\nDatabase Management Certificate",
-  projects: "Alumni Career Portal\nCreated portal features for job matching, resume preview, and alumni recommendations.",
-  languages: "English: Professional\nFilipino: Native",
+// Every field below used to be an editable, SAVEABLE default (see
+// useState(initialResume) further down) — a brand-new alumnus with no
+// employment/tracer data yet saw this fake identity sitting in the actual
+// form fields, and clicking Save without editing anything persisted it as
+// their real resume, shown to real employers on every job application. The
+// ResumeEditor's <input>/<textarea> elements already carry the exact same
+// example text as HTML `placeholder` attributes (grey hint text that is
+// never part of the submitted value) — so this fake data was pure
+// duplication with none of the safety, and the real default is now
+// genuinely empty.
+const EMPTY_RESUME = {
+  name: "", address: "", phone: "", email: "", linkedin: "", summary: "",
+  skills: "", experience: "", education: "", certifications: "", projects: "", languages: "",
 };
 
 const RESUME_FIELDS = ["name", "address", "phone", "email", "linkedin", "summary", "skills", "experience", "education", "certifications", "projects", "languages"];
@@ -26,8 +26,8 @@ export default function JobConnect() {
   const { showToast } = useOutletContext() || {};
   const [search, setSearch] = useState("");
   const [jobType, setJobType] = useState("");
-  const [resume, setResume] = useState(initialResume);
-  const [draftResume, setDraftResume] = useState(initialResume);
+  const [resume, setResume] = useState(EMPTY_RESUME);
+  const [draftResume, setDraftResume] = useState(EMPTY_RESUME);
   const [editingResume, setEditingResume] = useState(false);
   const [resumePreviewOpen, setResumePreviewOpen] = useState(false);
 
@@ -83,13 +83,15 @@ export default function JobConnect() {
   }
 
   function loadResume() {
-    // The backend always returns something here — either a previously
-    // saved resume, or profile-derived suggested defaults (see
-    // getMyResume) — this guard only matters if the request itself fails,
-    // in which case the hardcoded initialResume state stays as-is.
+    // getMyResume sends `resume: resume || {}` — a brand-new alumnus with
+    // no saved resume AND no employment/tracer data to suggest from gets
+    // back `{}`, which is truthy, so a bare `!d.resume` check doesn't catch
+    // it. Checking for actual keys is what makes that case correctly leave
+    // the (now genuinely empty) default state alone instead of treating an
+    // empty object as "loaded data."
     apiFetch("/alumni/resume").then((d) => {
-      if (!d.resume) return;
-      const loaded = { ...initialResume };
+      if (!d.resume || Object.keys(d.resume).length === 0) return;
+      const loaded = { ...EMPTY_RESUME };
       RESUME_FIELDS.forEach((key) => { if (d.resume[key] !== undefined) loaded[key] = d.resume[key]; });
       setResume(loaded);
       setDraftResume(loaded);
@@ -149,7 +151,10 @@ export default function JobConnect() {
     const wasSaved = savedUrls.has(job.url);
     apiFetch("/alumni/jobs/saved/toggle", { method: "POST", body: job })
       .then(() => setSavedJobs(prev => wasSaved ? prev.filter(j => j.url !== job.url) : [{ ...job, createdAt: new Date().toISOString() }, ...prev]))
-      .catch(() => {});
+      // A failed save used to be completely silent — the button's state
+      // could disagree with what's actually saved server-side until the
+      // next reload, with no indication anything went wrong.
+      .catch(() => showToast?.("Could not update saved jobs. Please try again."));
   }
 
   const updateDraft = (key, value) => setDraftResume(prev => ({ ...prev, [key]: value }));

@@ -12,7 +12,11 @@ const logger               = require('../utils/logger');
 const answerCache          = require('../services/answerCache');
 
 const hf = new HfInference(process.env.HF_API_KEY);
-const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+// See the same constant in services/ragService.js for why there's no
+// hardcoded provider fallback alongside this — letting HF auto-route across
+// Llama-3.1-8B-Instruct's 4 live providers measured ~40% faster than being
+// pinned to Llama-3.2-3B-Instruct's one (featherless-ai).
+const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
 
 // Maps fileParser's TRACER_COLUMNS field names → Graduate model fields
 function mapNormalizedToGraduate(n) {
@@ -309,7 +313,7 @@ const suggestions = async (req, res) => {
   try {
     const completion = await hf.chatCompletion({
       model: CHAT_MODEL,
-      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route
       messages: [
         {
           role: 'system',
@@ -361,7 +365,16 @@ const reembed = async (req, res) => {
         { name: 'employment', docs: await AlumniEmployment.find().lean(), toText: d => {
           const u = userMap[String(d.alumni_id)];
           const name = u ? `${u.firstName} ${u.lastName}` : 'Unknown Alumni';
-          return `Employment for ${name}${u?.course ? ' (' + u.course + ')' : ''}. Status: ${d.employment_status || ''}. Company: ${d.company_name || ''}. Job: ${d.job_title || ''}.`;
+          let text = `Employment for ${name}${u?.course ? ' (' + u.course + ')' : ''}. Status: ${d.employment_status || ''}. Company: ${d.company_name || ''}. Job: ${d.job_title || ''}.`;
+          // reason_unemployed is the only field on this model that actually
+          // carries alumni-authored qualitative text (why they're
+          // unemployed — job-hunting struggles, further studies, etc.).
+          // Every other qualitative-sounding question ("what challenges do
+          // alumni face") had nothing to retrieve without this, because the
+          // rest of the schema is pure structured status/company/job data.
+          if (d.reason_unemployed) text += ` Reason unemployed: ${d.reason_unemployed}.`;
+          if (d.industry) text += ` Industry: ${d.industry}.`;
+          return text;
         }},
         { name: 'user', docs: alumniUsers.filter(u => u.role === 'alumni'), toText: d => `Alumni: ${d.firstName} ${d.lastName}. Course: ${d.course || ''}. Year: ${d.graduationYear || ''}.` },
       ];
@@ -369,11 +382,33 @@ const reembed = async (req, res) => {
       for (const col of collections) {
         for (const doc of col.docs) {
           const text = col.toText(doc);
-          if (!text.trim()) continue;
+          // Always clear any embedding left from a previous run first — a
+          // record that used to have real data (or used to exist) but no
+          // longer qualifies below must not leave a stale chunk behind.
           await EmbeddingDocument.deleteMany({ source_type: col.name, source_id: doc._id });
+          // AlumniEmployment.find() returns one record per alumnus even
+          // before they've ever touched the Employment Details form — those
+          // rows are all identical boilerplate ("Status: Not Yet Updated.
+          // Company: N/A. Job: ."). Embedding hundreds of byte-identical
+          // placeholder chunks let them dominate $vectorSearch's top-K for
+          // almost any employment/job question (they score deceptively high
+          // on generic employment vocabulary), crowding out real answers —
+          // see the "Not Yet Updated" placeholder in computeProfileCompleteness
+          // (alumniController.js) for the same "not real data" definition.
+          const isPlaceholderEmployment = col.name === 'employment' && doc.employment_status === 'Not Yet Updated';
+          if (!text.trim() || isPlaceholderEmployment) continue;
           const embedding = await getEmbedding(text);
           await EmbeddingDocument.create({ source_type: col.name, source_id: doc._id, content: text, embedding, chunk_index: 0 });
         }
+        // Garbage-collect orphans: the loop above only ever deletes-then-
+        // recreates embeddings for source_ids that still exist in col.docs.
+        // A record that was deleted (or replaced under a new _id) outright
+        // — not merely edited — leaves its old embedding behind forever,
+        // since no current doc's _id will ever again match it. Sweep any
+        // embedding of this source_type whose source_id isn't in the
+        // current live set.
+        const liveIds = col.docs.map(d => d._id);
+        await EmbeddingDocument.deleteMany({ source_type: col.name, source_id: { $nin: liveIds } });
       }
       console.log('[AI] Re-embed complete.');
       answerCache.bumpDataVersion();

@@ -4,6 +4,7 @@ const AttendanceLog = require('../models/AttendanceLog');
 const EventFeedback = require('../models/EventFeedback');
 const Notification  = require('../models/Notification');
 const User          = require('../models/User');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 // The routes below take an :eventId param directly and, before this check
 // existed, queried AttendanceLog/Event/EventFeedback for it with no
@@ -55,8 +56,8 @@ const searchAlumni = async (req, res) => {
       {
         $match: {
           $or: [
-            { fullName: { $regex: q, $options: 'i' } },
-            { email:    { $regex: q, $options: 'i' } },
+            { fullName: { $regex: escapeRegex(q), $options: 'i' } },
+            { email:    { $regex: escapeRegex(q), $options: 'i' } },
           ],
         },
       },
@@ -105,13 +106,25 @@ const recordAttendance = async (req, res) => {
 
     const autoTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-    const log = await AttendanceLog.create({
-      event_id,
-      alumni_id,
-      status:      status      || 'Present',
-      time_in:     time_in     || autoTime,
-      recorded_by: req.user.id,
-    });
+    let log;
+    try {
+      log = await AttendanceLog.create({
+        event_id,
+        alumni_id,
+        status:      status      || 'Present',
+        time_in:     time_in     || autoTime,
+        recorded_by: req.user.id,
+      });
+    } catch (err) {
+      // Backstop for a race between the existence check above and this
+      // create (e.g. a double-click, or two coordinators recording the same
+      // alumnus at once) — the unique(event_id, alumni_id) index is the
+      // real guarantee; without this catch the losing request fell through
+      // to the generic 500 handler instead of the same clean 409 the
+      // existence check above already gives for the non-race case.
+      if (err.code === 11000) return res.status(409).json({ message: 'Attendance already recorded for this alumni at this event.' });
+      throw err;
+    }
 
     const alumni = await User.findById(alumni_id, 'firstName lastName course email').lean();
 

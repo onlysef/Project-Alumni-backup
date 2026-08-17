@@ -600,6 +600,7 @@ export default function AiAssistantView() {
 
     let fullAnswer = "";
     let serverSuggestions = null;
+    let hadError = false;
 
     try {
       const token = localStorage.getItem("auth_token");
@@ -672,6 +673,7 @@ export default function AiAssistantView() {
                 );
               }
             } else if (payload.error) {
+              hadError = true;
               setMessages((m) =>
                 m.map((msg) =>
                   msg.id === streamingId ? { ...msg, text: payload.error } : msg
@@ -683,6 +685,7 @@ export default function AiAssistantView() {
       }
     } catch (err) {
       if (err.name !== "AbortError") {
+        hadError = true;
         setMessages((m) =>
           m.map((msg) =>
             msg.id === streamingId
@@ -696,9 +699,11 @@ export default function AiAssistantView() {
       // Prefer backend-computed suggestions (context-aware, guaranteed answerable
       // via the same topic dispatch aggregationService just used); fall back to
       // the static local heuristic for RAG-classified (non-statistics) answers.
+      // Skip entirely when the answer failed — suggestion chips for a
+      // question the assistant couldn't even answer are misleading.
       setMessages((prev) => {
         const lastAc = [...prev].reverse().find((m) => m.role === "ac");
-        if (lastAc?.text) {
+        if (lastAc?.text && !hadError) {
           const base = serverSuggestions?.length ? serverSuggestions : getSuggestions(lastAc.text);
           const filtered = base
             .filter((s) => s.toLowerCase() !== fullAnswer.toLowerCase() && s.toLowerCase() !== question.toLowerCase())

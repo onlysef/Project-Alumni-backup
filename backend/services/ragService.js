@@ -8,7 +8,15 @@ const { correctTypos }    = require('../utils/typoCorrect');
 const answerCache          = require('./answerCache');
 
 const hf = new HfInference(process.env.HF_API_KEY);
-const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
+// No hardcoded provider fallback here on purpose. Llama-3.2-3B-Instruct had
+// exactly one live provider on HF's routing (featherless-ai) — a single,
+// shared, multi-tenant backend, which is what caused the multi-second
+// variance and occasional "temporarily at capacity" failures. Leaving
+// `provider` unset (only using HF_PROVIDER if explicitly configured) lets
+// Hugging Face auto-route across every live provider for whatever
+// HF_CHAT_MODEL is — measured ~40% faster in practice for
+// Llama-3.1-8B-Instruct, which currently has 4 live providers.
 
 // Minimum vector similarity score (0-1) a retrieved chunk must clear to be trusted.
 // Below this, the context is considered too weak to answer from and we refuse
@@ -132,7 +140,7 @@ async function condenseQuestion(question, chatHistory) {
   try {
     const completion = await hf.chatCompletion({
       model: CHAT_MODEL,
-      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route (see CHAT_MODEL comment above)
       messages,
       max_tokens: 60,
     });
@@ -156,16 +164,47 @@ const EMPLOYMENT_STATS_PATTERN = /\b(employment status|employment rate|employed|
 // summary chunks carry a real metadata.year — see fileParser.js.
 const QUESTION_YEAR_PATTERN = /\b((?:199\d|20[0-3]\d))\b/;
 
+// RAG-only person-name detector, deliberately separate from and broader than
+// aggregationService.extractPersonName — that one also drives structured-
+// query ROUTING (query()'s personName branch) and has to stay narrow so it
+// doesn't hijack unrelated questions. This one is only ever used below to
+// decide which retrieved chunks belong to the named person, so a false
+// match just means no filtering happens (today's behavior) — it can never
+// mis-route a query. Catches natural phrasings like "tell me about X" /
+// "describe X" that extractPersonName's narrower "who is X" / "X's status"
+// shapes don't. Two-step (case-insensitive trigger, then a case-SENSITIVE
+// capitalized-word re-match on the tail) for the same reason
+// aggregationService's own PERSON_LOOKUP_PATTERNS do it: a single /i regex
+// would let [A-Z] match lowercase letters too, capturing "the employment"
+// out of "tell me about the employment rate" as if it were a name.
+const ABOUT_PERSON_TRIGGER_PATTERN = /\b(?:tell me (?:more )?about|describe)\s+(.+)/i;
+const ABOUT_PERSON_NAME_PATTERN = /^[A-Z][a-zA-Z.'-]*(?:\s+[A-Z][a-zA-Z.'-]*){1,4}/;
+function extractAboutPersonName(question) {
+  const trigger = question.match(ABOUT_PERSON_TRIGGER_PATTERN);
+  if (!trigger) return null;
+  const nameMatch = trigger[1].match(ABOUT_PERSON_NAME_PATTERN);
+  return nameMatch ? nameMatch[0].replace(/'s$/i, '').trim() : null;
+}
+
+// Referenced from inside SYSTEM_PROMPT below (rule 2) AND checked verbatim
+// after generation to catch (and strip) cases where the model says this AND
+// keeps talking, instead of stopping here as instructed.
+const QUALITATIVE_REFUSAL_SENTENCE = `I don't have enough data in the tracer study records to answer that accurately.`;
+
 const SYSTEM_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. You help administrators and coordinators understand alumni tracer study results and institutional programs.
 
 STRICT RULES — follow these exactly:
 1. Answer ONLY using information explicitly present in the provided context. Do not use your training knowledge to fill gaps.
-2. If the context does not contain enough information to answer the question, respond with: "I don't have enough data in the tracer study records to answer that accurately."
+2. If the context does not address what the question is actually asking, your ENTIRE response must be exactly this sentence and nothing else: "${QUALITATIVE_REFUSAL_SENTENCE}" Do not add "however", do not offer a summary of a different topic, do not mention what the context contains instead — a chunk about a different subject is not a substitute answer, even if it seems related.
 3. NEVER invent or estimate statistics, percentages, counts, names, company names, or any specific facts.
 4. NEVER say things like "approximately", "around", or "typically" when referring to alumni data — only state what the context explicitly says.
 5. For qualitative questions (challenges, reasons, opinions, feedback), only summarize what alumni actually said in the provided context. Do not add general knowledge or assumptions.
-6. Keep answers concise and factual. If the context mentions the topic but lacks detail, say so.
-7. When answering questions about graduate counts or statistics by year or program, use only the pre-computed totals from the context — do not count individual records.`;
+6. Rule 6 only applies when the context is actually ABOUT the question's subject but is missing specific details — in that case, say what's missing. It does NOT apply when the context is about a different subject entirely; that case is covered by rule 2.
+7. When answering questions about graduate counts or statistics by year or program, use only the pre-computed totals from the context — do not count individual records.
+8. If the question names a specific person and the context contains exactly one person whose name is a close variant of it (same first name plus a minor spelling/spacing difference, a missing/extra middle name, or a nickname), treat them as the same person and answer directly using that person's data — do not add a disclaimer pointing out the name doesn't match exactly. Only flag a name mismatch if the context contains no plausible match, or more than one similarly-named person that could cause ambiguity.
+9. Do not start your answer with a preamble like "Based on the provided context/data..." — answer the question directly from the first sentence.
+10. Do not append a trailing caveat, disclaimer, or "Note:" paragraph pointing out what the context doesn't cover, unless the user's question specifically asked for that missing detail. If the question is fully answered, stop there.
+11. When asked to "describe", "tell me about", or summarize a specific alumnus's "career journey/story/profile/background", plain factual fields about them in the context (job title, industry, employment status, years in current job, promotion, training, board exam, further studies) ARE a sufficient, complete answer by themselves. Turn those facts into a short summary — do NOT refuse just because the context is a list of facts rather than a written narrative.`;
 
 const NO_CONTEXT_RESPONSE = `I don't have enough information in the tracer study records to answer that accurately. You may try rephrasing your question, or ask about employment rates, industries, board exams, competency ratings, or program breakdowns — those I can answer directly.`;
 
@@ -463,9 +502,17 @@ async function streamHF(messages, onToken, retries = 3, maxTokens = 512, onReset
       let fullAnswer = '';
       const stream = hf.chatCompletionStream({
         model: CHAT_MODEL,
-        provider: process.env.HF_PROVIDER || 'featherless-ai',
+        provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route (see CHAT_MODEL comment above)
         messages,
         max_tokens: maxTokens,
+        // Default sampling temperature (~0.7-1.0 depending on provider) was
+        // observed giving a different answer to the IDENTICAL question and
+        // context on back-to-back calls — including flipping between a real
+        // answer and the rule-2 refusal sentence for no reason other than
+        // sampling luck. This is a factual data-QA assistant, not a creative
+        // one: low temperature trades away wording variety for the
+        // consistency that actually matters here.
+        temperature: 0.1,
       });
       for await (const chunk of stream) {
         const token = chunk.choices[0]?.delta?.content || '';
@@ -689,10 +736,71 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         finalAnswer = aggText;
       }
 
+      let sources = ['graduate_records'];
+
+      // A "mixed" question (both a stats trigger AND a qualitative trigger —
+      // "how many are unemployed and what challenges do they face") used to
+      // return right here with ONLY the numeric half answered: aggregationService
+      // has no concept of "challenges/reasons/feedback", so the qualitative
+      // half was silently dropped rather than routed anywhere. Running a
+      // second, independent RAG lookup for the qualitative half and
+      // appending it — only when one is actually found — answers the whole
+      // question without changing how plain 'statistical' questions behave
+      // above. Skipped for college-scoped callers: retrieveContext() fails
+      // closed for them anyway (embeddings carry no per-college tag), so
+      // this would never find anything — skipping just avoids a wasted
+      // embedding call.
+      if (queryType === 'mixed' && !collegeScope) {
+        try {
+          const qualRetrieval = await retrieveContext(question, { topK: 8 });
+          const qualConfident = qualRetrieval.chunks.filter(c => (c.score ?? 0) >= SIMILARITY_THRESHOLD);
+          const qualContext   = assembleContext(qualConfident);
+          if (qualContext && qualContext.replace(/=+[^=]+=+/g, '').trim().length >= 80) {
+            // The vector search above only pulls a small top-K sample of
+            // matching records (here, 8) — nowhere near the full unemployed
+            // population. Without an explicit ban, the model happily
+            // "counted" that sample and reported it as if it were the real
+            // total (observed live: stats half correctly said 74 unemployed,
+            // this half then said "8 alumni are unemployed" — a second,
+            // contradicting, fabricated number from counting its own
+            // retrieved sample). The real count was already given by the
+            // verified aggregation answer above; this call's only job is
+            // the qualitative half.
+            const mixedQualPrompt = `${SYSTEM_PROMPT}\n\nADDITIONAL RULE: An exact count/statistic for this question has ALREADY been given in a separate answer. Do NOT state, restate, or imply any count, total, or number of people — including "the context shows N people" — even an approximate one. Only describe the qualitative content (reasons, challenges, themes, feedback) found in the context below.`;
+            const qualMessages = [
+              { role: 'system', content: `${mixedQualPrompt}\n\nContext:\n${qualContext}` },
+              ...chatHistory.slice(-2),
+              { role: 'user', content: question },
+            ];
+            const qualAnswer = (await streamHF(qualMessages, null, 3, 250)).trim();
+            // Same refusal check the stats narration above uses — trust the
+            // RAG call's own "not enough data" admission instead of forcing
+            // an unsupported qualitative paragraph onto a valid stats answer.
+            // Also drop the answer if it violates the no-counting rule above
+            // anyway (small models don't always hold instructions perfectly)
+            // — but only for phrasing that actually ASSERTS a count ("8
+            // alumni are...", "a total of 8", "74%"), not any digit at all:
+            // a blanket digit ban also discarded perfectly good qualitative
+            // content that just happened to mention "6 months" or "2 years"
+            // as part of a reason, which is exactly the kind of real, useful
+            // detail this half of the answer exists to surface.
+            const impliesCount = /\b\d+\s*(%|percent)\b|\b(there are|there're|a total of|out of)\s+\d+\b|\b\d+\s+(alumni|graduates?|respondents?|people|individuals|of them)\b/i.test(qualAnswer);
+            if (qualAnswer && !REFUSAL_PATTERN.test(qualAnswer) && !impliesCount) {
+              finalAnswer = `${finalAnswer}\n\n${qualAnswer}`;
+              sources = [...new Set([...sources, ...qualConfident.map(c => c.source_type)])];
+            }
+          }
+        } catch (err) {
+          // Non-fatal — the stats half above is already fully computed and
+          // verified; a failed qualitative lookup just means it ships alone.
+          logger.warn('mixed_qualitative_lookup_failed', { question, error: err.message });
+        }
+      }
+
       if (onToken) {
         for (const line of finalAnswer.split('\n')) onToken(line + '\n');
       }
-      return finish({ answer: finalAnswer, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null });
+      return finish({ answer: finalAnswer, sources, type: 'statistics', suggestions, chart: aggResult.chart || null });
     }
 
     // See the collegeScope comment above — a scoped coordinator query that
@@ -817,7 +925,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     ? [{ content: statsDoc.content, source_type: 'imported_file' }, ...confidentChunks]
     : confidentChunks;
 
-  const context = assembleContext(allChunks);
+  let context = assembleContext(allChunks);
 
   // If the retrieved context is empty or too thin, don't call the LLM —
   // it will hallucinate rather than admit it doesn't know.
@@ -835,22 +943,74 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // person — so the LLM, given context that never actually mentions them,
   // reliably hallucinates a confident-sounding answer using the name from
   // the question itself (e.g. inventing "Danica Manlapig is listed as an
-  // Alumni record" when no such record exists). Requiring every token of
-  // the named person to literally appear somewhere in the assembled context
-  // catches this before the LLM call, without touching ordinary aggregate
-  // questions (extractPersonName only fires on the "who is X" question
-  // shape, never on topic/statistic phrasing).
-  const namedPerson = aggregationService.extractPersonName(question);
+  // Alumni record" when no such record exists). aggregationService's own
+  // extractPersonName only fires on the "who is X"/"X's job/status" shapes,
+  // never on topic/statistic phrasing, so a broader RAG-only fallback below
+  // also catches "tell me about X" / "describe X" phrasing — it only feeds
+  // this filtering step, never structured-query routing, so widening it
+  // carries no risk of hijacking an unrelated question.
+  const namedPerson = aggregationService.extractPersonName(question) ||
+    extractAboutPersonName(question);
   if (namedPerson) {
     const nameTokens = namedPerson.replace(/'s$/i, '').split(/\s+/).filter(Boolean);
-    const allTokensPresent = nameTokens.length > 0 && nameTokens.every(t =>
-      new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(context)
-    );
-    if (!allTokensPresent) {
+    const tokenPatterns = nameTokens.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+
+    // fileParser.js batches THREE tracer respondents' records into one
+    // newline-joined chunk at ingestion time (BATCH_SIZE=3, to cut down
+    // embedding calls) — so a chunk that "contains this person" can also
+    // contain two other real alumni's full records sitting right next to
+    // theirs in the same prompt. That's what actually caused Vince Tyrone
+    // Garcia's "2 to 3 years"/"Staff Officer III" to bleed into an answer
+    // correctly labeled "Vincent Louie Dejesus": both respondents happened
+    // to share a batch. Splitting on newline and keeping only the line(s)
+    // that mention every name token isolates just this person's own
+    // paragraph — single-line chunks (tracer/employment/user source types
+    // are already one-per-person) pass through unchanged since the whole
+    // line already has to match.
+    const isolatePerson = (content) => {
+      if (!content.includes('\n')) {
+        return tokenPatterns.every(re => re.test(content)) ? content : null;
+      }
+      const lines = content.split('\n').filter(line => tokenPatterns.every(re => re.test(line)));
+      return lines.length ? lines.join('\n') : null;
+    };
+
+    let matchingChunks = allChunks
+      .map(c => {
+        const isolated = isolatePerson(c.content);
+        return isolated ? { ...c, content: isolated } : null;
+      })
+      .filter(Boolean);
+
+    // Vector search only surfaces the top `topK` chunks by generic semantic
+    // similarity — for a vague phrase like "career journey" that bar is
+    // easily cleared by OTHER alumni's chunks too, so this person's own
+    // richest record (the full imported_file tracer entry, not just the
+    // short employment/tracer/user one-liners) can rank just outside the
+    // cutoff and never reach `allChunks` at all, even though it exists in
+    // the DB. Fetching this person's chunks directly by name (cheap — a
+    // handful of chunks per person at most) guarantees completeness instead
+    // of depending on topK luck. Safe from the college-scope leak
+    // retrieveContext() guards against: this branch only runs after
+    // `context` above was already built from real vector-search chunks,
+    // which retrieveContext() only ever returns for an unscoped caller.
+    const directRows = await EmbeddingDocument.find({
+      $and: tokenPatterns.map(re => ({ content: re })),
+    }).limit(20).lean();
+    const seenContent = new Set(matchingChunks.map(c => c.content));
+    for (const row of directRows) {
+      const isolated = isolatePerson(row.content);
+      if (!isolated || seenContent.has(isolated)) continue;
+      seenContent.add(isolated);
+      matchingChunks.push({ content: isolated, source_type: row.source_type });
+    }
+
+    if (!matchingChunks.length) {
       const notFoundMsg = `I don't have any record of "${namedPerson.replace(/'s$/i, '')}" in the tracer study or alumni data.`;
       if (onToken) onToken(notFoundMsg);
       return finish({ answer: notFoundMsg, sources: [], type: 'rag' });
     }
+    context = assembleContext(matchingChunks);
   }
 
   const MAX_HISTORY_CHARS = 300;
@@ -871,8 +1031,25 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // room for summarizing multiple alumni's feedback in one answer, just
   // without the extreme worst-case tail latency of the uncapped default.
   const ragStart = Date.now();
-  const fullAnswer = await streamHF(messages, onToken, 3, 350, onReset);
+  // Buffered (onToken passed as null), not streamed live — the small model
+  // doesn't reliably honor SYSTEM_PROMPT rule 2's "output ONLY the refusal
+  // sentence, nothing else." It frequently emits the refusal verbatim, then
+  // keeps going and volunteers a tangentially-related chunk as if it were an
+  // answer (e.g. asked about salary, answered with "Work-life Balance"
+  // ratings it decided were the "closest related topic"). Streaming live
+  // would have already shown the user that wrong tail before this check can
+  // run, so the full answer has to be checked before anything is sent.
+  const fullAnswer = await streamHF(messages, null, 3, 350, onReset);
   timings.llmMs = Date.now() - ragStart;
+
+  // If the model admitted the refusal anywhere in its answer, trust that
+  // admission over whatever it volunteered afterward and serve only the
+  // refusal — a partial admission followed by an unrelated tangent is worse
+  // than the plain refusal, since it reads as if the tangent were the answer.
+  const finalAnswer = fullAnswer.includes(QUALITATIVE_REFUSAL_SENTENCE)
+    ? QUALITATIVE_REFUSAL_SENTENCE
+    : fullAnswer;
+  if (onToken) onToken(finalAnswer);
 
   // Extends the number/year fabrication check the stats-narration path above
   // already relies on (§ REFUSAL_PATTERN/extractBoldNumbers/extractYears) to
@@ -882,7 +1059,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // for visibility rather than silently swapped for a worse answer or
   // rejecting an otherwise-good response over one heuristic.
   const contextYears = extractYears(context);
-  const answerYears   = extractYears(fullAnswer);
+  const answerYears   = extractYears(finalAnswer);
   if (contextYears.size > 0 && [...answerYears].some(y => !contextYears.has(y))) {
     logger.warn('rag_possible_fabrication', {
       question, answerYears: [...answerYears], contextYears: [...contextYears],
@@ -890,7 +1067,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   }
 
   const sources = [...new Set(confidentChunks.map(c => c.source_type))];
-  return finish({ answer: fullAnswer, sources, type: 'rag' });
+  return finish({ answer: finalAnswer, sources, type: 'rag' });
 }
 
 module.exports = { generateAnswer };

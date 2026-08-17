@@ -1,6 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const bcrypt   = require('bcryptjs');
+const jwt      = require('jsonwebtoken');
 const ctrl     = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const { loginLimiter, otpLimiter } = require('../middleware/rateLimit');
@@ -47,15 +48,24 @@ router.post('/change-password', protect, async (req, res) => {
     if (newPassword.length < 8)
       return res.status(400).json({ message: 'New password must be at least 8 characters.' });
 
-    const user = await User.findById(req.user.id).select('password');
+    const user = await User.findById(req.user.id).select('password role college tokenVersion');
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const match = await bcrypt.compare(currentPassword, user.password);
     if (!match) return res.status(400).json({ message: 'Current password is incorrect.' });
 
-    const hashed = await bcrypt.hash(newPassword, 10);
-    await User.findByIdAndUpdate(req.user.id, { password: hashed });
-    res.json({ message: 'Password changed successfully.' });
+    user.password = await bcrypt.hash(newPassword, 10);
+    // Invalidate every OTHER session on this account; this request's own
+    // session gets a fresh token below so it isn't logged out by its own
+    // password change.
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    await user.save();
+    const token = jwt.sign(
+      { id: user._id, role: user.role, college: user.college || '', tokenVersion: user.tokenVersion },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+    res.json({ message: 'Password changed successfully.', token });
   } catch (err) {
     console.error('change-password error:', err);
     res.status(500).json({ message: 'Server error.' });

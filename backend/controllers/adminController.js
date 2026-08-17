@@ -22,6 +22,7 @@ const JobAlertSeen       = require('../models/JobAlertSeen');
 const Resume             = require('../models/Resume');
 const Interview          = require('../models/Interview');
 const ImportedFile       = require('../models/ImportedFile');
+const Job                = require('../models/Job');
 const { sendAccountCreatedEmail } = require('../utils/emailService');
 const { matchesFileSignature } = require('../utils/fileSignature');
 
@@ -154,6 +155,10 @@ const getUsers = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { firstName, middleInitial, lastName, email, role, status, college, course, graduationYear, track, partnershipId } = req.body;
+
+    const existing = await User.findById(req.params.id, 'role college status tokenVersion');
+    if (!existing) return res.status(404).json({ message: 'User not found.' });
+
     const updates = {};
     if (firstName      !== undefined) updates.firstName      = firstName.trim();
     if (middleInitial  !== undefined) updates.middleInitial  = middleInitial.trim();
@@ -168,6 +173,28 @@ const updateUser = async (req, res) => {
     // Links an employer account to the partner company it's allowed to post
     // jobs under — job creation is blocked until this is set. '' unlinks.
     if (partnershipId  !== undefined) updates.partnershipId  = partnershipId || null;
+
+    // Same rule createUser enforces, applied here too — college is the basis
+    // for every college-scoping check in the system, so an edit that leaves
+    // (or turns) an alumni/coordinator account without one falls through
+    // those checks unpredictably, same as at creation time.
+    const finalRole    = updates.role    !== undefined ? updates.role    : existing.role;
+    const finalCollege = updates.college !== undefined ? updates.college : existing.college;
+    if (['alumni', 'coordinator'].includes(finalRole) && !finalCollege) {
+      return res.status(400).json({ message: 'College is required for Alumni and Coordinator accounts.' });
+    }
+
+    // A JWT already issued to this user carries the role/college/status
+    // baked in at login time and is otherwise trusted for its full life —
+    // suspending the account, changing its role, or moving it to a
+    // different college must invalidate that token immediately instead of
+    // leaving it valid (with the OLD permissions) until it naturally
+    // expires (up to 7 days).
+    const revokesSession =
+      (updates.status !== undefined && updates.status === 'suspended') ||
+      (updates.role !== undefined && updates.role !== existing.role) ||
+      (updates.college !== undefined && updates.college !== existing.college);
+    if (revokesSession) updates.tokenVersion = (existing.tokenVersion || 0) + 1;
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -223,6 +250,14 @@ const deleteUser = async (req, res) => {
       JobAlertSeen.deleteMany({ alumni_id: req.params.id }),
       Resume.deleteOne({ alumni_id: req.params.id }),
       Interview.deleteMany({ $or: [{ alumni_id: req.params.id }, { employer_id: req.params.id }] }),
+      // Deleting an employer account used to leave their open Job postings
+      // behind forever — still listed to alumni, still counted in the
+      // partnership's job-opportunity stats, still acceptable applications,
+      // with no employer left to manage or respond to any of it. Closing
+      // (not deleting) them matches jobController.deleteJob's own policy of
+      // never hard-deleting a posting that already has real applications —
+      // an alumnus's application history has to keep pointing at something.
+      Job.updateMany({ postedBy: req.params.id, status: 'open' }, { status: 'closed' }),
       (async () => {
         if (!user.email) return;
         // Prefer the indexed user_id FK (set whenever a live tracer/employment
@@ -441,6 +476,9 @@ const resendCredentials = async (req, res) => {
     const tempPassword = crypto.randomBytes(4).toString('hex');
     user.password = await bcrypt.hash(tempPassword, 10);
     user.status   = 'pending';
+    // The old password (and any session logged in under it) must stop
+    // working the moment a new temp password is issued.
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
     await sendAccountCreatedEmail(user.email, user.firstName, tempPassword);
@@ -517,10 +555,25 @@ const bulkUpdateStatus = async (req, res) => {
     if (!['active', 'suspended'].includes(status))
       return res.status(400).json({ message: 'Invalid status.' });
 
-    const result = await User.updateMany({ _id: { $in: ids } }, { status });
+    // Resolve which of the requested IDs actually still exist BEFORE
+    // updating — updateMany's counts alone can't tell the caller WHICH
+    // specific IDs succeeded, and the previous version just echoed back the
+    // full input array as "updated" regardless of whether every ID was
+    // actually matched. A user deleted by someone else between selection
+    // and submission used to still show as successfully updated in the UI.
+    const existingIds = (await User.find({ _id: { $in: ids } }, '_id').lean()).map(u => String(u._id));
+
+    // A JWT already issued to a suspended user is otherwise trusted until
+    // it naturally expires (see updateUser's tokenVersion comment above) —
+    // bulk-suspend has to close that same gap.
+    const update = status === 'suspended'
+      ? { $set: { status }, $inc: { tokenVersion: 1 } }
+      : { $set: { status } };
+    const result = await User.updateMany({ _id: { $in: existingIds } }, update);
+
     res.json({
-      message:  `${result.modifiedCount} account(s) updated.`,
-      updated:  ids,
+      message:  `${existingIds.length} of ${ids.length} account(s) updated.`,
+      updated:  existingIds,
       modified: result.modifiedCount,
     });
   } catch (err) {

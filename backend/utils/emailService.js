@@ -85,7 +85,7 @@ const sendAccountCreatedEmail = async (to, firstName, tempPassword) => {
         <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Tarlac State University</p>
       </div>
       <div style="padding:32px 40px;">
-        <h2 style="color:#2d3748;margin:0 0 10px;font-size:20px;">Welcome, ${firstName}!</h2>
+        <h2 style="color:#2d3748;margin:0 0 10px;font-size:20px;">Welcome, ${escapeHtml(firstName)}!</h2>
         <p style="color:#4a5568;margin:0 0 24px;font-size:15px;line-height:1.6;">
           Your TSU Alumni Portal account has been created by an administrator.
           Use the credentials below to log in for the first time.
@@ -153,13 +153,36 @@ const sendEmploymentReminderBulk = async (emails) => {
     </div>
   `;
 
-  await transporter.sendMail({
-    from:    `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
-    to:      process.env.EMAIL_USER,
-    bcc:     emails.join(','),
-    subject: 'Reminder: Please Update Your Employment Details',
-    html,
-  });
+  // Sending every recipient in one BCC on the single-send `transporter` was
+  // two separate problems: Gmail SMTP enforces per-message recipient caps
+  // and aggressive rate limiting, so a large cohort either gets throttled/
+  // rejected as a single unit (no partial delivery) or trips spam
+  // detection — and `bulkTransporter` was already built with pooled
+  // connections and its own rate limit specifically to spread this load,
+  // but nothing ever actually sent through it. Batching into
+  // Gmail-friendly chunks and sending each through the pooled transporter
+  // fixes both; allSettled means one bad batch doesn't take down the rest.
+  const BATCH_SIZE = 50;
+  const batches = [];
+  for (let i = 0; i < emails.length; i += BATCH_SIZE) batches.push(emails.slice(i, i + BATCH_SIZE));
+
+  const results = await Promise.allSettled(batches.map((batch) =>
+    bulkTransporter.sendMail({
+      from:    `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
+      to:      process.env.EMAIL_USER,
+      bcc:     batch.join(','),
+      subject: 'Reminder: Please Update Your Employment Details',
+      html,
+    })
+  ));
+
+  const failed = results.filter((r) => r.status === 'rejected');
+  if (failed.length === results.length) {
+    throw failed[0].reason instanceof Error ? failed[0].reason : new Error('All reminder email batches failed to send.');
+  }
+  if (failed.length) {
+    failed.forEach((f) => console.error('sendEmploymentReminderBulk batch failed:', f.reason?.message || f.reason));
+  }
 };
 
 const sendInquiryEmail = async (fromName, fromEmail, subject, message) => {
@@ -171,11 +194,11 @@ const sendInquiryEmail = async (fromName, fromEmail, subject, message) => {
       </div>
       <div style="padding:32px 40px;">
         <p style="color:#718096;margin:0 0 8px;font-size:13px;">From</p>
-        <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#2d3748;">${fromName} &lt;${fromEmail}&gt;</p>
+        <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#2d3748;">${escapeHtml(fromName)} &lt;${escapeHtml(fromEmail)}&gt;</p>
         <p style="color:#718096;margin:0 0 8px;font-size:13px;">Subject</p>
-        <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#2d3748;">${subject}</p>
+        <p style="margin:0 0 20px;font-size:15px;font-weight:600;color:#2d3748;">${escapeHtml(subject)}</p>
         <p style="color:#718096;margin:0 0 8px;font-size:13px;">Message</p>
-        <p style="margin:0;font-size:14px;line-height:1.6;color:#4a5568;white-space:pre-wrap;">${message}</p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#4a5568;white-space:pre-wrap;">${escapeHtml(message)}</p>
       </div>
       <div style="background:#f7fafc;padding:16px 40px;text-align:center;border-top:1px solid #e2e8f0;">
         <p style="color:#a0aec0;font-size:12px;margin:0;">© 2026 TSU Alumni Portal · Tarlac State University</p>

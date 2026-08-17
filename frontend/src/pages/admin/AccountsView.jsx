@@ -58,8 +58,13 @@ function AccountStatusBadge({ status }) {
 }
 
 const COLLEGES = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
-const CCS_COURSES = ["BSIT", "BSCS", "BSIS"];
-const BATCH_YEARS = [2024, 2023, 2022, 2021, 2020];
+const CCS_COURSES = ["BSIT", "BSCS", "BSIS", "BSIM"];
+// Was a fixed 2020-2024 list — same staleness bug as coordinator
+// AlumniContacts' year filter (fixed automatically, same reasoning): any
+// batch graduating after the hardcoded ceiling had no option to pick from
+// when creating/editing their account.
+const CURRENT_YEAR = new Date().getFullYear();
+const BATCH_YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
 export default function AccountsView() {
   const { showToast } = useOutletContext();
@@ -696,11 +701,13 @@ const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] }) {
   const [role,    setRole]    = React.useState(entry?.row?.role    || "Alumni");
   const [college, setCollege] = React.useState(entry?.row?.college || "");
+  const [course,  setCourse]  = React.useState(entry?.row?.course  || "");
   const [partnershipId, setPartnershipId] = React.useState(entry?.row?.partnershipId || "");
 
   React.useEffect(() => {
     setRole(entry?.row?.role       || "Alumni");
     setCollege(entry?.row?.college || "");
+    setCourse(entry?.row?.course   || "");
     setPartnershipId(entry?.row?.partnershipId || "");
   }, [entry]);
 
@@ -728,6 +735,8 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
               role:           f.role.value,
               status:         f.status        ? f.status.value         : undefined,
               college:        f.college       ? f.college.value        : undefined,
+              course:         f.course        ? f.course.value         : undefined,
+              track:          f.track         ? f.track.value          : undefined,
               graduationYear: f.graduationYear ? f.graduationYear.value : undefined,
               partnershipId:  f.partnershipId ? f.partnershipId.value  : undefined,
             });
@@ -774,6 +783,22 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
                 <select name="partnershipId" value={partnershipId} onChange={(e) => setPartnershipId(e.target.value)}>
                   <option value="">— Not linked to a partnership —</option>
                   {partnerships.map((p) => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
+                </select>
+              </label>
+            )}
+            {role === "Alumni" && (
+              <label>Course
+                <select name="course" value={course} onChange={(e) => setCourse(e.target.value)} required>
+                  <option value="">— Select course —</option>
+                  {CCS_COURSES.map((c) => <option key={c}>{c}</option>)}
+                </select>
+              </label>
+            )}
+            {role === "Alumni" && course === "BSIT" && (
+              <label>BSIT Track
+                <select name="track" defaultValue={row?.track || ""}>
+                  <option value="">— Select track —</option>
+                  {BSIT_TRACKS.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </label>
             )}
