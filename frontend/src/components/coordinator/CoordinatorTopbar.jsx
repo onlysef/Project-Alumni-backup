@@ -277,6 +277,10 @@ function ChangePasswordSection({ showToast }) {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to change password."); return; }
+      // Backend invalidates every other session by bumping the token
+      // version, and hands this session a fresh token in the same response
+      // — without saving it, this tab's own next request would fail.
+      if (data.token) localStorage.setItem("auth_token", data.token);
       reset();
       setOpen(false);
       showToast("Password changed successfully.");

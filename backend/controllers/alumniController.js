@@ -1,4 +1,5 @@
 const bcrypt               = require('bcryptjs');
+const jwt                  = require('jsonwebtoken');
 const { HfInference }       = require('@huggingface/inference');
 const User                 = require('../models/User');
 const AlumniEmployment     = require('../models/AlumniEmployment');
@@ -145,8 +146,20 @@ const changePassword = async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 8 characters.' });
     }
     const hashed = await bcrypt.hash(newPassword, 10);
-    await User.findByIdAndUpdate(req.user.id, { password: hashed });
-    res.json({ message: 'Password changed successfully.' });
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { password: hashed, $inc: { tokenVersion: 1 } },
+      { new: true, select: 'role college tokenVersion' }
+    );
+    // The temp password this replaces is now dead everywhere, including
+    // this request's own session — issue a fresh token carrying the bumped
+    // version so onboarding can continue past this step without a re-login.
+    const token = jwt.sign(
+      { id: user._id, role: user.role, college: user.college || '', tokenVersion: user.tokenVersion },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+    res.json({ message: 'Password changed successfully.', token });
   } catch (err) {
     console.error('changePassword error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -164,15 +177,25 @@ const updatePassword = async (req, res) => {
     if (!newPassword || newPassword.length < 8) {
       return res.status(400).json({ message: 'New password must be at least 8 characters.' });
     }
-    const user = await User.findById(req.user.id).select('password');
+    const user = await User.findById(req.user.id).select('password role college tokenVersion');
     if (!user) return res.status(404).json({ message: 'Account not found.' });
 
     const matches = await bcrypt.compare(currentPassword, user.password);
     if (!matches) return res.status(400).json({ message: 'Current password is incorrect.' });
 
     user.password = await bcrypt.hash(newPassword, 10);
+    // Invalidate every OTHER session on this account (e.g. a device the
+    // owner no longer trusts) — but this request's own session must not be
+    // logged out by the very action it just took, so a fresh token carrying
+    // the bumped version is issued back to the caller in the same response.
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
-    res.json({ message: 'Password updated successfully.' });
+    const token = jwt.sign(
+      { id: user._id, role: user.role, college: user.college || '', tokenVersion: user.tokenVersion },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+    res.json({ message: 'Password updated successfully.', token });
   } catch (err) {
     console.error('updatePassword error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -602,6 +625,11 @@ const updateMyEmployment = async (req, res) => {
       { upsert: true, new: true }
     );
 
+    // job_title/skills just changed — see bustRecommendedJobsCache's own
+    // comment for why the recommended-jobs cache has to drop this
+    // alumnus's entry now instead of waiting out its TTL.
+    bustRecommendedJobsCache(req.user.id);
+
     // Employment Details is part of the alumnus profile. Keep the submitted
     // tracer response and the normalized Graduate profile in step with it so
     // admin/coordinator views, analytics, and recommendations do not continue
@@ -732,6 +760,16 @@ function sortJobsByMatchThenDate(jobs) {
 
 const recommendedJobsCache = new Map(); // alumniId -> { jobs, expiresAt }
 const RECOMMENDED_COUNT_TTL_MS = 20 * 60 * 1000;
+
+// The cache key is scored against job_title/skills — updateMyEmployment
+// changing either of those used to leave the OLD score/keyword cached for
+// up to 20 minutes, so Home's "Recommended jobs" and Job Connect's default
+// list kept showing jobs (and match %) computed against the alumnus's
+// previous profile even though Employment Details itself already reflected
+// the new one. Called from updateMyEmployment right after a save.
+function bustRecommendedJobsCache(alumniId) {
+  recommendedJobsCache.delete(String(alumniId));
+}
 
 // Shared by Home's "Recommended jobs" count AND its "What needs your
 // attention" recent-updates feed — both need the same Careerjet-backed,
@@ -1508,9 +1546,23 @@ const toggleSavedJob = async (req, res) => {
       return res.json({ saved: false });
     }
 
-    await SavedJob.create({
-      alumni_id: req.user.id, title, company, location, type, posted, url, description, salary, match, skills,
-    });
+    try {
+      await SavedJob.create({
+        alumni_id: req.user.id, title, company, location, type, posted, url, description, salary, match, skills,
+      });
+    } catch (err) {
+      // Backstop for a race between the existence check above and this
+      // create (fast double-click, or a retried request after a slow
+      // network) — the unique(alumni_id, url) index is the real guarantee.
+      // Without this catch the losing request fell through to the generic
+      // 500 below, and the frontend's toggleSave() silently swallows fetch
+      // errors — the alumnus got no feedback at all and the button's state
+      // could disagree with what's actually saved until the next reload.
+      // The job WAS saved (by the other request), so report that truthfully
+      // instead of an error.
+      if (err.code === 11000) return res.json({ saved: true });
+      throw err;
+    }
     res.json({ saved: true });
   } catch (err) {
     console.error('toggleSavedJob error:', err);

@@ -16,7 +16,12 @@ function initials(name = "") {
   return String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "A";
 }
 
-const YEAR_OPTIONS = Array.from({ length: 2025 - 2000 + 1 }, (_, i) => 2025 - i);
+// Was hardcoded to 2000-2025 — every batch that graduated (or will
+// graduate) after that ceiling had no way to be isolated by this filter at
+// all, a gap that gets stale by design if left as a fixed number. Deriving
+// the ceiling from the current year means it never needs another manual bump.
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2000 + 1 }, (_, i) => CURRENT_YEAR - i);
 
 export default function AlumniContacts() {
   const { showToast } = useOutletContext();

@@ -76,11 +76,21 @@ function normalizeQuestion(q) {
 // wrong question, which is worse than admitting no data is available.
 const EMPLOYMENT_SIGNAL = /employ|\bjob|\bwork|\bstatus\b|\boccupation\b|\bposition\b/i;
 
+// "How did alumni FIND their job" asks about the job-search method/channel
+// (referral, walk-in, online posting, agency...) — a question this schema has
+// no field for. It still contains "job", so EMPLOYMENT_SIGNAL below would
+// otherwise wave it through to the generic employment Yes/No breakdown, the
+// exact "confident answer to the wrong question" failure mode the comment
+// above warns about — that fallback exists for status/count questions, not
+// process questions that happen to mention a status-adjacent word.
+const JOB_SEARCH_METHOD_PATTERN = /\bhow\s+(did|do|does|would|can)\s+(?:\w+\s+){0,4}(find|get|land|search\s+for|secure|obtain)\b/i;
+
 function detectTopic(question) {
   question = normalizeQuestion(question);
   for (const [topic, pattern] of Object.entries(TOPIC_PATTERNS)) {
     if (pattern.test(question)) return topic;
   }
+  if (JOB_SEARCH_METHOD_PATTERN.test(question)) return null;
   return EMPLOYMENT_SIGNAL.test(question) ? 'employment' : null;
 }
 

@@ -1,5 +1,6 @@
 const Partnership = require('../models/Partnership');
 const Job         = require('../models/Job');
+const User        = require('../models/User');
 
 // GET /api/admin/partnerships
 const getPartnerships = async (req, res) => {
@@ -49,6 +50,21 @@ const deletePartnership = async (req, res) => {
   try {
     const partnership = await Partnership.findByIdAndDelete(req.params.id);
     if (!partnership) return res.status(404).json({ message: 'Partnership not found.' });
+
+    // Deleting a Partnership used to leave two things dangling: any
+    // employer account still pointing at it via User.partnershipId (postJob
+    // re-checks that FK on every post, so those accounts silently lost the
+    // ability to post with no indication why), and any Job already posted
+    // under it (still open, still visible to alumni, with populate()
+    // resolving its company to null). Unlinking the accounts and closing —
+    // not deleting — the jobs matches the same "never hard-delete a posting
+    // with real applicant history" policy jobController.deleteJob already
+    // follows for a single job.
+    await Promise.allSettled([
+      User.updateMany({ partnershipId: partnership._id }, { partnershipId: null }),
+      Job.updateMany({ partnershipId: partnership._id, status: 'open' }, { status: 'closed' }),
+    ]);
+
     res.json({ message: 'Partnership deleted.' });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });

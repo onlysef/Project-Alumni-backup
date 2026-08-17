@@ -11,6 +11,15 @@ const userSchema = new mongoose.Schema({
   password:   { type: String, required: true, select: false },
   role:       { type: String, enum: ['admin', 'alumni', 'coordinator', 'employer'], default: 'alumni' },
   status:     { type: String, enum: ['active', 'pending', 'suspended'], default: 'active' },
+  // Stamped into every JWT at sign-time and checked on every request by
+  // authMiddleware.protect(). A JWT is otherwise a bearer credential valid
+  // for its full life (JWT_EXPIRES_IN, default 7d) with no way to revoke it
+  // early — suspending an account, changing its role, or changing its
+  // password (e.g. to lock out a stolen device) did nothing to a token
+  // already issued. Bumping this on any of those actions makes every
+  // previously-issued token fail its tokenVersion check on the very next
+  // request, without needing a server-side token blacklist.
+  tokenVersion: { type: Number, default: 0 },
   avatarUrl:      { type: String, default: '' },
   college:        { type: String, default: '' },
   company:        { type: String, default: '' },

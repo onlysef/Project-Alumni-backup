@@ -6,6 +6,7 @@ const TracerFormQuestion  = require('../models/TracerFormQuestion');
 const EmploymentActivity  = require('../models/EmploymentActivity');
 const User                = require('../models/User');
 const XLSX                = require('xlsx');
+const { escapeRegex }     = require('../utils/escapeRegex');
 
 // Maps programsCompleted → User.course code
 function mapProgramToCourse(programsCompleted) {
@@ -80,7 +81,7 @@ async function resolveAdminName(userId) {
 function buildBasePipeline({ search, status, college, course, batch_year, date_updated, company }) {
   const empMatch = {};
   if (status) empMatch.employment_status = status;
-  if (company) empMatch.company_name = { $regex: company, $options: 'i' };
+  if (company) empMatch.company_name = { $regex: escapeRegex(company), $options: 'i' };
   if (date_updated) {
     const start = new Date(date_updated);
     start.setHours(0, 0, 0, 0);
@@ -111,12 +112,12 @@ function buildBasePipeline({ search, status, college, course, batch_year, date_u
           $expr: {
             $regexMatch: {
               input:   { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
-              regex:   search,
+              regex:   escapeRegex(search),
               options: 'i',
             },
           },
         },
-        { company_name: { $regex: search, $options: 'i' } },
+        { company_name: { $regex: escapeRegex(search), $options: 'i' } },
       ],
     });
   }
@@ -1263,7 +1264,7 @@ const getTracerResponses = async (req, res) => {
           $expr: {
             $regexMatch: {
               input:   { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
-              regex:   search,
+              regex:   escapeRegex(search),
               options: 'i',
             },
           },

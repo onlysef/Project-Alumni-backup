@@ -84,6 +84,13 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
       .then((r) => r.json())
       .then((d) => setSavedJobs(d.jobs || []))
       .catch(() => {});
+    // Was never loaded at all — every job card on this page rendered as if
+    // nothing had been applied to yet, even for jobs the alumnus already
+    // applied to here or on Job Connect (which does load this correctly).
+    fetch(`${API}/alumni/applications`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => setAppliedUrls((d.applications || []).map((a) => a.url)))
+      .catch(() => {});
   }, []);
 
   function toggleSaveJob(job) {
@@ -323,7 +330,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
         <div className="job-connect-page">
           <div className="job-connect-list">
             {jobPostings.slice(0, filter === "Job Postings" ? jobPostings.length : 3).map((job) => (
-              <JobCard key={job.url} job={job} saved={savedUrls.has(job.url)} onToggleSave={() => toggleSaveJob(job)} onApply={() => applyJob(job)} onViewDetails={() => openJobDetails(job)} />
+              <JobCard key={job.url} job={job} saved={savedUrls.has(job.url)} applied={appliedUrls.includes(job.url)} onToggleSave={() => toggleSaveJob(job)} onApply={() => applyJob(job)} onViewDetails={() => openJobDetails(job)} />
             ))}
           </div>
         </div>

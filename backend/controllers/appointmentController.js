@@ -3,6 +3,7 @@ const Staff          = require('../models/Staff');
 const Appointment    = require('../models/Appointment');
 const User           = require('../models/User');
 const Notification   = require('../models/Notification');
+const { escapeRegex } = require('../utils/escapeRegex');
 
 function toMinutes(t) {
   if (!t) return 0;
@@ -176,7 +177,7 @@ const getAppointments = async (req, res) => {
     if (status)   query.status           = status;
     if (staff_id) query.staff_id         = staff_id;
     if (date)     query.appointment_date = date;
-    if (search)   query.alumni_name      = { $regex: search, $options: 'i' };
+    if (search)   query.alumni_name      = { $regex: escapeRegex(search), $options: 'i' };
 
     const appointments = await Appointment.find(query)
       .populate('staff_id',  'name role status')
