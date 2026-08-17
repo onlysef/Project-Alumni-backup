@@ -65,6 +65,16 @@ const GraduateSchema = new mongoose.Schema(
 GraduateSchema.index({ fileId: 1, rowIndex: 1 });
 GraduateSchema.index({ program: 1, employmentStatus: 1 });
 GraduateSchema.index({ yearGraduated: 1, employmentStatus: 1 });
+// Person-name lookups (queryPersonLookup/queryNames in aggregationService.js)
+// still filter/sort in Node after this, since stored names aren't in one
+// consistent format ("Bryan Canlapan" vs "Canlapan, Bryan T.") — but this at
+// least lets Mongo narrow the DEDUP/$sort work by name instead of a full
+// collection scan as the dataset grows.
+GraduateSchema.index({ name: 1 });
+// The collegeScope hook below matches on email via a case-insensitive
+// regex — a plain index still helps Mongo narrow that scan instead of a
+// full collection scan, even though the regex itself can't use a collation.
+GraduateSchema.index({ email: 1 });
 
 // Enforces the AC AI Assistant's college scope (see utils/collegeScope.js)
 // at the single point every query — however it was built — ultimately goes

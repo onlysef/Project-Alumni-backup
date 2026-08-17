@@ -19,6 +19,7 @@ const careerjetService         = require('../services/careerjetService');
 const { tracerRowToText }     = require('../utils/fileParser');
 const { sendInquiryEmail }    = require('../utils/emailService');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
+const answerCache             = require('../services/answerCache');
 const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill } = require('../utils/skillMatching');
 
 // The set of keys that the TracerStudyResponse schema handles directly.
@@ -461,6 +462,9 @@ const submitTracerStudy = async (req, res) => {
           embedding,
           chunk_index: 0,
         });
+        // This alumnus's Graduate/EmbeddingDocument data just changed — any
+        // AC assistant answer cached before this point may now be stale.
+        answerCache.bumpDataVersion();
       }
     } catch (syncErr) {
       console.error('AI chatbot Graduate sync failed (non-blocking):', syncErr.message);
@@ -639,6 +643,7 @@ const updateMyEmployment = async (req, res) => {
             experience: updates.experience,
           };
           await graduate.save();
+          answerCache.bumpDataVersion();
         }
       }
     } catch (syncErr) {

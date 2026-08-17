@@ -27,7 +27,8 @@ const embeddingDocumentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: {},
   },
-  // 768-dim float array produced by nomic-embed-text
+  // 768-dim float array produced by BAAI/bge-base-en-v1.5 (see
+  // services/embeddingService.js — HF_EMBED_MODEL)
   embedding: {
     type: [Number],
     required: true,

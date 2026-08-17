@@ -1,4 +1,4 @@
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 // Login itself has no attempt cap at all — this is the only thing stopping a
 // distributed brute-force script from trying passwords against a known
@@ -23,4 +23,21 @@ const otpLimiter = rateLimit({
   message: { message: 'Too many attempts. Please try again in a few minutes.' },
 });
 
-module.exports = { loginLimiter, otpLimiter };
+// Every /ai/chat request costs a real, metered Hugging Face API call (an
+// embedding call, an aggregation-narration call, or a full RAG call) — this
+// had no throttling at all despite being an authenticated-user endpoint, not
+// a public one. Keyed per-user (not per-IP, unlike the limiters above) since
+// admins/coordinators on the same office network shouldn't share one quota,
+// and a legitimate back-and-forth chat session is much burstier than a login
+// attempt — 20/minute comfortably covers real usage while still bounding a
+// runaway script or compromised session.
+const aiChatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req, res) => req.user?.id || ipKeyGenerator(req, res),
+  message: { message: 'Too many questions in a short time — please wait a moment and try again.' },
+});
+
+module.exports = { loginLimiter, otpLimiter, aiChatLimiter };
