@@ -5,6 +5,7 @@ const { classify }       = require('./queryClassifier');
 const aggregationService = require('./aggregationService');
 const logger              = require('../utils/logger');
 const { correctTypos }    = require('../utils/typoCorrect');
+const answerCache          = require('./answerCache');
 
 const hf = new HfInference(process.env.HF_API_KEY);
 const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
@@ -146,6 +147,14 @@ async function condenseQuestion(question, chatHistory) {
 const LIST_ALL_PATTERN        = /\b(list|show|give|display|enumerate|who are|names of)\b.*\b(all|every|complete|full)\b.*\b(alumni|graduates?)\b|\b(all|every|complete|full)\b.*\b(alumni|graduates?)\b/i;
 const STATS_QUERY_PATTERN     = /\b(how many|count|total|number of|statistics|stat|how much|tally|breakdown|per year|by year|annually)\b/i;
 const EMPLOYMENT_STATS_PATTERN = /\b(employment status|employment rate|employed|unemployed|self.?employed|employment breakdown|employment data|tracer survey|tracer study|tracer result)\b/i;
+
+// Same year range/shape aggregationService.extractFilters() uses for
+// filters.yearGraduated — reused here (not imported, to keep the RAG vector-
+// search path independent of the structured-query module) to narrow vector
+// search to the year-tagged subset of chunks when a qualitative question
+// names one ("what did 2022 graduates say about..."). Only tracer/roster/
+// summary chunks carry a real metadata.year — see fileParser.js.
+const QUESTION_YEAR_PATTERN = /\b((?:199\d|20[0-3]\d))\b/;
 
 const SYSTEM_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. You help administrators and coordinators understand alumni tracer study results and institutional programs.
 
@@ -487,6 +496,19 @@ async function streamHF(messages, onToken, retries = 3, maxTokens = 512, onReset
 
 async function generateAnswer(question, chatHistory = [], filters = {}, onToken = null, onReset = null) {
   const startedAt  = Date.now();
+  const timings    = {};
+
+  // Wraps whatever onToken the caller passed so every downstream call site
+  // (there are ~10 of them below, for each early-return type) can keep
+  // calling the plain `onToken` name unchanged, while this closure captures
+  // the timestamp of the first token for the latency log without needing to
+  // touch every call site individually.
+  let firstTokenAt = null;
+  const callerOnToken = onToken;
+  onToken = callerOnToken ? (token) => {
+    if (firstTokenAt === null) firstTokenAt = Date.now();
+    callerOnToken(token);
+  } : null;
 
   // Correct typos in domain keywords ONCE, upstream of everything — classify(),
   // detectTopic(), extractFilters(), and vector search all key off exact
@@ -509,6 +531,30 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // both present, so ordinary standalone questions pay no extra cost here.
   question = await condenseQuestion(question, chatHistory);
 
+  // A college coordinator only ever sees their own college's tracer study
+  // data (see aggregationService.query()'s college-scope handling and
+  // utils/collegeScope.js for why). Declared this early (rather than just
+  // before the aggregation block below) so the cache lookup right after can
+  // scope its key by college too — one coordinator's cached answer must
+  // never be served to a different college.
+  const collegeScope = filters.college || null;
+
+  // Cache lookup on the fully-resolved, self-contained question (after typo
+  // correction and pronoun/continuation resolution above) — two different
+  // raw phrasings that condense to the same question correctly share one
+  // cache entry. Only ever skips the classify/aggregation/vector-search/LLM
+  // work below on a hit; assumes the default topK/sourceTypes every real
+  // caller (aiController.chat) actually uses.
+  const cached = answerCache.get(question, collegeScope);
+  if (cached) {
+    if (onToken) onToken(cached.answer);
+    logger.info('chat_answered', {
+      question, cacheHit: true, type: cached.type, sources: cached.sources,
+      latencyMs: Date.now() - startedAt,
+    });
+    return { ...cached };
+  }
+
   const queryType  = classify(question);
   logger.info('chat_question', {
     question,
@@ -523,7 +569,9 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       type:           result.type,
       sources:        result.sources,
       latencyMs:      Date.now() - startedAt,
+      timings:        { ...timings, llmFirstTokenMs: firstTokenAt ? firstTokenAt - startedAt : null },
     });
+    answerCache.set(question, collegeScope, result);
     return result;
   };
 
@@ -545,22 +593,23 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     return finish({ answer: UNKNOWN_RESPONSE, sources: [], type: 'unknown' });
   }
 
-  // A college coordinator only ever sees their own college's tracer study
-  // data (see aggregationService.query()'s college-scope handling and
-  // utils/collegeScope.js for why). That scope only reaches Graduate
-  // documents through a Mongoose hook — it does NOT reach EmbeddingDocument,
-  // which vector search reads from separately and has no college tag to
-  // filter on at all. So when scoping is active, EVERY question (including
-  // ones that would normally classify as 'qualitative' and skip straight to
-  // vector search) is forced through the scoped structured-aggregation path
-  // first, and stops with an explicit "no data" answer if that finds
-  // nothing — never falling through to an unscoped RAG search that could
-  // surface another college's embedded tracer/employment data.
-  const collegeScope = filters.college || null;
+  // collegeScope (declared above, before the cache check) means: that scope
+  // only reaches Graduate documents through a Mongoose hook — it does NOT
+  // reach EmbeddingDocument, which vector search reads from separately and
+  // has no college tag to filter on at all (retrieveContext() now also
+  // fails closed on its own if this ever changes — see retrievalService.js).
+  // So when scoping is active, EVERY question (including ones that would
+  // normally classify as 'qualitative' and skip straight to vector search)
+  // is forced through the scoped structured-aggregation path first, and
+  // stops with an explicit "no data" answer if that finds nothing — never
+  // falling through to an unscoped RAG search that could surface another
+  // college's embedded tracer/employment data.
 
   // ── Hybrid path: try MongoDB aggregation first for statistical questions ──────
   if (queryType === 'statistical' || queryType === 'mixed' || collegeScope) {
+    const aggStart = Date.now();
     const aggResult = await aggregationService.query(question, { college: collegeScope });
+    timings.aggregationMs = Date.now() - aggStart;
     if (aggResult) {
       const aggText     = typeof aggResult === 'string' ? aggResult : aggResult.text;
       // Context-aware, guaranteed-answerable suggestions — built from the same
@@ -612,6 +661,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       // error, since that data was fully computed before the LLM was ever
       // involved.
       let finalAnswer;
+      const narrateStart = Date.now();
       try {
         // STATS_NARRATIVE_PROMPT only asks for 2-5 sentences, but every
         // streamHF() call defaulted to the same 512-token cap used for full
@@ -620,6 +670,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         // question. 200 tokens comfortably covers a short paragraph while
         // cutting worst-case generation time well below the old cap.
         const narrativeAnswer = await streamHF(messages, null, 3, 200);
+        timings.llmMs = Date.now() - narrateStart;
         const trimmed = narrativeAnswer.trim();
         const aggNumbers = extractBoldNumbers(aggText);
         // Only require the narration to carry over at least ONE of the
@@ -633,6 +684,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         const fabricatedYear = aggYears.size > 0 && [...extractYears(trimmed)].some(y => !aggYears.has(y));
         finalAnswer = (REFUSAL_PATTERN.test(trimmed) || droppedTheAnswer || fabricatedYear) ? aggText : trimmed;
       } catch (err) {
+        timings.llmMs = Date.now() - narrateStart;
         logger.warn('stats_narration_failed', { question, error: err.message });
         finalAnswer = aggText;
       }
@@ -712,7 +764,9 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         { role: 'user', content: question },
       ];
 
+      const listStart = Date.now();
       const fullAnswer = await streamHF(messages, onToken, 3, 512, onReset);
+      timings.llmMs = Date.now() - listStart;
       return finish({ answer: fullAnswer, sources: ['imported_file'], type: 'statistics' });
     }
   }
@@ -732,10 +786,15 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   const searchQuestion = question;
 
   // Retrieve relevant chunks via vector search
-  const chunks = await retrieveContext(searchQuestion, {
+  const questionYearMatch = searchQuestion.match(QUESTION_YEAR_PATTERN);
+  const retrieval = await retrieveContext(searchQuestion, {
     topK:        filters.topK        || 10,
     sourceTypes: filters.sourceTypes || [],
+    year:        questionYearMatch ? parseInt(questionYearMatch[1], 10) : null,
   });
+  const chunks = retrieval.chunks;
+  timings.embedMs       = retrieval.embedMs;
+  timings.vectorSearchMs = retrieval.searchMs;
 
   // Similarity gate: drop chunks that don't clear the confidence threshold —
   // a loosely-related chunk is worse than no chunk, since the LLM will try to use it.
@@ -811,7 +870,25 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // qualitative answers run far longer than needed. 350 still gives real
   // room for summarizing multiple alumni's feedback in one answer, just
   // without the extreme worst-case tail latency of the uncapped default.
+  const ragStart = Date.now();
   const fullAnswer = await streamHF(messages, onToken, 3, 350, onReset);
+  timings.llmMs = Date.now() - ragStart;
+
+  // Extends the number/year fabrication check the stats-narration path above
+  // already relies on (§ REFUSAL_PATTERN/extractBoldNumbers/extractYears) to
+  // this general RAG path — but unlike that path, there's no guaranteed-
+  // correct raw text to fall back to here (context is free-text alumni
+  // input, not pre-computed figures), so a suspected fabrication is logged
+  // for visibility rather than silently swapped for a worse answer or
+  // rejecting an otherwise-good response over one heuristic.
+  const contextYears = extractYears(context);
+  const answerYears   = extractYears(fullAnswer);
+  if (contextYears.size > 0 && [...answerYears].some(y => !contextYears.has(y))) {
+    logger.warn('rag_possible_fabrication', {
+      question, answerYears: [...answerYears], contextYears: [...contextYears],
+    });
+  }
+
   const sources = [...new Set(confidentChunks.map(c => c.source_type))];
   return finish({ answer: fullAnswer, sources, type: 'rag' });
 }

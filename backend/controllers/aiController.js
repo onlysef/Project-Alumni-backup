@@ -9,6 +9,7 @@ const { getEmbedding }    = require('../services/embeddingService');
 const { parseFile }       = require('../utils/fileParser');
 const { matchesFileSignature } = require('../utils/fileSignature');
 const logger               = require('../utils/logger');
+const answerCache          = require('../services/answerCache');
 
 const hf = new HfInference(process.env.HF_API_KEY);
 const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
@@ -160,27 +161,41 @@ const ingestFile = [
           return;
         }
 
-        // Embed each chunk and save
+        // Embed each chunk and save — bounded concurrency (a handful of HF
+        // embedding calls in flight at once) instead of one at a time.
+        // Ingestion of a few-hundred-row tracer file used to mean a few
+        // hundred sequential network round trips; each worker below claims
+        // the next unclaimed index, so chunk_index/ordering per document is
+        // unaffected even though completion order across workers isn't.
         let savedCount = 0;
         let lastEmbedError = null;
-        for (let i = 0; i < chunks.length; i++) {
-          const { text, metadata } = chunks[i];
-          try {
-            const embedding = await getEmbedding(text);
-            await EmbeddingDocument.create({
-              source_type: 'imported_file',
-              file_id:     importedFile._id,
-              content:     text,
-              metadata:    { ...metadata, file_name: originalname, file_type },
-              embedding,
-              chunk_index: i,
-            });
-            savedCount++;
-          } catch (embedErr) {
-            console.error(`Embedding failed for chunk ${i} of ${originalname}:`, embedErr.message);
-            lastEmbedError = embedErr.message;
+        const EMBED_CONCURRENCY = 5;
+        let nextChunkIndex = 0;
+
+        async function embedWorker() {
+          while (nextChunkIndex < chunks.length) {
+            const i = nextChunkIndex++;
+            const { text, metadata } = chunks[i];
+            try {
+              const embedding = await getEmbedding(text);
+              await EmbeddingDocument.create({
+                source_type: 'imported_file',
+                file_id:     importedFile._id,
+                content:     text,
+                metadata:    { ...metadata, file_name: originalname, file_type },
+                embedding,
+                chunk_index: i,
+              });
+              savedCount++;
+            } catch (embedErr) {
+              console.error(`Embedding failed for chunk ${i} of ${originalname}:`, embedErr.message);
+              lastEmbedError = embedErr.message;
+            }
           }
         }
+        await Promise.all(
+          Array.from({ length: Math.min(EMBED_CONCURRENCY, chunks.length) }, embedWorker)
+        );
 
         // Every chunk parsed fine but every embedding call failed (e.g. the
         // HF inference quota is exhausted) — this used to still report
@@ -227,6 +242,9 @@ const ingestFile = [
         });
 
         console.log(`[AI] Ingested ${originalname}: ${savedCount} chunks.`);
+        // New Graduate/EmbeddingDocument data exists now — any cached answer
+        // computed before this point may no longer be accurate.
+        answerCache.bumpDataVersion();
       } catch (err) {
         console.error(`[AI] Ingestion failed for ${originalname}:`, err.message);
         await ImportedFile.findByIdAndUpdate(importedFile._id, {
@@ -275,6 +293,7 @@ const deleteSource = async (req, res) => {
 
     const { deletedCount } = await EmbeddingDocument.deleteMany({ file_id: req.params.id });
     await Graduate.deleteMany({ fileId: req.params.id });
+    answerCache.bumpDataVersion();
     res.json({ message: `${file.file_name} removed. ${deletedCount} chunks deleted.` });
   } catch (err) {
     console.error('aiController.deleteSource error:', err);
@@ -357,6 +376,7 @@ const reembed = async (req, res) => {
         }
       }
       console.log('[AI] Re-embed complete.');
+      answerCache.bumpDataVersion();
     } catch (err) {
       console.error('[AI] Re-embed failed:', err.message);
     }

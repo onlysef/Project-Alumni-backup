@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const sanitizePrompt = require('../middleware/sanitizePrompt');
+const { aiChatLimiter } = require('../middleware/rateLimit');
 const {
   chat,
   suggestions,
@@ -14,7 +15,7 @@ const {
 
 router.use(protect, authorize('admin', 'coordinator'));
 
-router.post('/chat',                   sanitizePrompt, chat);
+router.post('/chat',                   aiChatLimiter, sanitizePrompt, chat);
 router.post('/suggestions',            suggestions);
 router.post('/reembed',                authorize('admin'), reembed);
 // Knowledge-base management — admin-only, same as reembed/deleteSource

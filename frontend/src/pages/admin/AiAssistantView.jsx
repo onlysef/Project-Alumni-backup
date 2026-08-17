@@ -686,7 +686,7 @@ export default function AiAssistantView() {
         setMessages((m) =>
           m.map((msg) =>
             msg.id === streamingId
-              ? { ...msg, text: err.message || "Sorry, I could not reach the AI server. Make sure Ollama is running." }
+              ? { ...msg, text: err.message || "Sorry, I could not reach the AI server. Please try again in a moment." }
               : msg
           )
         );
