@@ -8,7 +8,15 @@ const { correctTypos }    = require('../utils/typoCorrect');
 const answerCache          = require('./answerCache');
 
 const hf = new HfInference(process.env.HF_API_KEY);
-const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
+// No hardcoded provider fallback here on purpose. Llama-3.2-3B-Instruct had
+// exactly one live provider on HF's routing (featherless-ai) — a single,
+// shared, multi-tenant backend, which is what caused the multi-second
+// variance and occasional "temporarily at capacity" failures. Leaving
+// `provider` unset (only using HF_PROVIDER if explicitly configured) lets
+// Hugging Face auto-route across every live provider for whatever
+// HF_CHAT_MODEL is — measured ~40% faster in practice for
+// Llama-3.1-8B-Instruct, which currently has 4 live providers.
 
 // Minimum vector similarity score (0-1) a retrieved chunk must clear to be trusted.
 // Below this, the context is considered too weak to answer from and we refuse
@@ -132,7 +140,7 @@ async function condenseQuestion(question, chatHistory) {
   try {
     const completion = await hf.chatCompletion({
       model: CHAT_MODEL,
-      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route (see CHAT_MODEL comment above)
       messages,
       max_tokens: 60,
     });
@@ -463,7 +471,7 @@ async function streamHF(messages, onToken, retries = 3, maxTokens = 512, onReset
       let fullAnswer = '';
       const stream = hf.chatCompletionStream({
         model: CHAT_MODEL,
-        provider: process.env.HF_PROVIDER || 'featherless-ai',
+        provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route (see CHAT_MODEL comment above)
         messages,
         max_tokens: maxTokens,
       });

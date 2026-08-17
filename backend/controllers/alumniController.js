@@ -972,7 +972,10 @@ const getSuggestedAlumni = async (req, res) => {
 // ============ CAREER RECOMMENDATION ============
 
 const hf = new HfInference(process.env.HF_API_KEY);
-const CAREER_CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+// Same shared model/provider config as services/ragService.js — no
+// hardcoded provider fallback so HF can auto-route across whichever
+// providers are actually live for HF_CHAT_MODEL.
+const CAREER_CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
 
 // The "Suggested next step" line used to be one fixed template string
 // ("Complete a course in X to qualify for more Y roles.") every time —
@@ -987,7 +990,7 @@ Write ONE short, specific, encouraging sentence (max 25 words) telling this alum
 
     const completion = await hf.chatCompletion({
       model: CAREER_CHAT_MODEL,
-      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route
       messages: [
         { role: 'system', content: 'You are a concise, encouraging career advisor for a university alumni portal.' },
         { role: 'user', content: prompt },
@@ -1019,7 +1022,7 @@ Write ONE short, specific, encouraging sentence (max 20 words) telling this alum
 
     const completion = await hf.chatCompletion({
       model: CAREER_CHAT_MODEL,
-      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route
       messages: [
         { role: 'system', content: 'You are a concise, encouraging career advisor for a university alumni portal.' },
         { role: 'user', content: prompt },

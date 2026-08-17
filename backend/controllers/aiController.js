@@ -12,7 +12,11 @@ const logger               = require('../utils/logger');
 const answerCache          = require('../services/answerCache');
 
 const hf = new HfInference(process.env.HF_API_KEY);
-const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.2-3B-Instruct';
+// See the same constant in services/ragService.js for why there's no
+// hardcoded provider fallback alongside this — letting HF auto-route across
+// Llama-3.1-8B-Instruct's 4 live providers measured ~40% faster than being
+// pinned to Llama-3.2-3B-Instruct's one (featherless-ai).
+const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
 
 // Maps fileParser's TRACER_COLUMNS field names → Graduate model fields
 function mapNormalizedToGraduate(n) {
@@ -309,7 +313,7 @@ const suggestions = async (req, res) => {
   try {
     const completion = await hf.chatCompletion({
       model: CHAT_MODEL,
-      provider: process.env.HF_PROVIDER || 'featherless-ai',
+      provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route
       messages: [
         {
           role: 'system',
