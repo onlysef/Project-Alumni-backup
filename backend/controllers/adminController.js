@@ -118,21 +118,20 @@ const createUser = async (req, res) => {
     }
 
     const user = await User.create(userData);
-
-    let emailSent = true;
-    try {
-      await sendAccountCreatedEmail(user.email, user.firstName, tempPassword);
-    } catch (emailErr) {
-      console.error('createUser email error:', emailErr);
-      emailSent = false;
-    }
-
     const safe = await User.findById(user._id).select(SAFE_FIELDS);
-    res.status(201).json({
-      message: emailSent
-        ? 'Account created. Login credentials sent to email.'
-        : 'Account created. Could not send email — check email config.',
-      user: safe,
+
+    // Respond as soon as the account itself exists — the admin doesn't need
+    // to wait on SMTP (which can take several seconds, sometimes longer on a
+    // flaky connection) before seeing the new row and moving on. Same
+    // fire-and-forget pattern reembed() uses below for its own slow step.
+    res.status(201).json({ message: 'Account created. Sending login credentials to email…', user: safe });
+
+    setImmediate(async () => {
+      try {
+        await sendAccountCreatedEmail(user.email, user.firstName, tempPassword);
+      } catch (emailErr) {
+        console.error('createUser email error:', emailErr);
+      }
     });
   } catch (err) {
     console.error('createUser error:', err);
@@ -172,7 +171,22 @@ const updateUser = async (req, res) => {
     if (track          !== undefined) updates.track          = (updates.course ?? course) === 'BSIT' ? (track || '') : '';
     // Links an employer account to the partner company it's allowed to post
     // jobs under — job creation is blocked until this is set. '' unlinks.
-    if (partnershipId  !== undefined) updates.partnershipId  = partnershipId || null;
+    if (partnershipId  !== undefined) {
+      updates.partnershipId = partnershipId || null;
+      // User.company is a separate plain-text field (set at self-registration
+      // via registerPartner) that the Accounts list display falls back to —
+      // it was never kept in sync with partnershipId here, so an admin
+      // linking a Partner Company for an admin-created employer (who has no
+      // company text at all) saved the link but the list still showed their
+      // bare name. Mirror the linked partnership's name into it so both
+      // paths end up with the same displayable company name.
+      if (updates.partnershipId) {
+        const partnership = await Partnership.findById(updates.partnershipId).select('name').lean();
+        if (partnership) updates.company = partnership.name;
+      } else {
+        updates.company = '';
+      }
+    }
 
     // Same rule createUser enforces, applied here too — college is the basis
     // for every college-scoping check in the system, so an edit that leaves
@@ -492,8 +506,13 @@ const resendCredentials = async (req, res) => {
 const getNotifications = async (req, res) => {
   try {
     const [pendingUsers, empActivity, pendingPartners, recentAnnouncements, pendingAppointments] = await Promise.all([
-      User.find({ role: 'alumni', status: 'pending' })
-        .select('firstName lastName createdAt').sort({ createdAt: -1 }).limit(5).lean(),
+      // Only 'employer' — an alumni/coordinator's 'pending' status just means
+      // they haven't logged in yet (it self-clears on first login, see
+      // authController.login), so surfacing it here as something needing
+      // admin attention was misleading. Employer 'pending' is the one role
+      // where it's real: login is blocked until an admin approves them.
+      User.find({ role: 'employer', status: 'pending' })
+        .select('firstName lastName company createdAt').sort({ createdAt: -1 }).limit(5).lean(),
       EmploymentActivity.find()
         .sort({ createdAt: -1 }).limit(5).lean(),
       Partnership.find({ status: 'Pending' })
@@ -507,8 +526,8 @@ const getNotifications = async (req, res) => {
     const notifications = [
       ...pendingUsers.map(u => ({
         type: 'pending_user',
-        title: 'New alumni registration',
-        body: `${u.firstName} ${u.lastName} is waiting for account approval.`,
+        title: 'New employer registration',
+        body: `${u.company || `${u.firstName} ${u.lastName}`} is waiting for account approval.`,
         createdAt: u.createdAt,
       })),
       ...empActivity.map(a => ({
