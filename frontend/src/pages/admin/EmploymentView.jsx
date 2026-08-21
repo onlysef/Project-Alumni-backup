@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
@@ -150,7 +151,11 @@ export default function EmploymentView() {
   // ─── export ─────────────────────────────────────────────────────────────────
   const [exportLoading, setExportLoading]   = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  // { left, top } | null — fixed-viewport coordinates the portaled menu below
+  // anchors to (see the portal comment near .emp-export-menu's render for why).
+  const [exportMenuPos, setExportMenuPos]   = useState(null);
   const exportRef = useRef(null);
+  const exportMenuRef = useRef(null);
 
   // ─── confirm dialog ─────────────────────────────────────────────────────────
   const [confirm, setConfirm] = useState({ open: false, message: "", onConfirm: null });
@@ -298,7 +303,13 @@ export default function EmploymentView() {
   useEffect(() => {
     if (!exportMenuOpen) return;
     const handler = (e) => {
-      if (exportRef.current && !exportRef.current.contains(e.target)) setExportMenuOpen(false);
+      // The menu itself is portaled to <body> now (see its render below), so
+      // it's no longer a DOM descendant of exportRef — without this second
+      // check, a click on "Export as CSV/Excel" would register as "outside"
+      // and close the menu before handleExport's own click handler ever runs.
+      if (exportRef.current?.contains(e.target)) return;
+      if (exportMenuRef.current?.contains(e.target)) return;
+      setExportMenuOpen(false);
     };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
@@ -531,15 +542,35 @@ export default function EmploymentView() {
               type="button"
               className="maroon-action"
               disabled={exportLoading}
-              onClick={() => setExportMenuOpen(o => !o)}
+              onClick={() => {
+                // .employment-card (right below this toolbar, only child of
+                // the same non-stacking-context parent) still painted over
+                // this menu at every z-index tried in place — same trap
+                // ActionMenu.jsx hit with table rows. Portaling to <body>
+                // with fixed coordinates read off the trigger sidesteps
+                // local stacking entirely instead of fighting it.
+                if (!exportMenuOpen) {
+                  const rect = exportRef.current.getBoundingClientRect();
+                  setExportMenuPos({ top: rect.bottom + 4, left: Math.max(6, rect.right - 170) });
+                }
+                setExportMenuOpen(o => !o);
+              }}
             >
               <span><Icon name="icon-17" /></span>
               <span>{exportLoading ? "Exporting…" : "Export List"}</span>
             </button>
-            <div className={`emp-export-menu${exportMenuOpen ? " show" : ""}`}>
-              <button type="button" onClick={() => handleExport("csv")}>Export as CSV</button>
-              <button type="button" onClick={() => handleExport("excel")}>Export as Excel</button>
-            </div>
+            {exportMenuOpen && exportMenuPos && createPortal(
+              <div
+                className="emp-export-menu show"
+                ref={exportMenuRef}
+                style={{ position: "fixed", top: exportMenuPos.top, left: exportMenuPos.left, right: "auto" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button type="button" onClick={() => handleExport("csv")}>Export as CSV</button>
+                <button type="button" onClick={() => handleExport("excel")}>Export as Excel</button>
+              </div>,
+              document.body
+            )}
           </div>
           <button type="button" className="maroon-action" onClick={() => setResponsesOpen(true)}>
             <span><Icon name="icon-20" /></span>
