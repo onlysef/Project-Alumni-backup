@@ -3155,8 +3155,15 @@
 
         .announcement-grid {
             display: grid;
-            grid-template-columns: minmax(320px, 1.4fr) minmax(220px, 0.65fr);
+            width: 100%;
+            min-width: 0;
+            grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.65fr);
             gap: 34px;
+        }
+
+        .announcement-grid > * {
+            min-width: 0;
+            max-width: 100%;
         }
 
         .post-form-card {
@@ -3199,6 +3206,7 @@
             align-content: start;
             gap: 22px;
             min-width: 0;
+            overflow: hidden;
         }
 
         .recent-posts h3 {
@@ -3208,7 +3216,11 @@
         }
 
         .recent-posts article {
+            min-width: 0;
+            max-width: 100%;
+            box-sizing: border-box;
             padding: 14px;
+            overflow: hidden;
         }
 
         .post-art {
@@ -3478,9 +3490,13 @@
         }
 
         .announcement-grid {
-            grid-template-columns: minmax(360px, 1.15fr) minmax(280px, 0.55fr);
+            grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.55fr);
             align-items: start;
             gap: 28px;
+        }
+
+        .announcement-grid > * {
+            min-width: 0;
         }
 
         .post-form-card {
@@ -3712,6 +3728,7 @@
         }
 
         .post-actions button {
+            min-width: 0;
             min-height: 34px;
             border: 0;
             border-radius: 6px;
@@ -3725,6 +3742,13 @@
             font-size: 12px;
             font-weight: 900;
             cursor: pointer;
+        }
+
+        .post-actions button > span:last-child {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .post-actions button:hover,
@@ -4174,11 +4198,13 @@
         }
 
         .modal-head {
-            height: 58px;
+            min-height: 58px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 18px;
+            gap: 12px;
+            padding: 8px 18px;
+            box-sizing: border-box;
             background: var(--maroon);
             color: #fff;
             position: sticky;
@@ -4188,12 +4214,17 @@
         }
 
         .modal-head h3 {
+            flex: 1 1 auto;
+            min-width: 0;
             margin: 0;
             font-size: 18px;
             font-weight: 900;
+            line-height: 1.3;
+            overflow-wrap: anywhere;
         }
 
         .modal-head button {
+            flex: 0 0 32px;
             width: 32px;
             height: 32px;
             border: 0;
@@ -6687,7 +6718,10 @@
             top: calc(100% + 6px);
             right: 0;
             z-index: 40;
+            box-sizing: border-box;
+            width: max-content;
             min-width: 160px;
+            max-width: min(220px, calc(100vw - 32px));
             padding: 6px;
             background: #fff;
             border: 1px solid rgba(87, 0, 19, 0.18);
@@ -6698,11 +6732,25 @@
             gap: 2px;
         }
 
+        .action-menu-list.opens-down {
+            top: calc(100% + 6px);
+            bottom: auto;
+        }
+
+        .action-menu-list.opens-up {
+            top: auto;
+            bottom: calc(100% + 6px);
+        }
+
         .action-menu-item {
             display: flex;
             align-items: center;
             gap: 10px;
+            box-sizing: border-box;
+            min-width: 0;
+            max-width: 100%;
             width: 100%;
+            margin: 0;
             padding: 9px 12px;
             border: 0;
             border-radius: 7px;
@@ -6712,6 +6760,13 @@
             font-weight: 600;
             text-align: left;
             cursor: pointer;
+        }
+
+        .action-menu-item > span:last-child {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .action-menu-item:hover { background: #f3e7ea; }
         .action-menu-item .admin-svg-icon {
@@ -9641,6 +9696,68 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 
 .nav-sub.open {
     animation: admin-submenu-in 230ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+/* Keep action controls contained across every admin table/page. */
+.action-menu,
+.appointment-action-menu,
+.announcement-action-menu,
+.desktop-row-actions,
+.mobile-row-actions,
+.appt-actions {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.desktop-row-actions,
+.appt-actions {
+    flex-wrap: wrap;
+}
+
+.admin-table td:last-child button,
+.appointments-table td:last-child button,
+.employment-table td[data-label="Actions"] button {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.admin-table td:last-child .action-menu-list,
+.appointments-table td:last-child .action-menu-list,
+.employment-table td[data-label="Actions"] .action-menu-list {
+    box-sizing: border-box;
+    max-width: min(220px, calc(100vw - 32px));
+}
+
+.action-menu-list .action-menu-item {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0;
+}
+
+/* An open menu must paint above later table rows and their kebab buttons. */
+.admin-table tr:has(.action-menu-list),
+.appointments-table tr:has(.action-menu-list),
+.employment-table tr:has(.action-menu-list) {
+    position: relative;
+    z-index: 100;
+    overflow: visible;
+}
+
+.admin-table td:has(.action-menu-list),
+.appointments-table td:has(.action-menu-list),
+.employment-table td:has(.action-menu-list),
+.action-menu:has(.action-menu-list) {
+    position: relative;
+    z-index: 101;
+    overflow: visible;
+}
+
+.action-menu-list {
+    z-index: 102;
 }
 
 .toast.show {
