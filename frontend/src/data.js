@@ -97,8 +97,18 @@ export const reportFilters = [
   ["All", "Completed", "Pending", "This Month"],
 ];
 
-export function accountActionList(status) {
-  if (status === "Pending") return ["edit", "approve", "reject", "resend"];
+export function accountActionList(status, role) {
+  if (status === "Pending") {
+    // Alumni/Coordinator accounts activate themselves on first login —
+    // "pending" for them just means "hasn't logged in yet," not "awaiting
+    // review." Approve has no real effect beyond flipping status early, so
+    // showing it implies it gates access the way it genuinely does for
+    // Employer accounts (blocked from login until approved). Reject is
+    // kept — it has a real effect for every role (blocks the account
+    // outright, same as a manual suspend).
+    const canApprove = role !== "Alumni" && role !== "Coordinator";
+    return canApprove ? ["edit", "approve", "reject", "resend"] : ["edit", "reject", "resend"];
+  }
   if (status === "Suspended") return ["edit", "activate"];
   return ["edit", "suspend"];
 }

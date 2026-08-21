@@ -35,7 +35,15 @@ function mapUser(u) {
     firstName:      u.firstName,
     middleInitial,
     lastName,
-    name:           u.role === 'employer' ? (u.company || u.firstName) : `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`,
+    // Employer rows show the company name (that's what admins recognize) —
+    // but a bare firstName fallback dropped the contact's lastName entirely
+    // when no company was set, e.g. "Employer" instead of "Employer Tolentino"
+    // for an account whose firstName literally is "Employer". Every other
+    // role's fallback is the full name, so employer without a company should
+    // fall back to the same, not just firstName alone.
+    name:           u.role === 'employer'
+      ? (u.company || `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`)
+      : `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`,
     email:          u.email,
     role:           capitalize(u.role),
     status:         capitalize(u.status),
@@ -413,7 +421,7 @@ export default function AccountsView() {
                   <td><AccountStatusBadge status={r.status} /></td>
                   <td>
                     <ActionMenu
-                      actions={accountActionList(r.status)}
+                      actions={accountActionList(r.status, r.role)}
                       onSelect={(a) => { setOpenMenuId(null); handleAction(r, a); }}
                       isOpen={openMenuId === r.id}
                       onToggle={(v) => setOpenMenuId(typeof v === "function" ? (v(openMenuId === r.id) ? r.id : null) : (v ? r.id : null))}
