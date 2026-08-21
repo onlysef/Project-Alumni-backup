@@ -6397,9 +6397,15 @@
         }
 
         .emp-export-menu {
-            position: absolute;
-            top: calc(100% + 4px);
-            right: 0;
+            /* Rendered through a portal straight into <body> now (see
+               EmploymentView.jsx) — .employment-card sitting right below this
+               menu in the toolbar kept painting over it regardless of how
+               high z-index alone was pushed, the same stacking-context trap
+               .action-menu-list-portal's own comment above already documents
+               for table rows. position/top/left/right come from the portal's
+               inline style (fixed, computed off the trigger's real position);
+               this class now only supplies the box's visual styling.
+               z-index still set defensively, same level as that portal. */
             width: 170px;
             padding: 6px;
             display: none;
@@ -6407,7 +6413,7 @@
             border-radius: 7px;
             background: #fff;
             box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
-            z-index: 25;
+            z-index: 500;
         }
 
         .emp-export-menu.show {
