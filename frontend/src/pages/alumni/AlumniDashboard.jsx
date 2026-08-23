@@ -42,6 +42,21 @@ function fmtEventTime(ev) {
   return `${start} - ${new Date(ev.end_datetime).toLocaleTimeString("en-PH", opts)}`;
 }
 
+// Same "ended" definition as coordinator/EventManagement.jsx's computeStatus()
+// and the backend's feedbackController.isEventEnded() — an event that has
+// started but not yet reached its end (or end-of-start-day, with no
+// end_datetime) is still ongoing, not "completed". Splitting on bare
+// event_datetime instead used to drop a same-day event into "Recently
+// Completed" — hidden from the default Events section — the moment its
+// start time passed, even while it was still actively running.
+function isEventOver(ev) {
+  const start = new Date(ev.event_datetime);
+  const end = ev.end_datetime
+    ? new Date(ev.end_datetime)
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
+  return new Date() > end;
+}
+
 export default function AlumniDashboard() {
   const { section = "home", sidebarCollapsed = false } = useOutletContext() || {};
   const location = useLocation();
@@ -287,9 +302,8 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     body: `${ev.description}\n\nSchedule: ${fmtEventTime(ev)}\nVenue: ${ev.location || "TBA"}`,
   });
 
-  const now = new Date();
-  const upcomingEvents  = events.filter((e) => new Date(e.event_datetime) >= now).sort((a, b) => new Date(a.event_datetime) - new Date(b.event_datetime));
-  const completedEvents = events.filter((e) => new Date(e.event_datetime) <  now).sort((a, b) => new Date(b.event_datetime) - new Date(a.event_datetime));
+  const upcomingEvents  = events.filter((e) => !isEventOver(e)).sort((a, b) => new Date(a.event_datetime) - new Date(b.event_datetime));
+  const completedEvents = events.filter((e) => isEventOver(e)).sort((a, b) => new Date(b.event_datetime) - new Date(a.event_datetime));
 
   return <div className="alumni-page-content announcements-page">
     {sidebarCollapsed && <div className="announcement-filter-bar" aria-label="Announcement filters">
@@ -595,16 +609,18 @@ function EventFeedbackFormModal({ state, onClose, onChange, onSubmit }) {
   const { event, rating, ratings, comments, submitting, error } = state;
   return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={`Give feedback for ${event.title}`}>
     <div className="alumni-action-modal event-feedback-modal">
-      <div><span>Event feedback</span><h2>{event.title}</h2><p>Share your experience — this helps us plan better events.</p></div>
+      <div><span>Event feedback</span><h2>{event.title}</h2></div>
       <div className="event-feedback-fields">
-        <StarRating label="Overall event rating" value={rating} onChange={(v) => onChange({ rating: v })} />
-        <StarRating label="Event organization" size="sm" value={ratings.organization} onChange={(v) => onChange({ ratings: { ...ratings, organization: v } })} />
-        <StarRating label="Event content / program" size="sm" value={ratings.content} onChange={(v) => onChange({ ratings: { ...ratings, content: v } })} />
-        <StarRating label="Venue / arrangement" size="sm" value={ratings.venue} onChange={(v) => onChange({ ratings: { ...ratings, venue: v } })} />
-        <StarRating label="Overall satisfaction" size="sm" value={ratings.satisfaction} onChange={(v) => onChange({ ratings: { ...ratings, satisfaction: v } })} />
+        <StarRating label="Overall rating" value={rating} onChange={(v) => onChange({ rating: v })} />
+        <div className="event-feedback-subratings">
+          <StarRating label="Organization" size="sm" value={ratings.organization} onChange={(v) => onChange({ ratings: { ...ratings, organization: v } })} />
+          <StarRating label="Content / program" size="sm" value={ratings.content} onChange={(v) => onChange({ ratings: { ...ratings, content: v } })} />
+          <StarRating label="Venue" size="sm" value={ratings.venue} onChange={(v) => onChange({ ratings: { ...ratings, venue: v } })} />
+          <StarRating label="Satisfaction" size="sm" value={ratings.satisfaction} onChange={(v) => onChange({ ratings: { ...ratings, satisfaction: v } })} />
+        </div>
         <label className="event-feedback-comments">
-          <span>Suggestions / comments</span>
-          <textarea rows="4" value={comments} onChange={(e) => onChange({ comments: e.target.value })} placeholder="Anything you'd like to share?" />
+          <span>Comments</span>
+          <textarea rows="4" value={comments} onChange={(e) => onChange({ comments: e.target.value })} placeholder="What stood out, good or bad?" />
         </label>
       </div>
       {error && <p className="event-feedback-error">{error}</p>}
@@ -624,11 +640,13 @@ function EventFeedbackResponseModal({ state, onClose }) {
       {loading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading…</p>}
       {!loading && !data && <p style={{ color: "#76656a", fontSize: 13 }}>Could not load your response.</p>}
       {!loading && data && <div className="event-feedback-readonly">
-        <StarRating label="Overall event rating" value={data.rating} readOnly onChange={() => {}} />
-        {data.ratings?.organization ? <StarRating label="Event organization" size="sm" value={data.ratings.organization} readOnly onChange={() => {}} /> : null}
-        {data.ratings?.content ? <StarRating label="Event content / program" size="sm" value={data.ratings.content} readOnly onChange={() => {}} /> : null}
-        {data.ratings?.venue ? <StarRating label="Venue / arrangement" size="sm" value={data.ratings.venue} readOnly onChange={() => {}} /> : null}
-        {data.ratings?.satisfaction ? <StarRating label="Overall satisfaction" size="sm" value={data.ratings.satisfaction} readOnly onChange={() => {}} /> : null}
+        <StarRating label="Overall rating" value={data.rating} readOnly onChange={() => {}} />
+        <div className="event-feedback-subratings">
+          {data.ratings?.organization ? <StarRating label="Organization" size="sm" value={data.ratings.organization} readOnly onChange={() => {}} /> : null}
+          {data.ratings?.content ? <StarRating label="Content / program" size="sm" value={data.ratings.content} readOnly onChange={() => {}} /> : null}
+          {data.ratings?.venue ? <StarRating label="Venue" size="sm" value={data.ratings.venue} readOnly onChange={() => {}} /> : null}
+          {data.ratings?.satisfaction ? <StarRating label="Satisfaction" size="sm" value={data.ratings.satisfaction} readOnly onChange={() => {}} /> : null}
+        </div>
         {data.feedback && <div className="event-feedback-comments-readonly"><span>Your comments</span><p>{data.feedback}</p></div>}
         <p className="event-feedback-submitted-at">Submitted {new Date(data.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}</p>
       </div>}
