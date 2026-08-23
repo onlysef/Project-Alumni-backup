@@ -1,6 +1,5 @@
 const multer        = require('multer');
 const crypto        = require('crypto');
-const { HfInference } = require('@huggingface/inference');
 const EmbeddingDocument = require('../models/EmbeddingDocument');
 const ImportedFile  = require('../models/ImportedFile');
 const Graduate      = require('../models/Graduate');
@@ -10,13 +9,8 @@ const { parseFile }       = require('../utils/fileParser');
 const { matchesFileSignature } = require('../utils/fileSignature');
 const logger               = require('../utils/logger');
 const answerCache          = require('../services/answerCache');
-
-const hf = new HfInference(process.env.HF_API_KEY);
-// See the same constant in services/ragService.js for why there's no
-// hardcoded provider fallback alongside this — letting HF auto-route across
-// Llama-3.1-8B-Instruct's 4 live providers measured ~40% faster than being
-// pinned to Llama-3.2-3B-Instruct's one (featherless-ai).
-const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
+const { stripInjectionPhrases } = require('../utils/injectionFilter');
+const AiFlag                = require('../models/AiFlag');
 
 // Maps fileParser's TRACER_COLUMNS field names → Graduate model fields
 function mapNormalizedToGraduate(n) {
@@ -179,7 +173,25 @@ const ingestFile = [
         async function embedWorker() {
           while (nextChunkIndex < chunks.length) {
             const i = nextChunkIndex++;
-            const { text, metadata } = chunks[i];
+            const { text: rawText, metadata } = chunks[i];
+            // Indirect prompt injection defense — an imported tracer/employment
+            // sheet is free text an alumnus (or whoever filled the form) typed,
+            // not a trusted source. Without this, an injection phrase sitting in
+            // one respondent's row gets embedded once and can resurface inside
+            // any future user's LLM context indefinitely — the same class of
+            // attack sanitizePrompt.js only ever covered for the live chat
+            // question, never for ingested content. Stripped before BOTH the
+            // embedding call and the stored `content` (the text that actually
+            // reaches the LLM's context later), not just one or the other.
+            const { cleaned: text, injectionDetected } = stripInjectionPhrases(rawText);
+            if (injectionDetected) {
+              logger.warn('ingest_injection_stripped', { file: originalname, chunkIndex: i });
+              AiFlag.create({
+                type: 'injection',
+                detail: rawText.slice(0, 300),
+                sourceType: 'ingest_file',
+              }).catch(() => {});
+            }
             try {
               const embedding = await getEmbedding(text);
               await EmbeddingDocument.create({
@@ -305,35 +317,6 @@ const deleteSource = async (req, res) => {
   }
 };
 
-// ─── POST /api/ai/suggestions ────────────────────────────────────────────────
-const suggestions = async (req, res) => {
-  const { question, answer } = req.body;
-  if (!question || !answer) return res.json({ suggestions: [] });
-
-  try {
-    const completion = await hf.chatCompletion({
-      model: CHAT_MODEL,
-      provider: process.env.HF_PROVIDER || undefined, // empty/unset = let HF auto-route
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a helpful assistant for a university alumni portal. Generate exactly 3 short follow-up questions (max 10 words each) based on the conversation. Return ONLY a JSON array of strings, no explanation.',
-        },
-        { role: 'user', content: `Question: ${question}\nAnswer: ${answer.slice(0, 500)}\n\nGenerate 3 follow-up questions as a JSON array:` },
-      ],
-      max_tokens: 150,
-    });
-
-    const raw = completion.choices[0]?.message?.content || '[]';
-    const match = raw.match(/\[[\s\S]*\]/);
-    const parsed = match ? JSON.parse(match[0]) : [];
-    res.json({ suggestions: parsed.slice(0, 3) });
-  } catch (err) {
-    console.error('suggestions error:', err.message);
-    res.json({ suggestions: [] });
-  }
-};
-
 // ─── POST /api/ai/reembed ─────────────────────────────────────────────────────
 const reembed = async (req, res) => {
   res.json({ message: 'Re-embedding started in background.' });
@@ -381,7 +364,20 @@ const reembed = async (req, res) => {
 
       for (const col of collections) {
         for (const doc of col.docs) {
-          const text = col.toText(doc);
+          // Live tracer/employment text (esp. reason_unemployed, a free-text
+          // field alumni type themselves) gets the same indirect-injection
+          // stripping as imported-file chunks above — same reasoning: this
+          // text is embedded once and can resurface in any future user's LLM
+          // context, so it needs the same defense as the ingestFile path.
+          const { cleaned: text, injectionDetected } = stripInjectionPhrases(col.toText(doc));
+          if (injectionDetected) {
+            logger.warn('ingest_injection_stripped', { sourceType: col.name, sourceId: String(doc._id) });
+            AiFlag.create({
+              type: 'injection',
+              detail: col.toText(doc).slice(0, 300),
+              sourceType: 'ingest_tracer',
+            }).catch(() => {});
+          }
           // Always clear any embedding left from a previous run first — a
           // record that used to have real data (or used to exist) but no
           // longer qualifies below must not leave a stale chunk behind.
@@ -418,4 +414,61 @@ const reembed = async (req, res) => {
   });
 };
 
-module.exports = { chat, suggestions, reembed, ingestFile, ingestStatus, listSources, deleteSource };
+// ─── GET /api/ai/flags ────────────────────────────────────────────────────────
+// Admin-reviewable queue for injection detections, RAG fabrication checks,
+// and user-submitted "this answer was wrong" feedback — see models/AiFlag.js.
+const getFlags = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.reviewed !== undefined) filter.reviewed = req.query.reviewed === 'true';
+    const flags = await AiFlag.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .populate('source', 'firstName lastName')
+      .populate('reviewedBy', 'firstName lastName');
+    res.json({ flags });
+  } catch (err) {
+    console.error('aiController.getFlags error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── PATCH /api/ai/flags/:id ──────────────────────────────────────────────────
+const reviewFlag = async (req, res) => {
+  try {
+    const flag = await AiFlag.findByIdAndUpdate(
+      req.params.id,
+      { reviewed: true, reviewedBy: req.user.id, reviewedAt: new Date() },
+      { new: true }
+    );
+    if (!flag) return res.status(404).json({ message: 'Flag not found.' });
+    res.json({ flag });
+  } catch (err) {
+    console.error('aiController.reviewFlag error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// ─── POST /api/ai/feedback ────────────────────────────────────────────────────
+// A user marking a specific AC answer as wrong — feeds the same admin queue
+// as injection/fabrication detections above, not a separate mechanism.
+const submitFeedback = async (req, res) => {
+  const { question, answer, note } = req.body;
+  if (!question || !answer) return res.status(400).json({ message: 'question and answer are required.' });
+  try {
+    const flag = await AiFlag.create({
+      type: 'user_feedback',
+      question,
+      answer,
+      detail: note || '',
+      source: req.user.id,
+      sourceType: 'chat',
+    });
+    res.status(201).json({ flag });
+  } catch (err) {
+    console.error('aiController.submitFeedback error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { chat, reembed, ingestFile, ingestStatus, listSources, deleteSource, getFlags, reviewFlag, submitFeedback };

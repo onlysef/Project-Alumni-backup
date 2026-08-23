@@ -67,6 +67,23 @@ const VOCABULARY = [
   'partnership', 'partnerships', 'partner', 'partners', 'company', 'companies',
   'office', 'hours', 'open', 'close', 'closed',
   'profile', 'account', 'updated', 'edited', 'changed',
+  // Filipino/Taglish routing words — mirrors the Filipino trigger patterns
+  // added to queryClassifier.js's GREETING/HELP/STATISTICAL/QUALITATIVE
+  // pattern groups. These are added here NOT for translation (this module
+  // never translates Filipino to English) but for the same reason every
+  // other entry above exists: so a typo'd Filipino trigger word ("bakiit",
+  // "ilaan") still reaches its correctly-spelled form instead of either (a)
+  // going unrecognized, or (b) — the real risk without this entry — getting
+  // Levenshtein-matched to an unrelated ENGLISH vocabulary word that happens
+  // to sit within edit distance (corrupting the question's actual meaning,
+  // the exact bug class STOPWORDS above already guards English words
+  // against). Listing the correctly-spelled forms here also means
+  // correctWord()'s `VOCABULARY.includes(lower)` early-return protects them
+  // from ever being "corrected" away from Filipino into English at all.
+  'kumusta', 'kamusta', 'musta',
+  'kaya', 'gawin', 'sagutin', 'tulungan', 'paano', 'gamitin', 'magamit', 'pwede', 'puwede', 'itanong', 'tanungin',
+  'ilan', 'ilista', 'ipakita', 'porsyento', 'porsiyento', 'pinakamataas', 'pinakamababa', 'bilang',
+  'bakit', 'dahilan', 'ipaliwanag', 'paliwanag', 'palagay', 'opinyon', 'karanasan', 'mungkahi', 'puna',
 ];
 
 // Common English function words (pronouns, articles, prepositions, auxiliary

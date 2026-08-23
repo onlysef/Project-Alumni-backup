@@ -18,13 +18,21 @@ const { AsyncLocalStorage } = require('async_hooks');
 const storage = new AsyncLocalStorage();
 
 // `emails` is a lowercased array of allowed alumni email addresses, or null
-// for no restriction (admin / non-college-scoped requests).
-function runWithCollegeScope(emails, fn) {
-  return storage.run({ emails }, fn);
+// for no restriction (admin / non-college-scoped requests). `college` is the
+// raw college code alongside it — Event/AttendanceLog aren't Graduate
+// documents, so they don't benefit from the Mongoose pre-hook below and
+// need the actual college string (not an alumni email list) to filter by,
+// the same way eventController.js's own coordinator-scoping already does.
+function runWithCollegeScope(emails, college, fn) {
+  return storage.run({ emails, college }, fn);
 }
 
 function getCollegeScopeEmails() {
   return storage.getStore()?.emails || null;
 }
 
-module.exports = { runWithCollegeScope, getCollegeScopeEmails };
+function getCollegeScope() {
+  return storage.getStore()?.college || null;
+}
+
+module.exports = { runWithCollegeScope, getCollegeScopeEmails, getCollegeScope };

@@ -8152,6 +8152,48 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             border-color: var(--maroon);
             color: #fff;
         }
+        .ac-tool-sent {
+            color: #257a4e;
+            cursor: default;
+        }
+        .ac-tool-sent:hover {
+            background: #fff;
+            border-color: var(--line);
+            color: #257a4e;
+        }
+
+        .ac-feedback-note {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .ac-feedback-note input {
+            flex: 1;
+            min-width: 0;
+            height: 32px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 0 10px;
+            font: inherit;
+            font-size: 12px;
+        }
+        .ac-feedback-note button {
+            height: 32px;
+            padding: 0 12px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #fff;
+            color: var(--muted);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .ac-feedback-note button:first-of-type {
+            background: var(--maroon);
+            border-color: var(--maroon);
+            color: #fff;
+        }
 
         /* ── Typing indicator ── */
         .ac-typing {
@@ -8345,6 +8387,27 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             color: #cbb9bd;
         }
         body.dark-mode .ac-tool-btn:hover {
+            background: var(--gold);
+            border-color: var(--gold);
+            color: var(--maroon);
+        }
+        body.dark-mode .ac-tool-sent,
+        body.dark-mode .ac-tool-sent:hover {
+            background: #2b141a;
+            border-color: rgba(250, 200, 83, 0.22);
+            color: #3ecb84;
+        }
+        body.dark-mode .ac-feedback-note input {
+            background: #2b141a;
+            border-color: rgba(250, 200, 83, 0.22);
+            color: #f3e7ea;
+        }
+        body.dark-mode .ac-feedback-note button {
+            background: #2b141a;
+            border-color: rgba(250, 200, 83, 0.22);
+            color: #cbb9bd;
+        }
+        body.dark-mode .ac-feedback-note button:first-of-type {
             background: var(--gold);
             border-color: var(--gold);
             color: var(--maroon);
@@ -8926,6 +8989,19 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
         .ac-file-type-docx    { background: #dbeafe; color: #1e40af; }
         .ac-file-type-csv     { background: #fef3c7; color: #92400e; }
         .ac-file-type-unknown { background: #f3f4f6; color: #374151; }
+
+        /* Longer text labels than the fixed 40x40 file-type squares above fit
+           — same badge base, pill-shaped instead. */
+        [class*="ac-flag-type-"] {
+            width: auto;
+            height: auto;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+        }
+        .ac-flag-type-injection     { background: #fee2e2; color: #991b1b; }
+        .ac-flag-type-fabrication   { background: #fef3c7; color: #92400e; }
+        .ac-flag-type-user_feedback { background: #dbeafe; color: #1e40af; }
 
         /* File name + meta */
         .ac-file-info {

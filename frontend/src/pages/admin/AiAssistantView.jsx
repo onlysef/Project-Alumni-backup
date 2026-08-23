@@ -24,126 +24,6 @@ const QUICK_PROMPTS = [
   { label: "Employment status", text: "What's the current employment status?" },
 ];
 
-function getSuggestions(text) {
-  const t = (text || "").toLowerCase();
-
-  if (/employment breakdown|employed|unemployed|employment rate|employment status|self.?employ|never employ/.test(t))
-    return [
-      "What industries do alumni work in?",
-      "Show employment breakdown by program",
-      "Show employment by graduation year",
-      "Who are the employed alumni?",
-      "How many work locally?",
-      "How many work abroad?",
-      "What is the employment type breakdown?",
-    ];
-
-  if (/industr/.test(t))
-    return [
-      "What is the employment rate?",
-      "Who works in the IT industry?",
-      "Who works in the education industry?",
-      "How many work locally?",
-      "How many work abroad?",
-      "Show employment breakdown by program",
-    ];
-
-  if (/board.?exam|licensure|prc/.test(t))
-    return [
-      "How many passed the board exam?",
-      "What percentage passed the board exam?",
-      "Who passed the board exam?",
-      "Who failed the board exam?",
-      "How many did not take the board exam?",
-      "Who did not take the board exam?",
-    ];
-
-  if (/competenc|skill|self.?assess/.test(t))
-    return [
-      "How do alumni rate their technical skills?",
-      "How do alumni rate their communication skills?",
-      "How do alumni rate their problem-solving skills?",
-      "How do alumni rate their teamwork?",
-      "How do alumni rate their adaptability?",
-      "How do alumni rate their critical thinking?",
-    ];
-
-  if (/further (education|studies)|graduate studies|masters|phd|post.?grad/.test(t))
-    return [
-      "What is the employment rate?",
-      "How many took the board exam?",
-      "Who pursued further studies?",
-      "What percentage pursued further education?",
-      "What industries do alumni work in?",
-    ];
-
-  if (/program|specialization|course|tsm|bscs|bsit|wma|\bna\b|\bis\b|\bim\b/.test(t))
-    return [
-      "How many TSM graduates are there?",
-      "How many IT graduates are there?",
-      "How many BSCS graduates are there?",
-      "How many WMA graduates are there?",
-      "Show employment breakdown by program",
-      "What is the overall employment rate?",
-      "Show employment by graduation year",
-    ];
-
-  if (/batch|year|graduation|graduated/.test(t))
-    return [
-      "Show employment by graduation year",
-      "Who are the alumni from batch 2020?",
-      "How many alumni are from batch 2019?",
-      "What is the employment rate?",
-      "Show employment breakdown by program",
-    ];
-
-  if (/locally|abroad|work location|overseas/.test(t))
-    return [
-      "How many work locally?",
-      "How many work abroad?",
-      "What industries do alumni work in?",
-      "What is the employment rate?",
-      "Show employment breakdown by program",
-    ];
-
-  if (/related|relevance|relevant.*course|job.*course/.test(t))
-    return [
-      "What is the employment rate?",
-      "What industries do alumni work in?",
-      "How many have jobs directly related to their course?",
-      "How many have jobs somewhat related to their course?",
-      "How many have jobs not related to their course?",
-    ];
-
-  if (/employment type|regular|permanent|contractual|government|private/.test(t))
-    return [
-      "What is the employment rate?",
-      "What industries do alumni work in?",
-      "What is the employment type breakdown?",
-      "How many are regular or permanent employees?",
-      "How many are contractual?",
-    ];
-
-  if (/respondents|tracer|survey|overview/.test(t))
-    return [
-      "What is the employment rate?",
-      "What industries do alumni work in?",
-      "Show employment breakdown by program",
-      "How many took the board exam?",
-      "How many pursued further studies?",
-      "How do alumni rate their competencies?",
-    ];
-
-  return [
-    "What is the employment rate?",
-    "What industries do alumni work in?",
-    "How many took the board exam?",
-    "Show employment breakdown by program",
-    "How many pursued further studies?",
-    "How do alumni rate their competencies?",
-  ];
-}
-
 function readableParagraphs(text = "") {
   return String(text)
     .split(/\n+/)
@@ -418,6 +298,15 @@ function CheckIcon() {
   );
 }
 
+function ThumbsDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M17 14V2" />
+      <path d="M9 18.12 10 14H4.17a2 2 0 0 1-2-2.3l1.13-8A2 2 0 0 1 5.28 2H17a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2.5c-.4 0-.79.15-1.1.42l-3.7 3.15a1.5 1.5 0 0 1-2.7-1.45Z" />
+    </svg>
+  );
+}
+
 function nowTime() {
   return new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
@@ -462,6 +351,12 @@ export default function AiAssistantView() {
   const [editText, setEditText] = useState("");
   const [copiedId, setCopiedId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  // Which AC message currently has its optional-note input open, and which
+  // ones have already had feedback submitted (swaps the button to a sent
+  // state so a second click can't double-submit).
+  const [feedbackOpenId, setFeedbackOpenId] = useState(null);
+  const [feedbackNote, setFeedbackNote] = useState("");
+  const [feedbackSentIds, setFeedbackSentIds] = useState(() => new Set());
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -474,6 +369,11 @@ export default function AiAssistantView() {
   const [importedFiles, setImportedFiles] = useState([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+
+  const [flagsOpen, setFlagsOpen] = useState(false);
+  const [flags, setFlags] = useState([]);
+  const [loadingFlags, setLoadingFlags] = useState(false);
+  const [resolvingFlagId, setResolvingFlagId] = useState(null);
 
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
@@ -697,14 +597,18 @@ export default function AiAssistantView() {
     } finally {
       setThinking(false);
       // Prefer backend-computed suggestions (context-aware, guaranteed answerable
-      // via the same topic dispatch aggregationService just used); fall back to
-      // the static local heuristic for RAG-classified (non-statistics) answers.
+      // via the same topic dispatch aggregationService just used). RAG-classified
+      // (non-statistics) answers don't get topic-driven suggestions from the
+      // backend, so fall back to the fixed QUICK_PROMPTS set instead of a
+      // separately-maintained keyword heuristic that drifts out of sync with
+      // whatever topics aggregationService actually supports (e.g. it had no
+      // awareness of the events/attendance topic added later).
       // Skip entirely when the answer failed — suggestion chips for a
       // question the assistant couldn't even answer are misleading.
       setMessages((prev) => {
         const lastAc = [...prev].reverse().find((m) => m.role === "ac");
         if (lastAc?.text && !hadError) {
-          const base = serverSuggestions?.length ? serverSuggestions : getSuggestions(lastAc.text);
+          const base = serverSuggestions?.length ? serverSuggestions : QUICK_PROMPTS.map((q) => q.text);
           const filtered = base
             .filter((s) => s.toLowerCase() !== fullAnswer.toLowerCase() && s.toLowerCase() !== question.toLowerCase())
             .slice(0, 3);
@@ -748,6 +652,31 @@ export default function AiAssistantView() {
       setCopiedId(id);
       setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1400);
     } catch { /* ignore */ }
+  }
+
+  // The question that produced a given AC answer is just the nearest earlier
+  // user message in the flat, alternating messages array — no separate
+  // question/answer pairing is tracked elsewhere.
+  function questionFor(acMessageId) {
+    const i = messages.findIndex((m) => m.id === acMessageId);
+    for (let j = i - 1; j >= 0; j--) {
+      if (messages[j].role === "user") return messages[j].text;
+    }
+    return "";
+  }
+
+  async function submitFeedback(msg) {
+    try {
+      const token = localStorage.getItem("auth_token");
+      await fetch(`${API}/ai/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ question: questionFor(msg.id), answer: msg.text, note: feedbackNote.trim() }),
+      });
+    } catch { /* best-effort — this is a reporting signal, not a user-facing action that needs its own error UI */ }
+    setFeedbackSentIds((s) => new Set(s).add(msg.id));
+    setFeedbackOpenId(null);
+    setFeedbackNote("");
   }
 
   function startEdit(msg) {
@@ -836,6 +765,27 @@ export default function AiAssistantView() {
       setImportedFiles((f) => f.filter((x) => x._id !== id));
     } catch { /* ignore */ }
     finally { setDeletingId(null); }
+  }
+
+  async function fetchFlags() {
+    setLoadingFlags(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch(`${API}/ai/flags?reviewed=false`, { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      setFlags(data.flags || []);
+    } catch { setFlags([]); }
+    finally { setLoadingFlags(false); }
+  }
+
+  async function resolveFlag(id) {
+    setResolvingFlagId(id);
+    try {
+      const token = localStorage.getItem("auth_token");
+      await fetch(`${API}/ai/flags/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
+      setFlags((f) => f.filter((x) => x._id !== id));
+    } catch { /* ignore */ }
+    finally { setResolvingFlagId(null); }
   }
 
   async function deleteAllFiles() {
@@ -950,6 +900,14 @@ export default function AiAssistantView() {
                       disabled={reembedding}
                     >
                       {reembedding ? "Re-embedding…" : "Re-embed live data"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ac-menu-item"
+                      role="menuitem"
+                      onClick={() => { setMenuOpen(false); setFlagsOpen(true); fetchFlags(); }}
+                    >
+                      Flagged items
                     </button>
                   </>
                 )}
@@ -1067,7 +1025,35 @@ export default function AiAssistantView() {
                       >
                         {copiedId === m.id ? <CheckIcon /> : <CopyIcon />}
                       </button>
+                      {feedbackSentIds.has(m.id) ? (
+                        <span className="ac-tool-btn ac-tool-sent" title="Feedback sent" aria-label="Feedback sent">
+                          <CheckIcon />
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ac-tool-btn"
+                          onClick={() => setFeedbackOpenId((id) => (id === m.id ? null : m.id))}
+                          title="This answer was wrong"
+                          aria-label="Flag this answer as wrong"
+                        >
+                          <ThumbsDownIcon />
+                        </button>
+                      )}
                     </div>
+                    {feedbackOpenId === m.id && (
+                      <div className="ac-feedback-note">
+                        <input
+                          type="text"
+                          value={feedbackNote}
+                          onChange={(e) => setFeedbackNote(e.target.value)}
+                          placeholder="What was wrong? (optional)"
+                          aria-label="Feedback note"
+                        />
+                        <button type="button" onClick={() => submitFeedback(m)}>Send</button>
+                        <button type="button" onClick={() => { setFeedbackOpenId(null); setFeedbackNote(""); }}>Cancel</button>
+                      </div>
+                    )}
                   </div>
                 )
               )}
@@ -1308,6 +1294,70 @@ export default function AiAssistantView() {
                     <button type="button" className="ac-files-delete-all" onClick={deleteAllFiles}>
                       Delete all files
                     </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {flagsOpen && (
+          <div className="ac-files-overlay" onClick={() => setFlagsOpen(false)}>
+            <div
+              className="ac-files-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Flagged items"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="ac-files-head">
+                <div className="ac-files-head-title">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                    <path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  Flagged Items
+                </div>
+                <button type="button" className="ac-files-close" aria-label="Close" onClick={() => setFlagsOpen(false)}>×</button>
+              </div>
+
+              <div className="ac-files-body">
+                {loadingFlags ? (
+                  <div className="ac-files-loading">
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" style={{ animation: "ac-spin 1s linear infinite", color: "var(--muted)" }}>
+                      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="28" strokeDashoffset="10"/>
+                    </svg>
+                  </div>
+                ) : flags.length === 0 ? (
+                  <div className="ac-files-empty">
+                    <p>No unreviewed flags.</p>
+                    <p>Prompt-injection attempts, possible RAG fabrications, and "this answer was wrong" reports all land here.</p>
+                  </div>
+                ) : (
+                  <div className="ac-files-list">
+                    <p className="ac-files-count">{flags.length} unreviewed</p>
+                    {flags.map((fl) => {
+                      const TYPE_LABEL = { injection: "Injection", fabrication: "Fabrication", user_feedback: "User feedback" };
+                      return (
+                        <div key={fl._id} className="ac-file-row">
+                          <span className={`ac-file-type-badge ac-flag-type-${fl.type}`}>{TYPE_LABEL[fl.type] || fl.type}</span>
+                          <div className="ac-file-info">
+                            {fl.question && <span className="ac-file-name" title={fl.question}>{fl.question}</span>}
+                            {fl.detail && <span className="ac-file-meta" title={fl.detail}>{fl.detail}</span>}
+                          </div>
+                          <span className="ac-file-status">{fl.sourceType}</span>
+                          <button
+                            type="button"
+                            className="ac-file-del"
+                            aria-label="Mark reviewed"
+                            title="Mark reviewed"
+                            disabled={resolvingFlagId === fl._id}
+                            onClick={() => resolveFlag(fl._id)}
+                          >
+                            {resolvingFlagId === fl._id ? "…" : "✓"}
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>

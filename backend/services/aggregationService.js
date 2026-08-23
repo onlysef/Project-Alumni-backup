@@ -1,6 +1,9 @@
 const Graduate = require('../models/Graduate');
 const User = require('../models/User');
-const { runWithCollegeScope } = require('../utils/collegeScope');
+const Event = require('../models/Event');
+const AttendanceLog = require('../models/AttendanceLog');
+const EventFeedback = require('../models/EventFeedback');
+const { runWithCollegeScope, getCollegeScope } = require('../utils/collegeScope');
 
 // filters.gender gets interpolated into a `^...$` $regex at every gender
 // call site below — harmless for "Male"/"Female", but the real stored value
@@ -14,6 +17,51 @@ function escapeRegex(str) {
 // ─── Intent Detection ─────────────────────────────────────────────────────────
 
 const TOPIC_PATTERNS = {
+  // Checked before `events` below — "what's the feedback for the Job Fair"
+  // contains no literal "event"/"attend*" word, but DOES contain "for the Job
+  // Fair" which the shared extractEventName() trigger already parses, and
+  // "feedback on the recent event" contains BOTH "feedback" and "event" — if
+  // `events` were checked first it would win and route to the plain event
+  // listing/attendance count instead of the feedback summary.
+  //
+  // NOT a bare "\bfeedback\b" trigger (an earlier version was — corrected):
+  // "feedback" IS a real qualitative concept elsewhere in this system (see
+  // ragService.js SYSTEM_PROMPT rule 5's own "challenges, reasons, opinions,
+  // feedback" list) even though Graduate has no dedicated feedback field, so
+  // a bare trigger here hijacked genuine tracer-study feedback questions
+  // ("What feedback did alumni give about their experience?") into this
+  // event-only path, which then failed with a misleading "No event matching
+  // '...' found" instead of ever reaching RAG for the real qualitative
+  // content. Event-feedback questions are near-universally phrased "feedback
+  // for/on/about X" (the exact shape extractEventName()'s own trigger word
+  // list expects) — requiring that adjacency excludes the tracer-study case
+  // above (where "feedback" and "about" aren't adjacent: "feedback did
+  // alumni give about...") while still matching every realistic event-feedback
+  // phrasing.
+  // Tagalog "puna"/"komento" require the same "for/about X" adjacency as
+  // English "feedback for/on/about" — same reasoning as above: a bare
+  // "puna"/"komento" trigger would hijack genuine qualitative tracer-study
+  // questions phrased with those words too.
+  event_feedback:  /\bfeedback\s+(?:for|on|about|regarding)\b|\b(?:rated|rating)\b.{0,25}\bevent\b|\bevent\b.{0,25}\b(?:rated|rating)\b|\bpuna\s+(?:para\s+sa|tungkol\s+sa|sa)\b|\bkomento\s+(?:para\s+sa|tungkol\s+sa|sa)\b|\brating\s+(?:ng|para\s+sa)\b/i,
+  // Must be checked before `count`/`names` below — "how many alumni attended
+  // the job fair" would otherwise match count's "how many...alumni" bare
+  // alternative first (object key order = detectTopic()'s iteration/match
+  // order), and a bare "job fair" would fall to the generic EMPLOYMENT_SIGNAL
+  // \bjob\b fallback at the bottom of detectTopic() before ever reaching
+  // here. Object insertion order is load-bearing for this one, not cosmetic.
+  // Kept broad (bare "event(s)"/"attend*" anywhere) rather than requiring
+  // both words together in one phrase — an earlier version required "event"
+  // and a trigger word in the same clause and silently failed to match
+  // "how many alumni attended the job fair" (no literal word "event" in it
+  // at all) and "how many events do we have" (word order the compound
+  // pattern didn't anticipate). Neither word appears anywhere in genuine
+  // tracer-study phrasing, so the broad match carries no real collision risk.
+  // "dumalo"/"pagdalo" (Tagalog "attended"/"attendance") — this is a PH
+  // university portal and coordinators code-switch freely ("Ilan ang dumalo
+  // sa Career Fair?"); English-only matching silently fell through to a
+  // college-scoped "no tracer study data matching that" refusal for a
+  // question this topic can actually answer.
+  events:          /\bevents?\b|\battend(?:ed|ees|ance)?\b|\bdumalo\b|\bpagdalo\b/i,
   // "names? of" used to match bare, with zero requirement that the question
   // have anything to do with alumni — "What is the NAME OF the earthlike
   // planet..." matched it directly and returned an unrelated 50-alumni
@@ -22,7 +70,17 @@ const TOPIC_PATTERNS = {
   // are bounded to `.{0,30}` for the same reason (unbounded `.*` risks
   // matching "name" and "alumni" anywhere in a long, unrelated sentence).
   names:           /\b(who are|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b/i,
-  count:           /\b(how many (?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?|people)|how many (passed|failed|took|pursued|work\w*|did)|total (alumni|records?|graduates?|respondents?)|number of (alumni|records?|graduates?|respondents?)|how many are there|how many alumni are)\b/i,
+  // "ilan"/"ilang" (Tagalog "how many") — requires an alumni-referring noun
+  // nearby, same as the English alternatives above, and NOT bare — bare
+  // "ilan" is common enough in casual Tagalog phrasing of every other topic
+  // ("ilan ang nasa gobyerno", "ilan ang babae") that an unqualified match
+  // here would win topic detection before work_type/gender/etc. ever got a
+  // turn (count is checked early), silently answering with a generic total
+  // count instead of the actually-asked-about breakdown. "ilang" (not just
+  // "ilan") is required too — Tagalog's "-ng" linker attaches directly to a
+  // following vowel-initial word ("ilan" + alumni → "ilang alumni"), so
+  // requiring the bare "ilan\b" form alone missed this the first time.
+  count:           /\b(how many (?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?|people)|how many (passed|failed|took|pursued|work\w*|did)|total (alumni|records?|graduates?|respondents?)|number of (alumni|records?|graduates?|respondents?)|how many are there|how many alumni are|ilang?\b.{0,20}\b(alumni|guraduwado|nagtapos|respondents?))\b/i,
   // "percentage of (?:\w+\s+){0,3}(graduates?|alumni)" — was bare-adjacent
   // only ("percentage of graduates"), so an informal, prefix-less phrasing
   // like "percentage of BSIT graduates" (a program name sitting between "of"
@@ -32,17 +90,17 @@ const TOPIC_PATTERNS = {
   // industry field for the literal string "percentage of BSIT graduates",
   // found nothing, and surfaced the generic "I don't have enough data"
   // refusal for a question this app can answer perfectly well.
-  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|employment\s+rate|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job)\b/i,
-  overview:        /\b(tracer survey activity|tracer study activity|overview|summary|overall|general (data|info|result|stat)|show.*tracer|tracer.*result|employment\s+breakdown|employment\s+data|employment\s+statistic)\b/i,
-  industry:        /\bindustr/i,
-  work_type:       /\b(government|private|sector|work type|type of (employment|work)|employment type)\b/i,
-  job_relevance:   /\b(related|relevance|relevant\s+to\s+(?:the(?:ir)?\s+)?(?:course|study|program|degree|field)|align(?:s|ed|ment)?\s+(?:with|to)\b.{0,20}\b(?:course|study|studied|program|degree|field))\b/i,
-  further_studies: /\b(further studies?|graduate studies?|masters?|phd|post.?grad|further education)\b/i,
-  licensure:       /\blicens\w*\b|\b(board\s+exam|professional\s+exam|prc)\b|\b(tak\w*|pass\w*|fail\w*).{0,20}\bexam\b/i,
-  competencies:    /\b(competenc\w*|skill\s+ratings?|self.?assess|performance|technical\s+skills?|communication\s+skills?|problem.?solving|critical\s+thinking|teamwork|adaptability|project\s+management)\b/i,
-  work_location:   /\b(local(?:ly)?|abroad|work location|place of work|overseas)\b/i,
-  by_program:      /\b(by program|by course|per program|per course|each program|program breakdown)\b/i,
-  by_year:         /\b(by (batch|year|graduation)|per (batch|year)|each (batch|year)|year breakdown|batch breakdown)\b/i,
+  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|employment\s+rate|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job|porsyento|porsiyento)\b/i,
+  overview:        /\b(tracer survey activity|tracer study activity|overview|summary|overall|general (data|info|result|stat)|show.*tracer|tracer.*result|employment\s+breakdown|employment\s+data|employment\s+statistic|buod)\b/i,
+  industry:        /\bindustr|industriya/i,
+  work_type:       /\b(government|private|sector|work type|type of (employment|work)|employment type|gobyerno|pribado)\b/i,
+  job_relevance:   /\b(related|relevance|relevant\s+to\s+(?:the(?:ir)?\s+)?(?:course|study|program|degree|field)|align(?:s|ed|ment)?\s+(?:with|to)\b.{0,20}\b(?:course|study|studied|program|degree|field))\b|\bkaugnay\s+(?:ng|sa)\s+(?:kurso|propesyon|larangan|programa)\b|\bmay\s+kinalaman\s+sa\s+(?:kurso|propesyon|larangan|programa)\b/i,
+  further_studies: /\b(further studies?|graduate studies?|masters?|phd|post.?grad|further education|nagpatuloy.{0,15}pag-?aaral|magpapatuloy.{0,15}pag-?aaral)\b/i,
+  licensure:       /\blicens\w*\b|\b(board\s+exam|professional\s+exam|prc|lisensya)\b|\b(tak\w*|pass\w*|fail\w*).{0,20}\bexam\b/i,
+  competencies:    /\b(competenc\w*|skill\s+ratings?|self.?assess|performance|technical\s+skills?|communication\s+skills?|problem.?solving|critical\s+thinking|teamwork|adaptability|project\s+management|kasanayan|kakayahan)\b/i,
+  work_location:   /\b(local(?:ly)?|abroad|work location|place of work|overseas|lokal|ibang\s+bansa)\b/i,
+  by_program:      /\b(by program|by course|per program|per course|each program|program breakdown|bawat\s+(kurso|programa)|per\s+(kurso|programa))\b/i,
+  by_year:         /\b(by (batch|year|graduation)|per (batch|year)|each (batch|year)|year breakdown|batch breakdown|bawat\s+taon|kada\s+taon|per\s+taon)\b/i,
   // lgbt\w* also covers "lgbtq"/"lgbtqia"/"lgbtqia+" (the actual stored
   // value) — the survey's gender field only has one umbrella option for
   // this ("LGBTQIA+"), not separate gay/lesbian/trans/etc. categories, so
@@ -52,7 +110,11 @@ const TOPIC_PATTERNS = {
   // leading \b there requires a word boundary immediately before "lgbt"
   // that a glued-together typing like that never has. "lgbt" as a raw
   // substring is distinctive enough there's no realistic false-positive risk.
-  gender:          /\b(gender|\bmale\b|\bfemale\b|\bmen\b|\bwomen\b|\bqueer\b|\bgay\b|\blesbian\b|transgender|non.?binary)\b|lgbt\w*/i,
+  // lalaki(?:ng)?/babae(?:ng)? — not \blalaki\b/\bbabae\b alone: Tagalog's
+  // "-ng" linker attaches directly with no boundary in modifier constructions
+  // ("lalaking walang trabaho", "babaeng may trabaho"), the same agglutination
+  // issue as "ilan"/"ilang" elsewhere in this file.
+  gender:          /\b(gender|\bmale\b|\bfemale\b|\bmen\b|\bwomen\b|\bqueer\b|\bgay\b|\blesbian\b|transgender|non.?binary|lalaki(?:ng)?|babae(?:ng)?)\b|lgbt\w*/i,
 };
 
 function normalizeQuestion(q) {
@@ -74,7 +136,12 @@ function normalizeQuestion(q) {
 // question (e.g. "what skills do graduates use?", "average salary?") would
 // silently return the employment Yes/No breakdown — a confident answer to the
 // wrong question, which is worse than admitting no data is available.
-const EMPLOYMENT_SIGNAL = /employ|\bjob|\bwork|\bstatus\b|\boccupation\b|\bposition\b/i;
+// Tagalog agglutinates prefixes directly onto the root ("nagtrabaho" =
+// nag+trabaho, "nagsasariling" = nagsasa+sariling) with no boundary between
+// them — bare substring match, same as "employ" above (which already
+// deliberately matches inside "unemployed"/"employment"/etc.), not a
+// \b-wrapped whole-word match that "nagtrabaho" etc. would silently miss.
+const EMPLOYMENT_SIGNAL = /employ|\bjob|\bwork|\bstatus\b|\boccupation\b|\bposition\b|trabaho|empleyado|negosyo/i;
 
 // "How did alumni FIND their job" asks about the job-search method/channel
 // (referral, walk-in, online posting, agency...) — a question this schema has
@@ -103,7 +170,14 @@ function detectTopic(question) {
 // unrelated filter mentioned later in the same sentence.
 function isNegatedBeforeIndex(question, targetIndex, maxGap = 25) {
   if (targetIndex === null || targetIndex === undefined) return false;
-  const negRe = /\b(not|n't|isn'?t|aren'?t|wasn'?t|weren'?t|doesn'?t|don'?t|didn'?t)\b/gi;
+  // "hindi"/"wala"/"walang" — Tagalog negation. Same proximity-limited "this
+  // negates whatever phrase comes shortly after" logic as the English list;
+  // "walang" doubles as its own direct status word for unemployment
+  // elsewhere (extractFilters' hasUnemployed) — that's a separate, more
+  // specific check that runs independently and isn't affected by also
+  // treating "walang" as a generic negator here for OTHER phrases (e.g.
+  // "walang trabahong lokal" — no local job).
+  const negRe = /\b(not|n't|isn'?t|aren'?t|wasn'?t|weren'?t|doesn'?t|don'?t|didn'?t|hindi|wala|walang)\b/gi;
   let m;
   while ((m = negRe.exec(question))) {
     if (m.index < targetIndex && (targetIndex - m.index) <= maxGap) return true;
@@ -296,8 +370,23 @@ function extractFilters(question) {
   const neverEmployedCount = (question.match(/\bnever\s*employed\b/gi) || []).length;
   const selfEmployedCount  = (question.match(/\bself[- ]?employed\b/gi) || []).length;
   const allEmployedCount   = (question.match(/\bemployed\b/gi) || []).length;
-  const hasNeverEmployed = neverEmployedCount > 0;
-  const hasSelfEmployed  = selfEmployedCount > 0;
+  // Tagalog status words are distinct vocabulary, not shared substrings of
+  // one another the way "self-employed"/"never employed" both contain
+  // "employed" — so they're detected independently here rather than folded
+  // into the English counting trick above, then OR'd into the same booleans
+  // that trick already feeds. Deliberately NOT including bare "nagtatrabaho"
+  // ("is working") as a plain-employed trigger — it's the generic verb any
+  // work-related Tagalog question uses (including work_location questions
+  // like "nagtatrabaho nang lokal"), and would have set employmentStatus:
+  // 'Yes' (which excludes self-employed, per STATUS_PHRASE below) on
+  // questions that were never asking about employment status at all.
+  const hasNeverEmployed = neverEmployedCount > 0
+    || /\bhindi\s+pa\s+(kailanman\s+)?nag(ka)?trabaho\b|\bhindi\s+pa\s+nakapagtrabaho\b/i.test(question);
+  // "sariling" (not \bsariling\b) — "nagsasariling negosyo" fuses the
+  // "nagsasa-" prefix directly onto "sariling" with no boundary between them,
+  // same agglutination issue EMPLOYMENT_SIGNAL's own comment above explains.
+  const hasSelfEmployed  = selfEmployedCount > 0
+    || /sariling\s+negosyo\b|\bnegosyante\b|\bnagnenegosyo\b/i.test(question);
   // Natural paraphrases of "unemployed" that never use the literal word at
   // all ("still looking for work") were silently invisible to status
   // detection — the question fell through with no employmentStatus filter
@@ -305,7 +394,8 @@ function extractFilters(question) {
   // with the TOTAL batch headcount instead of the unemployed count, while
   // the literal "unemployed" phrasing of the exact same question answered
   // correctly — two answers for one question, disagreeing by 9x.
-  const hasUnemployed    = /\bunemployed\b|\b(looking for (a )?(job|work)|job.?hunt(ing)?|seeking (a )?(job|employment|work)|searching for (a )?(job|work)|out of (a )?work|jobless|without (a )?job|haven'?t found (a )?job|(never|didn'?t|hasn'?t|hadn'?t)\s+(got|get|found|landed|secured)\s+(a\s+)?job|no job yet)\b/i.test(question);
+  const hasUnemployed    = /\bunemployed\b|\b(looking for (a )?(job|work)|job.?hunt(ing)?|seeking (a )?(job|employment|work)|searching for (a )?(job|work)|out of (a )?work|jobless|without (a )?job|haven'?t found (a )?job|(never|didn'?t|hasn'?t|hadn'?t)\s+(got|get|found|landed|secured)\s+(a\s+)?job|no job yet)\b/i.test(question)
+    || /\bwalang\s+trabaho\b|\bnaghahanap\s+ng\s+trabaho\b|\bwalang\s+hanapbuhay\b/i.test(question);
   // Natural paraphrases of "employed" ("found/got/landed a job") were the
   // mirror-image gap of the unemployed-paraphrase fix above: these were only
   // ever used to pick the 'rate' TOPIC_PATTERNS bucket, never to actually set
@@ -318,7 +408,8 @@ function extractFilters(question) {
   // produce a nonsensical two-status compound for a single-status question.
   const employedPhrase = /\b(?:found|got|get|landed|secured)\s+(?:a\s+)?job\b/i.test(question)
     && !/\b(?:haven'?t|hasn'?t|hadn'?t|never|didn'?t|doesn'?t|not)\s+(?:\w+\s+){0,2}(?:found|got|get|landed|secured)\b/i.test(question);
-  const hasPlainEmployed = (allEmployedCount - selfEmployedCount - neverEmployedCount) > 0 || employedPhrase;
+  const hasPlainEmployed = (allEmployedCount - selfEmployedCount - neverEmployedCount) > 0 || employedPhrase
+    || /\bmay\s+trabaho\b|\bempleyado\b|\bnakakuha\s+ng\s+trabaho\b/i.test(question);
 
   // "employed locally/abroad" is a location descriptor ("works locally"), not
   // an independent status claim on top of the location. Treating "employed"
@@ -373,8 +464,8 @@ function extractFilters(question) {
   // Gender filter — \bmale\b never matches inside "female" (no word boundary
   // before "male" there), so check order doesn't matter, but female is checked
   // first for clarity anyway.
-  if (/\bfemale\b|\bwomen\b/i.test(question))      filters.gender = 'Female';
-  else if (/\bmale\b|\bmen\b/i.test(question))     filters.gender = 'Male';
+  if (/\bfemale\b|\bwomen\b|\bbabae(?:ng)?\b/i.test(question))      filters.gender = 'Female';
+  else if (/\bmale\b|\bmen\b|\blalaki(?:ng)?\b/i.test(question))     filters.gender = 'Male';
   // Matches TOPIC_PATTERNS.gender's lgbt\w*/queer/gay/lesbian/transgender/
   // non-binary set — all map to the survey's single umbrella option.
   else if (/lgbt\w*|\bqueer\b|\bgay\b|\blesbian\b|transgender|non.?binary/i.test(question)) filters.gender = 'LGBTQIA+';
@@ -395,8 +486,8 @@ function extractFilters(question) {
   // Philippines-specific (TSU), so a literal country name is at least as
   // common a phrasing as the generic "country" noun, which the original
   // pattern required verbatim and silently missed entirely.
-  const hasLocalSignal  = /\blocal(?:ly)?\b|\bwithin.{0,20}(country|philippines)\b|\bhome\s+country\b/i.test(question);
-  const hasAbroadSignal = /\babroad\b|\boverseas\b|\boutside.{0,20}(country|philippines)\b/i.test(question);
+  const hasLocalSignal  = /\blocal(?:ly)?\b|\bwithin.{0,20}(country|philippines)\b|\bhome\s+country\b|\blokal\b/i.test(question);
+  const hasAbroadSignal = /\babroad\b|\boverseas\b|\boutside.{0,20}(country|philippines)\b|\bibang\s+bansa\b/i.test(question);
   if (hasLocalSignal && !hasAbroadSignal) {
     filters.workLocation = 'local';
   } else if (hasAbroadSignal && !hasLocalSignal) {
@@ -1500,8 +1591,19 @@ async function queryPersonLookup(name) {
     { $match: { name: { $nin: [null, ''] } } },
     ...DEDUP,
   ]);
-  const match = rows.find(r => tokenPatterns.every(re => re.test(r.name)));
-  if (!match) return null;
+  // .filter(), not .find() — this used to silently return the FIRST token
+  // match and ignore every other equally-valid match, so a question naming
+  // one of two alumni sharing a first/last name always resolved to whichever
+  // happened to come first in the aggregate, with no indication a second
+  // person even existed. Same 0/1/multiple-match shape resolveEvent() (event
+  // lookups, below) already uses.
+  const matches = rows.filter(r => tokenPatterns.every(re => re.test(r.name)));
+  if (!matches.length) return null;
+  if (matches.length > 1) {
+    const names = matches.slice(0, 8).map(r => toTitleCase(cleanText(r.name)));
+    return `Multiple alumni match "${name}" — please be more specific:\n\n${names.map(n => `- **${n}**`).join('\n')}`;
+  }
+  const match = matches[0];
 
   const displayName = toTitleCase(cleanText(match.name));
   const parts = [];
@@ -1609,6 +1711,176 @@ async function queryNames(filters) {
     out += '\n';
   });
   return out;
+}
+
+// ─── Events ─────────────────────────────────────────────────────────────────
+// Event/AttendanceLog aren't Graduate documents, so they get none of the
+// college-scoping the Mongoose pre-hook gives every function above "for
+// free" — every function here filters by getCollegeScope() itself, the same
+// college field eventController.js's own coordinator-facing endpoints
+// already scope by (not `visibility`, which is audience, not ownership).
+const ATTENDED_STATUSES = ['Present', 'Late'];
+
+// Same trigger-then-capture shape as NAMED_LOOKUP_PATTERN/WHO_IS_PATTERN
+// above, adapted for event titles instead of alumni names — captures free
+// text after an attendance/reference trigger word, trimmed of a trailing
+// "event" filler word the trigger itself doesn't consume. The chained
+// (?:\s+(?:for|of|the|count))* skips any run of connector/filler words
+// between the trigger and the actual title — "attendance for the Job Fair"
+// and "attendance count for Job Fair" both need to reach "Job Fair", not
+// stop at the first non-"the" word and capture "for the Job Fair"/"count
+// for Job Fair" verbatim (verified against real phrasings before landing
+// on this shape — a single optional "the" wasn't enough).
+// "dumalo"/"pagdalo" + "sa"/"ang" cover the Tagalog equivalent shape
+// ("Pagdalo sa Career Fair", "Ilan ang dumalo sa Career Fair") — same
+// reasoning as TOPIC_PATTERNS.events' own Tagalog support above.
+const EVENT_NAME_TRIGGER = /(?:attend(?:ed|ees|ance)?|about|for|of|dumalo|pagdalo)\b(?:\s+(?:for|of|the|count|sa|ang))*\s+(.+?)(?:\s+event)?[?.!]*$/i;
+
+function extractEventName(question) {
+  const m = question.match(EVENT_NAME_TRIGGER);
+  return m ? m[1].trim() : null;
+}
+
+// Same token-matching approach queryPersonLookup() uses for alumni names
+// (aggregationService.js above) — event titles get typed back inexactly
+// ("job fair" vs "IT Job Fair 2026"), so every word in the extracted phrase
+// must appear somewhere in the title, in any order, rather than requiring an
+// exact substring match.
+async function resolveEvent(question) {
+  const name = extractEventName(question);
+  if (!name) return { none: true };
+
+  const tokens = name.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return { none: true };
+  const tokenPatterns = tokens.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+
+  const college = getCollegeScope();
+  const events = await Event.find(college ? { college } : {}).select('title event_datetime').lean();
+  const matches = events.filter(e => tokenPatterns.every(re => re.test(e.title)));
+
+  if (!matches.length) {
+    return { error: `No event matching "${name}" found${college ? ` in ${college}'s events` : ''}.` };
+  }
+  if (matches.length > 1) {
+    const list = matches
+      .sort((a, b) => new Date(b.event_datetime) - new Date(a.event_datetime))
+      .slice(0, 8)
+      .map(e => `- **${e.title}** (${new Date(e.event_datetime).toLocaleDateString()})`)
+      .join('\n');
+    return { error: `Multiple events match "${name}" — please be more specific:\n\n${list}` };
+  }
+  return { event: matches[0] };
+}
+
+async function queryEventOverview(question = '') {
+  const college = getCollegeScope();
+  // "List upcoming events" was silently ignoring "upcoming" entirely — this
+  // returned the latest 50 events by date regardless of whether they'd
+  // already happened, so a request for upcoming events could (and did)
+  // surface events dated in the past with no indication they were over.
+  const isUpcoming = /\b(upcoming|forthcoming|future|next)\b/i.test(question);
+  const isPast     = /\b(past|previous|completed|already\s+(held|happened|occurred)|finished)\b/i.test(question);
+  const dateFilter = isUpcoming ? { event_datetime: { $gte: new Date() } }
+                    : isPast    ? { event_datetime: { $lt: new Date() } }
+                    : {};
+  const events = await Event.find({ ...(college ? { college } : {}), ...dateFilter })
+    .select('title event_datetime location')
+    .sort({ event_datetime: isUpcoming ? 1 : -1 })
+    .limit(50)
+    .lean();
+  const scopeLabel = isUpcoming ? 'upcoming ' : isPast ? 'past ' : '';
+  if (!events.length) {
+    return `No ${scopeLabel}events found${college ? ` for ${college}` : ''}.`;
+  }
+  const suffix = events.length === 50 ? ' (showing latest 50)' : ` (${events.length} total)`;
+  const heading = isUpcoming ? 'Upcoming Events' : isPast ? 'Past Events' : 'Events';
+  let out = `**${heading}${college ? ` — ${college}` : ''}${suffix}:**\n\n`;
+  events.forEach((e, i) => {
+    out += `${i + 1}. **${e.title}** — ${new Date(e.event_datetime).toLocaleDateString()}${e.location ? ` at ${e.location}` : ''}\n`;
+  });
+  return out;
+}
+
+async function queryEventAttendanceCount(question) {
+  const resolved = await resolveEvent(question);
+  if (resolved.none) return queryEventOverview(question);
+  if (resolved.error) return resolved.error;
+
+  const count = await AttendanceLog.countDocuments({
+    event_id: resolved.event._id,
+    status: { $in: ATTENDED_STATUSES },
+  });
+  // eventTitle rides along so suggestFollowUps() can offer contextual
+  // "Who attended X?" / "What's the feedback for X?" chips instead of the
+  // generic tracer-study defaults or no chips at all.
+  return { text: `**${count}** alumni attended **${resolved.event.title}**.`, eventTitle: resolved.event.title };
+}
+
+async function queryEventAttendees(question) {
+  const resolved = await resolveEvent(question);
+  if (resolved.none) return queryEventOverview(question);
+  if (resolved.error) return resolved.error;
+
+  const logs = await AttendanceLog.find({
+    event_id: resolved.event._id,
+    status: { $in: ATTENDED_STATUSES },
+  }).select('alumni_id status').lean();
+  if (!logs.length) return { text: `No recorded attendees for **${resolved.event.title}**.`, eventTitle: resolved.event.title };
+
+  const users = await User.find({ _id: { $in: logs.map(l => l.alumni_id) } })
+    .select('firstName lastName').lean();
+  const nameById = {};
+  users.forEach(u => { nameById[String(u._id)] = `${u.firstName} ${u.lastName}`; });
+
+  let out = `**Attendees of ${resolved.event.title} (${logs.length} total):**\n\n`;
+  logs.forEach((l, i) => {
+    out += `${i + 1}. **${nameById[String(l.alumni_id)] || 'Unknown Alumni'}** — ${l.status}\n`;
+  });
+  return { text: out, eventTitle: resolved.event.title };
+}
+
+// Same category set feedbackController.getEventFeedbackSummary() uses for the
+// coordinator's "View Feedback" modal — kept identical here so the AI
+// assistant's numbers never disagree with what the coordinator sees there.
+const FEEDBACK_CATEGORY_KEYS = ['organization', 'content', 'venue', 'satisfaction'];
+
+function feedbackAverage(nums) {
+  const valid = nums.filter(n => typeof n === 'number' && !Number.isNaN(n));
+  if (!valid.length) return null;
+  return Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 100) / 100;
+}
+
+async function queryEventFeedback(question) {
+  const resolved = await resolveEvent(question);
+  if (resolved.none) return queryEventOverview(question);
+  if (resolved.error) return resolved.error;
+
+  const [totalAttendees, responses] = await Promise.all([
+    AttendanceLog.countDocuments({ event_id: resolved.event._id }),
+    EventFeedback.find({ event_id: resolved.event._id }).lean(),
+  ]);
+  if (!responses.length) return { text: `No feedback has been submitted yet for **${resolved.event.title}**.`, eventTitle: resolved.event.title };
+
+  const avgRating = feedbackAverage(responses.map(r => r.rating));
+  let out = `**Feedback for ${resolved.event.title}:**\n\n`;
+  out += `- **Average rating:** ${avgRating}/5\n`;
+  out += `- **Responses:** ${responses.length} of ${totalAttendees} attendees (${pct(responses.length, totalAttendees)})\n`;
+
+  const categoryLines = FEEDBACK_CATEGORY_KEYS
+    .map(key => {
+      const avg = feedbackAverage(responses.map(r => r.ratings?.[key]));
+      return avg !== null ? `- ${toTitleCase(key)}: ${avg}/5` : null;
+    })
+    .filter(Boolean)
+    .join('\n');
+  if (categoryLines) out += `\n**Category averages:**\n${categoryLines}\n`;
+
+  const comments = responses.filter(r => r.feedback && r.feedback.trim()).slice(0, 5);
+  if (comments.length) {
+    out += `\n**Sample comments:**\n`;
+    comments.forEach((c, i) => { out += `${i + 1}. "${cleanText(c.feedback)}"\n`; });
+  }
+  return { text: out, eventTitle: resolved.event.title };
 }
 
 async function querySimpleRate(filters, matchStage, label) {
@@ -1921,7 +2193,7 @@ async function queryInner(question) {
     return null;
   }
 
-  // Non-tracer PORTAL features — job postings, announcements, events, staff
+  // Non-tracer PORTAL features — job postings, announcements, staff
   // directory, appointments, partnerships, office hours, profile/account
   // activity. Each of these used to have its own live-collection query
   // handler (removed — the AC assistant is scoped to tracer study data
@@ -1933,6 +2205,11 @@ async function queryInner(question) {
   // (e.g. "174 job openings, representing an employment rate of 68.5%",
   // where 174 is actually the EMPLOYED-alumni count). Answered directly and
   // explicitly here instead, each with a pointer to the right admin page.
+  // Events is deliberately NOT in this list — unlike the others, it kept its
+  // live-collection handler (see queryEventOverview()/queryEventAttendees()/
+  // queryEventAttendanceCount() and the TOPIC_PATTERNS.events/fn.events wiring
+  // below), so events questions are meant to reach that real query path
+  // instead of being bailed out here.
   const OUT_OF_SCOPE_TOPICS = [
     { test: /\bjob\s+(openings?|listings?|vacancies|opportunities|postings?)\b|\bavailable\s+(jobs?|positions?|roles?)\b/i,
       hint: 'Check the Employment Details or Job Board pages for open job postings.' },
@@ -1944,8 +2221,6 @@ async function queryInner(question) {
       hint: 'Check the Appointments page\'s Staff Management section.' },
     { test: /\bappointments?\b/i, exclude: /\bstaff\b/i,
       hint: 'Check the Appointments page.' },
-    { test: /\bevents?\b|\battend(ed|ance)?\b.{0,20}\bevent/i,
-      hint: 'Check the Events page.' },
     { test: /\bpartnerships?\b|\bpartner\s+compan(y|ies)\b/i,
       hint: 'Check the Partnerships page.' },
     { test: /\boffice\s+(status|hours|open|closed|schedule)\b|\bis\s+the\s+office\s+(open|closed)\b/i,
@@ -2113,6 +2388,17 @@ async function queryInner(question) {
   if (topic === null) return null;
 
   const fn = {
+    event_feedback:  () => queryEventFeedback(question),
+    events:          () => /who\s+attended|attendees?|sino.{0,15}dumalo/i.test(question)
+      ? queryEventAttendees(question)
+      // Falls back to attendance count (not the overview) whenever an event
+      // name was actually extractable — resolveEvent()'s own `resolved.none`
+      // check inside queryEventAttendanceCount already degrades to the
+      // overview when it isn't, so this one call covers both. Matters for
+      // phrasing with no clear "how many"/"ilan" cue but a real event named
+      // ("Pagdalo sa Career Fair" — Tagalog "attendance at Career Fair"),
+      // which used to ignore the named event entirely and list all events.
+      : queryEventAttendanceCount(question),
     names:           () => queryNames(filters),
     count:           () => isSectorQuestion ? querySector(filters) : filters.employmentStatuses ? queryEmployment(filters) : (filters.workLocation || isCompoundLocationQuestion) ? queryWorkLocation(filters) : (filters.industry || filters.excludeIndustry) ? queryIndustry(filters) : queryCount(filters),
     rate:            () => isCompoundLocationQuestion
@@ -2232,8 +2518,12 @@ async function queryInner(question) {
   // rather than converting all ~30 functions at once.
   const result = await fn();
   if (!result) return null;
-  const { text, chart } = typeof result === 'string' ? { text: result, chart: null } : result;
-  return text ? { text, direct: true, topic, filters, chart: chart || null } : null;
+  const { text, chart, eventTitle } = typeof result === 'string' ? { text: result, chart: null, eventTitle: null } : result;
+  // eventTitle (set by queryEventAttendanceCount/Attendees/Feedback when they
+  // resolved one specific event) rides into filters purely so
+  // suggestFollowUps() can build contextual event follow-up chips — it's
+  // never used as an actual query filter anywhere else.
+  return text ? { text, direct: true, topic, filters: eventTitle ? { ...filters, eventTitle } : filters, chart: chart || null } : null;
 }
 
 // A college coordinator must only ever see their own college's tracer study
@@ -2250,7 +2540,7 @@ async function query(question, options = {}) {
 
   const alumni = await User.find({ role: 'alumni', college }).select('email').lean();
   const emails = alumni.map(u => (u.email || '').toLowerCase()).filter(Boolean);
-  return runWithCollegeScope(emails, () => queryInner(question));
+  return runWithCollegeScope(emails, college, () => queryInner(question));
 }
 
 // ─── Follow-up suggestions ──────────────────────────────────────────────────
@@ -2259,6 +2549,18 @@ async function query(question, options = {}) {
 // topic the aggregation layer doesn't support. Program filter (if any) is
 // carried over so suggestions drill into the same cohort just answered.
 const RELATED_TOPICS = {
+  // Not the tracer-study default ['rate','industry','by_program'] — those
+  // make no sense stapled onto an events/feedback answer. suggestFollowUps()
+  // below only falls back to that default when a topic key is entirely
+  // ABSENT from this map, not when its value is a (possibly short) array —
+  // this keeps events/event_feedback chips scoped to event-shaped questions
+  // only. event_attendance/event_attendees/event_feedback_q below resolve to
+  // null (dropped) unless filters.eventTitle is set — i.e. unless THIS
+  // answer was already about one specific event — so a plain "What events do
+  // we have?" overview doesn't suggest attendance/feedback questions with no
+  // event to anchor them to; it falls back to events_upcoming/events_past.
+  events:          ['event_attendance', 'event_feedback_q', 'events_upcoming', 'events_past'],
+  event_feedback:  ['event_attendance', 'event_attendees', 'events_upcoming'],
   employment:      ['industry', 'by_program', 'by_year'],
   count:           ['rate', 'industry', 'by_program'],
   rate:            ['industry', 'by_program', 'competencies'],
@@ -2291,13 +2593,23 @@ const FOLLOWUP_QUESTION = {
   job_relevance:   (pw) => `How many ${pw}alumni have jobs related to their course?`,
   names:           (pw) => `Who are the employed ${pw}alumni?`,
   gender:          (pw) => `What is the gender breakdown of ${pw}alumni?`,
+  // Event-context follow-ups — the 3 below only fire when the answer just
+  // given already resolved one specific event (filters.eventTitle set by the
+  // aggregationService wrapper); otherwise they return null and
+  // suggestFollowUps() drops them, since "Who attended the event?" with no
+  // event named would just re-trigger the "which event?" overview fallback.
+  event_attendance: (pw, filters) => filters.eventTitle ? `How many alumni attended ${filters.eventTitle}?` : null,
+  event_attendees:  (pw, filters) => filters.eventTitle ? `Who attended ${filters.eventTitle}?` : null,
+  event_feedback_q: (pw, filters) => filters.eventTitle ? `What's the feedback for ${filters.eventTitle}?` : null,
+  events_upcoming:  ()             => `List upcoming events`,
+  events_past:      ()             => `List past events`,
 };
 
 function suggestFollowUps(topic, filters = {}) {
   const progWord = filters.program ? `${filters.programLabel || filters.program} ` : '';
   const related   = (RELATED_TOPICS[topic] || ['rate', 'industry', 'by_program'])
     .filter(t => t !== topic && FOLLOWUP_QUESTION[t]);
-  return related.slice(0, 3).map(t => FOLLOWUP_QUESTION[t](progWord));
+  return related.map(t => FOLLOWUP_QUESTION[t](progWord, filters)).filter(Boolean).slice(0, 3);
 }
 
 module.exports = { query, hasData, suggestFollowUps, extractPersonName };

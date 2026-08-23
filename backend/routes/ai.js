@@ -5,18 +5,19 @@ const sanitizePrompt = require('../middleware/sanitizePrompt');
 const { aiChatLimiter } = require('../middleware/rateLimit');
 const {
   chat,
-  suggestions,
   reembed,
   ingestFile,
   ingestStatus,
   listSources,
   deleteSource,
+  getFlags,
+  reviewFlag,
+  submitFeedback,
 } = require('../controllers/aiController');
 
 router.use(protect, authorize('admin', 'coordinator'));
 
 router.post('/chat',                   aiChatLimiter, sanitizePrompt, chat);
-router.post('/suggestions',            suggestions);
 router.post('/reembed',                authorize('admin'), reembed);
 // Knowledge-base management — admin-only, same as reembed/deleteSource
 // above. This router is mounted for both 'admin' and 'coordinator' (line
@@ -28,5 +29,13 @@ router.post('/ingest',                 authorize('admin'), ...ingestFile);
 router.get( '/ingest/status/:id',      authorize('admin'), ingestStatus);
 router.get( '/sources',                authorize('admin'), listSources);
 router.delete('/sources/:id',          authorize('admin'), deleteSource);
+
+// Flag review queue is admin-only (same as the knowledge-base management
+// routes above) — feedback submission stays open to both roles via the
+// router-level authorize() on line 16, since any coordinator using the chat
+// should be able to flag a wrong answer, not just admins.
+router.get(  '/flags',                 authorize('admin'), getFlags);
+router.patch('/flags/:id',             authorize('admin'), reviewFlag);
+router.post( '/feedback',              submitFeedback);
 
 module.exports = router;

@@ -274,6 +274,14 @@
 /* Event feedback form / response modal */
 .event-feedback-modal { width: min(480px, 92vw); max-height: 86vh; overflow-y: auto; }
 .event-feedback-fields { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+/* Grouped so the 4 detail categories read as one unit distinct from the
+   headline "Overall rating" above them, instead of 5 visually identical
+   rows stacked in a row — label sits above its stars (not beside) since a
+   2-column grid leaves too little width for "Content / program" next to
+   5 stars on one line. */
+.event-feedback-subratings { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 20px; padding: 14px 16px; border: 1px solid #eee2e5; border-radius: 8px; background: #faf6f2; }
+.event-feedback-subratings .star-rating { flex-direction: column; align-items: flex-start; gap: 6px; }
+.event-feedback-subratings .star-rating-label { flex: none; }
 .event-feedback-error { margin: 10px 0 0; color: #b3261e; font-size: 12px; font-weight: 600; }
 .event-feedback-comments { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: #54484c; }
 .event-feedback-comments textarea { padding: 10px 12px; border: 1px solid #d8c9cd; border-radius: 6px; font: 400 13px 'Manrope', sans-serif; resize: vertical; }
@@ -1935,6 +1943,7 @@ body.dark-mode .event-feedback-comments-readonly p { color: #f3e7ea; }
 body.dark-mode .event-feedback-submitted-at { color: #b99ba4; }
 body.dark-mode .star-rating .star { color: #4a2c35; }
 body.dark-mode .star-rating .star.filled { color: #fac853; }
+body.dark-mode .event-feedback-subratings { border-color: rgba(250, 200, 83, .18); background: #2f171e; }
 body.dark-mode .announcement-filter-bar { background: #321820; border-color: rgba(250, 200, 83, .14); }
 body.dark-mode .announcement-filter-bar button { border-color: rgba(250, 200, 83, .25); background: #241116; color: #e7cfd4; }
 body.dark-mode .announcement-filter-bar button.active { border-color: #fac853; background: #fac853; color: #31000a; }
