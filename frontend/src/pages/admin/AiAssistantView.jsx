@@ -24,6 +24,8 @@ const QUICK_PROMPTS = [
   { label: "Employment status", text: "What's the current employment status?" },
 ];
 
+const FLAG_TYPE_LABEL = { injection: "Injection", fabrication: "Fabrication", unanswered: "Unanswered" };
+
 function readableParagraphs(text = "") {
   return String(text)
     .split(/\n+/)
@@ -298,11 +300,11 @@ function CheckIcon() {
   );
 }
 
-function ThumbsDownIcon() {
+function RetryIcon() {
   return (
     <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M17 14V2" />
-      <path d="M9 18.12 10 14H4.17a2 2 0 0 1-2-2.3l1.13-8A2 2 0 0 1 5.28 2H17a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-2.5c-.4 0-.79.15-1.1.42l-3.7 3.15a1.5 1.5 0 0 1-2.7-1.45Z" />
+      <path d="M3 12a9 9 0 1 1 3 6.7" />
+      <path d="M3 21v-6h6" />
     </svg>
   );
 }
@@ -351,12 +353,6 @@ export default function AiAssistantView() {
   const [editText, setEditText] = useState("");
   const [copiedId, setCopiedId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
-  // Which AC message currently has its optional-note input open, and which
-  // ones have already had feedback submitted (swaps the button to a sent
-  // state so a second click can't double-submit).
-  const [feedbackOpenId, setFeedbackOpenId] = useState(null);
-  const [feedbackNote, setFeedbackNote] = useState("");
-  const [feedbackSentIds, setFeedbackSentIds] = useState(() => new Set());
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -372,6 +368,8 @@ export default function AiAssistantView() {
 
   const [flagsOpen, setFlagsOpen] = useState(false);
   const [flags, setFlags] = useState([]);
+  const [flagCounts, setFlagCounts] = useState({});
+  const [flagTypeFilter, setFlagTypeFilter] = useState(null);
   const [loadingFlags, setLoadingFlags] = useState(false);
   const [resolvingFlagId, setResolvingFlagId] = useState(null);
 
@@ -384,14 +382,19 @@ export default function AiAssistantView() {
 
   const started = messages.length > 0;
 
+  // .content (the outer <section>) is NOT the scrollable element here — the
+  // "AC — AI ASSISTANT" CSS block sets .aiassistant-view { overflow: hidden },
+  // which wins the cascade over .content's own overflow-y: auto (same
+  // specificity, declared later). The actual scroll container is .ac-thread
+  // (scrollRef below), nested inside via its own overflow-y: auto — .content
+  // has essentially no scroll range of its own, so setting its scrollTop was
+  // a near no-op. Scroll scrollRef directly instead of hunting for an
+  // ancestor.
   const scrollToBottom = useCallback(() => {
-    if (bottomRef.current) {
-      const container = bottomRef.current.closest('.content');
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      } else {
-        bottomRef.current.scrollIntoView({ behavior: 'instant' });
-      }
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    } else if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'instant' });
     }
   }, []);
 
@@ -487,7 +490,7 @@ export default function AiAssistantView() {
     persistHistory([]);
   }
 
-  const streamAnswer = useCallback(async (question, currentMessages) => {
+  const streamAnswer = useCallback(async (question, currentMessages, { reuseId } = {}) => {
     const history = currentMessages
       .filter((m) => m.role === "user" || m.role === "ac")
       .map((m) => ({ role: m.role === "ac" ? "assistant" : "user", content: m.text }));
@@ -495,8 +498,14 @@ export default function AiAssistantView() {
     const ac = new AbortController();
     abortRef.current = ac;
 
-    const streamingId = `a-${Date.now()}`;
-    setMessages((m) => [...m, { id: streamingId, role: "ac", text: "", time: nowTime() }]);
+    // A retry reuses the failed message's own id/slot in place (its fields
+    // were already reset by the caller) instead of appending a fresh
+    // bubble — keeps the transcript from growing a duplicate AC row every
+    // time the user retries the same question.
+    const streamingId = reuseId || `a-${Date.now()}`;
+    if (!reuseId) {
+      setMessages((m) => [...m, { id: streamingId, role: "ac", text: "", time: nowTime() }]);
+    }
 
     let fullAnswer = "";
     let serverSuggestions = null;
@@ -576,7 +585,7 @@ export default function AiAssistantView() {
               hadError = true;
               setMessages((m) =>
                 m.map((msg) =>
-                  msg.id === streamingId ? { ...msg, text: payload.error } : msg
+                  msg.id === streamingId ? { ...msg, text: payload.error, error: true } : msg
                 )
               );
             }
@@ -589,7 +598,7 @@ export default function AiAssistantView() {
         setMessages((m) =>
           m.map((msg) =>
             msg.id === streamingId
-              ? { ...msg, text: err.message || "Sorry, I could not reach the AI server. Please try again in a moment." }
+              ? { ...msg, text: err.message || "Sorry, I could not reach the AI server. Please try again in a moment.", error: true }
               : msg
           )
         );
@@ -654,29 +663,29 @@ export default function AiAssistantView() {
     } catch { /* ignore */ }
   }
 
-  // The question that produced a given AC answer is just the nearest earlier
-  // user message in the flat, alternating messages array — no separate
-  // question/answer pairing is tracked elsewhere.
-  function questionFor(acMessageId) {
-    const i = messages.findIndex((m) => m.id === acMessageId);
-    for (let j = i - 1; j >= 0; j--) {
-      if (messages[j].role === "user") return messages[j].text;
+  // Re-runs the question behind a failed AC answer, reusing that same
+  // message's id/slot (via streamAnswer's reuseId) instead of appending a
+  // duplicate user bubble + a second AC answer. historyBefore excludes the
+  // failed turn itself so its error text never gets sent back to the
+  // backend as prior "assistant" context.
+  function retryMessage(acMsg) {
+    const idx = messages.findIndex((m) => m.id === acMsg.id);
+    if (idx === -1) return;
+    let userText = null;
+    for (let j = idx - 1; j >= 0; j--) {
+      if (messages[j].role === "user") { userText = messages[j].text; break; }
     }
-    return "";
-  }
+    if (!userText) return;
 
-  async function submitFeedback(msg) {
-    try {
-      const token = localStorage.getItem("auth_token");
-      await fetch(`${API}/ai/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ question: questionFor(msg.id), answer: msg.text, note: feedbackNote.trim() }),
-      });
-    } catch { /* best-effort — this is a reporting signal, not a user-facing action that needs its own error UI */ }
-    setFeedbackSentIds((s) => new Set(s).add(msg.id));
-    setFeedbackOpenId(null);
-    setFeedbackNote("");
+    abortRef.current?.abort();
+    const historyBefore = messages.slice(0, idx);
+    setMessages((m) =>
+      m.map((msg) =>
+        msg.id === acMsg.id ? { ...msg, text: "", error: false, sources: undefined, chart: undefined } : msg
+      )
+    );
+    setThinking(true);
+    streamAnswer(userText, historyBefore, { reuseId: acMsg.id });
   }
 
   function startEdit(msg) {
@@ -767,13 +776,16 @@ export default function AiAssistantView() {
     finally { setDeletingId(null); }
   }
 
-  async function fetchFlags() {
+  async function fetchFlags(type) {
     setLoadingFlags(true);
+    setFlagTypeFilter(type || null);
     try {
       const token = localStorage.getItem("auth_token");
-      const res = await fetch(`${API}/ai/flags?reviewed=false`, { headers: { Authorization: `Bearer ${token}` } });
+      const qs = `?reviewed=false${type ? `&type=${encodeURIComponent(type)}` : ""}`;
+      const res = await fetch(`${API}/ai/flags${qs}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       setFlags(data.flags || []);
+      setFlagCounts(data.counts || {});
     } catch { setFlags([]); }
     finally { setLoadingFlags(false); }
   }
@@ -784,6 +796,11 @@ export default function AiAssistantView() {
       const token = localStorage.getItem("auth_token");
       await fetch(`${API}/ai/flags/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
       setFlags((f) => f.filter((x) => x._id !== id));
+      setFlagCounts((c) => {
+        const flag = flags.find((x) => x._id === id);
+        if (!flag || !c[flag.type]) return c;
+        return { ...c, [flag.type]: c[flag.type] - 1 };
+      });
     } catch { /* ignore */ }
     finally { setResolvingFlagId(null); }
   }
@@ -1025,43 +1042,29 @@ export default function AiAssistantView() {
                       >
                         {copiedId === m.id ? <CheckIcon /> : <CopyIcon />}
                       </button>
-                      {feedbackSentIds.has(m.id) ? (
-                        <span className="ac-tool-btn ac-tool-sent" title="Feedback sent" aria-label="Feedback sent">
-                          <CheckIcon />
-                        </span>
-                      ) : (
+                      {m.error && (
                         <button
                           type="button"
                           className="ac-tool-btn"
-                          onClick={() => setFeedbackOpenId((id) => (id === m.id ? null : m.id))}
-                          title="This answer was wrong"
-                          aria-label="Flag this answer as wrong"
+                          onClick={() => retryMessage(m)}
+                          title="Retry"
+                          aria-label="Retry this question"
                         >
-                          <ThumbsDownIcon />
+                          <RetryIcon />
                         </button>
                       )}
                     </div>
-                    {feedbackOpenId === m.id && (
-                      <div className="ac-feedback-note">
-                        <input
-                          type="text"
-                          value={feedbackNote}
-                          onChange={(e) => setFeedbackNote(e.target.value)}
-                          placeholder="What was wrong? (optional)"
-                          aria-label="Feedback note"
-                        />
-                        <button type="button" onClick={() => submitFeedback(m)}>Send</button>
-                        <button type="button" onClick={() => { setFeedbackOpenId(null); setFeedbackNote(""); }}>Cancel</button>
-                      </div>
-                    )}
                   </div>
                 )
               )}
 
               {thinking && (
                 <div className="ac-row ac-row-ac">
-                  <div className="ac-typing" aria-label="AC is typing">
-                    <span /><span /><span />
+                  <div className="ac-typing" aria-label="AC is thinking">
+                    <span className="ac-typing-text">AC is thinking</span>
+                    <span className="ac-typing-dots">
+                      <span /><span /><span />
+                    </span>
                   </div>
                 </div>
               )}
@@ -1086,7 +1089,7 @@ export default function AiAssistantView() {
                 type="button"
                 className="ac-scroll-top-btn"
                 title="Scroll to top"
-                onClick={() => scrollRef.current?.closest('.content')?.scrollTo({ top: 0, behavior: 'smooth' })}
+                onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
               >
                 ↑ Top
               </button>
@@ -1320,6 +1323,26 @@ export default function AiAssistantView() {
                 <button type="button" className="ac-files-close" aria-label="Close" onClick={() => setFlagsOpen(false)}>×</button>
               </div>
 
+              <div className="ac-flag-filter-row">
+                <button
+                  type="button"
+                  className={`ac-flag-filter-pill${!flagTypeFilter ? " active" : ""}`}
+                  onClick={() => fetchFlags()}
+                >
+                  All ({Object.values(flagCounts).reduce((s, n) => s + n, 0)})
+                </button>
+                {Object.keys(FLAG_TYPE_LABEL).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`ac-flag-filter-pill${flagTypeFilter === t ? " active" : ""}`}
+                    onClick={() => fetchFlags(t)}
+                  >
+                    {FLAG_TYPE_LABEL[t]} ({flagCounts[t] || 0})
+                  </button>
+                ))}
+              </div>
+
               <div className="ac-files-body">
                 {loadingFlags ? (
                   <div className="ac-files-loading">
@@ -1330,34 +1353,31 @@ export default function AiAssistantView() {
                 ) : flags.length === 0 ? (
                   <div className="ac-files-empty">
                     <p>No unreviewed flags.</p>
-                    <p>Prompt-injection attempts, possible RAG fabrications, and "this answer was wrong" reports all land here.</p>
+                    <p>Prompt-injection attempts, possible RAG fabrications, and questions AC couldn't answer all land here.</p>
                   </div>
                 ) : (
                   <div className="ac-files-list">
                     <p className="ac-files-count">{flags.length} unreviewed</p>
-                    {flags.map((fl) => {
-                      const TYPE_LABEL = { injection: "Injection", fabrication: "Fabrication", user_feedback: "User feedback" };
-                      return (
-                        <div key={fl._id} className="ac-file-row">
-                          <span className={`ac-file-type-badge ac-flag-type-${fl.type}`}>{TYPE_LABEL[fl.type] || fl.type}</span>
-                          <div className="ac-file-info">
-                            {fl.question && <span className="ac-file-name" title={fl.question}>{fl.question}</span>}
-                            {fl.detail && <span className="ac-file-meta" title={fl.detail}>{fl.detail}</span>}
-                          </div>
-                          <span className="ac-file-status">{fl.sourceType}</span>
-                          <button
-                            type="button"
-                            className="ac-file-del"
-                            aria-label="Mark reviewed"
-                            title="Mark reviewed"
-                            disabled={resolvingFlagId === fl._id}
-                            onClick={() => resolveFlag(fl._id)}
-                          >
-                            {resolvingFlagId === fl._id ? "…" : "✓"}
-                          </button>
+                    {flags.map((fl) => (
+                      <div key={fl._id} className="ac-file-row">
+                        <span className={`ac-file-type-badge ac-flag-type-${fl.type}`}>{FLAG_TYPE_LABEL[fl.type] || fl.type}</span>
+                        <div className="ac-file-info">
+                          {fl.question && <span className="ac-file-name" title={fl.question}>{fl.question}</span>}
+                          {fl.detail && <span className="ac-file-meta" title={fl.detail}>{fl.detail}</span>}
                         </div>
-                      );
-                    })}
+                        <span className="ac-file-status">{fl.sourceType}</span>
+                        <button
+                          type="button"
+                          className="ac-file-del"
+                          aria-label="Mark reviewed"
+                          title="Mark reviewed"
+                          disabled={resolvingFlagId === fl._id}
+                          onClick={() => resolveFlag(fl._id)}
+                        >
+                          {resolvingFlagId === fl._id ? "…" : "✓"}
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

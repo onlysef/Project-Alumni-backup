@@ -416,17 +416,26 @@ const reembed = async (req, res) => {
 
 // ─── GET /api/ai/flags ────────────────────────────────────────────────────────
 // Admin-reviewable queue for injection detections, RAG fabrication checks,
-// and user-submitted "this answer was wrong" feedback — see models/AiFlag.js.
+// and questions AC couldn't actually answer — see models/AiFlag.js.
 const getFlags = async (req, res) => {
   try {
     const filter = {};
     if (req.query.reviewed !== undefined) filter.reviewed = req.query.reviewed === 'true';
+    if (req.query.type) filter.type = req.query.type;
     const flags = await AiFlag.find(filter)
       .sort({ createdAt: -1 })
       .limit(200)
       .populate('source', 'firstName lastName')
       .populate('reviewedBy', 'firstName lastName');
-    res.json({ flags });
+    // Counts-by-type on the SAME response (not a separate endpoint) — always
+    // scoped to unreviewed regardless of the `type` filter above, so the
+    // frontend can show "3 injection · 1 fabrication · 42 unanswered" as a
+    // stable overview even while a specific type is being viewed.
+    const counts = await AiFlag.aggregate([
+      { $match: { reviewed: false } },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]);
+    res.json({ flags, counts: Object.fromEntries(counts.map(c => [c._id, c.count])) });
   } catch (err) {
     console.error('aiController.getFlags error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -449,26 +458,4 @@ const reviewFlag = async (req, res) => {
   }
 };
 
-// ─── POST /api/ai/feedback ────────────────────────────────────────────────────
-// A user marking a specific AC answer as wrong — feeds the same admin queue
-// as injection/fabrication detections above, not a separate mechanism.
-const submitFeedback = async (req, res) => {
-  const { question, answer, note } = req.body;
-  if (!question || !answer) return res.status(400).json({ message: 'question and answer are required.' });
-  try {
-    const flag = await AiFlag.create({
-      type: 'user_feedback',
-      question,
-      answer,
-      detail: note || '',
-      source: req.user.id,
-      sourceType: 'chat',
-    });
-    res.status(201).json({ flag });
-  } catch (err) {
-    console.error('aiController.submitFeedback error:', err);
-    res.status(500).json({ message: 'Server error.' });
-  }
-};
-
-module.exports = { chat, reembed, ingestFile, ingestStatus, listSources, deleteSource, getFlags, reviewFlag, submitFeedback };
+module.exports = { chat, reembed, ingestFile, ingestStatus, listSources, deleteSource, getFlags, reviewFlag };

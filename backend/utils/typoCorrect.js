@@ -130,9 +130,12 @@ const STOPWORDS = new Set([
   'mean', 'means', 'meant',
   // Ordinary English words that sit exactly 1 edit away from an unrelated
   // VOCABULARY term: "word" -> "work", "rule" -> "role", "filed" -> "field",
-  // "late" -> "rate" (single-letter substitution). None of these are ever a
-  // typo of the domain term they'd get rewritten to.
-  'word', 'words', 'rule', 'rules', 'filed', 'late',
+  // "late" -> "rate", "wear" -> "year" (single-letter substitution). None of
+  // these are ever a typo of the domain term they'd get rewritten to — "wear"
+  // specifically broke "what should i wear" (a plain out-of-scope fashion
+  // question) into "...i year", which then classified as a totally different
+  // (and legitimate-looking) statistical question about graduation year.
+  'word', 'words', 'rule', 'rules', 'filed', 'late', 'wear', 'wears', 'wearing', 'wore',
 ]);
 
 // Damerau-Levenshtein (optimal string alignment): like Levenshtein but also

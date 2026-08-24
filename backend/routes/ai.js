@@ -12,7 +12,6 @@ const {
   deleteSource,
   getFlags,
   reviewFlag,
-  submitFeedback,
 } = require('../controllers/aiController');
 
 router.use(protect, authorize('admin', 'coordinator'));
@@ -31,11 +30,8 @@ router.get( '/sources',                authorize('admin'), listSources);
 router.delete('/sources/:id',          authorize('admin'), deleteSource);
 
 // Flag review queue is admin-only (same as the knowledge-base management
-// routes above) — feedback submission stays open to both roles via the
-// router-level authorize() on line 16, since any coordinator using the chat
-// should be able to flag a wrong answer, not just admins.
+// routes above).
 router.get(  '/flags',                 authorize('admin'), getFlags);
 router.patch('/flags/:id',             authorize('admin'), reviewFlag);
-router.post( '/feedback',              submitFeedback);
 
 module.exports = router;

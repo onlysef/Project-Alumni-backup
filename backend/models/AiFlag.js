@@ -1,22 +1,22 @@
 const mongoose = require('mongoose');
 
-// Admin-reviewable queue for the AC assistant's own safety signals — prompt
-// injection detections, RAG fabrication checks, and user-submitted "this
-// answer was wrong" feedback all used to only ever reach logger.warn()
-// (console output, gone the moment the process log scrolls past it). This
-// persists the same events so they're actually actionable instead of merely
-// detected.
+// Admin-reviewable queue for the AC assistant's own safety/coverage signals
+// — prompt injection detections, RAG fabrication checks, and questions AC
+// couldn't actually answer (unclear input, off-topic, no matching data) all
+// used to only ever reach logger.warn() (console output, gone the moment
+// the process log scrolls past it). This persists the same events so
+// they're actually actionable instead of merely detected.
 const schema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['injection', 'fabrication', 'user_feedback'],
+    enum: ['injection', 'fabrication', 'unanswered'],
     required: true,
   },
   question: { type: String, default: '' },
-  // Offending snippet (injection), unverified phrase(s) (fabrication), or the
-  // user's optional note (user_feedback).
+  // Offending snippet (injection), unverified phrase(s) (fabrication), or a
+  // short fixed reason tag (unanswered — e.g. 'unclear', 'unknown').
   detail:   { type: String, default: '' },
-  // The AC answer involved, when there is one (fabrication, user_feedback —
+  // The AC answer involved, when there is one (fabrication, unanswered —
   // an injection detection happens before any answer exists).
   answer:   { type: String, default: '' },
   // Null for ingest-time detections (no requesting user in that flow).

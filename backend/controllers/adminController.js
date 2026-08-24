@@ -126,6 +126,46 @@ const createUser = async (req, res) => {
     // fire-and-forget pattern reembed() uses below for its own slow step.
     res.status(201).json({ message: 'Account created. Sending login credentials to email…', user: safe });
 
+    // A brand-new alumni account had no Graduate row at all until the alumni
+    // themselves submitted the tracer study — until then, the AI assistant
+    // had literally never heard of them ("Who is <name>?" came back as a
+    // dead end, not "no employment details yet"). Seeding a placeholder
+    // Graduate row immediately (name/email/user_id only) makes them findable
+    // right away via queryPersonLookup(), while leaving employmentStatus
+    // null — every respondent-count query filters on employmentStatus being
+    // non-null, so this placeholder does NOT inflate "254 respondents" until
+    // the alumni actually submits real tracer data.
+    //
+    // Matched by user_id OR email, same as submitTracerStudy's own upsert
+    // below (not a plain create()) — a bulk-imported historical row for this
+    // same email may already exist and already carry real employmentStatus
+    // data; blindly creating a second row here would double-count that
+    // person in every respondent total instead of just linking user_id onto
+    // the row that's already there.
+    if (userData.role === 'alumni') {
+      Graduate.findOneAndUpdate(
+        { $or: [{ user_id: user._id }, { email: userData.email }] },
+        { $set: {
+          user_id:       user._id,
+          name:          `${userData.firstName} ${userData.lastName}`.trim(),
+          email:         userData.email,
+          program:       userData.course || null,
+          yearGraduated: userData.graduationYear || null,
+        },
+        // Graduate.data is a required field (holds the raw tracer-study row
+        // on real submissions) — findOneAndUpdate's upsert path skips schema
+        // validation by default, so without this, a brand-new placeholder
+        // (no matching row to update) would silently insert with `data`
+        // missing entirely instead of failing loudly, leaving a malformed
+        // document anything reading doc.data elsewhere isn't expecting.
+        // $setOnInsert (not $set) so a real submission's actual data blob
+        // already on an existing legacy row is never stomped back to {}.
+        $setOnInsert: { data: {} },
+        },
+        { upsert: true }
+      ).catch((err) => console.error('createUser Graduate placeholder error:', err));
+    }
+
     setImmediate(async () => {
       try {
         await sendAccountCreatedEmail(user.email, user.firstName, tempPassword);
@@ -155,7 +195,7 @@ const updateUser = async (req, res) => {
   try {
     const { firstName, middleInitial, lastName, email, role, status, college, course, graduationYear, track, partnershipId } = req.body;
 
-    const existing = await User.findById(req.params.id, 'role college status tokenVersion');
+    const existing = await User.findById(req.params.id, 'role college status tokenVersion email');
     if (!existing) return res.status(404).json({ message: 'User not found.' });
 
     const updates = {};
@@ -222,6 +262,31 @@ const updateUser = async (req, res) => {
     if (role && role !== 'alumni') {
       const deleted = await AlumniEmployment.findOneAndDelete({ alumni_id: req.params.id });
       if (deleted) employmentRemoved = true;
+    }
+
+    // Keep the linked Graduate row in sync with ANY admin edit that touches
+    // a field AC's answers actually read (name, email, program, graduation
+    // year) — not just a rename. submitTracerStudy already re-syncs these on
+    // every tracer submission, but an admin editing the account here (not
+    // through a tracer resubmission) left the Graduate row permanently stale
+    // on whichever fields changed — AC kept answering from the account's OLD
+    // name/program/year forever. Matched by user_id first (the reliable FK,
+    // unaffected by this edit) with the PRE-update email as a fallback for
+    // older rows that predate user_id ever being backfilled onto them.
+    const graduateSyncFields = ['firstName', 'lastName', 'email', 'course', 'graduationYear'];
+    if (finalRole === 'alumni' && graduateSyncFields.some((f) => updates[f] !== undefined)) {
+      const graduateSet = {};
+      if (updates.firstName !== undefined || updates.lastName !== undefined) {
+        graduateSet.name = `${user.firstName} ${user.lastName}`.trim();
+      }
+      if (updates.email          !== undefined) graduateSet.email          = user.email;
+      if (updates.course         !== undefined) graduateSet.program        = user.course || null;
+      if (updates.graduationYear !== undefined) graduateSet.yearGraduated  = user.graduationYear || null;
+      Graduate.findOneAndUpdate(
+        { $or: [{ user_id: user._id }, { email: existing.email }] },
+        { $set: { user_id: user._id, ...graduateSet }, $setOnInsert: { data: {} } },
+        { upsert: true }
+      ).catch((err) => console.error('updateUser Graduate sync error:', err));
     }
 
     res.json({
