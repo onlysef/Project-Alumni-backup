@@ -8018,6 +8018,13 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 
         .ac-word {
             display: inline-block;
+            /* Each span already holds one whole word (animatedWords() splits on
+               whitespace) — without this, the ancestor .ac-ac-text's
+               overflow-wrap: break-word inherits in and can split the word
+               itself mid-letter ("Technology" -> "Technolo" / "gy") when the
+               line-wrap calculation runs tight, instead of wrapping the whole
+               word down to the next line like normal text does. */
+            white-space: nowrap;
             opacity: 0;
             transform: translateY(5px);
             filter: blur(2px);
@@ -8152,56 +8159,29 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             border-color: var(--maroon);
             color: #fff;
         }
-        .ac-tool-sent {
-            color: #257a4e;
-            cursor: default;
-        }
-        .ac-tool-sent:hover {
-            background: #fff;
-            border-color: var(--line);
-            color: #257a4e;
-        }
-
-        .ac-feedback-note {
-            display: flex;
-            gap: 6px;
-            margin-top: 6px;
-        }
-        .ac-feedback-note input {
-            flex: 1;
-            min-width: 0;
-            height: 32px;
-            border: 1px solid var(--line);
-            border-radius: 6px;
-            padding: 0 10px;
-            font: inherit;
-            font-size: 12px;
-        }
-        .ac-feedback-note button {
-            height: 32px;
-            padding: 0 12px;
-            border: 1px solid var(--line);
-            border-radius: 6px;
-            background: #fff;
-            color: var(--muted);
-            font: inherit;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-        }
-        .ac-feedback-note button:first-of-type {
-            background: var(--maroon);
-            border-color: var(--maroon);
-            color: #fff;
-        }
-
         /* ── Typing indicator ── */
         .ac-typing {
             display: inline-flex;
-            gap: 5px;
+            align-items: center;
+            gap: 8px;
             padding: 12px 14px;
         }
-        .ac-typing span {
+        .ac-typing-text {
+            font-size: 13px;
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--muted) 0%, var(--maroon) 50%, var(--muted) 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            color: var(--maroon);
+            animation: ac-shimmer 1.8s linear infinite;
+        }
+        .ac-typing-dots {
+            display: inline-flex;
+            gap: 5px;
+        }
+        .ac-typing-dots span {
             width: 7px;
             height: 7px;
             border-radius: 50%;
@@ -8209,12 +8189,16 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             opacity: 0.4;
             animation: ac-bounce 1.55s infinite ease-in-out;
         }
-        .ac-typing span:nth-child(2) { animation-delay: 0.24s; }
-        .ac-typing span:nth-child(3) { animation-delay: 0.48s; }
+        .ac-typing-dots span:nth-child(2) { animation-delay: 0.24s; }
+        .ac-typing-dots span:nth-child(3) { animation-delay: 0.48s; }
 
         @keyframes ac-bounce {
             0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
             30% { transform: translateY(-5px); opacity: 0.9; }
+        }
+
+        @keyframes ac-shimmer {
+            to { background-position: -200% center; }
         }
 
         /* ── Composer ── */
@@ -8391,28 +8375,15 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             border-color: var(--gold);
             color: var(--maroon);
         }
-        body.dark-mode .ac-tool-sent,
-        body.dark-mode .ac-tool-sent:hover {
-            background: #2b141a;
-            border-color: rgba(250, 200, 83, 0.22);
-            color: #3ecb84;
+        body.dark-mode .ac-typing-dots span { background: var(--gold); }
+        body.dark-mode .ac-typing-text {
+            color: var(--gold);
+            background: linear-gradient(90deg, #cbb9bd 0%, var(--gold) 50%, #cbb9bd 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
-        body.dark-mode .ac-feedback-note input {
-            background: #2b141a;
-            border-color: rgba(250, 200, 83, 0.22);
-            color: #f3e7ea;
-        }
-        body.dark-mode .ac-feedback-note button {
-            background: #2b141a;
-            border-color: rgba(250, 200, 83, 0.22);
-            color: #cbb9bd;
-        }
-        body.dark-mode .ac-feedback-note button:first-of-type {
-            background: var(--gold);
-            border-color: var(--gold);
-            color: var(--maroon);
-        }
-        body.dark-mode .ac-typing span { background: var(--gold); }
         body.dark-mode .ac-composer {
             background: #2b141a;
             border-color: rgba(250, 200, 83, 0.22);
@@ -8999,9 +8970,47 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             border-radius: 999px;
             font-size: 11px;
         }
-        .ac-flag-type-injection     { background: #fee2e2; color: #991b1b; }
-        .ac-flag-type-fabrication   { background: #fef3c7; color: #92400e; }
-        .ac-flag-type-user_feedback { background: #dbeafe; color: #1e40af; }
+        .ac-flag-type-injection   { background: #fee2e2; color: #991b1b; }
+        .ac-flag-type-fabrication { background: #fef3c7; color: #92400e; }
+        .ac-flag-type-unanswered  { background: #ede9fe; color: #5b21b6; }
+
+        /* Type-filter pill row, above the flags list */
+        .ac-flag-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 0 20px 12px;
+        }
+        .ac-flag-filter-pill {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 5px 12px;
+            background: #fff;
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+        }
+        .ac-flag-filter-pill:hover {
+            border-color: var(--maroon);
+            color: var(--maroon);
+        }
+        .ac-flag-filter-pill.active {
+            background: var(--maroon);
+            border-color: var(--maroon);
+            color: #fff;
+        }
+        body.dark-mode .ac-flag-filter-pill {
+            background: #2b141a;
+            border-color: rgba(250, 200, 83, 0.22);
+            color: #cbb9bd;
+        }
+        body.dark-mode .ac-flag-filter-pill.active {
+            background: var(--gold);
+            border-color: var(--gold);
+            color: var(--maroon);
+        }
 
         /* File name + meta */
         .ac-file-info {
@@ -9286,13 +9295,18 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             .aiassistant-view .ac-answer-program,
             .aiassistant-view .ac-word,
             .aiassistant-view .ac-composer-wrap,
-            .aiassistant-view .ac-send {
+            .aiassistant-view .ac-send,
+            .aiassistant-view .ac-typing-text,
+            .aiassistant-view .ac-typing-dots span {
                 animation: none !important;
             }
             .aiassistant-view .ac-word {
                 opacity: 1 !important;
                 transform: none !important;
                 filter: none !important;
+            }
+            .aiassistant-view .ac-typing-dots span {
+                opacity: 0.7 !important;
             }
         }
 

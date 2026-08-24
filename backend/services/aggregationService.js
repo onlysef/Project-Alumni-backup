@@ -69,7 +69,24 @@ const TOPIC_PATTERNS = {
   // after "name(s) of." The `.*alumni`/`alumni.*name`-style alternatives
   // are bounded to `.{0,30}` for the same reason (unbounded `.*` risks
   // matching "name" and "alumni" anywhere in a long, unrelated sentence).
-  names:           /\b(who are|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b/i,
+  // "who is/are ... alumni|graduates?|respondents?" — "who is the alumni
+  // that has a gender of LGBTQIA+" used to fall through to whichever OTHER
+  // topic the rest of the sentence happened to trigger (here, `gender`,
+  // which answers with a bare count: "There is 1 LGBTQIA+ graduate..."),
+  // never actually naming the person the question asked for by name. A
+  // genuine single-person question ("who is Liam Miranda") never reaches
+  // this far — it's already resolved by extractPersonName()/
+  // queryPersonLookup() earlier in queryInner, before topic detection runs
+  // at all. An EARLIER version of this fix matched bare "who is"/"who are"
+  // with no alumni-noun requirement at all — that silently swallowed
+  // completely off-topic questions too ("who is the most famous rapper"
+  // matched `names`, returned no data, and answered with the confusing
+  // college-scoped "no tracer study data matching that" message instead of
+  // the correct plain "that's outside what I can answer"). Requiring an
+  // alumni-referring noun within a few words — same convention the
+  // "name(s) of" alternative below already uses for the same reason — is
+  // what actually distinguishes the two.
+  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b/i,
   // "ilan"/"ilang" (Tagalog "how many") — requires an alumni-referring noun
   // nearby, same as the English alternatives above, and NOT bare — bare
   // "ilan" is common enough in casual Tagalog phrasing of every other topic
@@ -252,6 +269,26 @@ function extractFilters(question) {
     for (const [pat, expansion] of SPEC_ABBR) {
       if (pat.test(question)) { filters.program = expansion; break; }
     }
+  }
+
+  // Full spelled-out program name ("Information Technology alumni", not an
+  // abbreviation) — everything above only recognizes "BSIT"/"IT"-style
+  // shorthand, so a question already using the expanded name (as this
+  // file's OWN suggestion chips do — see FOLLOWUP_QUESTION/programLabel
+  // near queryPersonLookup) silently failed to resolve any program filter
+  // at all and answered with the unfiltered whole-dataset total instead.
+  // PROGRAM_KEYWORDS is the same list queryPersonLookup() uses to recognize
+  // a Graduate.program value — reused here for the reverse direction
+  // (recognizing that name inside a QUESTION). Several of these names ARE
+  // ALSO real industry names ("Information Technology" the program vs.
+  // "Information Technology" the industry alumni work in) — the negative
+  // lookahead skips a match immediately followed by "industry" so "who else
+  // works in the Information Technology industry" stays an industry-only
+  // filter instead of silently also restricting to that program and
+  // excluding every other-program alumnus actually working in that industry.
+  if (!filters.program) {
+    const keyword = PROGRAM_KEYWORDS.find(k => new RegExp(`\\b${k}\\b(?!\\s+industry\\b)`, 'i').test(question));
+    if (keyword) filters.program = keyword;
   }
 
   // Graduation year: "batch 2001", "2023 graduates", etc. — covers 1990–2039
@@ -768,7 +805,7 @@ async function queryIndustry(filters) {
     out += `Total: **${total}** graduate${total !== 1 ? 's' : ''}\n`;
     if (rows.length > 1) {
       out += `\nBreakdown:\n`;
-      rows.forEach((r, i) => { out += `${i + 1}. **${r._id}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
+      rows.forEach((r, i) => { out += `${i + 1}. **${r._id}** with ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
     }
     // No chart — a specific industry was named, so this narrows to that one
     // industry (the "breakdown" above is just near-duplicate name variants),
@@ -784,7 +821,7 @@ async function queryIndustry(filters) {
   }
 
   let out = `**Top industries where ${gPrefix}${statusAdj}graduates${locLabel}${lbl} are working:**\n\n`;
-  rows.forEach((r, i) => { out += `${i + 1}. **${r._id}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
+  rows.forEach((r, i) => { out += `${i + 1}. **${r._id}** with ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
   return withChart(out, { type: 'bars', title: 'Top Industries', rows });
 }
 
@@ -1464,11 +1501,33 @@ function toTitleCase(str) {
 // to the person actually asked about.
 const PERSON_LOOKUP_PATTERNS = [
   /\bwhere\s+is\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+(?:currently\s+)?working\b/i,
-  /\bwhat\s+(?:is|does)\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})(?:'s)?\s+(?:job|occupation|position|current\s+job|current\s+role|working\s+as|company|employer)\b/i,
+  // "where does X work" — simple present tense, distinct regex shape from
+  // "where IS X working" above (progressive tense); a real, common phrasing
+  // that fell all the way through to the generic employment breakdown with
+  // no match at all before this.
+  /\bwhere\s+does\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+(?:currently\s+)?work\b/i,
+  /\bwhat\s+(?:is|does)\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})(?:'s)?\s+(?:job|occupation|position|current\s+job|current\s+role|working\s+as|company|employer|(?:contact|phone|cell(?:phone)?|mobile)\s+number|number|contact\s+(?:info|information|details)|email(?:\s+address)?)\b/i,
   /\bis\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+(?:currently\s+)?employed\b/i,
   /\bwhat\s+company\s+does\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+work\s+(?:for|at)\b/i,
   // "who is X working for/with/at" is now handled by WHO_IS_PATTERN below
   // (it's a strict superset — bare "who is X" AND this trailing-clause form).
+  // Trailing "of X" form ("contact number of X", "phone number of X") —
+  // requires the captured span to start with a capital letter (same as
+  // every pattern above), so this never collides with the existing
+  // "number of" STATISTICAL_PATTERNS trigger ("number of graduates" has no
+  // capitalized name to capture, so it just never matches here).
+  /\b(?:contact|phone|cell(?:phone)?|mobile)?\s*number\s+of\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
+  /\bhow\s+(?:can|do)\s+i\s+(?:contact|reach)\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
+  // "email of X" / "email address of X" — same trailing-of-X shape as the
+  // number pattern above.
+  /\bemail(?:\s+address)?\s+of\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
+  // Broadest, most generic phrasing — "give me info about X" / "tell me
+  // about X" / "details on X" carries no specific attribute at all (unlike
+  // every pattern above, which names a job/number/status), so it has to be
+  // last and is deliberately the widest net: any capitalized 1-5 word span
+  // right after one of these trigger phrases.
+  /\b(?:give\s+me|show\s+me|what\s+is)?\s*(?:the\s+)?(?:info(?:rmation)?|details?)\s+(?:about|on|for|of)\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
+  /\btell\s+me\s+about\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
 ];
 
 // "Is there an alumni/alumnus named vincent?" / "Do you have a graduate
@@ -1578,10 +1637,58 @@ function extractPersonName(question) {
   return null;
 }
 
+// A separate, narrower trigger list for "who are X and Y" / "contact
+// numbers of X and Y" style questions — deliberately NOT a retrofit of the
+// 10 single-name patterns above (extractPersonName's own PERSON_LOOKUP_
+// PATTERNS/WHO_IS_PATTERN/etc.), to keep this addition's blast radius small.
+// Falls back to the existing single-name extractPersonName() when this
+// narrower pattern doesn't match, so every existing single-person phrasing
+// is completely unaffected.
+const MULTI_NAME_SPAN = String.raw`[A-Z][a-zA-Z.'-]*(?:\s+[A-Z][a-zA-Z.'-]*){0,4}`;
+const MULTI_PERSON_PATTERN = new RegExp(
+  String.raw`\b(?:who\s+are|(?:contact\s+numbers?|phone\s+numbers?|emails?|info(?:rmation)?|details?)\s+(?:of|for|about))\s+(${MULTI_NAME_SPAN}(?:\s*,\s*${MULTI_NAME_SPAN})*(?:\s*,?\s*and\s+${MULTI_NAME_SPAN})?)`,
+  'i'
+);
+
+function extractPersonNames(question) {
+  const m = question.match(MULTI_PERSON_PATTERN);
+  if (m) {
+    const names = m[1].split(/\s*,\s*|\s+and\s+/i).map(s => s.trim()).filter(Boolean).slice(0, 5);
+    if (names.length >= 2) return names;
+  }
+  const single = extractPersonName(question);
+  return single ? [single] : [];
+}
+
+// Recognizes a known program keyword inside a Graduate.program value — that
+// field stores the FULL spelled-out name as entered ("Bachelor of Science in
+// Computer Science", sometimes with a trailing ";" from a messy import), not
+// an abbreviation, so it's a different parsing problem from extractFilters()
+// above (which parses abbreviations like "BSCS"/"IT" out of free-text
+// QUESTIONS). Kept as its own short list rather than reaching into
+// extractFilters()'s internal ABBR/SPEC_ABBR, which aren't built for this.
+const PROGRAM_KEYWORDS = [
+  'Information Technology', 'Computer Science', 'Information Systems', 'Information Management',
+  'Business Administration', 'Electronics', 'Civil Engineering', 'Electrical Engineering',
+  'Mechanical Engineering', 'Education', 'Nursing', 'Accountancy',
+];
+function programKeywordFrom(rawProgram) {
+  if (!rawProgram) return null;
+  return PROGRAM_KEYWORDS.find(k => rawProgram.toLowerCase().includes(k.toLowerCase())) || null;
+}
+
 // Names in this dataset appear in inconsistent formats ("Bryan Canlapan" vs
 // "Canlapan, Bryan T.") — matching requires every name TOKEN to appear
 // somewhere in the stored name, regardless of order, rather than an exact
 // substring match that would miss reordered/comma-separated variants.
+// Returns a compact, verified FACTS block (not a hand-composed sentence) —
+// ragService.js always runs this through LLM narration now, so the model
+// (not another hand-coded template branch here) decides what's relevant to
+// whatever the user actually asked ("give me his info" -> summarize
+// everything; "what's his number" -> just the number). Every value is
+// **bolded** so the narration's own verification check (in ragService.js)
+// can confirm nothing the model states was invented beyond what's listed
+// here.
 async function queryPersonLookup(name) {
   const tokens = name.split(/\s+/).filter(Boolean);
   if (!tokens.length) return null;
@@ -1601,35 +1708,68 @@ async function queryPersonLookup(name) {
   if (!matches.length) return null;
   if (matches.length > 1) {
     const names = matches.slice(0, 8).map(r => toTitleCase(cleanText(r.name)));
-    return `Multiple alumni match "${name}" — please be more specific:\n\n${names.map(n => `- **${n}**`).join('\n')}`;
+    // ambiguous: true — this is a deterministic instruction to the user, not
+    // narratable data. ragService.js must show it verbatim, never send it
+    // to the LLM (which could easily garble or drop entries from the list).
+    return { text: `Multiple alumni match "${name}" — please be more specific:\n\n${names.map(n => `- **${n}**`).join('\n')}`, ambiguous: true };
   }
   const match = matches[0];
-
   const displayName = toTitleCase(cleanText(match.name));
-  const parts = [];
+
   // Some ingested rows have corrupted jobTitle values (stray braces/symbols
   // from a bad Excel import) — a real-looking title needs to be mostly
   // letters/spaces/punctuation, not just any non-empty string.
   const isPlausibleTitle = match.jobTitle && /^[A-Za-z][A-Za-z\s.,'/&()-]{2,80}$/.test(match.jobTitle.trim());
-  if (isPlausibleTitle) parts.push(`works as **${toTitleCase(cleanText(match.jobTitle))}**`);
-  if (match.industry) parts.push(`in the **${match.industry}** industry`);
-  if (match.workLocation) {
-    const loc = /local/i.test(match.workLocation) ? 'locally (within the Philippines)'
-              : /abroad/i.test(match.workLocation) ? 'abroad / overseas'
-              : match.workLocation;
-    parts.push(`working **${loc}**`);
-  }
-  if (parts.length) {
-    // If the title was filtered out (or never recorded), the sentence needs
-    // its own verb up front — otherwise it reads as a dangling fragment
-    // ("Name in the X industry...") with no "works"/"is employed" at all.
-    const verb = isPlausibleTitle ? '' : 'is employed ';
-    return `**${displayName}** ${verb}${parts.join(', ')}.`;
-  }
 
-  const status = match.employmentStatus ? match.employmentStatus.toLowerCase() : null;
-  if (status) return `**${displayName}**'s recorded employment status is **${status}**, but no specific job title or industry is on file.`;
-  return `**${displayName}** is on record, but no employment details (job title, industry, location) are available.`;
+  // Bulleted, not bare "Label: value" lines — the frontend's markdown
+  // renderer only preserves line breaks inside a recognized list/heading
+  // block; plain consecutive lines with no bullet marker get flattened into
+  // one run-on paragraph and re-split on sentence punctuation instead,
+  // which mangled names containing a middle-initial period ("Vincent Louie
+  // B. Dejesus" split right after "B."). This only matters when narration
+  // (below, in ragService.js) fails and this raw text is shown as-is — a
+  // real list block survives that fallback path intact.
+  const facts = [];
+  if (isPlausibleTitle) facts.push(`- Job Title: **${toTitleCase(cleanText(match.jobTitle))}**`);
+  if (match.industry) facts.push(`- Industry: **${match.industry}**`);
+  if (match.workLocation) {
+    const loc = /local/i.test(match.workLocation) ? 'Local (within the Philippines)'
+              : /abroad/i.test(match.workLocation) ? 'Abroad / overseas'
+              : match.workLocation;
+    facts.push(`- Work Location: **${loc}**`);
+  }
+  if (match.employmentStatus) {
+    facts.push(`- Employment Status: **${match.employmentStatus}**`);
+  } else {
+    // A registered alumni account with no employmentStatus at all means the
+    // Graduate row is only a placeholder (created at account-signup time —
+    // see adminController.createUser/updateUser) — this person hasn't
+    // actually submitted their tracer study yet, which is different from
+    // (and shouldn't be silently confused with) "on file but chose not to
+    // report a job." Stated explicitly so the answer doesn't just show
+    // whatever scraps ARE on file (email, etc.) with no explanation for why
+    // nothing else is there.
+    facts.push('- Tracer Study Status: **Not yet submitted** — this alumnus/alumna is registered but hasn\'t completed the tracer study survey yet, so no employment details are available.');
+  }
+  if (match.contact) facts.push(`- Contact Number: **${match.contact}**`);
+  if (match.email) facts.push(`- Email: **${match.email}**`);
+  if (!facts.length) {
+    facts.push('- (No further details on file — no job title, industry, location, employment status, contact number, or email recorded.)');
+  }
+  // Carried into suggestFollowUps() so post-lookup chips can be about THIS
+  // person's own industry/program/gender instead of the generic tracer-study
+  // default — see RELATED_TOPICS.person_lookup below.
+  const programKeyword = programKeywordFrom(match.program);
+  return {
+    text: `**${displayName}**\n\n${facts.join('\n')}`,
+    ambiguous: false,
+    personFilters: {
+      industry: match.industry || null,
+      gender: match.gender || null,
+      program: programKeyword,
+      programLabel: programKeyword,
+    },
+  };
 }
 
 async function queryNames(filters) {
@@ -1690,7 +1830,10 @@ async function queryNames(filters) {
     filters.excludeIndustry   && `NOT in ${filters.excludeIndustry}`,
     filters.program           && `from ${filters.programLabel || filters.program}`,
     filters.yearGraduated     && `Batch ${filters.yearGraduated}`,
-    filters.gender            && filters.gender.toLowerCase(),
+    // Same LGBTQIA+ special-case genderPrefix() already applies elsewhere —
+    // a blanket .toLowerCase() reads fine for "male"/"female" but flattens
+    // the acronym into "lgbtqia+".
+    filters.gender            && (filters.gender.toUpperCase() === 'LGBTQIA+' ? 'LGBTQIA+' : filters.gender.toLowerCase()),
     filters.employmentStatus  && (filters.employmentStatus === 'Yes' ? 'employed' : filters.employmentStatus === 'No' ? 'unemployed' : filters.employmentStatus.toLowerCase()),
     filters.excludeEmploymentStatus && `who are NOT ${filters.excludeEmploymentStatus === 'Yes' ? 'employed' : filters.excludeEmploymentStatus === 'No' ? 'unemployed' : filters.excludeEmploymentStatus.toLowerCase()}`,
     filters.workLocation      && (filters.negateWorkLocation ? `NOT working ${filters.workLocation}` : `working ${filters.workLocation}`),
@@ -1707,7 +1850,7 @@ async function queryNames(filters) {
   let out = `**Alumni${label ? ` ${label}` : ''}${suffix}:**\n\n`;
   docs.forEach((d, i) => {
     out += `${i + 1}. **${toTitleCase(cleanText(d.name))}**`;
-    if (showJob && d.jobTitle) out += ` — ${toTitleCase(cleanText(d.jobTitle))}`;
+    if (showJob && d.jobTitle) out += `, ${toTitleCase(cleanText(d.jobTitle))}`;
     out += '\n';
   });
   return out;
@@ -1720,6 +1863,35 @@ async function queryNames(filters) {
 // college field eventController.js's own coordinator-facing endpoints
 // already scope by (not `visibility`, which is audience, not ownership).
 const ATTENDED_STATUSES = ['Present', 'Late'];
+
+// Same list ragService.js's COLLEGE_CODES uses (kept as its own small copy
+// here rather than a shared import — see DOMAIN_KEYWORDS above for why this
+// file already avoids cross-module vocabulary reuse for this kind of list).
+const COLLEGE_CODES = ['CPAG', 'CCS', 'COS', 'CIT', 'COE', 'CBA', 'COED', 'CASS', 'CCJE', 'CAFA'];
+
+// A coordinator's own scope (getCollegeScope()) always wins and is never
+// overridden by this — it only matters for an unscoped admin request, who
+// can otherwise see every college's events and may want to name one
+// specifically ("list of events for CCS") rather than get the full dump.
+function extractRequestedCollege(question) {
+  return COLLEGE_CODES.find(c => new RegExp(`\\b${c}\\b`, 'i').test(question)) || null;
+}
+
+// Explicit opt-out for an admin who really does want every college's events
+// combined in one answer, rather than being asked to pick one — checked
+// before the clarifying question below is triggered.
+const ALL_COLLEGES_PATTERN = /\ball\s+colleges?\b|\bevery\s+college\b|\btsu[\s-]?wide\b|\bentire\s+tsu\b|\bwhole\s+tsu\b|\blahat\s+ng\s+college\b/i;
+
+// An admin managing the whole TSU asking a bare "list events"/"upcoming
+// events" with no college named used to silently combine every college's
+// events into one list — which, with real data skewed toward one college,
+// reads as if there's only one college's worth of events rather than a
+// TSU-wide combined view. Ask which college instead (mirrors how a
+// coordinator is implicitly scoped) unless the admin explicitly asked for
+// everything (ALL_COLLEGES_PATTERN) — see ragService.js's
+// resolveCollegeClarification() for how the admin's one-word reply ("CCS")
+// gets merged back into the original question on the next turn.
+const CLARIFY_COLLEGE_QUESTION = 'Which college would you like to see this for — CPAG, CCS, COS, CIT, COE, CBA, COED, CASS, CCJE, or CAFA? (Or say "all colleges" for a TSU-wide view.)';
 
 // Same trigger-then-capture shape as NAMED_LOOKUP_PATTERN/WHO_IS_PATTERN
 // above, adapted for event titles instead of alumni names — captures free
@@ -1773,7 +1945,21 @@ async function resolveEvent(question) {
 }
 
 async function queryEventOverview(question = '') {
-  const college = getCollegeScope();
+  const scopedCollege = getCollegeScope();
+  const requestedCollege = extractRequestedCollege(question);
+  // A coordinator naming a DIFFERENT college than their own scope used to
+  // silently fall through to their own college's events with no explanation
+  // — a coordinator asking "list of events of COE" while scoped to CCS just
+  // got back CCS's events, which reads as a wrong/broken answer rather than
+  // an intentional restriction. Say so explicitly instead, same wording
+  // shape as ragService.js's own cross-college tracer-study denial message.
+  if (scopedCollege && requestedCollege && requestedCollege !== scopedCollege) {
+    return `As a ${scopedCollege} coordinator, you can only access ${scopedCollege}'s events — I don't have access to ${requestedCollege} or other colleges' events.`;
+  }
+  if (!scopedCollege && !requestedCollege && !ALL_COLLEGES_PATTERN.test(question)) {
+    return CLARIFY_COLLEGE_QUESTION;
+  }
+  const college = scopedCollege || requestedCollege;
   // "List upcoming events" was silently ignoring "upcoming" entirely — this
   // returned the latest 50 events by date regardless of whether they'd
   // already happened, so a request for upcoming events could (and did)
@@ -1794,9 +1980,9 @@ async function queryEventOverview(question = '') {
   }
   const suffix = events.length === 50 ? ' (showing latest 50)' : ` (${events.length} total)`;
   const heading = isUpcoming ? 'Upcoming Events' : isPast ? 'Past Events' : 'Events';
-  let out = `**${heading}${college ? ` — ${college}` : ''}${suffix}:**\n\n`;
+  let out = `**${heading}${college ? ` for ${college}` : ''}${suffix}:**\n\n`;
   events.forEach((e, i) => {
-    out += `${i + 1}. **${e.title}** — ${new Date(e.event_datetime).toLocaleDateString()}${e.location ? ` at ${e.location}` : ''}\n`;
+    out += `${i + 1}. **${e.title}** on ${new Date(e.event_datetime).toLocaleDateString()}${e.location ? ` at ${e.location}` : ''}\n`;
   });
   return out;
 }
@@ -1834,7 +2020,7 @@ async function queryEventAttendees(question) {
 
   let out = `**Attendees of ${resolved.event.title} (${logs.length} total):**\n\n`;
   logs.forEach((l, i) => {
-    out += `${i + 1}. **${nameById[String(l.alumni_id)] || 'Unknown Alumni'}** — ${l.status}\n`;
+    out += `${i + 1}. **${nameById[String(l.alumni_id)] || 'Unknown Alumni'}** (${l.status})\n`;
   });
   return { text: out, eventTitle: resolved.event.title };
 }
@@ -1913,7 +2099,11 @@ async function queryExamPassRate(filters, resultType) {
   return `**${pct(result, took)}** of ${gPrefix}exam takers ${verb} the board/licensure exam${lbl} (${result} out of ${took} who took the exam).`;
 }
 
-async function queryRate(filters) {
+// Raw numbers behind the employment rate, shared by queryRate() (single-
+// cohort prose below) and queryCompare() (two-cohort side-by-side, further
+// down this file) — factored out so the comparison path reuses the exact
+// same aggregate/math instead of a 3rd hand-copy of it.
+async function computeEmploymentRate(filters) {
   const rows = await Graduate.aggregate([
     ...stablePipeline(filters),
     { $match: { employmentStatus: { $nin: [null, ''] } } },
@@ -1929,12 +2119,19 @@ async function queryRate(filters) {
   const selfEmp = rows.filter(r => /^self.?employed$/i.test(r._id))
                       .reduce((s, r) => s + r.count, 0);
   const employed = filters.excludeSelfEmployed ? formal : formal + selfEmp;
+  return { total, formal, selfEmp, employed };
+}
+
+async function queryRate(filters) {
+  const stats = await computeEmploymentRate(filters);
+  if (!stats) return null;
+  const { total, formal, selfEmp, employed } = stats;
 
   const lbl = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
   const breakdown = filters.excludeSelfEmployed
     ? `${formal} formally employed, self-employed not counted`
-    : `${employed} — ${formal} formally employed + ${selfEmp} self-employed`;
+    : `${employed}, made up of ${formal} formally employed + ${selfEmp} self-employed`;
   const text = `The employment rate of ${gPrefix}graduates${lbl} is **${pct(employed, total)}** (${breakdown} out of ${total} respondents).`;
 
   // A question that explicitly pairs "employed" with "self-employed" routes
@@ -1953,6 +2150,70 @@ async function queryRate(filters) {
     return withChart(text, { type: 'donut', title: 'Employed + Self-Employed', rows: chartRows });
   }
   return text;
+}
+
+// Splits "compare X and Y" / "X vs Y" / "difference between X and Y" into
+// two independently-parsed halves and, if both sides resolve a DIFFERENT
+// value of the SAME single dimension (program-vs-program OR gender-vs-
+// gender — the only two supported today), runs computeEmploymentRate() for
+// each side and formats a side-by-side comparison. Returns null (safe
+// fallthrough to normal single-topic dispatch) for anything that doesn't
+// cleanly resolve — a conversational "vs" with no real 2-value split, an
+// unsupported dimension (employment-status-vs-status), or a degenerate
+// "compare X and X".
+const COMPARE_SPLIT = /\s+(?:and|vs\.?|versus)\s+/i;
+async function queryCompare(question) {
+  const stripped = question.replace(/\b(compare|difference\s+between)\b/i, '').trim();
+  const parts = stripped.split(COMPARE_SPLIT);
+  if (parts.length < 2) return null;
+
+  const leftFilters  = extractFilters(parts[0]);
+  const rightFilters = extractFilters(parts.slice(1).join(' '));
+
+  let leftLabel, rightLabel, leftDimFilters, rightDimFilters;
+  if (leftFilters.program && rightFilters.program && leftFilters.program !== rightFilters.program) {
+    leftLabel       = leftFilters.programLabel  || leftFilters.program;
+    rightLabel      = rightFilters.programLabel || rightFilters.program;
+    leftDimFilters  = { program: leftFilters.program };
+    rightDimFilters = { program: rightFilters.program };
+  } else if (leftFilters.gender && rightFilters.gender && leftFilters.gender.toLowerCase() !== rightFilters.gender.toLowerCase()) {
+    leftLabel       = leftFilters.gender;
+    rightLabel      = rightFilters.gender;
+    leftDimFilters  = { gender: leftFilters.gender };
+    rightDimFilters = { gender: rightFilters.gender };
+  } else {
+    return null;
+  }
+
+  const [leftStats, rightStats] = await Promise.all([
+    computeEmploymentRate(leftDimFilters),
+    computeEmploymentRate(rightDimFilters),
+  ]);
+  if (!leftStats || !rightStats) return null;
+
+  const leftRate  = leftStats.total  ? leftStats.employed  / leftStats.total  : 0;
+  const rightRate = rightStats.total ? rightStats.employed / rightStats.total : 0;
+  const higher = leftRate >= rightRate ? leftLabel : rightLabel;
+
+  let out = `**Employment rate comparison:**\n\n`;
+  out += `- **${leftLabel}**: ${pct(leftStats.employed, leftStats.total)} (${leftStats.employed}/${leftStats.total})\n`;
+  out += `- **${rightLabel}**: ${pct(rightStats.employed, rightStats.total)} (${rightStats.employed}/${rightStats.total})\n\n`;
+  out += `**${higher}** has the higher employment rate.`;
+
+  // withChart() may return a plain string (if it can't build chart rows) or
+  // { text, chart } — normalize the same way the other early-return bypasses
+  // in queryInner (trend/"which batch") already do, since this result skips
+  // the generic topic-dispatch wrapper entirely.
+  const charted = withChart(out, {
+    type: 'bars',
+    title: 'Employment Rate Comparison (%)',
+    rows: [
+      { _id: leftLabel,  count: Math.round(100 * leftRate) },
+      { _id: rightLabel, count: Math.round(100 * rightRate) },
+    ],
+  });
+  const { text, chart } = typeof charted === 'string' ? { text: charted, chart: null } : charted;
+  return { text, direct: true, topic: 'comparison', filters: {}, chart: chart || null };
 }
 
 async function queryCount(filters) {
@@ -2146,7 +2407,7 @@ async function queryOverview(filters) {
 
   const lbl = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
-  let out = `**Tracer Study Overview${lbl} — ${total} ${gPrefix}respondents**\n\n`;
+  let out = `**Tracer Study Overview${lbl} with ${total} ${gPrefix}respondents**\n\n`;
 
   out += `**Employment Status:**\n`;
   empRows.forEach(r => { out += `- ${r._id}: **${r.count}** (${pct(r.count, empTotal)})\n`; });
@@ -2154,7 +2415,7 @@ async function queryOverview(filters) {
 
   if (indRows.length) {
     out += `**Top Industries:**\n`;
-    indRows.forEach((r, i) => { out += `${i + 1}. ${r._id} — ${r.count}\n`; });
+    indRows.forEach((r, i) => { out += `${i + 1}. ${r._id}: ${r.count}\n`; });
     out += '\n';
   }
 
@@ -2181,7 +2442,18 @@ async function hasData() {
 }
 
 async function queryInner(question) {
-  if (!(await hasData())) return null;
+  // Events/AttendanceLog/EventFeedback are separate collections with no
+  // dependency on the Graduate collection at all — a college can have real,
+  // upcoming events scheduled while having zero registered/graduated alumni
+  // (a newly onboarded college, or one where nobody has submitted the
+  // tracer study yet). Gating EVERY topic (events included) on Graduate
+  // data existing meant a college-scoped coordinator with 0 alumni records
+  // was locked out of events/attendance/feedback entirely too — even for
+  // their own college's real events — which has nothing to do with why
+  // hasData() exists (it's the legacy chunk-scanning fallback trigger
+  // further below, a purely tracer-study concern).
+  const isEventShaped = TOPIC_PATTERNS.events.test(question) || TOPIC_PATTERNS.event_feedback.test(question);
+  if (!isEventShaped && !(await hasData())) return null;
 
   // "Who are the PROMINENT/notable/outstanding graduates?" matches the 'names'
   // topic pattern ("who are") and would otherwise return a plain alphabetical
@@ -2235,6 +2507,61 @@ async function queryInner(question) {
     }
   }
 
+  // "Who are Liam Miranda and Vincent De Jesus?" — 2+ named people at once.
+  // Checked before the single-name branch below (extractPersonNames() itself
+  // falls back to the single-name extractor when its own narrower pattern
+  // doesn't match, so a plain single-person question never reaches this
+  // branch at all — only genuinely 2+-name questions do).
+  const personNames = extractPersonNames(question);
+  if (personNames.length >= 2) {
+    const results = await Promise.all(personNames.map(n => queryPersonLookup(n)));
+
+    // Any ambiguous match among the batch — show that disambiguation
+    // verbatim (deterministic, never sent to the LLM), with a one-line note
+    // for each other name so the user isn't left wondering what happened to
+    // the rest of the batch.
+    const ambiguousIdx = results.findIndex(r => r && r.ambiguous);
+    if (ambiguousIdx !== -1) {
+      const lines = [results[ambiguousIdx].text];
+      results.forEach((r, i) => {
+        if (i === ambiguousIdx) return;
+        if (!r) lines.push(`\n_No record found for ${personNames[i]}._`);
+        else if (!r.ambiguous) lines.push(`\n_${personNames[i]} was also found — ask about them separately for details._`);
+      });
+      return { text: lines.join('\n'), direct: true, topic: 'person_lookup_ambiguous', filters: {} };
+    }
+
+    // No ambiguity — combine each found person's facts block, and note any
+    // name that had no match at all so the LLM narration (forced for
+    // 'person_lookup' in ragService.js) has an explicit "don't invent this
+    // person" signal instead of silence.
+    const combined = results
+      .map((r, i) => (r ? r.text : `_No record found for ${personNames[i]}._`))
+      .join('\n\n---\n\n');
+    // Empty filters — deriving shared follow-up suggestions across several
+    // people's potentially different industries/programs isn't well-defined;
+    // suggestFollowUps('person_lookup', {}) still yields the safe generic
+    // chips from the single-person case above.
+    return { text: combined, direct: true, topic: 'person_lookup', filters: {} };
+  }
+
+  // "Compare BSIT and BSCS employment rates" / "employment rate of male vs
+  // female" — checked before topic/filter detection below, same reasoning as
+  // the person-lookup branches above: extractFilters() only ever resolves a
+  // SINGLE value per filter type (program/gender/etc — last-match-wins), so
+  // running it on the whole question would silently keep only ONE of the two
+  // named cohorts and answer as if this were an ordinary single-cohort rate
+  // question. queryCompare() itself extracts each side independently and
+  // returns null (safe fallthrough to normal topic dispatch below) whenever
+  // it can't cleanly resolve two DIFFERENT values of the SAME dimension —
+  // e.g. "employed vs unemployed" resolves neither program nor gender on
+  // both sides, so it correctly falls through to queryEmployment()'s
+  // existing Yes/No breakdown instead of a broken comparison.
+  if (/\b(compare|\bvs\.?\b|\bversus\b|difference\s+between)\b/i.test(question)) {
+    const compareResult = await queryCompare(question);
+    if (compareResult) return compareResult;
+  }
+
   // "Where is Bryan Canlapan currently working?" — a lookup for ONE named
   // person, structurally different from every other question this file
   // answers (all of which aggregate across many respondents). Checked before
@@ -2245,8 +2572,18 @@ async function queryInner(question) {
   // vector search may still have relevant unstructured mentions.
   const personName = extractPersonName(question);
   if (personName) {
-    const text = await queryPersonLookup(personName);
-    if (text) return { text, direct: true, topic: 'person_lookup', filters: {} };
+    const lookup = await queryPersonLookup(personName);
+    if (lookup) {
+      // The ambiguous (multiple-match) case is a deterministic instruction
+      // to the user, not narratable data — a distinct topic so ragService.js
+      // never routes it through LLM narration the way 'person_lookup' is.
+      return {
+        text: lookup.text,
+        direct: true,
+        topic: lookup.ambiguous ? 'person_lookup_ambiguous' : 'person_lookup',
+        filters: lookup.personFilters || {},
+      };
+    }
     return null;
   }
 
@@ -2391,14 +2728,18 @@ async function queryInner(question) {
     event_feedback:  () => queryEventFeedback(question),
     events:          () => /who\s+attended|attendees?|sino.{0,15}dumalo/i.test(question)
       ? queryEventAttendees(question)
-      // Falls back to attendance count (not the overview) whenever an event
-      // name was actually extractable — resolveEvent()'s own `resolved.none`
-      // check inside queryEventAttendanceCount already degrades to the
-      // overview when it isn't, so this one call covers both. Matters for
-      // phrasing with no clear "how many"/"ilan" cue but a real event named
-      // ("Pagdalo sa Career Fair" — Tagalog "attendance at Career Fair"),
-      // which used to ignore the named event entirely and list all events.
-      : queryEventAttendanceCount(question),
+      // Only route into the attendance-count path (which extracts an event
+      // NAME out of the question — see EVENT_NAME_TRIGGER) when the question
+      // actually mentions attendance at all. A bare "events" mention with no
+      // attend*/dumalo/pagdalo root ("list of events for CCS") isn't naming
+      // a specific event — EVENT_NAME_TRIGGER's generic "for"/"of" triggers
+      // used to swallow phrases like "for CCS" as if it were an event title
+      // and report a false "no event matching" error instead of listing
+      // events. Straight to the overview (which itself now recognizes a
+      // named college — see extractRequestedCollege above) for that shape.
+      : /attend(?:ed|ance)?\b|dumalo|pagdalo/i.test(question)
+      ? queryEventAttendanceCount(question)
+      : queryEventOverview(question),
     names:           () => queryNames(filters),
     count:           () => isSectorQuestion ? querySector(filters) : filters.employmentStatuses ? queryEmployment(filters) : (filters.workLocation || isCompoundLocationQuestion) ? queryWorkLocation(filters) : (filters.industry || filters.excludeIndustry) ? queryIndustry(filters) : queryCount(filters),
     rate:            () => isCompoundLocationQuestion
@@ -2576,6 +2917,11 @@ const RELATED_TOPICS = {
   by_year:         ['rate', 'industry', 'by_program'],
   names:           ['rate', 'industry', 'by_program'],
   gender:          ['rate', 'by_program', 'industry'],
+  // Not the generic tracer-study default — "who else works in X" and "what's
+  // the breakdown for THIS person's program" are directly related to the
+  // person just looked up, unlike a blanket employment-rate suggestion.
+  person_lookup:   ['same_industry', 'by_program', 'gender'],
+  comparison:      ['by_program', 'industry'],
 };
 
 const FOLLOWUP_QUESTION = {
@@ -2603,6 +2949,12 @@ const FOLLOWUP_QUESTION = {
   event_feedback_q: (pw, filters) => filters.eventTitle ? `What's the feedback for ${filters.eventTitle}?` : null,
   events_upcoming:  ()             => `List upcoming events`,
   events_past:      ()             => `List past events`,
+  // Only fires when the person just looked up has a recognized industry on
+  // file. Deliberately phrased to literally contain "industry" so clicking
+  // it round-trips through TOPIC_PATTERNS.industry — a phrasing like "who
+  // else works in X" contains no industry-topic trigger word at all and
+  // would silently fall through to a generic answer instead.
+  same_industry:    (pw, filters) => filters.industry ? `What other alumni work in the ${filters.industry} industry?` : null,
 };
 
 function suggestFollowUps(topic, filters = {}) {
@@ -2612,4 +2964,4 @@ function suggestFollowUps(topic, filters = {}) {
   return related.map(t => FOLLOWUP_QUESTION[t](progWord, filters)).filter(Boolean).slice(0, 3);
 }
 
-module.exports = { query, hasData, suggestFollowUps, extractPersonName };
+module.exports = { query, hasData, suggestFollowUps, extractPersonName, CLARIFY_COLLEGE_QUESTION };

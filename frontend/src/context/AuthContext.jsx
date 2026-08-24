@@ -71,13 +71,31 @@ export function AuthProvider({ children }) {
     // The AC AI Assistant keeps its in-progress conversation in localStorage
     // (acCurrentChat_<role>_<user>) so a refresh doesn't lose it — but
     // logging out should still start the next session fresh instead of
-    // resuming whatever was left open. Saved/named History entries
-    // (acChatHistory_*) are a deliberate save, not an accidental leftover
-    // draft, so those are left alone.
+    // resuming whatever was left open. Archive it into that account's
+    // history (acChatHistory_<role>_<user>) first, mirroring
+    // AiAssistantView's own buildArchivedHistory/newChat logic, so the
+    // conversation is still reachable from History next login instead of
+    // being silently discarded.
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);
-        if (key && key.startsWith("acCurrentChat_")) localStorage.removeItem(key);
+        if (!key || !key.startsWith("acCurrentChat_")) continue;
+
+        try {
+          const messages = JSON.parse(localStorage.getItem(key));
+          if (Array.isArray(messages) && messages.length > 0) {
+            const historyKey = key.replace("acCurrentChat_", "acChatHistory_");
+            const firstUser = messages.find((m) => m.role === "user");
+            const title = (firstUser?.text || "Conversation").slice(0, 48);
+            const entry = { id: `c-${Date.now()}`, title, savedAt: new Date().toISOString(), messages };
+
+            const existing = JSON.parse(localStorage.getItem(historyKey) || "[]");
+            const nextHistory = [entry, ...(Array.isArray(existing) ? existing : [])].slice(0, 30);
+            localStorage.setItem(historyKey, JSON.stringify(nextHistory));
+          }
+        } catch { /* ignore malformed entries, still remove the current-chat key below */ }
+
+        localStorage.removeItem(key);
       }
     } catch {}
     window.location.href = LOGIN_URL;

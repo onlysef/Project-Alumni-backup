@@ -32,10 +32,23 @@ export function AdminSidebar({ collapsed, onNavigate }) {
 
   function handleSelect(view, subFilter) {
     const path = VIEW_TO_PATH[view] || "/admin/dashboard";
+    const alreadyOnThisView = !subFilter && view === currentView();
     if (view === "accounts" && subFilter) {
       navigate(`${path}?role=${encodeURIComponent(subFilter)}`);
     } else {
       navigate(path);
+    }
+    // Clicking a sidebar item while already on that page is a no-op for
+    // React Router (same path -> no remount, so the target page's own
+    // mount effects never re-fire). For AI Assistant specifically, that
+    // meant clicking it again while scrolled up mid-conversation left you
+    // stranded there instead of jumping back to the latest message — handle
+    // that case directly since there's no route change to hook into.
+    if (alreadyOnThisView && view === "aiassistant") {
+      // .ac-thread (not .content) is the actual scrollable element — see
+      // the comment on scrollToBottom in AiAssistantView.jsx for why.
+      const container = document.querySelector(".ac-thread");
+      if (container) container.scrollTop = container.scrollHeight;
     }
     if (window.innerWidth <= 600) {
       setOpenMenu(null);
