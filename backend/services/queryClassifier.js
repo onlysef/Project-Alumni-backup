@@ -146,6 +146,44 @@ const HELP_PATTERNS = [
   /\bano (ang )?(pwede|puwede) ko(ng)? (itanong|tanungin)\b/i,
 ];
 
+// "Who/what are you" style questions directed at AC itself — a near-universal
+// first thing real users ask any chatbot, in either language. Previously
+// unhandled: it isn't OFFENSIVE_PATTERN, GREETING_PATTERN, or HELP_PATTERNS,
+// so it fell all the way through to 'statistical', aggregationService found
+// no matching topic (there is none — it's not a data question), and it
+// landed on the generic UNKNOWN_RESPONSE refusal in both English and
+// Tagalog alike ("I'm designed to answer questions related to the Graduate
+// Tracer Study records...") — which reads as AC failing to understand
+// Tagalog specifically, even though English "who are you" hit the exact
+// same refusal. Checked before HELP_PATTERNS/UNKNOWN_PATTERNS so it gets its
+// own friendly self-introduction instead.
+const IDENTITY_PATTERNS = [
+  /\bwho\s+are\s+(?:you|u)\b/i,
+  /\bwhat\s+are\s+(?:you|u)\b/i,
+  /\bwhat('?s|\s+is)\s+your\s+name\b/i,
+  /\btell\s+me\s+(about\s+)?yourself\b/i,
+  /\bintroduce\s+yourself\b/i,
+  /\bsino\s+ka(\s+ba)?\b/i,
+  /\bano\s+ka(\s+ba)?\b/i,
+  /\bano(?:\s+ang)?\s+pangalan\s+mo\b/i,
+  /\banong\s+pangalan\s+mo\b/i,
+];
+
+// "Who am I?" / "sino ako?" — a question about the USER (their own logged-in
+// account), NOT about the assistant — a completely different intent from
+// IDENTITY_PATTERNS above ("who are you?"). Checked separately, ahead of
+// IDENTITY_PATTERNS, so it can never be swallowed by the "who/what are you"
+// self-introduction path. Caught live: "sino ako?" was answered as if it had
+// asked "sino ka?" ("who are you?") — see ragService.js's condenseQuestion()
+// translation-prompt fix for the other half of that bug (the LLM translation
+// step was flipping "ako"/I into "you" before this classifier ever saw it).
+const WHO_AM_I_PATTERNS = [
+  /\bwho\s+am\s+i\b/i,
+  /\bam\s+i\s+logged\s+in\s+as\b/i,
+  /\bsino\s+ako(\s+ba)?\b/i,
+  /\bano\s+ako(\s+ba)?\b/i,
+];
+
 // High-confidence off-topic patterns — general knowledge / entertainment / small talk
 // that has nothing to do with graduate tracer records. Kept narrow and conservative:
 // anything ambiguous falls through to statistical/qualitative (the safe default),
@@ -385,7 +423,7 @@ const QUALITATIVE_PATTERNS = [
 ];
 
 /**
- * Classify a question as 'offensive', 'unclear', 'greeting', 'acknowledgment', 'help', 'unknown', 'statistical', 'qualitative', or 'mixed'.
+ * Classify a question as 'offensive', 'unclear', 'greeting', 'acknowledgment', 'who_am_i', 'identity', 'help', 'unknown', 'statistical', 'qualitative', or 'mixed'.
  * Defaults to 'statistical' for ambiguous questions so MongoDB is tried first.
  */
 function classify(question) {
@@ -395,6 +433,8 @@ function classify(question) {
   if (isUnrecognizedInput(q)) return 'unclear';
   if (GREETING_PATTERN.test(q)) return 'greeting';
   if (ACKNOWLEDGMENT_PATTERN.test(q)) return 'acknowledgment';
+  if (WHO_AM_I_PATTERNS.some(p => p.test(q))) return 'who_am_i';
+  if (IDENTITY_PATTERNS.some(p => p.test(q))) return 'identity';
   if (HELP_PATTERNS.some(p => p.test(q))) return 'help';
   if (UNKNOWN_PATTERNS.some(p => p.test(q))) return 'unknown';
 

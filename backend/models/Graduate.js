@@ -38,6 +38,13 @@ const GraduateSchema = new mongoose.Schema(
     workLocation:     { type: String, trim: true, default: null },
     jobTitle:         { type: String, trim: true, index: true, default: null },
     industry:         { type: String, trim: true, index: true, default: null },
+    // Synced from AlumniEmployment.company_name / TracerStudyResponse.companyName
+    // — added so company-based questions ("who works at Sutherland?") can be
+    // combined with other filters (course, gender, employment status) through
+    // the same filters/stablePipeline system every other field already uses,
+    // instead of the isolated queryByCompany() lookup that couldn't be
+    // combined with anything or resolved by a multi-turn follow-up.
+    companyName:      { type: String, trim: true, index: true, default: null },
     jobRelated:       { type: String, trim: true, default: null },
     yearsInJob:       { type: String, trim: true, default: null },
 

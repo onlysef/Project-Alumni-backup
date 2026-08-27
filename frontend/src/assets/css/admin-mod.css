@@ -658,7 +658,14 @@
 
         .main {
             min-width: 0;
+            /* dvh tracks the actual visible viewport on tablet/mobile (shrinks
+               for browser chrome/on-screen keyboard); vh does not. Left as
+               plain vh here, this trapped content past the visible area —
+               like the AI Assistant's composer — with no way to scroll to
+               it, since overflow below is hidden. Same fix already applied
+               to body/.app above; this is the one spot that was missed. */
             height: 100vh;
+            height: 100dvh;
             background: #fff;
             overflow: hidden;
         }
@@ -765,7 +772,13 @@
         }
 
         .content {
+            /* Same vh-vs-dvh gap as .main above — on a tablet/mobile browser
+               where 100vh overshoots the real visible area, this box (and
+               everything sized from it, like the AI Assistant's flex-column
+               composer) ends up taller than the screen with no scrollbar
+               reaching the extra bit, since .main's own overflow is hidden. */
             height: calc(100vh - 70px);
+            height: calc(100dvh - 70px);
             min-height: 0;
             overflow-y: auto;
             overflow-x: hidden;

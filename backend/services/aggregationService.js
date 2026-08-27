@@ -3,7 +3,6 @@ const User = require('../models/User');
 const Event = require('../models/Event');
 const AttendanceLog = require('../models/AttendanceLog');
 const EventFeedback = require('../models/EventFeedback');
-const AlumniEmployment = require('../models/AlumniEmployment');
 const { runWithCollegeScope, getCollegeScope } = require('../utils/collegeScope');
 
 // filters.gender gets interpolated into a `^...$` $regex at every gender
@@ -87,7 +86,27 @@ const TOPIC_PATTERNS = {
   // alumni-referring noun within a few words — same convention the
   // "name(s) of" alternative below already uses for the same reason — is
   // what actually distinguishes the two.
-  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b/i,
+  // "sino[-\s]sino ang" — reduplicated "sino" is Tagalog's own way of asking
+  // for a LIST of who's ("sino-sino ang mga nagtatrabaho bilang X" = "who
+  // are the ones working as X"), same shape as "who are the ..." above but
+  // with no equivalent alumni-referring-noun requirement — real phrasings of
+  // this construction very often have no such noun at all (as above: no
+  // literal "alumni"/"graduates" anywhere), so that same guard would just
+  // make this alternative unreachable for the exact case it's meant to catch.
+  // Kept safe from off-topic false positives by requiring "ang" right after
+  // (the natural, near-universal way this construction is phrased) rather
+  // than a bare "sino sino" anywhere in the message.
+  // "sino ang mga X" (plain, non-reduplicated "sino") is the far more common
+  // everyday phrasing of the same "who are the ones ..." question
+  // "sino-sino ang" above catches — but a bare "sino ang X" with no plural
+  // marker has the exact off-topic risk described above for bare English
+  // "who is"/"who are" ("sino ang pinakamagaling na manlalaro" = "who is
+  // the best player", unrelated to alumni). Requiring "ang mga" specifically
+  // (the Tagalog plural marker right after "ang") is the equivalent signal
+  // reduplication provides for "sino-sino ang" — a question about a GROUP,
+  // not a single generic entity — without needing the alumni-noun guard
+  // English "who is/are" needs, for the same reason "sino-sino ang" doesn't.
+  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b|\bsino[\s-]*sino\s+ang\b|\bsino\s+ang\s+mga\b/i,
   // "ilan"/"ilang" (Tagalog "how many") — requires an alumni-referring noun
   // nearby, same as the English alternatives above, and NOT bare — bare
   // "ilan" is common enough in casual Tagalog phrasing of every other topic
@@ -288,7 +307,23 @@ function extractFilters(question) {
   // filter instead of silently also restricting to that program and
   // excluding every other-program alumnus actually working in that industry.
   if (!filters.program) {
-    const keyword = PROGRAM_KEYWORDS.find(k => new RegExp(`\\b${k}\\b(?!\\s+industry\\b)`, 'i').test(question));
+    const keyword = PROGRAM_KEYWORDS.find(k => {
+      if (!new RegExp(`\\b${k}\\b(?!\\s+industry\\b)`, 'i').test(question)) return false;
+      // "further education"/"continuing education"/"pursue(d) education" is
+      // a common ENGLISH IDIOM for "continued studying" — condenseQuestion()
+      // translates Tagalog "nagpatuloy (ng) pag-aaral"/"nagpatuloy mag-aral"
+      // to exactly this phrasing — and is NOT a reference to the "Bachelor
+      // of Education" program. Without this guard, "who did not pursue
+      // further education?" wrongly set filters.program = 'Education' and
+      // answered "No alumni found FROM EDUCATION, who did not pursue
+      // further education" — a nonsensical combination of two unrelated
+      // meanings of the same word. filters.furtherEducation (set separately,
+      // further below) already correctly captures this question's real
+      // intent, so bare "Education" here is skipped whenever that phrasing
+      // is present.
+      if (k === 'Education' && /\b(further|continuing|pursue[ds]?)\s+education\b/i.test(question)) return false;
+      return true;
+    });
     if (keyword) filters.program = keyword;
   }
 
@@ -385,6 +420,15 @@ function extractFilters(question) {
   // captures the correct (shorter) span from the "that are" branch instead
   // of the bare "who are" branch grabbing the whole rest of the sentence.
   const jobTitleMatch = question.match(/\b(?:working|works?|employed)\s+as\s+(?:an?\s+)?([a-zA-Z][a-zA-Z\s-]{1,49}?)(?=[?,!.]|$)/i)
+    // Tagalog "nagtatrabaho/nagwowork bilang X" ("working as X") — English-
+    // only above, so "sino sino ang mga nagtatrabaho bilang software
+    // developer" extracted no job title at all and fell through to a bare
+    // gender/employed count instead of the actually-requested names list.
+    // The extra lookahead for "na lalaki/babae" (a trailing gender qualifier
+    // — "bilang X na lalaki" = "as X who is male") stops the capture there
+    // instead of swallowing it into the literal title regex, same reason the
+    // English alternatives stop at punctuation/end-of-string.
+    || question.match(/\b(?:nagta+trabaho|nagwowork)\s+bilang\s+(?:isang\s+)?([a-zA-Z][a-zA-Z\s-]{1,49}?)(?=\s+na\s+(?:lalaki|babae)\b|[?,!.]|$)/i)
     // "who has position of SA" / "position is SA" / "role/designation of X"
     // — a real, natural way to ask for a job title that none of the other
     // patterns here recognize (no "working as"/"that are" wording at all).
@@ -409,7 +453,18 @@ function extractFilters(question) {
     // are employed"/"that are self-employed"/"that are male" are status/
     // gender questions, not job-title lookups, and would otherwise get
     // double (and wrongly) interpreted as a literal job title of "employed."
-    const isGenericWord = /^(the|a|an|this|that|those|our|their|its|any|all|employed|unemployed|self[- ]?employed|never\s+employed|male|female|men|women|working|local|abroad|related|graduates?|alumni|respondents?)$/i.test(candidate);
+    // Pronouns (they/them/it/we/you/she/he/him/her) added after a live
+    // failure: "sino sila?" ("who are they?") as a follow-up to "how many
+    // work as software developer?" — condenseQuestion()'s pronoun-resolution
+    // step (ragService.js) is SUPPOSED to substitute "sila"/"they" with the
+    // actual group being discussed ("software developers") before this
+    // point, but when that resolution doesn't happen (translation/LLM
+    // limitation, not something this regex layer can fix), "who are they?"
+    // survived untranslated and this fallback pattern treated the literal
+    // word "they" as if it were a job title being asked about — producing
+    // the nonsensical "No alumni found working as they." instead of either
+    // resolving correctly or admitting the referent couldn't be determined.
+    const isGenericWord = /^(the|a|an|this|that|those|our|their|its|any|all|employed|unemployed|self[- ]?employed|never\s+employed|male|female|men|women|working|local|abroad|related|graduates?|alumni|respondents?|they|them|it|we|you|she|he|him|her|these)$/i.test(candidate);
     // The bare "who are/is X" fallback captures the WHOLE rest of the
     // sentence (no "that are"/"working as" anchor to stop it early), so a
     // question like "who are the male alumni from BSIT" would otherwise
@@ -421,7 +476,15 @@ function extractFilters(question) {
     // multi-word-prone bare fallback; the two narrower, explicitly-anchored
     // forms above keep their original exact-match check untouched.
     const containsClaimedWord = /\b(employed|unemployed|self[- ]?employed|male|female|men|women|working|local(?:ly)?|abroad|overseas|related|relevant|graduates?|alumni|respondents?|program|course|batch|year)\b/i.test(candidate);
-    if (!isGenericWord && !containsClaimedWord) {
+    // "how many are FROM BSIT?" — a leading "from" always names an origin
+    // (program/batch/location), never a job title ("working as FROM X" isn't
+    // English) — without this, "from BSIT" itself got captured as a literal
+    // job title candidate, stacking a nonsensical jobTitle filter on top of
+    // the program filter courseMatch already correctly set from the same
+    // span, and "No alumni found working as from BSIT" instead of the real,
+    // program-filtered count.
+    const startsWithFrom = /^from\s+/i.test(candidate);
+    if (!isGenericWord && !containsClaimedWord && !startsWithFrom) {
       filters.jobTitle = candidate;
       // \b...\b (word-boundary anchored, not a bare substring) — without
       // it, a short title/abbreviation like "SA" matched as a substring
@@ -434,6 +497,31 @@ function extractFilters(question) {
       // both sides of the phrase there), so this doesn't lose the
       // legitimate partial-title matches that already worked.
       filters.jobTitleRegex = '\\b' + candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/s$/i, 's?') + '\\b';
+    }
+  }
+
+  // Company/employer name ("who works at Sutherland?", "ilan ang
+  // nagtatrabaho sa kompanyang Accenture?") — reuses COMPANY_LOOKUP_PATTERN
+  // (defined further below, used by extractCompanyName()) so this stays a
+  // normal filter, combinable with course/gender/employment-status filters
+  // and reusable by multi-turn follow-up accumulation, instead of the
+  // isolated queryByCompany() bypass this used to be exclusively handled by
+  // (which ignored every other filter and had no way to be reused by a
+  // follow-up). Guarded against the pattern's own false-positive risk: "how
+  // many alumni work IN IT industry" / "work IN Manila" also match "work...
+  // in X" and would otherwise be captured as if "IT industry"/"Manila" were
+  // company names — rejected here whenever the candidate names an
+  // industry/sector or duplicates a program/industry filter already resolved
+  // above (that already-set filter is the correct interpretation of "X").
+  const company = extractCompanyName(question);
+  if (company) {
+    const lc = company.toLowerCase();
+    const looksLikeIndustryOrLocation = /\b(industry|industries|sector|field|locally|abroad|overseas|philippines)\b/i.test(company)
+      || (filters.industry && lc.includes(filters.industry.toLowerCase()))
+      || (filters.program  && lc.includes(filters.program.toLowerCase()));
+    if (!looksLikeIndustryOrLocation) {
+      filters.company = company;
+      filters.companyRegex = '\\b' + company.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b';
     }
   }
 
@@ -1665,6 +1753,19 @@ const WHO_IS_PATTERN = new RegExp(
 // trailing-word idea as GREETING_PATTERN's own po/ho handling.
 const SINO_SI_PATTERN = /\bsino\s+si\s+([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4}?)(?=\s+(?:ba|po)\b|[?,!.]|\s*$)/i;
 
+// "Saan/san nagtatrabaho si Liam Miranda?" / "san nag tatrabaho si X" (casual
+// spacing) — the Tagalog equivalent of PERSON_LOOKUP_PATTERNS' English
+// "where does X work" entry, missing until this was caught live: the
+// question fell through every other pattern (SINO_SI_PATTERN needs "sino",
+// not "saan"), extractPersonName() returned null, and the question dropped
+// all the way to RAG for a person the structured Graduate lookup could have
+// answered directly and accurately. "trabaho" matched as a bare substring
+// (no leading \b) on purpose — it needs to match inside "nagtatrabaho"/
+// "tatrabaho" too, not just the bare root word, and "trabaho" is distinctive
+// enough as Filipino vocabulary that there's no realistic English collision
+// risk. Same "si X ... ba/po" capture shape as SINO_SI_PATTERN above.
+const SAAN_NAGTATRABAHO_PATTERN = /\b(?:saan|san)\b.{0,20}trabaho.{0,10}\bsi\s+([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4}?)(?=\s+(?:ba|po)\b|[?,!.]|\s*$)/i;
+
 // "trabaho ni Liam Miranda" / "kamusta na ang tracer study ni Liam Miranda"
 // — "ni" is the Filipino GENITIVE personal-name marker ("of"/possessive
 // "X's"), the mirror-image case of "si"/"sina" above (subject-position
@@ -1718,6 +1819,9 @@ function extractPersonName(question) {
   const sinoSiMatch = question.match(SINO_SI_PATTERN);
   if (sinoSiMatch) return sinoSiMatch[1].trim();
 
+  const saanTrabahoMatch = question.match(SAAN_NAGTATRABAHO_PATTERN);
+  if (saanTrabahoMatch) return saanTrabahoMatch[1].trim();
+
   const statusMatch = question.match(STATUS_LOOKUP_PATTERN);
   if (statusMatch) return statusMatch[1].replace(/'s$/i, '').trim();
 
@@ -1756,14 +1860,25 @@ function extractPersonName(question) {
 // Falls back to the existing single-name extractPersonName() when this
 // narrower pattern doesn't match, so every existing single-person phrasing
 // is completely unaffected.
-const MULTI_NAME_SPAN = String.raw`[A-Z][a-zA-Z.'-]*(?:\s+[A-Z][a-zA-Z.'-]*){0,4}`;
 // "sino sina" — "sina" is the Filipino PLURAL personal-name marker (the
 // plural of "si", the same marker SINO_SI_PATTERN above relies on for the
 // single-person case) — like "si", it only ever precedes actual proper
 // names, never a rhetorical predicate, so it's just as safe a trigger as the
 // English "who are" alternative here.
+// Captures everything after the trigger phrase as one blob (up to sentence-
+// ending punctuation or end of string), rather than trying to match each
+// individual name span with its own MULTI_NAME_SPAN repetition inline here
+// — an earlier version interpolated MULTI_NAME_SPAN's `{0,4}` quantifier
+// TWICE into one pattern (once for the leading name, once for the optional
+// "and/at trailing name"), which V8's regex backtracking handled
+// inconsistently for certain word-count combinations: caught live via
+// automated test — "sino sina Meg Nicole Serrano at Liam Miranda" (3-word
+// name + 2-word name) silently truncated the second person to just "Liam",
+// dropping "Miranda" — while other word-count combinations matched fine.
+// Splitting the blob in JS (below) instead of trying to do it all in one
+// regex sidesteps that whole class of nested-quantifier backtracking bug.
 const MULTI_PERSON_PATTERN = new RegExp(
-  String.raw`\b(?:who\s+are|sino\s+sina|(?:contact\s+numbers?|phone\s+numbers?|emails?|info(?:rmation)?|details?)\s+(?:of|for|about))\s+(${MULTI_NAME_SPAN}(?:\s*,\s*${MULTI_NAME_SPAN})*(?:\s*,?\s*(?:and|at)\s+${MULTI_NAME_SPAN})?)`,
+  String.raw`\b(?:who\s+are|sino\s+sina|(?:contact\s+numbers?|phone\s+numbers?|emails?|info(?:rmation)?|details?)\s+(?:of|for|about))\s+(.+?)(?:[?!.]|\s*$)`,
   'i'
 );
 
@@ -1784,9 +1899,13 @@ function extractPersonNames(question) {
     // two already-matched name spans (this only splits the text MULTI_
     // PERSON_PATTERN's own capture group already isolated, not the whole
     // question) — safe despite "at" also being an ordinary English
-    // preposition elsewhere.
-    const names = m[1].split(/\s*,\s*|\s+(?:and|at)\s+/i).map(s => s.trim()).filter(Boolean).slice(0, 5);
-    if (names.length >= 2) return names;
+    // preposition elsewhere. A 60-char-per-piece cap (matching
+    // COMPANY_LOOKUP_PATTERN's own convention) rejects a piece that's
+    // clearly not a name (e.g. the whole blob failed to split at all).
+    const names = m[1].split(/\s*,\s*|\s+(?:and|at)\s+/i)
+      .map(s => s.trim())
+      .filter(s => s && s.length <= 60);
+    if (names.length >= 2) return names.slice(0, 5);
   }
   const single = extractPersonName(question);
   return single ? [single] : [];
@@ -1944,6 +2063,7 @@ async function queryNames(filters) {
 
   // Apply variable filters after dedup
   if (filters.jobTitleRegex)    pipeline.push({ $match: { jobTitle: { $regex: filters.jobTitleRegex, $options: 'i' } } });
+  if (filters.companyRegex)     pipeline.push({ $match: { companyName: { $regex: filters.companyRegex, $options: 'i' } } });
   if (filters.industry)         pipeline.push({ $match: { industry:         { $regex: filters.industry, $options: 'i' } } });
   if (filters.excludeIndustry) {
     pipeline.push({ $match: { industry: { $nin: [null, ''], $not: { $regex: filters.excludeIndustry, $options: 'i' } } } });
@@ -1983,13 +2103,15 @@ async function queryNames(filters) {
   pipeline.push({ $sort: { name: 1 } }, { $limit: 50 });
 
   const docs = await Graduate.aggregate(pipeline);
-  if (!docs.length) {
-    if (filters.program) return `No alumni records found for **${filters.programLabel || filters.program}** in the tracer study database. Please check the program name or abbreviation.`;
-    return null;
-  }
 
+  // Built BEFORE the zero-match check below (not just for the found-results
+  // case further down) — a "no alumni found" answer needs to name exactly
+  // which combination of filters came up empty just as much as the
+  // found-results heading does. Moved up from where it used to sit (right
+  // before the found-results heading) for that reason.
   const label = [
     filters.jobTitle          && `working as ${filters.jobTitle}`,
+    filters.company           && `at ${filters.company}`,
     filters.industry          && `in ${filters.industry}`,
     filters.excludeIndustry   && `NOT in ${filters.excludeIndustry}`,
     filters.program           && `from ${filters.programLabel || filters.program}`,
@@ -2008,13 +2130,40 @@ async function queryNames(filters) {
                                 :                                 'who did not take a board/licensure exam'),
   ].filter(Boolean).join(', ');
 
-  const showJob = !!(filters.jobTitle || filters.industry || filters.excludeIndustry || filters.employmentStatus || filters.excludeEmploymentStatus);
+  if (!docs.length) {
+    // Used to only give a specific "no records found" message when a
+    // `program` filter was set, and silently return null (falling through
+    // to a generic, vague RAG refusal — "I don't have enough data in the
+    // tracer study records to answer that accurately" — that reads as if
+    // the question wasn't understood) for every OTHER filter combination.
+    // Caught live: "who are the female alumni working as accountants?"
+    // (gender + job title, genuinely zero real matches) got that same vague
+    // refusal instead of a direct, confident zero-result answer — even
+    // though this function had already correctly parsed and searched for
+    // exactly what was asked. A real "zero matches" is a complete, verified
+    // answer in its own right, not a failure to understand the question, so
+    // it's answered as directly as a found-results list would be — with a
+    // fallback to null only in the unfiltered edge case (no criteria at all
+    // yet still zero total alumni), which real data should never hit.
+    //
+    // The program-name hint is appended (not a separate exclusive branch)
+    // whenever a program filter is part of the query, even combined with
+    // other filters — a mistyped program name/abbreviation is just as
+    // plausible an explanation for zero matches then as it is alone.
+    const programHint = filters.program ? ' Please check the program name or abbreviation.' : '';
+    if (label) return `No alumni found ${label}.${programHint}`;
+    return null;
+  }
+
+  const showJob = !!(filters.jobTitle || filters.company || filters.industry || filters.excludeIndustry || filters.employmentStatus || filters.excludeEmploymentStatus);
+  const showCompany = !!filters.company;
 
   const suffix = docs.length === 50 ? ` (showing first 50)` : ` (${docs.length} total)`;
   let out = `**Alumni${label ? ` ${label}` : ''}${suffix}:**\n\n`;
   docs.forEach((d, i) => {
     out += `${i + 1}. **${toTitleCase(cleanText(d.name))}**`;
     if (showJob && d.jobTitle) out += `, ${toTitleCase(cleanText(d.jobTitle))}`;
+    if (showCompany && d.companyName) out += ` at ${toTitleCase(cleanText(d.companyName))}`;
     out += '\n';
   });
   return out;
@@ -2390,11 +2539,8 @@ async function queryCompare(question) {
 
 // "Who works at Starlink?" / "which alumni are employed at IT Solutions" /
 // "sino ang nagtatrabaho sa Starlink" — a REVERSE lookup (by employer, not
-// by name), structurally different from queryPersonLookup() above. Company
-// name isn't a Graduate field at all — the tracer study form never asks for
-// it — it only exists on AlumniEmployment.company_name (a separate
-// portal feature, populated when an alumnus fills in their own Employment
-// Details). Deliberately permissive on capitalization ("IT solutions" is a
+// by name), structurally different from queryPersonLookup() above.
+// Deliberately permissive on capitalization ("IT solutions" is a
 // real stored value, lowercase) — same reasoning WHO_IS_PATTERN/NAMED_
 // LOOKUP_PATTERN already use for person names.
 // (?:(?:is|are)\s+)? is OPTIONAL — "who works at X" (bare present tense, no
@@ -2408,58 +2554,28 @@ async function queryCompare(question) {
 // natural, common way to ask the SAME question (just wanting the count, not
 // necessarily every name) that this pattern originally missed entirely:
 // "how many work at Sutherland" fell through with no company extracted at
-// all and silently answered with the unrelated total headcount (256)
-// instead of the real answer (1, Liam Miranda). queryByCompany()'s own
-// answer already leads with the count in its heading ("**1** alumni found
-// working at **Sutherland**:"), so reusing it for "how many" phrasing
-// answers the question correctly either way.
+// all and silently answered with the unrelated total headcount instead of
+// the real, company-filtered one.
 //
 // Tagalog "ilan ang nagtatrabaho/nagwowork sa X" is the same "how many"
-// case; "kompanyang X"/"company na X" (an explicit "the company [called]
-// X" framing, common in Taglish) is an optional filler before the name in
-// both the sino and ilan forms.
-const COMPANY_LOOKUP_PATTERN = /\b(?:who|which\s+alumni|what\s+alumni|how\s+many(?:\s+alumni)?)\s+(?:(?:is|are)\s+)?(?:currently\s+)?work(?:ing|s)?\s+(?:for|at|in)\s+(?:(?:the\s+)?company\s+(?:named|called)\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)|\b(?:sino(?:-sino)?\s+ang|ilan(?:g)?\s+ang)\s+(?:nagta+trabaho|nagwowork)\s+sa\s+(?:kompanyang?\s+|company\s+na\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)/i;
+// case; "kompanyang X"/"kumpanyang X"/"company na X" (an explicit "the
+// company [called] X" framing, common in Taglish) is an optional filler
+// before the name in both the sino and ilan forms. "k[ou]mpanyang?" covers
+// both real-world spellings ("kompanya" and "kumpanya" — the latter is the
+// one actually listed in the project's own Tagalog-vocabulary reference
+// table; the pattern previously only matched "kompanya").
+// "ilan(?:g)?\s+(?:mga\s+)?(?:alumni\s+)?ang" — natural Filipino word order
+// often puts the subject noun BETWEEN "ilan(g)"/"sino(-sino)" and "ang"
+// ("Ilang ALUMNI ang nagtatrabaho sa Sutherland?"), which the original
+// "ilan(g)? ang"/"sino(-sino)? ang" (requiring them adjacent) rejected
+// outright — caught live via a multi-turn conversation-memory test where
+// this exact phrasing extracted no company at all.
+const COMPANY_LOOKUP_PATTERN = /\b(?:who|which\s+alumni|what\s+alumni|how\s+many(?:\s+alumni)?)\s+(?:(?:is|are)\s+)?(?:currently\s+)?work(?:ing|s)?\s+(?:for|at|in)\s+(?:(?:the\s+)?company\s+(?:named|called)\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)|\b(?:sino(?:-sino)?\s+(?:mga\s+)?(?:alumni\s+)?ang|ilan(?:g)?\s+(?:mga\s+)?(?:alumni\s+)?ang)\s+(?:nagta+trabaho|nagwowork)\s+sa\s+(?:k[ou]mpanyang?\s+|company\s+na\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)/i;
 
 function extractCompanyName(question) {
   const m = question.match(COMPANY_LOOKUP_PATTERN);
   if (!m) return null;
   return (m[1] || m[2] || '').trim();
-}
-
-async function queryByCompany(companyName) {
-  const college = getCollegeScope();
-  const pattern = new RegExp(companyName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-
-  // Scope BEFORE matching company (not after) — AlumniEmployment carries no
-  // college field of its own (it's linked to User only by alumni_id), so a
-  // coordinator's scope has to be enforced by first narrowing to their
-  // college's own user_ids, the same source of truth Graduate's own
-  // college-scope pre-hook resolves against (see models/Graduate.js).
-  const userFilter = { role: 'alumni' };
-  if (college) userFilter.college = college;
-  const users = await User.find(userFilter).select('firstName lastName').lean();
-  if (!users.length) return `No alumni found working at **${companyName}**${college ? ` in ${college}` : ''}.`;
-  const userIds = users.map((u) => u._id);
-  const userById = new Map(users.map((u) => [String(u._id), u]));
-
-  const records = await AlumniEmployment.find({
-    alumni_id: { $in: userIds },
-    company_name: pattern,
-  }).select('alumni_id job_title employment_status').limit(50).lean();
-
-  if (!records.length) return `No alumni found working at **${companyName}**${college ? ` in ${college}` : ''}.`;
-
-  const lines = records
-    .map((r) => {
-      const u = userById.get(String(r.alumni_id));
-      if (!u) return null;
-      const name = `${u.firstName} ${u.lastName}`.trim();
-      return r.job_title ? `- **${name}** — ${r.job_title}` : `- **${name}**`;
-    })
-    .filter(Boolean);
-  if (!lines.length) return `No alumni found working at **${companyName}**${college ? ` in ${college}` : ''}.`;
-
-  return `**${lines.length}** alumni found working at **${companyName}**${college ? ` (${college})` : ''}:\n\n${lines.join('\n')}`;
 }
 
 async function queryCount(filters) {
@@ -2479,6 +2595,7 @@ async function queryCount(filters) {
     };
   }
   if (filters.jobTitleRegex)    postDedup.jobTitle         = { $regex: filters.jobTitleRegex, $options: 'i' };
+  if (filters.companyRegex)     postDedup.companyName      = { $regex: filters.companyRegex, $options: 'i' };
   if (filters.industry)         postDedup.industry         = { $regex: filters.industry, $options: 'i' };
   if (filters.excludeIndustry) {
     postDedup.industry = {
@@ -2557,6 +2674,7 @@ async function queryCount(filters) {
                        : filters.excludeIndustry ? ` NOT in ${filters.excludeIndustry}`
                        : '';
   const jobTitleLabel  = filters.jobTitle ? ` working as ${filters.jobTitle}` : '';
+  const companyLabel   = filters.company  ? ` at ${filters.company}` : '';
   const locationLabel  = filters.workLocation
     ? (filters.negateWorkLocation ? ` NOT working ${filters.workLocation}` : ` working ${filters.workLocation}`)
     : '';
@@ -2582,8 +2700,8 @@ async function queryCount(filters) {
   // look inconsistent even when both were correct.
   const genderLabel = filters.gender ? `${filters.gender.toLowerCase()} ` : '';
   const desc = statusLabel
-    ? `${genderLabel}**${statusLabel}** alumni${jobTitleLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`
-    : `${genderLabel}graduate${total !== 1 ? 's' : ''}${jobTitleLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`;
+    ? `${genderLabel}**${statusLabel}** alumni${jobTitleLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`
+    : `${genderLabel}graduate${total !== 1 ? 's' : ''}${jobTitleLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`;
   let out = `There are **${total}** ${desc} in the tracer study database${lbl}.`;
 
   // For general "related" queries, add directly/somewhat sub-breakdown
@@ -2687,7 +2805,7 @@ async function hasData() {
   return count > 0;
 }
 
-async function queryInner(question) {
+async function queryInner(question, seedFilters = {}) {
   // Events/AttendanceLog/EventFeedback are separate collections with no
   // dependency on the Graduate collection at all — a college can have real,
   // upcoming events scheduled while having zero registered/graduated alumni
@@ -2821,16 +2939,17 @@ async function queryInner(question) {
     if (compareResult) return compareResult;
   }
 
-  // "Who works at Starlink?" — reverse lookup BY company, checked before the
-  // by-name lookup below since this question names no person at all (and
-  // extractPersonName() would just return null for it anyway, but checking
-  // this first keeps the two structurally-different lookups from ever
-  // fighting over the same question).
-  const companyName = extractCompanyName(question);
-  if (companyName) {
-    const companyResult = await queryByCompany(companyName);
-    if (companyResult) return { text: companyResult, direct: true, topic: 'names', filters: {} };
-  }
+  // Company/employer lookups ("Who works at Sutherland?", "how many work at
+  // Sutherland?") used to be intercepted HERE as an isolated bypass
+  // (queryByCompany(), checked before topic/filter detection) that ignored
+  // every other filter and returned `filters: {}` — meaning a follow-up like
+  // "Ilan sa kanila ang BSIT?" (how many of THEM are BSIT) had no company
+  // filter to build on, and "who are they?" after it couldn't resolve either.
+  // filters.company/filters.companyRegex (extracted above, in extractFilters())
+  // now flow through the SAME topic dispatch as job title/industry below, so
+  // company-shaped questions can combine with other filters and be reused by
+  // query()'s multi-turn context accumulation (buildSeedFilters(), further
+  // below) — see queryCount()/queryNames()'s own filters.companyRegex handling.
 
   // "Where is Bryan Canlapan currently working?" — a lookup for ONE named
   // person, structurally different from every other question this file
@@ -2858,7 +2977,13 @@ async function queryInner(question) {
   }
 
   let topic     = detectTopic(question);
-  const filters = extractFilters(question);
+  // seedFilters (from ragService.js's conversation-context accumulation)
+  // fill in whatever this question's OWN text doesn't mention — spread order
+  // means a key extractFilters(question) actually resolves always wins over
+  // the seeded value, so "who are they?" (resolves nothing itself) inherits
+  // the seed entirely, while "how many are from BSIT?" (resolves its own
+  // program) keeps BSIT even if an older, different program was seeded.
+  const filters = { ...seedFilters, ...extractFilters(question) };
 
   // "Who are Software Engineers?" / "who is a Nurse?" — extractFilters()
   // above already parses a job title out of the bare "who is/are X" fallback
@@ -2872,8 +2997,25 @@ async function queryInner(question) {
   // way through to RAG (which has no names/titles to search) and refused.
   // A resolved jobTitleRegex is itself strong enough evidence this was a
   // real names-by-title query to route it as 'names' even with no other
-  // topic keyword present.
-  if (topic === null && filters.jobTitleRegex) topic = 'names';
+  // topic keyword present. Same reasoning extends to companyRegex/industry/
+  // program: a bare group-referent follow-up ("who are they?") that resolved
+  // NO topic keyword of its own (it's just "who"+a pronoun) but DID inherit
+  // a company/industry/program from conversation-context accumulation (see
+  // ragService.js's buildSeedFilters/contextQuestions) is exactly as strong
+  // evidence of a names request — caught live: "who are they?" right after
+  // "how many alumni work at Sutherland?" resolved topic=null (Sutherland is
+  // a companyRegex, not a jobTitleRegex) and fell through to an unhelpful
+  // "not sure which group" clarify instead of listing the 2 Sutherland alumni.
+  //
+  // Defaults to 'count' instead when the question itself asks "how many"/
+  // "ilan" — "how many are from BSCS?" (elliptical, no "alumni" noun for
+  // TOPIC_PATTERNS.count to key off) inheriting a companyRegex from
+  // conversation-context accumulation must still answer with a NUMBER, not
+  // silently switch into a names list just because a strong filter happens
+  // to be present.
+  if (topic === null && (filters.jobTitleRegex || filters.companyRegex || filters.industry || filters.program)) {
+    topic = /\b(?:how\s+many|ilan(?:g)?)\b/i.test(question) ? 'count' : 'names';
+  }
 
   // Detect government/private SECTOR questions (no dedicated field in data)
   const isSectorQuestion = /\b(government|private)\s*sector\b|\bsector\b.{0,20}\b(government|private)\b/i.test(question);
@@ -3178,13 +3320,32 @@ async function queryInner(question) {
 // and running the entire query through that scope — see
 // utils/collegeScope.js for why AsyncLocalStorage instead of threading a
 // filter through every one of the ~40 functions above individually.
+// contextQuestions (see ragService.js's isEllipticalContinuation()/
+// buildContextQuestions()): recent prior USER turns, oldest-first, whose
+// filters (job title, company, industry, program, gender, employment status,
+// etc.) seed this question's own — merged so each later turn's value wins
+// over an earlier turn's for the same key, and this question's OWN
+// extraction (in queryInner) wins over all of them. This is what lets "who
+// are they?"/"how many are employed?"/"ilan sa kanila ang may trabaho?"
+// resolve using a group defined 1-3 turns ago instead of only the immediately
+// previous one — deterministic (no LLM call, no dependence on
+// condenseQuestion() correctly re-deriving the same filters from raw
+// chat-history text every time).
+function buildSeedFilters(contextQuestions) {
+  if (!contextQuestions || !contextQuestions.length) return {};
+  let merged = {};
+  for (const q of contextQuestions) merged = { ...merged, ...extractFilters(q) };
+  return merged;
+}
+
 async function query(question, options = {}) {
-  const { college } = options;
-  if (!college) return queryInner(question);
+  const { college, contextQuestions } = options;
+  const seedFilters = buildSeedFilters(contextQuestions);
+  if (!college) return queryInner(question, seedFilters);
 
   const alumni = await User.find({ role: 'alumni', college }).select('email').lean();
   const emails = alumni.map(u => (u.email || '').toLowerCase()).filter(Boolean);
-  return runWithCollegeScope(emails, college, () => queryInner(question));
+  return runWithCollegeScope(emails, college, () => queryInner(question, seedFilters));
 }
 
 // ─── Follow-up suggestions ──────────────────────────────────────────────────
@@ -3267,4 +3428,10 @@ function suggestFollowUps(topic, filters = {}) {
   return related.map(t => FOLLOWUP_QUESTION[t](progWord, filters)).filter(Boolean).slice(0, 3);
 }
 
-module.exports = { query, hasData, suggestFollowUps, extractPersonName, CLARIFY_COLLEGE_QUESTION };
+// detectTopic/extractFilters/extractPersonNames are exported in addition to
+// the original set above purely for automated testing (see
+// tests/tagalog-support.test.js) — they let the intent/entity-extraction
+// layer be verified directly, without needing a live MongoDB connection the
+// way calling query() end-to-end would. Not used by any other module; the
+// real request path still only ever calls query() from ragService.js.
+module.exports = { query, hasData, suggestFollowUps, extractPersonName, extractPersonNames, detectTopic, extractFilters, CLARIFY_COLLEGE_QUESTION };

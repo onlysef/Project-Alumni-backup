@@ -26,6 +26,7 @@ function mapNormalizedToGraduate(n) {
     employmentType:   n.employment_type   || null,
     workLocation:     n.work_location     || null,
     jobTitle:         n.job_title         || null,
+    companyName:      n.company           || null,
     industry:         n.industry          || null,
     jobRelated:       n.relevance         || null,
     yearsInJob:       n.job_duration      || null,
@@ -71,7 +72,16 @@ const chat = async (req, res) => {
     const { sources, type, suggestions, chart } = await generateAnswer(
       question,
       history,
-      { college, userName: req.user?.firstName || null },
+      {
+        college,
+        userName: req.user?.firstName || null,
+        userRole: req.user?.role || null,
+        // Distinct from `college` above (which is the college-SCOPE filter —
+        // null for admins on purpose, since they aren't restricted to one).
+        // The "who am I" answer needs the account's actual profile college
+        // regardless of role, so it's threaded through separately.
+        userCollege: req.user?.college || null,
+      },
       (token) => {
         res.write(`data: ${JSON.stringify({ token })}\n\n`);
       },

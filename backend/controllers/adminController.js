@@ -16,6 +16,7 @@ const EventInterested    = require('../models/EventInterested');
 const Notification       = require('../models/Notification');
 const Graduate           = require('../models/Graduate');
 const EmbeddingDocument  = require('../models/EmbeddingDocument');
+const answerCache        = require('../services/answerCache');
 const SavedJob           = require('../models/SavedJob');
 const JobApplication     = require('../models/JobApplication');
 const JobAlertSeen       = require('../models/JobAlertSeen');
@@ -264,6 +265,21 @@ const updateUser = async (req, res) => {
     if (role && role !== 'alumni') {
       const deleted = await AlumniEmployment.findOneAndDelete({ alumni_id: req.params.id });
       if (deleted) employmentRemoved = true;
+
+      // Also drop the linked Graduate row (and its RAG chunk) — otherwise an
+      // account promoted to coordinator/admin/employer keeps being counted
+      // as an alumnus in every tracer-study statistic and AC chatbot answer
+      // forever, since Graduate has no role field of its own to filter on.
+      const graduate = await Graduate.findOneAndDelete({
+        $or: [
+          { user_id: req.params.id },
+          { $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, existing.email.toLowerCase().trim()] } },
+        ],
+      });
+      if (graduate) {
+        await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
+        answerCache.bumpDataVersion();
+      }
     }
 
     // Keep the linked Graduate row in sync with ANY admin edit that touches
