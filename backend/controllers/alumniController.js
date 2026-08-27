@@ -427,6 +427,7 @@ const submitTracerStudy = async (req, res) => {
           employmentType:   body.presentEmploymentType || null,
           workLocation:     body.placeOfWork || null,
           jobTitle:         body.occupationTitle || null,
+          companyName:      body.companyName || null,
           industry:         body.industryField || null,
           jobRelated:       body.jobRelatedToDegree || null,
           yearsInJob:       body.yearsInCurrentJob || null,
@@ -469,6 +470,7 @@ const submitTracerStudy = async (req, res) => {
           employment_status:  graduatePatch.employmentStatus,
           employment_type:    graduatePatch.employmentType,
           job_title:          graduatePatch.jobTitle,
+          company:            graduatePatch.companyName,
           industry:           graduatePatch.industry,
           work_location:      graduatePatch.workLocation,
           relevance:          graduatePatch.jobRelated,
@@ -663,6 +665,7 @@ const updateMyEmployment = async (req, res) => {
           graduate.employmentStatus = tracerPatch.employmentStatus;
           graduate.workLocation = tracerPatch.placeOfWork || null;
           graduate.jobTitle = tracerPatch.occupationTitle || null;
+          graduate.companyName = tracerPatch.companyName || null;
           graduate.industry = tracerPatch.industryField || null;
           graduate.data = {
             ...(graduate.data || {}),

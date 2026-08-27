@@ -82,8 +82,14 @@ const VOCABULARY = [
   // from ever being "corrected" away from Filipino into English at all.
   'kumusta', 'kamusta', 'musta',
   'kaya', 'gawin', 'sagutin', 'tulungan', 'paano', 'gamitin', 'magamit', 'pwede', 'puwede', 'itanong', 'tanungin',
-  'ilan', 'ilista', 'ipakita', 'porsyento', 'porsiyento', 'pinakamataas', 'pinakamababa', 'bilang',
+  'ilan', 'ilang', 'ilista', 'ipakita', 'porsyento', 'porsiyento', 'pinakamataas', 'pinakamababa', 'bilang',
   'bakit', 'dahilan', 'ipaliwanag', 'paliwanag', 'palagay', 'opinyon', 'karanasan', 'mungkahi', 'puna',
+  // Alumni-tracer domain vocabulary from the project's own Tagalog reference
+  // table (nagtapos, kumpanya, sahod, etc.) — mirrors ragService.js's
+  // DOMAIN_KEYWORDS additions for the same reason as every entry above.
+  'nagtapos', 'gradweyt', 'trabaho', 'nagtatrabaho', 'tatrabaho', 'kasalukuyang',
+  'kurso', 'programa', 'baytse', 'industriya', 'kumpanya', 'kompanya', 'posisyon',
+  'sahod', 'kita', 'lokasyon', 'lugar', 'sumagot',
 ];
 
 // Common English function words (pronouns, articles, prepositions, auxiliary
@@ -208,9 +214,25 @@ function correctWord(word) {
   return word;
 }
 
+// Many downstream Tagalog regexes (aggregationService.js's job-title/"bilang
+// X" patterns, person-lookup patterns, etc.) match "nagtatrabaho"/"nagwowork"
+// as one literal token. Casual typing very commonly splits the "nag" prefix
+// from the reduplicated verb root with a space or hyphen ("nag tatrabaho",
+// "nag-tatrabaho") — caught live when "ilan ang nag tatrabaho bilang FULL
+// TIME LECTURER" returned 0 despite the data existing, because extractFilters
+// found no jobTitle at all (the "bilang X" pattern requires "nagtatrabaho" as
+// one word). Fixing this once here, upstream of every pattern that assumes
+// the compound is unsplit, is the same "deterministic layer, not per-regex
+// patches" fix as SAAN_NAGTATRABAHO_PATTERN's loose `.{0,20}trabaho` already
+// applies for the person-lookup case — this generalizes it for every other
+// pattern instead of loosening each one individually.
+function collapseSplitCompounds(text) {
+  return text.replace(/\bnag[\s-]+(wowork|ta+trabaho)\b/gi, 'nag$1');
+}
+
 function correctTypos(question) {
   if (!question) return question;
-  return question
+  const corrected = question
     .split(/(\s+)/) // keep whitespace segments so spacing/punctuation-adjacent words are preserved
     .map(segment => {
       const match = segment.match(/^([A-Za-z]+)([?!.,;:]*)$/);
@@ -219,6 +241,7 @@ function correctTypos(question) {
       return correctWord(word) + punctuation;
     })
     .join('');
+  return collapseSplitCompounds(corrected);
 }
 
 module.exports = { correctTypos };
