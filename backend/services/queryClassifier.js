@@ -5,7 +5,24 @@
 // this whole pipeline used to be OFFENSIVE_PATTERN — i.e. the system
 // understood Filipino best when it was being insulted). "po"/"ho" (politeness
 // particles) are optional trailing words, not part of the greeting itself.
-const GREETING_PATTERN = /^\s*(hi|hello|hey|yo|good\s?(morning|afternoon|evening)|greetings|sup|kumusta|kamusta|musta)(\s+po|\s+ho)?[\s!.,]*$/i;
+// Trailing-letter repetition ("hii", "heyy", "helloo", "yooo", "suppp") is
+// common casual typing for a greeting, not a typo needing correction — the
+// "+" after each word's last letter tolerates it without opening up false
+// matches on unrelated words.
+//
+// Expanded beyond the original English+Tagalog core word list: a few more
+// common English greeting words (hola/howdy/hiya/oi/oy/wassup/"what's up"),
+// "good day"/"good noon" (both common Philippine-English usage alongside the
+// original morning/afternoon/evening), and "magandang umaga/hapon/gabi/araw"
+// (the actual Tagalog phrase, as opposed to just "kumusta"/"musta", which
+// are closer to "how are you"). The trailing-word group is now a repeatable
+// list (not just po/ho) so multiple fillers can chain — "kumusta na po",
+// "hi guys po" — and covers common address/particle words on their own.
+// "ac"/"ai" added to that trailing list so a greeting directed AT the
+// assistant by name ("hello ac!", "hi ai") still matches — those aren't
+// address terms like "guys"/"everyone" grammatically, but serve the exact
+// same role here (naming who the greeting is for, not changing its meaning).
+const GREETING_PATTERN = /^\s*(hi+|hello+|he+y+|yo+|hola|howdy|hiya|oi+|oy+|wassup|what'?s\s*up|good\s?(morning|afternoon|evening|day|noon)|greetings|su+p+|kumusta|kamusta|musta|magandang\s+(umaga|hapon|gabi|araw))(?:\s+(po|ho|na|ka|kayo|there|guys|everyone|all|bro|sis|ac|ai))*[\s!.,]*$/i;
 
 // A bare acknowledgment ("thanks", "okay", "salamat") had no category of its
 // own before — it fell to the 'statistical' default, hit RAG with nothing

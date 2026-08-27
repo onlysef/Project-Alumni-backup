@@ -8,6 +8,7 @@ const { loginLimiter, otpLimiter } = require('../middleware/rateLimit');
 const User     = require('../models/User');
 
 router.post('/register-partner',  ctrl.registerPartner);
+router.post('/register-alumni',   ctrl.registerAlumni);
 router.post('/login',             loginLimiter, ctrl.login);
 router.post('/verify-2fa',        otpLimiter, ctrl.verifyTwoFactor);
 router.post('/resend-2fa',        otpLimiter, ctrl.resendTwoFactor);

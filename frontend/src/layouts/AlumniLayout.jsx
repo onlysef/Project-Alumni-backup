@@ -73,7 +73,7 @@ export default function AlumniLayout() {
       <AlumniSidebar collapsed={collapsed} restricted={restricted} restrictedLabel={restrictedStep} onNavigate={() => window.innerWidth <= 600 && setCollapsed(true)} />
       {!collapsed && <div className="sidebar-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />}
       <main className="main">
-        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} showToast={showToast} />
+        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} showToast={showToast} restricted={restricted} />
         <Outlet context={{ section, sidebarCollapsed: collapsed, settings, setSettings, showToast }} />
       </main>
       <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">{toast}</div>

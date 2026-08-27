@@ -71,7 +71,7 @@ const chat = async (req, res) => {
     const { sources, type, suggestions, chart } = await generateAnswer(
       question,
       history,
-      { college },
+      { college, userName: req.user?.firstName || null },
       (token) => {
         res.write(`data: ${JSON.stringify({ token })}\n\n`);
       },
@@ -443,13 +443,17 @@ const getFlags = async (req, res) => {
 };
 
 // ─── PATCH /api/ai/flags/:id ──────────────────────────────────────────────────
+// Optional { note } in the body — a free-text explanation of what was wrong
+// (or that this was a false positive), saved as adminNote alongside marking
+// the flag reviewed. Trimmed and length-capped defensively (this is
+// free-typed admin input stored back into the DB, not itself narrated by the
+// AI, but still worth bounding).
 const reviewFlag = async (req, res) => {
   try {
-    const flag = await AiFlag.findByIdAndUpdate(
-      req.params.id,
-      { reviewed: true, reviewedBy: req.user.id, reviewedAt: new Date() },
-      { new: true }
-    );
+    const note = typeof req.body.note === 'string' ? req.body.note.trim().slice(0, 1000) : undefined;
+    const update = { reviewed: true, reviewedBy: req.user.id, reviewedAt: new Date() };
+    if (note) update.adminNote = note;
+    const flag = await AiFlag.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!flag) return res.status(404).json({ message: 'Flag not found.' });
     res.json({ flag });
   } catch (err) {

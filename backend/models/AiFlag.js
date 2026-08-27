@@ -25,6 +25,13 @@ const schema = new mongoose.Schema({
   reviewed:   { type: Boolean, default: false },
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   reviewedAt: { type: Date, default: null },
+  // Optional free-text left by whoever reviewed this ("this is a false
+  // positive, ignore" / "should have said X instead") — set once, at review
+  // time, alongside reviewed/reviewedBy/reviewedAt. Exists so recurring
+  // patterns across reviewed flags are actually visible later (in the DB,
+  // not just in an admin's memory) instead of vanishing the moment a flag is
+  // marked reviewed with no record of WHY.
+  adminNote:  { type: String, default: '' },
 }, { timestamps: true });
 
 schema.index({ reviewed: 1, createdAt: -1 });

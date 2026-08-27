@@ -8943,6 +8943,57 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             border-color: #e0cbcb;
         }
 
+        /* Wraps a flag's .ac-file-row plus its optional note input below it —
+           .ac-file-row keeps its own border/background as a self-contained
+           card, this is just a layout wrapper. */
+        .ac-flag-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .ac-flag-actions {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+        /* Deliberately borderless/ghost — a second bordered box the same
+           weight as the resolve checkmark, repeated down a 35-row list,
+           read as visually loud/repetitive. This is a secondary, optional
+           action, so it stays quiet until hovered. */
+        .ac-flag-note-toggle {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 8px;
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+            transition: background 120ms ease, color 120ms ease;
+        }
+        .ac-flag-note-toggle:hover {
+            background: #f3e9ea;
+            color: var(--maroon);
+        }
+        .ac-flag-note-input {
+            width: 100%;
+            box-sizing: border-box;
+            font: inherit;
+            font-size: 12.5px;
+            padding: 7px 10px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--text);
+        }
+        .ac-flag-note-input::placeholder { color: var(--muted); }
+        .ac-flag-note-input:focus-visible {
+            outline: none;
+            border-color: var(--gold);
+        }
+
         /* File type badge */
         .ac-file-type-badge {
             display: inline-grid;
@@ -9173,6 +9224,17 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
         body.dark-mode .ac-file-row:hover {
             background: #3a1f27;
             border-color: rgba(250, 200, 83, 0.3);
+        }
+        body.dark-mode .ac-flag-note-input {
+            background: #321820;
+            border-color: rgba(250, 200, 83, 0.15);
+            color: #f3e7ea;
+        }
+        body.dark-mode .ac-flag-note-input::placeholder { color: #cbb9bd; }
+        body.dark-mode .ac-flag-note-toggle { color: #cbb9bd; }
+        body.dark-mode .ac-flag-note-toggle:hover {
+            background: #3a1f27;
+            color: var(--gold);
         }
         body.dark-mode .ac-file-name { color: #f3e7ea; }
         body.dark-mode .ac-file-del {

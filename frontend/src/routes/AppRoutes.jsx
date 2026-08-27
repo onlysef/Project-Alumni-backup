@@ -18,6 +18,7 @@ const PartnershipsView        = lazy(() => import("../pages/admin/PartnershipsVi
 const AiAssistantView         = lazy(() => import("../pages/admin/AiAssistantView"));
 const AboutView               = lazy(() => import("../pages/admin/AboutView"));
 const TsuLandingView          = lazy(() => import("../pages/shared/TsuLandingView"));
+const AlumniSignUpView        = lazy(() => import("../pages/shared/AlumniSignUpView"));
 
 // Coordinator pages
 const CoordinatorHome         = lazy(() => import("../pages/coordinator/CoordinatorHome"));
@@ -70,6 +71,10 @@ export default function AppRoutes() {
         <Suspense fallback={<div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#76656a", fontSize: 14 }}>Loading…</div>}>
         <Routes>
           <Route path="/" element={<RoleRedirect />} />
+          {/* Public — alumni self-registration, no auth required. Placed
+              before the catch-all "*" below so it isn't swallowed by
+              RoleRedirect. */}
+          <Route path="/signup" element={<AlumniSignUpView />} />
           <Route path="*" element={<RoleRedirect />} />
 
           {/* Admin routes */}
