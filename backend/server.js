@@ -44,6 +44,14 @@ const allowedOrigins = [
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    // VS Code's built-in port forwarding (dev tunnels) issues a fresh random
+    // hostname under this domain every session, so it can't be pre-added to
+    // allowedOrigins like a normal deployed frontend URL — allow the whole
+    // devtunnels.ms domain instead, scoped to that domain only (not a
+    // blanket CORS bypass) for local dev/demo sharing.
+    try {
+      if (new URL(origin).hostname.endsWith('.devtunnels.ms')) return cb(null, true);
+    } catch {}
     cb(new Error(`CORS: ${origin} not allowed`));
   },
   credentials: true,
