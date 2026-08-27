@@ -2,20 +2,23 @@
   var host = window.location.hostname;
   var IS_LOCAL = ['localhost', '127.0.0.1'].includes(host);
 
-  // VS Code's built-in port forwarding (dev tunnels) exposes each forwarded
-  // port under the SAME random tunnel id/region, with only the port number
-  // itself differing in the hostname (e.g. "abc123-5173.usw2.devtunnels.ms"
-  // for the frontend, "abc123-5000.usw2.devtunnels.ms" for the backend) —
-  // swapping "-5173." for "-5000." derives the tunneled backend URL without
-  // hardcoding a tunnel URL that changes every time VS Code opens a new one.
-  var isDevTunnel = !IS_LOCAL && host.indexOf('-5173.') !== -1 && host.endsWith('.devtunnels.ms');
-  var tunnelApiHost = isDevTunnel ? host.replace('-5173.', '-5000.') : null;
+  // Accessed through a forwarded VS Code dev tunnel — route API calls back
+  // through this SAME tunneled origin instead of a second tunnel for the
+  // backend port. A separate 5000 tunnel is a genuinely different origin
+  // from the browser's point of view, and devtunnels.ms's anti-abuse
+  // click-through cookie for one tunnel origin isn't sent on background
+  // fetch() calls to a different tunnel origin — visiting the backend URL
+  // directly "worked" but the app's own fetch calls still failed. Routing
+  // through the same origin sidesteps that entirely: vite.config.js proxies
+  // "/api" to localhost:5000 itself (server-to-server), so only ONE port
+  // (5173) ever needs to be forwarded/public.
+  var isDevTunnel = !IS_LOCAL && host.endsWith('.devtunnels.ms');
 
   window.APP_CONFIG = {
     API: IS_LOCAL
       ? 'http://localhost:5000/api'
-      : tunnelApiHost
-        ? 'https://' + tunnelApiHost + '/api'
+      : isDevTunnel
+        ? window.location.origin + '/api'
         : 'https://project-alumni-backend.vercel.app/api',
     APP: IS_LOCAL
       ? 'http://localhost:5173'
