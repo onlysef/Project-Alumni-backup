@@ -86,7 +86,6 @@ export default function AccountsView() {
   const [search, setSearch]           = useState("");
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [openMenuId, setOpenMenuId]   = useState(null);
   const [confirm, setConfirm]         = useState(null);
   const [selected, setSelected]       = useState(new Set());
@@ -305,7 +304,7 @@ export default function AccountsView() {
       <section className="admin-card">
         <div className="admin-card-head">
           <h3>Manage Accounts</h3>
-          <div className={`accounts-controls${filtersOpen ? " filters-open" : ""}`}>
+          <div className="accounts-controls filters-open">
             <input
               className="admin-search"
               type="text"
@@ -316,20 +315,11 @@ export default function AccountsView() {
               aria-label="Search accounts by name or email"
               autoComplete="off"
             />
-            <button
-              type="button"
-              className="accounts-filter-toggle"
-              aria-expanded={filtersOpen}
-              onClick={() => setFiltersOpen((open) => !open)}
-            >
-              Filter by{filtersOpen ? ":" : ""}
-            </button>
-            {filtersOpen && (
-              <>
-                <AdminMenu menuKey="accounts-role" label={roleFilter} onSelect={(c) => applyFilter(c, "role")} />
-                <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
-              </>
-            )}
+            {/* Status is the only filter left (Role's own toggle button was
+                removed) — a separate "Filter by:" button that just reveals
+                this one option was one extra click for nothing. This button
+                IS the filter now; clicking it opens its own dropdown. */}
+            <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
             <button type="button" className="add-button import-button account-toolbar-action" onClick={() => setImportOpen(true)}>
               <span aria-hidden="true">⇩</span>
               <span>Import</span>

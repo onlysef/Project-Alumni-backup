@@ -15,7 +15,7 @@ function fmtNotifTime(d) {
   return new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
 }
 
-export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast = () => {} }) {
+export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast = () => {}, restricted = false }) {
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -80,11 +80,12 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
     <header className="topbar alumni-topbar">
       <div className="title-wrap"><button className="hamburger" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={onToggleSidebar}><Icon name="icon-8" /></button><h2>{title}</h2></div>
       <div className="top-actions alumni-actions" ref={actionsRef}>
-        <button className="icon-btn has-badge" data-count={badge > 9 ? "9+" : badge} aria-label="Notifications" onClick={openNotifications}><Icon name="icon-9" /></button>
-        <button className="icon-btn" aria-label="Settings" onClick={() => setPanel(panel === "settings" ? null : "settings")}><Icon name="icon-10" /></button>
+        <button className="icon-btn has-badge" data-count={badge > 9 ? "9+" : badge} aria-label="Notifications" disabled={restricted} onClick={openNotifications}><Icon name="icon-9" /></button>
+        <button className="icon-btn" aria-label="Settings" disabled={restricted} onClick={() => setPanel(panel === "settings" ? null : "settings")}><Icon name="icon-10" /></button>
         <button
           className="alumni-avatar"
           aria-label="Account settings"
+          disabled={restricted}
           onClick={() => setPanel(panel === "account" ? null : "account")}
         >
           {user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}

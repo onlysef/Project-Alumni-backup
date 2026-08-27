@@ -22,7 +22,7 @@ const protect = async (req, res, next) => {
   const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id, 'role college status tokenVersion').lean();
+    const user = await User.findById(decoded.id, 'firstName role college status tokenVersion').lean();
     if (!user) return res.status(401).json({ message: 'Invalid or expired token.' });
     if ((decoded.tokenVersion || 0) !== (user.tokenVersion || 0)) {
       return res.status(401).json({ message: 'Your session has expired. Please log in again.' });
@@ -30,7 +30,7 @@ const protect = async (req, res, next) => {
     if (user.status === 'suspended') {
       return res.status(403).json({ message: 'Your account has been suspended. Please contact the administrator.' });
     }
-    req.user = { id: decoded.id, role: user.role, college: user.college || '' };
+    req.user = { id: decoded.id, role: user.role, college: user.college || '', firstName: user.firstName || '' };
     next();
   } catch {
     res.status(401).json({ message: 'Invalid or expired token.' });

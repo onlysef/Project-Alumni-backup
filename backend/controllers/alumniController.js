@@ -385,14 +385,18 @@ const submitTracerStudy = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // Update User.course, track, and graduationYear from tracer answers
+    // Update User.course, track, and graduationYear from tracer answers.
+    // The tracer study's own answer is the real source of truth for course,
+    // so it always wins here regardless of whatever value the account
+    // started with (admin guess or the alumnus's own signup choice).
+    // College itself is intentionally left untouched — it isn't an actual
+    // tracer-form question, and it's required up front at account creation
+    // for college-scoping to work at all.
     const userUpdates = { tracerStudyCompleted: true };
     const currentUser = await User.findById(alumniId).select('course track graduationYear').lean();
-    if (!currentUser?.course) {
-      const mapped = mapProgramToCourse(body.programsCompleted);
-      if (mapped) userUpdates.course = mapped;
-    }
-    // Always sync track from programsCompleted (BSIT only)
+    const mapped = mapProgramToCourse(body.programsCompleted);
+    if (mapped) userUpdates.course = mapped;
+    // Sync track from programsCompleted (BSIT only)
     const resolvedCourse = userUpdates.course ?? currentUser?.course ?? '';
     if (resolvedCourse === 'BSIT') {
       const mappedTrack = mapProgramToTrack(body.programsCompleted);

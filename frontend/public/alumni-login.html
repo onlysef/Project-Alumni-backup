@@ -79,6 +79,10 @@
             </svg>
           </button>
 
+          <p class="signup-prompt" style="text-align:center;font-size:13px;margin-top:16px;color:#76656a;">
+            New alumnus? <a id="signup-link" href="#" style="color:#570013;font-weight:700;text-decoration:none;">Create an account</a>
+          </p>
+
         </div>
       </section>
     </div>
@@ -98,6 +102,8 @@
   <script>
     const API = window.APP_CONFIG.API;
     const APP = window.APP_CONFIG.APP;
+
+    document.getElementById('signup-link').href = `${APP}/signup`;
 
     function showMsg(text, isError = true) {
       let box = document.getElementById('msg-box');

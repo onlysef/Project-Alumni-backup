@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/User');
 const Partnership = require('../models/Partnership');
+const Graduate = require('../models/Graduate');
 const { generateOTP, sendOTPEmail } = require('../utils/emailService');
 
 const signToken = (userId, role, college = '', tokenVersion = 0) =>
@@ -335,6 +336,75 @@ const disableTwoFactor = async (req, res) => {
   }
 };
 
+// POST /api/auth/register-alumni
+// Self-service alumni sign-up — restored feature (previously removed; see
+// "removed the sign up page" in git history). Unlike registerPartner above,
+// there's no admin-approval gate: status goes straight to 'active' since the
+// alumnus chose their own real password here (the 'pending' + firstLogin
+// pattern createUser()/importUsers() use exists specifically to force a
+// password reset on an ADMIN-assigned temp password, which doesn't apply to
+// a self-chosen one).
+const registerAlumni = async (req, res) => {
+  try {
+    const { firstName, middleInitial, lastName, email, password, college, course, graduationYear, track } = req.body;
+
+    if (!firstName || !lastName || !email || !password || !college || !course || !graduationYear) {
+      return res.status(400).json({ message: 'Please fill in all required fields.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ message: 'Please enter a valid email address.' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    }
+
+    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    if (existing) return res.status(400).json({ message: 'Email is already registered.' });
+
+    const hashed = await bcrypt.hash(password, 12);
+    const userData = {
+      firstName:      firstName.trim(),
+      middleInitial:  middleInitial ? middleInitial.trim() : '',
+      lastName:       lastName.trim(),
+      email:          email.toLowerCase().trim(),
+      password:       hashed,
+      role:           'alumni',
+      status:         'active',
+      firstLogin:     false,
+      college:        college.trim().toUpperCase(),
+      course:         course.trim().toUpperCase(),
+      graduationYear: parseInt(graduationYear, 10),
+    };
+    if (track && userData.course === 'BSIT') userData.track = track;
+
+    const user = await User.create(userData);
+
+    // Same placeholder Graduate row createUser()/importUsers() seed for an
+    // admin-added alumnus — makes this self-registered account immediately
+    // findable through the AI assistant, consistent with any other active
+    // account. employmentStatus stays null, so this never inflates the
+    // tracer-study respondent count until they actually submit it.
+    Graduate.findOneAndUpdate(
+      { $or: [{ user_id: user._id }, { email: userData.email }] },
+      { $set: {
+        user_id:       user._id,
+        name:          `${userData.firstName} ${userData.lastName}`.trim(),
+        email:         userData.email,
+        program:       userData.course,
+        yearGraduated: userData.graduationYear,
+      },
+      $setOnInsert: { data: {} },
+      },
+      { upsert: true }
+    ).catch((err) => console.error('registerAlumni Graduate placeholder error:', err));
+
+    res.status(201).json({ message: 'Account created successfully! You can now log in.' });
+  } catch (err) {
+    console.error('registerAlumni error:', err);
+    res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+};
+
 // POST /api/auth/register-partner
 const registerPartner = async (req, res) => {
   try {
@@ -390,4 +460,5 @@ module.exports = {
   enableTwoFactor,
   disableTwoFactor,
   registerPartner,
+  registerAlumni,
 };

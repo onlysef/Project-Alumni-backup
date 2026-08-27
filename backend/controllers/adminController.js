@@ -129,12 +129,14 @@ const createUser = async (req, res) => {
     // A brand-new alumni account had no Graduate row at all until the alumni
     // themselves submitted the tracer study — until then, the AI assistant
     // had literally never heard of them ("Who is <name>?" came back as a
-    // dead end, not "no employment details yet"). Seeding a placeholder
-    // Graduate row immediately (name/email/user_id only) makes them findable
-    // right away via queryPersonLookup(), while leaving employmentStatus
-    // null — every respondent-count query filters on employmentStatus being
-    // non-null, so this placeholder does NOT inflate "254 respondents" until
-    // the alumni actually submits real tracer data.
+    // dead end, not "still pending"). Seeding a placeholder Graduate row
+    // immediately (name/email/user_id only) makes them findable right away
+    // via queryPersonLookup(), which itself checks the linked User's status
+    // and says the account is still pending rather than showing tracer-study
+    // fields for someone who hasn't even activated their account yet — see
+    // queryPersonLookup() in aggregationService.js. employmentStatus stays
+    // null either way, so this placeholder never inflates "254 respondents"
+    // until the alumni actually submits real tracer data.
     //
     // Matched by user_id OR email, same as submitTracerStudy's own upsert
     // below (not a plain create()) — a bulk-imported historical row for this
@@ -510,6 +512,33 @@ const importUsers = async (req, res) => {
         const r = toInsert[we.index];
         if (r) failed.push({ email: r.email, name: `${r.firstName} ${r.lastName}`, reason: we.errmsg || 'Insert failed.' });
       }
+    }
+
+    // Same placeholder Graduate row createUser() seeds for a single-account
+    // "Add Account" — without it, a bulk-imported alumnus stayed completely
+    // invisible to the AI assistant (queryPersonLookup only ever reads the
+    // Graduate collection) until they personally logged in and submitted the
+    // tracer study themselves. Fire-and-forget per row, same upsert-matched-
+    // by-user_id-or-email shape (a bulk-imported historical Graduate row for
+    // this same email may already exist with real employmentStatus data —
+    // this only links user_id onto it, never overwrites that data), and the
+    // same $setOnInsert-only `data: {}` reasoning (Graduate.data is required
+    // and upsert skips schema validation).
+    for (const user of insertedUsers) {
+      if (user.role !== 'alumni') continue;
+      Graduate.findOneAndUpdate(
+        { $or: [{ user_id: user._id }, { email: user.email }] },
+        { $set: {
+          user_id:       user._id,
+          name:          `${user.firstName} ${user.lastName}`.trim(),
+          email:         user.email,
+          program:       user.course || null,
+          yearGraduated: user.graduationYear || null,
+        },
+        $setOnInsert: { data: {} },
+        },
+        { upsert: true }
+      ).catch((err) => console.error('importUsers Graduate placeholder error:', err));
     }
 
     // ── Phase 5: fire all emails concurrently (non-blocking) ─────────────

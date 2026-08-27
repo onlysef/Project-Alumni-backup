@@ -372,6 +372,15 @@ export default function AiAssistantView() {
   const [flagTypeFilter, setFlagTypeFilter] = useState(null);
   const [loadingFlags, setLoadingFlags] = useState(false);
   const [resolvingFlagId, setResolvingFlagId] = useState(null);
+  // Keyed by flag id — an optional note typed before resolving a flag (what
+  // was actually wrong, or that it's a false positive). Local-only draft
+  // state; only sent to the server at the moment that flag is resolved.
+  const [flagNotes, setFlagNotes] = useState({});
+  // A note input shown on every one of 35+ rows at once (rather than only
+  // the rows someone actually wants to annotate) roughly doubled the list's
+  // height and read as cluttered — collapsed by default, toggled open per
+  // row on demand instead.
+  const [noteOpenIds, setNoteOpenIds] = useState(() => new Set());
 
   const scrollRef = useRef(null);
   const bottomRef = useRef(null);
@@ -794,12 +803,23 @@ export default function AiAssistantView() {
     setResolvingFlagId(id);
     try {
       const token = localStorage.getItem("auth_token");
-      await fetch(`${API}/ai/flags/${id}`, { method: "PATCH", headers: { Authorization: `Bearer ${token}` } });
+      const note = (flagNotes[id] || "").trim();
+      await fetch(`${API}/ai/flags/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(note ? { note } : {}),
+      });
       setFlags((f) => f.filter((x) => x._id !== id));
       setFlagCounts((c) => {
         const flag = flags.find((x) => x._id === id);
         if (!flag || !c[flag.type]) return c;
         return { ...c, [flag.type]: c[flag.type] - 1 };
+      });
+      setFlagNotes((n) => {
+        if (!(id in n)) return n;
+        const next = { ...n };
+        delete next[id];
+        return next;
       });
     } catch { /* ignore */ }
     finally { setResolvingFlagId(null); }
@@ -918,14 +938,10 @@ export default function AiAssistantView() {
                     >
                       {reembedding ? "Re-embedding…" : "Re-embed live data"}
                     </button>
-                    <button
-                      type="button"
-                      className="ac-menu-item"
-                      role="menuitem"
-                      onClick={() => { setMenuOpen(false); setFlagsOpen(true); fetchFlags(); }}
-                    >
-                      Flagged items
-                    </button>
+                    {/* "Flagged items" menu entry hidden per explicit request —
+                        the modal, fetchFlags/resolveFlag, and the whole
+                        backend flagging pipeline are all still intact; this
+                        is the one line that made it reachable from the UI. */}
                   </>
                 )}
               </div>
@@ -1359,23 +1375,51 @@ export default function AiAssistantView() {
                   <div className="ac-files-list">
                     <p className="ac-files-count">{flags.length} unreviewed</p>
                     {flags.map((fl) => (
-                      <div key={fl._id} className="ac-file-row">
-                        <span className={`ac-file-type-badge ac-flag-type-${fl.type}`}>{FLAG_TYPE_LABEL[fl.type] || fl.type}</span>
-                        <div className="ac-file-info">
-                          {fl.question && <span className="ac-file-name" title={fl.question}>{fl.question}</span>}
-                          {fl.detail && <span className="ac-file-meta" title={fl.detail}>{fl.detail}</span>}
+                      <div key={fl._id} className="ac-flag-item">
+                        <div className="ac-file-row">
+                          <span className={`ac-file-type-badge ac-flag-type-${fl.type}`}>{FLAG_TYPE_LABEL[fl.type] || fl.type}</span>
+                          <div className="ac-file-info">
+                            {fl.question && <span className="ac-file-name" title={fl.question}>{fl.question}</span>}
+                            {fl.detail && <span className="ac-file-meta" title={fl.detail}>{fl.detail}</span>}
+                          </div>
+                          <span className="ac-file-status">{fl.sourceType}</span>
+                          <div className="ac-flag-actions">
+                            <button
+                              type="button"
+                              className="ac-flag-note-toggle"
+                              aria-label={noteOpenIds.has(fl._id) ? "Hide note" : "Add a note"}
+                              title={noteOpenIds.has(fl._id) ? "Hide note" : "Add a note"}
+                              onClick={() => setNoteOpenIds((s) => {
+                                const next = new Set(s);
+                                if (next.has(fl._id)) next.delete(fl._id); else next.add(fl._id);
+                                return next;
+                              })}
+                            >
+                              <EditIcon />
+                            </button>
+                            <button
+                              type="button"
+                              className="ac-file-del"
+                              aria-label="Mark reviewed"
+                              title="Mark reviewed"
+                              disabled={resolvingFlagId === fl._id}
+                              onClick={() => resolveFlag(fl._id)}
+                            >
+                              {resolvingFlagId === fl._id ? "…" : "✓"}
+                            </button>
+                          </div>
                         </div>
-                        <span className="ac-file-status">{fl.sourceType}</span>
-                        <button
-                          type="button"
-                          className="ac-file-del"
-                          aria-label="Mark reviewed"
-                          title="Mark reviewed"
-                          disabled={resolvingFlagId === fl._id}
-                          onClick={() => resolveFlag(fl._id)}
-                        >
-                          {resolvingFlagId === fl._id ? "…" : "✓"}
-                        </button>
+                        {noteOpenIds.has(fl._id) && (
+                          <input
+                            type="text"
+                            className="ac-flag-note-input"
+                            placeholder="Add a note (optional)"
+                            autoFocus
+                            value={flagNotes[fl._id] || ""}
+                            onChange={(e) => setFlagNotes((n) => ({ ...n, [fl._id]: e.target.value }))}
+                            disabled={resolvingFlagId === fl._id}
+                          />
+                        )}
                       </div>
                     ))}
                   </div>
