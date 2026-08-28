@@ -290,6 +290,24 @@ test('extractPersonNames() — "sino sina X at Y" (Tagalog plural "who are") res
   assert.deepEqual(names, ['Meg Nicole Serrano', 'Liam Miranda']);
 });
 
+// Regression: "sino si Liam Miranda at Meg Nicole" (casual usage keeps the
+// SINGULAR marker "si" even when listing two names, instead of the
+// grammatically "correct" plural "sina") was observed live extracting a
+// single garbled candidate, "Liam Miranda at Meg Nicole", instead of two
+// separate people — MULTI_PERSON_PATTERN only triggered on "sino sina",
+// never bare "sino si". A genuine single-name "sino si X?" must still
+// resolve to exactly one name (the multi-person interpretation is only
+// committed to when splitting the blob yields 2+ names).
+test('extractPersonNames() — "sino si X at Y" (singular marker "si", casually used for two names) also resolves both', () => {
+  const names = extractPersonNames('sino si Liam Miranda at Meg Nicole');
+  assert.deepEqual(names, ['Liam Miranda', 'Meg Nicole']);
+});
+
+test('extractPersonNames() — a genuine single-name "sino si X?" still resolves to exactly one name', () => {
+  const names = extractPersonNames('sino si Liam Miranda?');
+  assert.deepEqual(names, ['Liam Miranda']);
+});
+
 // ── Hallucination guard: salary has no backing field in the Graduate
 // schema at all — the intent layer must NOT silently invent a topic/filter
 // for it; it must fall through to null so the caller (ragService.js) hits
@@ -365,6 +383,87 @@ test('extractFilters() — "further/continuing/pursued education" is never mista
   // A genuine mention of the Education program (no further/continuing/
   // pursue(d) immediately before it) must still resolve normally.
   assert.equal(extractFilters('Who is studying the Education program?').program, 'Education');
+});
+
+// Regression: "okay, thanks!" (two acknowledgment words chained together —
+// a very natural way to close out a conversation) fell all the way through
+// to the generic 'unknown' refusal ("I'm designed to answer questions
+// related to the Graduate Tracer Study records...") because
+// ACKNOWLEDGMENT_PATTERN only matched exactly ONE acknowledgment word, whole
+// message. A real follow-up sentence that merely CONTAINS an acknowledgment
+// word ("thanks for the info") must still classify normally, not get
+// swallowed by the broadened pattern.
+test('classify() — chained acknowledgments ("okay, thanks!", "sige salamat") are recognized, a real sentence containing "thanks" is not', () => {
+  const chained = ['okay, thanks!', 'sige salamat', 'ok thank you', 'alright, salamat po'];
+  for (const q of chained) {
+    assert.equal(classify(q), 'acknowledgment', `"${q}" should classify as acknowledgment`);
+  }
+  assert.notEqual(classify('thanks for the info'), 'acknowledgment');
+});
+
+// Regression: "sino ang nagtatrabaho sa Accenture\" (a stray trailing "\" —
+// a fat-fingered key next to Enter on many keyboard layouts) extracted NO
+// company at all, because COMPANY_LOOKUP_PATTERN's required trailing
+// `[?!.]|\s*$` never matched with the stray symbol sitting between the
+// company name and the end of the string. correctTypos() now strips a
+// narrow, explicit list of stray symbols that are never a real part of any
+// alumni question — email addresses ("@") and normal punctuation must
+// survive untouched.
+test('correctTypos() — a stray trailing symbol ("\\") no longer breaks company-name extraction', () => {
+  const withStray = correctTypos('sino ang nagtatrabaho sa Accenture\\');
+  const clean = correctTypos('sino ang nagtatrabaho sa Accenture');
+  assert.equal(withStray, clean);
+  assert.equal(extractFilters(withStray).company, 'Accenture');
+});
+
+// Regression: "sino ang nagtatrabaho sa Accenture?" (a STANDALONE, not a
+// follow-up, "who works at X" question in Tagalog) answered "0 employed
+// alumni at Accenture" — a COUNT sentence — instead of a names-shaped
+// answer, because detectTopic() had no Tagalog equivalent of the English
+// "who works?" alternative already in TOPIC_PATTERNS.names, so it fell to
+// EMPLOYMENT_SIGNAL's bare "nagtatrabaho" fallback ('employment' topic)
+// before ever reaching the (already-correct) filters.company extraction.
+test('detectTopic() — "sino ang nagtatrabaho sa X" (standalone Tagalog "who works at X") resolves to names, not employment', () => {
+  assert.equal(detectTopic('sino ang nagtatrabaho sa Accenture'), 'names');
+});
+
+// ── Robustness: typos, elongated letters, repeated punctuation, extra
+// spaces, and stray symbols must all be understood without changing the
+// question's meaning or requiring the user to retype it.
+test('correctTypos() — elongated letters ("silaaa") and repeated punctuation ("!!!"/"???") are collapsed to normal form', () => {
+  assert.equal(correctTypos('sino silaaa!!!'), 'sino sila!');
+  assert.equal(correctTypos('ilan nsa sutherland???'), 'ilan nasa sutherland?');
+  // Ordinary double letters must survive untouched — no real word repeats
+  // the same letter 3+ times in a row, so only genuine elongation is caught.
+  assert.equal(correctTypos('kailangan po ito'), 'kailangan po ito');
+});
+
+test('correctTypos() — "nsa" (missing a letter from "nasa", Tagalog "in/at") is corrected despite being too short for the general typo-distance check', () => {
+  assert.equal(correctTypos('ilan nsa Sutherland'), 'ilan nasa Sutherland');
+});
+
+test('isGroupReferentFollowUp() — recognizes an elongated "silaaa" the same as "sila" once run through correctTypos() first', () => {
+  const corrected = correctTypos('sino silaaa!!!');
+  assert.ok(isGroupReferentFollowUp(corrected), `expected "${corrected}" to be recognized as a group-referent follow-up`);
+});
+
+// Regression: "ilan nasa sutherland?" ("how many are AT Sutherland?" — no
+// verb "nagtatrabaho" at all, "nasa" alone carries the locative meaning) is
+// a genuinely common short way to ask this, distinct from the existing
+// verb-based "ilan ang nagtatrabaho sa X" pattern.
+test('extractFilters() — "ilan/sino nasa X" (no verb) resolves company the same as the verb-based phrasing', () => {
+  assert.equal(extractFilters('ilan nasa sutherland?').company, 'sutherland');
+  assert.equal(extractFilters('sino nasa Accenture?').company, 'Accenture');
+});
+
+// Regression: "ilan nasa IT?" must still resolve to the INDUSTRY (not
+// mistakenly captured as if "IT" were a company name by the new "nasa X"
+// company pattern above) — same nasa-industry rule the earlier
+// "Ilan sa kanila ang nasa IT?" fix already established.
+test('extractFilters() — "nasa IT" still resolves to industry, not a bare "IT" company name', () => {
+  const filters = extractFilters('ilan nasa IT?');
+  assert.equal(filters.industry, 'Information Technology');
+  assert.equal(filters.company, undefined);
 });
 
 // ── Existing English functionality must be completely unaffected ─────────

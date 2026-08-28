@@ -51,6 +51,23 @@ test('multi-turn: company count -> "who are they?" resolves to the company-filte
   assert.doesNotMatch(followUp.answer, /not sure which group/i);
 });
 
+// Regression: a follow-up whose ONLY inherited filters are gender +
+// employment status (no job title, company, industry, or program) was
+// observed live still answering "not sure which group you mean" —
+// detectTopic() found no topic keyword in "sino sino sila?" itself, and the
+// topic===null fallback only recognized jobTitleRegex/companyRegex/industry/
+// program as strong-enough evidence of a names request, not gender/status
+// alone. Broadened to any resolved filter at all.
+test('multi-turn: a follow-up whose only inherited filters are gender + status still resolves (not just job title/company)', { skip }, async () => {
+  const first = await generateAnswer('ilan ang babaeng may trabaho', [], {});
+  assert.match(first.answer, /female/i);
+
+  const history = [turn('user', 'ilan ang babaeng may trabaho'), turn('assistant', first.answer)];
+  const followUp = await generateAnswer('sino sino sila?', history, {});
+  assert.doesNotMatch(followUp.answer, /not sure which group/i);
+  assert.match(followUp.answer, /female/i);
+});
+
 // Memory is deliberately ONE-HOP, not a multi-turn accumulated window (user
 // preference: "dapat sa magkasunod na tanong lang siya may memory" — memory
 // should only apply to the immediately-next question). Turn 2 correctly
@@ -176,6 +193,34 @@ test('acknowledgment: a plain "okay"/"sige" gets a neutral reply, not "You\'re w
   assert.match(gratitude.answer, /you're welcome/i);
 });
 
+// Regression: "okay, thanks!" (two acknowledgment words chained) fell all
+// the way through to the 'unknown' refusal ("I'm designed to answer
+// questions related to the Graduate Tracer Study records...") because
+// ACKNOWLEDGMENT_PATTERN only matched exactly one acknowledgment word. Now
+// classifies as 'acknowledgment', and since it DOES contain real gratitude
+// ("thanks"), gets the "You're welcome!" reply, not the plain one.
+test('acknowledgment: a chained "okay, thanks!" is recognized and gets the gratitude reply', { skip }, async () => {
+  const history = [turn('user', 'how many alumni are employed?'), turn('assistant', 'There are 170 employed alumni.')];
+  const result = await generateAnswer('okay, thanks!', history, {});
+  assert.match(result.answer, /you're welcome/i);
+  assert.doesNotMatch(result.answer, /designed to answer questions/i);
+});
+
+// Regression: "kumusta AC" (a Tagalog greeting addressed to AC) classifies
+// correctly as 'greeting' in its ORIGINAL language, but was observed live
+// still answering an off-persona LLM-improvised "I'm functioning within
+// normal parameters" — condenseQuestion() translated it to "How are you,
+// AC?" before classify() ever saw it, and that translated phrasing no
+// longer matches GREETING_PATTERN (which requires a specific greeting word
+// at the very start). Translation is now skipped entirely for a message
+// that already classifies as greeting/acknowledgment/offensive in its
+// original language.
+test('greeting: "kumusta AC" gets the canned greeting, not an off-persona LLM improvisation', { skip }, async () => {
+  const result = await generateAnswer('kumusta AC', [], {});
+  assert.match(result.answer, /I'm AC/i);
+  assert.doesNotMatch(result.answer, /functioning within normal parameters/i);
+});
+
 // Regression: "okay" as literally the FIRST message of a brand new
 // conversation was observed live still answering the acknowledgment reply
 // instead of the greeting — TWICE. First with history=[] (fixed by checking
@@ -195,4 +240,108 @@ test('acknowledgment: a bare "okay"/"salamat" with NO real prior conversation ge
   const salamat = await generateAnswer('salamat', [turn('user', 'salamat')], {});
   assert.doesNotMatch(salamat.answer, /you're welcome|anything else i can help/i);
   assert.match(salamat.answer, /I'm AC/i);
+});
+
+// Regression: "saan siya nagtatrabaho?" ("where does SHE work?") right after
+// a person lookup for Meg Nicole Serrano was observed live answering "There
+// are 170 employed alumni in the tracer study database" — a real,
+// confident, but completely wrong answer. Two compounding causes, both
+// fixed: (1) isEllipticalContinuation() treated the SINGULAR pronoun "siya"
+// the same as a PLURAL/group referent, wrongly routing this through the
+// filter-inheritance mechanism (which can't resolve WHO "siya" is — only
+// condenseQuestion()'s LLM translation can, by substituting the real name);
+// (2) even with that fixed, the untranslated-text-first aggregation attempt
+// still independently matched "nagtatrabaho" as a generic employment-status
+// query on its own, before ever reaching the correctly name-translated
+// "Where does Meg Nicole Serrano work?". A single-person follow-up must
+// resolve to that specific person's record, not an unrelated aggregate.
+test('single-person pronoun follow-up: "saan siya nagtatrabaho?" resolves to the named person, not an unrelated aggregate count', { skip }, async () => {
+  const lookup = await generateAnswer('sino si Meg Nicole', [], {});
+  assert.match(lookup.answer, /Meg Nicole/i);
+
+  const history = [turn('user', 'sino si Meg Nicole'), turn('assistant', lookup.answer)];
+  const followUp = await generateAnswer('saan siya nagtatrabaho?', history, {});
+  assert.match(followUp.answer, /Meg Nicole/i);
+  assert.doesNotMatch(followUp.answer, /170|employed alumni in the tracer study database/i);
+});
+
+// Regression: the SAME follow-up above, once it correctly reached the named
+// person's record, still answered with the ENTIRE 8-field record (program,
+// year, job title, industry, work location, status, contact, email) instead
+// of just the work location that was actually asked about — the narrated
+// one-line answer ("Meg Nicole Serrano works locally within the
+// Philippines.") was REJECTED by personFactsDropped because "Local (within
+// the Philippines)" doesn't appear verbatim (the LLM naturally reworded the
+// parenthetical), even though the answer was accurate and on-topic. A
+// question about ONE field should get a focused answer, not a full dump.
+test('single-person follow-up: a question about ONE field gets a focused answer, not the entire record', { skip }, async () => {
+  const lookup = await generateAnswer('sino si Meg Nicole', [], {});
+  const history = [turn('user', 'sino si Meg Nicole'), turn('assistant', lookup.answer)];
+
+  const followUp = await generateAnswer('san siya nagtatrabaho', history, {});
+  assert.match(followUp.answer, /Meg Nicole/i);
+  // A full-record dump would include several of these on separate lines —
+  // absence of "Contact Number"/"Email" (fields nobody asked about) is the
+  // actual signal a focused answer was given, not the raw block fallback.
+  assert.doesNotMatch(followUp.answer, /Contact Number|Email:/i);
+});
+
+// The 5 GROUP follow-up shapes named directly in the "context-aware
+// follow-up questions" spec, all after the same Sutherland-scoped setup
+// question. Each used to either fall through to an unrelated generic
+// employment count (bare "nagtatrabaho"/"position" satisfying
+// EMPLOYMENT_SIGNAL before TOPIC_PATTERNS.names ever got a chance) or
+// resolve the wrong dimension entirely (a bare "IT" abbreviation always
+// meant the degree PROGRAM before, never the industry someone works in).
+test('group follow-ups: "saan sila", "sino sila", "ilan sa kanila ang nasa IT", "position nila", "kailan sila nagtapos" all resolve correctly', { skip }, async () => {
+  const setup = await generateAnswer('Ilang alumni ang nagtatrabaho sa Sutherland?', [], {});
+  const history = [turn('user', 'Ilang alumni ang nagtatrabaho sa Sutherland?'), turn('assistant', setup.answer)];
+
+  const where = await generateAnswer('Saan sila nagtatrabaho?', history, {});
+  assert.match(where.answer, /Taguig|Clark|Pampanga/i, 'must show actual work locations, not a generic employment count');
+
+  const who = await generateAnswer('Sino sila?', history, {});
+  assert.match(who.answer, /Liam Miranda/i);
+  assert.match(who.answer, /Jenica Magsakay/i);
+
+  const inIT = await generateAnswer('Ilan sa kanila ang nasa IT?', history, {});
+  assert.match(inIT.answer, /\*\*1\*\*/, 'only Liam Miranda has industry "Information Technology" — Jenica\'s is Customer Service');
+
+  const position = await generateAnswer('Ano ang position nila?', history, {});
+  assert.match(position.answer, /Software Engineer/i);
+  assert.match(position.answer, /Call Center Agent/i);
+
+  const when = await generateAnswer('Kailan sila nagtapos?', history, {});
+  assert.match(when.answer, /2021|2022/, 'must show actual graduation years, not a generic employment count');
+});
+
+// Regression: "sino silaaa!!!" (elongated "silaaa" + repeated "!!!") right
+// after a Sutherland count was observed live NOT resolving through the
+// deterministic group-referent path at all — GROUP_REFERENT_WORD's \bsila\b
+// requires a word boundary right after "sila" that "silaaa" (still elongated
+// at that point) never has. The bug was that isEllipticalContinuation()/
+// isGroupReferentFollowUp() were tested against rawQuestion (captured
+// BEFORE correctTypos() ever runs), not the typo/noise-corrected text, so
+// collapseRepeatedLetters() collapsing "silaaa" -> "sila" never actually
+// reached this check. Fell through to an LLM-narrated partial answer
+// instead of the clean, deterministic 2-person list.
+test('robustness: elongated letters + repeated punctuation ("sino silaaa!!!") still resolve through the deterministic group-referent path', { skip }, async () => {
+  const setup = await generateAnswer('Ilang alumni ang nagtatrabaho sa Sutherland?', [], {});
+  const history = [turn('user', 'Ilang alumni ang nagtatrabaho sa Sutherland?'), turn('assistant', setup.answer)];
+
+  const result = await generateAnswer('sino silaaa!!!', history, {});
+  assert.match(result.answer, /Jenica Magsakay/i);
+  assert.match(result.answer, /Liam Miranda/i);
+});
+
+// Regression: "ilan nsa sutherland???" (typo "nsa" for "nasa", repeated
+// "???") was observed live answering "There are 170 employed alumni" —
+// completely ignoring Sutherland — because neither the stray-punctuation
+// collapsing nor the "nsa"->"nasa" short-word alias existed yet, and the
+// verb-less "nasa X" company pattern (no "nagtatrabaho") didn't exist
+// either.
+test('robustness: "ilan nsa sutherland???" (typo + repeated punctuation, no verb) resolves the company-scoped count', { skip }, async () => {
+  const result = await generateAnswer('ilan nsa sutherland???', [], {});
+  assert.match(result.answer, /\*\*2\*\*/);
+  assert.match(result.answer, /sutherland/i);
 });

@@ -106,7 +106,31 @@ const TOPIC_PATTERNS = {
   // reduplication provides for "sino-sino ang" — a question about a GROUP,
   // not a single generic entity — without needing the alumni-noun guard
   // English "who is/are" needs, for the same reason "sino-sino ang" doesn't.
-  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b|\bsino[\s-]*sino\s+ang\b|\bsino\s+ang\s+mga\b/i,
+  // The three "saan/ano ang position/kailan" alternatives below answer a
+  // per-person DETAIL about an already-established GROUP follow-up ("sila"/
+  // "nila"/"they"/"them" — no name of their own, unlike a single-person
+  // lookup which extractPersonName()/queryPersonLookup() already resolve
+  // earlier in queryInner, before topic detection ever runs) — routed to
+  // 'names' too (queryNames() below inspects the question again to decide
+  // whether to show work location / graduation year alongside job title).
+  // Checked here, not left to fall through to EMPLOYMENT_SIGNAL's generic
+  // 'employment' breakdown at the very end of detectTopic() — caught live:
+  // "Saan sila nagtatrabaho?" (bare "nagtatrabaho") and "Ano ang position
+  // nila?" (bare "position") both satisfy EMPLOYMENT_SIGNAL and used to
+  // silently answer with an unrelated employed/unemployed count instead of
+  // the location/position actually asked about.
+  // "sino ang nagtatrabaho sa X" ("who works at/for X") — a STANDALONE
+  // (not-a-follow-up) reverse-lookup-by-company question, added to the
+  // pattern below. The English equivalent already matches via the "who
+  // works?" alternative already in the pattern; this covers the Tagalog
+  // phrasing, which that alternative doesn't reach. Without this, "sino ang
+  // nagtatrabaho sa Accenture?" fell all the way to EMPLOYMENT_SIGNAL's bare
+  // "nagtatrabaho" fallback ('employment' topic) before this file's own
+  // filters.company extraction (which DID correctly resolve "Accenture")
+  // ever got a chance to be used — answering an unrelated "0 employed
+  // alumni at Accenture" COUNT sentence instead of the names list a "sino"
+  // (who) question asks for.
+  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b|\bsino[\s-]*sino\s+ang\b|\bsino\s+ang\s+mga\b|\bsaan\s+(?:sila|sina|nila|silang)\b.{0,20}\b(?:nagtatrabaho|nagwowork|naninirahan|nakatira)\b|\bwhere\s+(?:do|does)\s+they\s+work\b|\bano\s+ang\s+(?:trabaho|posisyon|position)\s+(?:nila|niya)\b|\bwhat\s+(?:is|are)\s+their\s+(?:job\s+title|position|occupation)s?\b|\bkailan\s+(?:sila|silang)\b.{0,15}\b(?:nagtapos|natapos|nag-?graduate|nagsi-?graduate)\b|\bwhen\s+did\s+they\s+graduate\b|\bsino\b.{0,15}\b(?:nagtatrabaho|nagwowork|empleyado)\s+sa\b/i,
   // "ilan"/"ilang" (Tagalog "how many") — requires an alumni-referring noun
   // nearby, same as the English alternatives above, and NOT bare — bare
   // "ilan" is common enough in casual Tagalog phrasing of every other topic
@@ -273,6 +297,32 @@ function extractFilters(question) {
     if (expanded) filters.program = expanded;
   }
 
+  // "nasa IT/CS/IS/IM" ("in/at IT/CS/IS/IM") — Filipino "nasa" signals a
+  // WORKPLACE/FIELD context ("nasa IT siya nagtatrabaho", "nasa BPO
+  // industry"), not the degree program someone took. Checked BEFORE the
+  // SPEC_ABBR program loop below (whose own patterns exclude a "nasa "
+  // prefix via negative lookbehind for this exact reason) and sets
+  // filters.industry instead — without this, "Ilan sa kanila ang nasa IT?"
+  // ("how many of them are in IT?", a follow-up after establishing a group
+  // of employed alumni) wrongly matched the bare "IT" as filters.program,
+  // answering 0 (a real alumnus in this exact live case has industry
+  // "Information Technology" but program "Computer Science" — a program
+  // filter excluded him entirely) instead of the real industry-filtered
+  // count. Graduate.industry stores the same full spelled-out names as
+  // Graduate.program ("Information Technology", not bare "IT"), so the
+  // same expansions apply.
+  if (!filters.industry) {
+    const NASA_INDUSTRY_ABBR = [
+      [/\bnasa\s+IT\b/, 'Information Technology'],
+      [/\bnasa\s+CS\b/, 'Computer Science'],
+      [/\bnasa\s+IS\b/, 'Information Systems'],
+      [/\bnasa\s+IM\b/, 'Information Management'],
+    ];
+    for (const [pat, expansion] of NASA_INDUSTRY_ABBR) {
+      if (pat.test(question)) { filters.industry = expansion; break; }
+    }
+  }
+
   // Specialization abbreviations (not BS-prefixed) — checked only if program not yet set
   if (!filters.program) {
     const SPEC_ABBR = [
@@ -281,10 +331,13 @@ function extractFilters(question) {
       [/\bNet(?:work)?\s*Admin\w*\b/i,          'Network Administration'],
       [/\bNA\b/,                                'Network Administration'],   // case-sensitive: avoids Filipino "na"
       [/\bBusiness\s*Analytics?\b/i,            'Business Analytics'],
-      [/\bIS\b/,                                'Information Systems'],      // case-sensitive: avoids "is"
-      [/\bIT\b/,                                'Information Technology'],   // case-sensitive: avoids "it"
-      [/\bCS\b/,                                'Computer Science'],         // case-sensitive: avoids "cs"
-      [/\bIM\b/,                                'Information Management'],   // case-sensitive: avoids "im"
+      // (?<!nasa\s) — see the NASA_INDUSTRY_ABBR block above: "nasa IT" etc.
+      // means workplace/field, already claimed as an industry filter there,
+      // not a program to also (redundantly, and wrongly) claim here.
+      [/\b(?<!nasa\s)IS\b/,                     'Information Systems'],      // case-sensitive: avoids "is"
+      [/\b(?<!nasa\s)IT\b/,                     'Information Technology'],   // case-sensitive: avoids "it"
+      [/\b(?<!nasa\s)CS\b/,                     'Computer Science'],         // case-sensitive: avoids "cs"
+      [/\b(?<!nasa\s)IM\b/,                     'Information Management'],   // case-sensitive: avoids "im"
     ];
     for (const [pat, expansion] of SPEC_ABBR) {
       if (pat.test(question)) { filters.program = expansion; break; }
@@ -516,9 +569,17 @@ function extractFilters(question) {
   const company = extractCompanyName(question);
   if (company) {
     const lc = company.toLowerCase();
+    // A bare 2-letter abbreviation ("IT"/"CS"/"IS"/"IM") is never a real
+    // company name in this dataset — it's the NASA_INDUSTRY_ABBR match
+    // above claiming the same text as an industry ("ilan nasa IT?"), which
+    // the new "ilan/sino ... nasa X" company-lookup branch would otherwise
+    // ALSO match (neither `filters.industry`/`filters.program` substring
+    // check above catches this: "it" isn't a substring of "information
+    // technology", it's the other way around).
     const looksLikeIndustryOrLocation = /\b(industry|industries|sector|field|locally|abroad|overseas|philippines)\b/i.test(company)
       || (filters.industry && lc.includes(filters.industry.toLowerCase()))
-      || (filters.program  && lc.includes(filters.program.toLowerCase()));
+      || (filters.program  && lc.includes(filters.program.toLowerCase()))
+      || /^(?:it|cs|is|im)$/i.test(company.trim());
     if (!looksLikeIndustryOrLocation) {
       filters.company = company;
       filters.companyRegex = '\\b' + company.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b';
@@ -1877,8 +1938,18 @@ function extractPersonName(question) {
 // dropping "Miranda" — while other word-count combinations matched fine.
 // Splitting the blob in JS (below) instead of trying to do it all in one
 // regex sidesteps that whole class of nested-quantifier backtracking bug.
+// "sino si" (not just "sino sina") is ALSO a valid multi-person trigger —
+// caught live: "sino si Liam Miranda at Meg Nicole" (casual/common usage
+// that keeps the singular marker "si" even when listing two names, rather
+// than the grammatically "correct" plural "sina") extracted as ONE garbled
+// name, "Liam Miranda at Meg Nicole", instead of two people. Safe to add
+// without a separate single-vs-multi trigger split: extractPersonNames()
+// below only commits to the multi-person interpretation when splitting the
+// captured blob actually yields 2+ names — a genuine single-name "sino si
+// Liam Miranda?" still splits to exactly 1 name and falls through to
+// extractPersonName() unaffected, same as before this change.
 const MULTI_PERSON_PATTERN = new RegExp(
-  String.raw`\b(?:who\s+are|sino\s+sina|(?:contact\s+numbers?|phone\s+numbers?|emails?|info(?:rmation)?|details?)\s+(?:of|for|about))\s+(.+?)(?:[?!.]|\s*$)`,
+  String.raw`\b(?:who\s+are|sino\s+si(?:na)?\b|(?:contact\s+numbers?|phone\s+numbers?|emails?|info(?:rmation)?|details?)\s+(?:of|for|about))\s+(.+?)(?:[?!.]|\s*$)`,
   'i'
 );
 
@@ -2055,7 +2126,7 @@ async function queryPersonLookup(name) {
   };
 }
 
-async function queryNames(filters) {
+async function queryNames(filters, question = '') {
   const pipeline = [
     ...stablePipeline(filters),
     { $match: { name: { $nin: [null, ''] } } },
@@ -2157,6 +2228,15 @@ async function queryNames(filters) {
 
   const showJob = !!(filters.jobTitle || filters.company || filters.industry || filters.excludeIndustry || filters.employmentStatus || filters.excludeEmploymentStatus);
   const showCompany = !!filters.company;
+  // Neither of these is a FILTER (no "abroad"/"2022" was asked to narrow
+  // the group by) — they're a request to DISPLAY that attribute for the
+  // group already established by the filters above. "Saan sila
+  // nagtatrabaho?" ("where do they work?") and "Kailan sila nagtapos?"
+  // ("when did they graduate?") both resolve to this 'names' topic (see
+  // TOPIC_PATTERNS.names) but need a different per-person detail shown than
+  // the job-title default.
+  const showLocation = /\b(saan|where)\b.{0,25}\b(nagtatrabaho|nagwowork|naninirahan|nakatira|work(?:ing)?)\b/i.test(question);
+  const showYear = /\b(kailan|when)\b.{0,20}\b(nagtapos|natapos|graduate)\b/i.test(question);
 
   const suffix = docs.length === 50 ? ` (showing first 50)` : ` (${docs.length} total)`;
   let out = `**Alumni${label ? ` ${label}` : ''}${suffix}:**\n\n`;
@@ -2164,6 +2244,8 @@ async function queryNames(filters) {
     out += `${i + 1}. **${toTitleCase(cleanText(d.name))}**`;
     if (showJob && d.jobTitle) out += `, ${toTitleCase(cleanText(d.jobTitle))}`;
     if (showCompany && d.companyName) out += ` at ${toTitleCase(cleanText(d.companyName))}`;
+    if (showLocation) out += d.workLocation ? ` — ${toTitleCase(cleanText(d.workLocation))}` : ` — location not on file`;
+    if (showYear) out += d.yearGraduated ? ` — graduated ${d.yearGraduated}` : ` — graduation year not on file`;
     out += '\n';
   });
   return out;
@@ -2570,12 +2652,20 @@ async function queryCompare(question) {
 // "ilan(g)? ang"/"sino(-sino)? ang" (requiring them adjacent) rejected
 // outright — caught live via a multi-turn conversation-memory test where
 // this exact phrasing extracted no company at all.
-const COMPANY_LOOKUP_PATTERN = /\b(?:who|which\s+alumni|what\s+alumni|how\s+many(?:\s+alumni)?)\s+(?:(?:is|are)\s+)?(?:currently\s+)?work(?:ing|s)?\s+(?:for|at|in)\s+(?:(?:the\s+)?company\s+(?:named|called)\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)|\b(?:sino(?:-sino)?\s+(?:mga\s+)?(?:alumni\s+)?ang|ilan(?:g)?\s+(?:mga\s+)?(?:alumni\s+)?ang)\s+(?:nagta+trabaho|nagwowork)\s+sa\s+(?:k[ou]mpanyang?\s+|company\s+na\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)/i;
+// Third branch: "ilan nasa X" / "sino nasa X" — no verb at all ("nagtatrabaho"
+// omitted entirely, "nasa" ("at/in") doing all the work on its own). Caught
+// live: "ilan nsa sutherland???" (typo'd "nasa", corrected upstream by
+// typoCorrect.js before this ever runs) — a genuinely common short way to
+// ask this, distinct enough from the verb-based Tagalog branch above that
+// it needs its own alternative rather than making "nagta+trabaho|nagwowork"
+// optional there (which would make THAT branch dangerously permissive for
+// unrelated "nasa" phrasings that have nothing to do with a company).
+const COMPANY_LOOKUP_PATTERN = /\b(?:who|which\s+alumni|what\s+alumni|how\s+many(?:\s+alumni)?)\s+(?:(?:is|are)\s+)?(?:currently\s+)?work(?:ing|s)?\s+(?:for|at|in)\s+(?:(?:the\s+)?company\s+(?:named|called)\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)|\b(?:sino(?:-sino)?\s+(?:mga\s+)?(?:alumni\s+)?ang|ilan(?:g)?\s+(?:mga\s+)?(?:alumni\s+)?ang)\s+(?:nagta+trabaho|nagwowork)\s+sa\s+(?:k[ou]mpanyang?\s+|company\s+na\s+)?([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)|\b(?:ilan(?:g)?|sino(?:-sino)?)\b.{0,15}\bnasa\s+([A-Za-z0-9][A-Za-z0-9\s.,&'-]{1,60}?)(?:[?!.]|\s*$)/i;
 
 function extractCompanyName(question) {
   const m = question.match(COMPANY_LOOKUP_PATTERN);
   if (!m) return null;
-  return (m[1] || m[2] || '').trim();
+  return (m[1] || m[2] || m[3] || '').trim();
 }
 
 async function queryCount(filters) {
@@ -2997,15 +3087,21 @@ async function queryInner(question, seedFilters = {}) {
   // way through to RAG (which has no names/titles to search) and refused.
   // A resolved jobTitleRegex is itself strong enough evidence this was a
   // real names-by-title query to route it as 'names' even with no other
-  // topic keyword present. Same reasoning extends to companyRegex/industry/
-  // program: a bare group-referent follow-up ("who are they?") that resolved
-  // NO topic keyword of its own (it's just "who"+a pronoun) but DID inherit
-  // a company/industry/program from conversation-context accumulation (see
+  // topic keyword present. Same reasoning extends to ANY resolved filter —
+  // not just jobTitleRegex/companyRegex/industry/program: a bare
+  // group-referent follow-up ("who are they?", "sino sino sila?") that
+  // resolved NO topic keyword of its own (it's just "who/sino"+a pronoun)
+  // but DID inherit filters from conversation-context accumulation (see
   // ragService.js's buildSeedFilters/contextQuestions) is exactly as strong
-  // evidence of a names request — caught live: "who are they?" right after
-  // "how many alumni work at Sutherland?" resolved topic=null (Sutherland is
-  // a companyRegex, not a jobTitleRegex) and fell through to an unhelpful
-  // "not sure which group" clarify instead of listing the 2 Sutherland alumni.
+  // evidence of a names request, even when the inherited filter is
+  // gender/employmentStatus alone (no job title, company, industry, or
+  // program) — caught live TWICE: once for a companyRegex-only case ("who
+  // are they?" after a Sutherland count), again for a gender+status-only
+  // case ("sino sino sila?" after "ilan ang babaeng may trabaho?" — female +
+  // employed, neither a job title nor a company). Both fell through to an
+  // unhelpful "not sure which group" clarify instead of listing the matching
+  // alumni. `programLabel` excluded — a display-only companion to `program`,
+  // never itself a real filter.
   //
   // Defaults to 'count' instead when the question itself asks "how many"/
   // "ilan" — "how many are from BSCS?" (elliptical, no "alumni" noun for
@@ -3013,7 +3109,7 @@ async function queryInner(question, seedFilters = {}) {
   // conversation-context accumulation must still answer with a NUMBER, not
   // silently switch into a names list just because a strong filter happens
   // to be present.
-  if (topic === null && (filters.jobTitleRegex || filters.companyRegex || filters.industry || filters.program)) {
+  if (topic === null && Object.keys(filters).some(k => k !== 'programLabel')) {
     topic = /\b(?:how\s+many|ilan(?:g)?)\b/i.test(question) ? 'count' : 'names';
   }
 
@@ -3167,8 +3263,19 @@ async function queryInner(question, seedFilters = {}) {
       : /attend(?:ed|ance)?\b|dumalo|pagdalo/i.test(question)
       ? queryEventAttendanceCount(question)
       : queryEventOverview(question),
-    names:           () => queryNames(filters),
-    count:           () => isSectorQuestion ? querySector(filters) : filters.employmentStatuses ? queryEmployment(filters) : (filters.workLocation || isCompoundLocationQuestion) ? queryWorkLocation(filters) : (filters.industry || filters.excludeIndustry) ? queryIndustry(filters) : queryCount(filters),
+    names:           () => queryNames(filters, question),
+    // (filters.industry || filters.excludeIndustry) && !filters.company —
+    // queryIndustry() answers a DIFFERENT question ("what industries do
+    // alumni work in", a top-N breakdown across the whole cohort); once a
+    // company is ALSO part of the filters (a follow-up already scoped to a
+    // specific employer's alumni), the real question is a plain scoped
+    // COUNT ("how many of THEM are in industry X"), which queryCount()
+    // already answers correctly (it applies filters.industry the same way
+    // as any other postDedup filter). Caught live: "Ilan sa kanila ang nasa
+    // IT?" (how many of them are in IT?) right after establishing a
+    // Sutherland-scoped group answered with an unrelated, confusingly
+    // worded industry-wide breakdown instead of the Sutherland+IT count.
+    count:           () => isSectorQuestion ? querySector(filters) : filters.employmentStatuses ? queryEmployment(filters) : (filters.workLocation || isCompoundLocationQuestion) ? queryWorkLocation(filters) : ((filters.industry || filters.excludeIndustry) && !filters.company) ? queryIndustry(filters) : queryCount(filters),
     rate:            () => isCompoundLocationQuestion
       ? queryWorkLocation(filters)
       : /\b(which|what)\s+(program|course|degree)\b/i.test(question)

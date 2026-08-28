@@ -31,7 +31,16 @@ const GREETING_PATTERN = /^\s*(hi+|hello+|he+y+|yo+|hola|howdy|hiya|oi+|oy+|wass
 // Anchored whole-message, same as GREETING_PATTERN, so it can't misfire
 // mid-sentence ("thanks for the info" stays unmatched — that's a real
 // follow-up, not a bare acknowledgment).
-const ACKNOWLEDGMENT_PATTERN = /^\s*(thanks|thank\s*you|ty|ok|okay|got\s*it|cool|alright|perfect|nice(\s+one)?|salamat|sige|ayos|okay\s+lang)(\s+po|\s+ho)?[\s!.,]*$/i;
+//
+// One-or-more repeated ACK_WORD tokens (comma/space/"and"/"at" separated) —
+// not just a single one — so a chained "okay, thanks!" (two acknowledgment
+// words back to back, a very natural way to close out a conversation)
+// still matches. Originally only matched ONE token exactly, so "okay,
+// thanks!" fell all the way through to the generic 'unknown' refusal
+// ("I'm designed to answer questions related to the Graduate Tracer Study
+// records...") — a strange reply to what was just a friendly sign-off.
+const ACK_WORD = '(?:thanks|thank\\s*you|ty|ok|okay|got\\s*it|cool|alright|perfect|nice(?:\\s+one)?|salamat|sige|ayos|okay\\s+lang|po|ho)';
+const ACKNOWLEDGMENT_PATTERN = new RegExp(`^\\s*${ACK_WORD}(?:\\s*(?:[,]|and|at)?\\s*${ACK_WORD})*[\\s!.,]*$`, 'i');
 
 // Profanity/abuse aimed at the assistant — checked before every other
 // classification so a message like "fuck u" doesn't fall through to the
