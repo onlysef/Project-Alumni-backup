@@ -89,7 +89,7 @@ const VOCABULARY = [
   // DOMAIN_KEYWORDS additions for the same reason as every entry above.
   'nagtapos', 'gradweyt', 'trabaho', 'nagtatrabaho', 'tatrabaho', 'kasalukuyang',
   'kurso', 'programa', 'baytse', 'industriya', 'kumpanya', 'kompanya', 'posisyon',
-  'sahod', 'kita', 'lokasyon', 'lugar', 'sumagot',
+  'sahod', 'kita', 'lokasyon', 'lugar', 'sumagot', 'nasa', 'sila', 'nila', 'kanila', 'siya', 'niya',
 ];
 
 // Common English function words (pronouns, articles, prepositions, auxiliary
@@ -180,10 +180,23 @@ function maxDistanceFor(len) {
   return 2;
 }
 
+// A tiny curated set of short (<=3-letter) typos that are common and
+// unambiguous enough to correct even though maxDistanceFor() below
+// deliberately requires an EXACT match for words this short — a plain
+// Levenshtein pass at this length risks corrupting some OTHER short,
+// legitimately-spelled word into an unrelated vocabulary term, so the
+// general path stays conservative. Checked as an explicit alias instead,
+// bypassing that length restriction only for these specific, low-collision
+// cases. "nsa" ("nasa" minus one letter — Tagalog "in/at") caught live via
+// "ilan nsa sutherland???" failing to resolve the company. Add more here
+// only when a similarly clear, low-risk case comes up, not preemptively.
+const SHORT_WORD_ALIASES = { nsa: 'nasa' };
+
 function correctWord(word) {
   const lower = word.toLowerCase();
   if (STOPWORDS.has(lower)) return word; // common function word — never a typo target
   if (VOCABULARY.includes(lower)) return word; // already correct, leave as-is (preserves original casing)
+  if (SHORT_WORD_ALIASES[lower]) return SHORT_WORD_ALIASES[lower];
 
   let best = null;
   let bestDist = Infinity;
@@ -230,8 +243,50 @@ function collapseSplitCompounds(text) {
   return text.replace(/\bnag[\s-]+(wowork|ta+trabaho)\b/gi, 'nag$1');
 }
 
+// Stray symbols that are never a real part of any alumni-tracer question —
+// a fat-fingered trailing "\" (a stray unshifted key next to Enter on many
+// keyboard layouts) or similar are dropped outright rather than left to
+// silently break every downstream regex that expects the sentence to end in
+// ordinary punctuation. Caught live: "sino ang nagtatrabaho sa Accenture\"
+// extracted NO company at all (COMPANY_LOOKUP_PATTERN's required trailing
+// `[?!.]|\s*$` never matched with a stray "\" sitting between the company
+// name and the end of the string), while the identical question one
+// character shorter worked correctly. Deliberately a narrow, explicit list
+// (not a blanket "strip anything non-alphanumeric") — email addresses ("@"),
+// URLs ("/"), and ordinary punctuation must all survive untouched.
+const STRAY_SYMBOL_PATTERN = /[\\~^`|]+/g;
+
+function stripStraySymbols(text) {
+  return text.replace(STRAY_SYMBOL_PATTERN, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+// Collapses a run of 3+ identical consecutive LETTERS down to one —
+// "silaaa"/"sinooo" (emphatic elongation, extremely common in informal
+// Filipino/English chat typing: "ilan nsa sutherland???", "sino silaaa!!!")
+// isn't a typo Levenshtein distance can fix (the edit distance to the real
+// word only grows with every repeated letter), so it has to be normalized
+// BEFORE word-level correctWord() ever runs, not left to it. Threshold of
+// 3+ (not 2+) leaves ordinary double letters ("committee", "kailangan")
+// completely untouched — no real English or Filipino word repeats the same
+// letter 3+ times in a row.
+function collapseRepeatedLetters(text) {
+  return text.replace(/([a-zA-Z])\1{2,}/g, '$1');
+}
+
+// Collapses repeated punctuation ("???", "!!!") down to a single mark —
+// same emphatic-typing noise as collapseRepeatedLetters above, just for
+// punctuation instead of letters. Doesn't change meaning, and downstream
+// patterns that expect exactly one sentence-ending punctuation mark
+// (COMPANY_LOOKUP_PATTERN's trailing `[?!.]`, etc.) see clean input either way.
+function collapseRepeatedPunctuation(text) {
+  return text.replace(/([?!.,])\1+/g, '$1');
+}
+
 function correctTypos(question) {
   if (!question) return question;
+  question = stripStraySymbols(question);
+  question = collapseRepeatedLetters(question);
+  question = collapseRepeatedPunctuation(question);
   const corrected = question
     .split(/(\s+)/) // keep whitespace segments so spacing/punctuation-adjacent words are preserved
     .map(segment => {

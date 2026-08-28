@@ -60,8 +60,12 @@ function buildGreetingResponse(userName) {
 // respectful (not a thank-you at all) and got "You're welcome!" back.
 // Re-tested against the raw question here (not a new classify() bucket, to
 // avoid touching the type enum every downstream consumer already expects)
-// to pick the reply that actually fits which one was said.
-const GRATITUDE_PATTERN = /^\s*(thanks|thank\s*you|ty|salamat)(\s+po|\s+ho)?[\s!.,]*$/i;
+// to pick the reply that actually fits which one was said. A containment
+// check (not anchored whole-string, unlike ACKNOWLEDGMENT_PATTERN which
+// still validates the message is ONLY acknowledgment words) — a chained
+// "okay, thanks!" contains real gratitude alongside the plain "okay", so it
+// should get "You're welcome!", not the plain "anything else?" reply.
+const GRATITUDE_PATTERN = /\b(thanks|thank\s*you|ty|salamat)\b/i;
 const ACK_RESPONSE = `You're welcome! Let me know if you have more questions about the tracer study data.`;
 const PLAIN_ACK_RESPONSE = `Is there anything else I can help you with regarding the tracer study data?`;
 
@@ -473,6 +477,18 @@ function isGroupReferentFollowUp(question) {
 const EXPLICIT_SUBJECT_PATTERN = /\b(alumni|alumnus|alumna|graduates?|gradweyt|students?|respondents?|batch\s*\d{4}|\d{4}\s*batch|database|datos|records?)\b/i;
 const RESET_PHRASE_PATTERN = /\b(forget|never\s*mind|nevermind|let'?s\s+talk\s+about|now\s+i\s+want|different\s+topic|new\s+topic|switch(?:ing)?\s+topics?|kalimutan|bagong\s+tanong|iba\s+na\s+(?:ang\s+)?(?:usapan|tanong|topic))\b/i;
 
+// A SINGULAR person-referring pronoun ("siya"/"niya"/"she"/"he"/"her"/"him")
+// names a PERSON from earlier in the conversation, not a filter to inherit —
+// resolving it needs that person's actual NAME substituted in, which only
+// condenseQuestion()'s LLM translation can do (there's no deterministic
+// name-tracking here). The PLURAL/group forms ("sila"/"nila"/"they"/"them")
+// are the ones isEllipticalContinuation() below treats as filter-inheriting
+// continuations — kept as a separate pattern from PRONOUN_REFERENT_PATTERN
+// above (which still triggers condenseQuestion() for either kind) so the two
+// number-agnostic and number-specific uses don't get tangled.
+const SINGULAR_PRONOUN_PATTERN = /\b(his|her|him|he|she|that person|this person|siya|niya|kanya|kaniya)\b/i;
+const PLURAL_PRONOUN_PATTERN = /\b(their|theirs|them|they|those|nila|sila|kanila)\b/i;
+
 function isEllipticalContinuation(question) {
   if (RESET_PHRASE_PATTERN.test(question)) return false;
   // Checked BEFORE any trigger below (not just the "how many" one) — "who
@@ -484,8 +500,19 @@ function isEllipticalContinuation(question) {
   // its own filters with the prior turn's stale ones — a regression, not a
   // fix (caught before shipping, via this exact test case).
   if (EXPLICIT_SUBJECT_PATTERN.test(question)) return false;
+  // Checked before the group-referent/plural triggers below — a message
+  // with a singular pronoun and NO plural one is a person follow-up, never
+  // a filter-inheriting one. Caught live: "saan siya nagtatrabaho?" ("where
+  // does SHE work?") right after a person lookup for Meg Nicole Serrano was
+  // wrongly treated as elliptical — its own text contains "nagtatrabaho"
+  // ("is employed"), which extractFilters()/detectTopic() correctly (but
+  // uselessly, for THIS question) resolved to a generic employment-status
+  // topic, producing a REAL but completely wrong "170 employed alumni"
+  // answer before the question ever reached its properly name-translated
+  // form ("Where does Meg Nicole Serrano work?").
+  if (SINGULAR_PRONOUN_PATTERN.test(question) && !PLURAL_PRONOUN_PATTERN.test(question)) return false;
   if (isGroupReferentFollowUp(question)) return true;
-  if (PRONOUN_REFERENT_PATTERN.test(question) || CONTINUATION_PATTERN.test(question)) return true;
+  if (PLURAL_PRONOUN_PATTERN.test(question) || CONTINUATION_PATTERN.test(question)) return true;
   // "how many/ilan (ang/are) X" — elliptical, means "of the group already
   // being discussed" (no explicit subject noun survived the check above).
   // Also covers a completely bare "how many?"/"ilan?" continuation.
@@ -1242,7 +1269,16 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // turns' filters to seed the aggregation call further down. Empty when
   // this question is self-contained or explicitly starts a new topic, in
   // which case the aggregation call below behaves exactly as it always has.
-  const contextQuestions = isEllipticalContinuation(rawQuestion)
+  // Tested against preTranslateQuestion (typo/noise-corrected — stray
+  // symbols stripped, "silaaa"/"???" collapsed) rather than raw rawQuestion
+  // — caught live: "sino silaaa!!!" right after a Sutherland count fell
+  // through this check entirely, because GROUP_REFERENT_WORD's \bsila\b
+  // requires a word boundary right after "sila" that "silaaa" (elongated,
+  // no boundary until after the extra a's) never has. buildContextQuestions'
+  // own SECOND argument below stays rawQuestion on purpose — it's matched
+  // against chatHistory's own (unprocessed) duplicated-current-message
+  // entry, see that function's comment for why.
+  const contextQuestions = isEllipticalContinuation(preTranslateQuestion)
     ? buildContextQuestions(chatHistory, rawQuestion)
     : [];
 
@@ -1262,7 +1298,21 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // (returns the question unchanged) when NEITHER a referent-pronoun+history
   // situation NOR Tagalog-looking text is present, so an ordinary standalone
   // English question pays no extra cost here.
-  question = await condenseQuestion(question, chatHistory);
+  // Skip translation entirely when the message is ALREADY unambiguous in
+  // its original language — greeting/acknowledgment/offensive are simple,
+  // deterministic categories that get no benefit from translation, and
+  // translation can actively BREAK their classification: "kumusta AC"
+  // classifies correctly as 'greeting' (GREETING_PATTERN matches the
+  // Tagalog word directly), but condenseQuestion() translating it to "How
+  // are you, AC?" no longer matches GREETING_PATTERN at all (which requires
+  // a specific greeting word at the very start, not "how are you" phrasing)
+  // — so the translated text fell through past every canned-response branch
+  // and the LLM improvised an off-persona "I'm functioning within normal
+  // parameters" instead of the intended greeting reply.
+  const preTranslateType = classify(preTranslateQuestion);
+  question = ['greeting', 'acknowledgment', 'offensive'].includes(preTranslateType)
+    ? preTranslateQuestion
+    : await condenseQuestion(question, chatHistory);
 
   // Cache lookup on the fully-resolved, self-contained question (after typo
   // correction and pronoun/continuation resolution above) — two different
@@ -1504,7 +1554,23 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     // ORIGINAL text is preferred outright; only fall back to the translated
     // version (better for pronoun/context resolution the regex layer can't do
     // on its own) when the original didn't resolve to anything.
-    if (!aggResult && preTranslateQuestion !== question) aggResult = await aggregationService.query(preTranslateQuestion, { college: collegeScope });
+    //
+    // Skipped entirely when the untranslated text has an unresolved SINGULAR
+    // pronoun ("siya"/"she"/"her") and translation actually changed
+    // something (implying it substituted in a real name) — the untranslated
+    // text is fundamentally incomplete without that name, so any match
+    // against it is a false-positive coincidence, not a real answer. Caught
+    // live: "saan siya nagtatrabaho?" ("where does SHE work?", right after a
+    // person lookup) still contains the generic word "nagtatrabaho" ("is
+    // employed"), which aggregationService's own patterns correctly (but
+    // uselessly, for this specific question) matched as a generic
+    // employment-status query — producing a confident, real, but completely
+    // wrong "170 employed alumni" count instead of ever reaching "Where does
+    // Meg Nicole Serrano work?", the correctly name-substituted translation.
+    const hasUnresolvedSingularPronoun = SINGULAR_PRONOUN_PATTERN.test(preTranslateQuestion) && !PLURAL_PRONOUN_PATTERN.test(preTranslateQuestion);
+    if (!aggResult && preTranslateQuestion !== question && !hasUnresolvedSingularPronoun) {
+      aggResult = await aggregationService.query(preTranslateQuestion, { college: collegeScope });
+    }
     if (!aggResult) aggResult = await aggregationService.query(question, { college: collegeScope });
     timings.aggregationMs = Date.now() - aggStart;
 
@@ -1519,7 +1585,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     // continuations ("how many are employed?") that don't resolve are NOT
     // forced to clarify — they fall through to the normal pipeline below,
     // same graceful degradation as before this feature existed.
-    if (!aggResult && isGroupReferentFollowUp(rawQuestion)) {
+    if (!aggResult && isGroupReferentFollowUp(preTranslateQuestion)) {
       await dbAnswerThinkingDelay();
       const clarify = "I'm not sure which group you mean — could you say what group you're asking about (e.g. the job title, industry, company, program, or batch)?";
       if (onToken) onToken(clarify);
@@ -1685,8 +1751,30 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         // over fact VALUES instead of numbers — a targeted "what's her
         // email" question correctly leaving out other fields still passes.
         const personFactValues = isPersonLookup ? extractBoldFactValues(aggText) : [];
+        // A value with parenthetical/punctuation content ("Local (within the
+        // Philippines)") legitimately gets reworded in prose ("works locally
+        // within the Philippines") without every character surviving
+        // verbatim — the exact-substring check alone treated that as a
+        // dropped fact. Caught live: "saan siya nagtatrabaho?" (a question
+        // about ONE field) correctly narrated "Meg Nicole Serrano works
+        // locally within the Philippines." — a true, on-topic, appropriately
+        // narrow answer — but personFactsDropped rejected it anyway (no
+        // exact match for "Local (within the Philippines)" verbatim) and
+        // fell back to dumping the ENTIRE 8-field record instead, when only
+        // work location was ever asked about. Falls back to a per-word
+        // overlap check (same tolerance fabricatedDetail already applies,
+        // just in the opposite direction) only when the exact substring
+        // isn't found — a short, punctuation-free value ("Yes", "Lecturer")
+        // still needs a real match, not a coincidental single-word overlap.
         const personFactsDropped = personFactValues.length > 0 &&
-          !personFactValues.some((v) => trimmed.toLowerCase().includes(v.toLowerCase()));
+          !personFactValues.some((v) => {
+            const vLower = v.toLowerCase();
+            if (trimmed.toLowerCase().includes(vLower)) return true;
+            const words = vLower.replace(/[(),]/g, ' ').split(/\s+/).filter((w) => w.length > 2);
+            if (words.length < 2) return false;
+            const matched = words.filter((w) => trimmed.toLowerCase().includes(w)).length;
+            return matched / words.length >= 0.6;
+          });
         // Both prompts already instruct "always answer in English" (see
         // looksNonEnglish's comment), but a Tagalog-phrased question can
         // still pull a small model into replying in Tagalog anyway. No
