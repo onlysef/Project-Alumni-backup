@@ -108,9 +108,12 @@ export default function EmployerLayout() {
         </div>
 
         <nav className="nav" aria-label="Main navigation">
-          {navItems.map((item) => <NavLink key={item.to} to={item.to} onClick={closeOnMobile} className={({ isActive }) => isActive ? "active" : undefined}>
+          {navItems.map((item, index) => <React.Fragment key={item.to}>
+            <div className="nav-category" aria-hidden="true">{["Overview", "Talent", "Scheduling"][index]}</div>
+            <NavLink to={item.to} onClick={closeOnMobile} className={({ isActive }) => isActive ? "active" : undefined}>
             <span><Icon name={item.icon}/></span><span>{item.label}</span>
-          </NavLink>)}
+            </NavLink>
+          </React.Fragment>)}
         </nav>
 
         <div className="sidebar-footer"><button className="sidebar-logout" type="button" onClick={logout} aria-label="Logout"><span><Icon name="icon-7"/></span><span>Logout</span></button></div>
