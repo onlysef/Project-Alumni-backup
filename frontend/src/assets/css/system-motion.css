@@ -1,0 +1,165 @@
+/* Shared motion language for every role and module. Keep selectors low in
+   specificity so each module can still tune or override its own behavior. */
+:root {
+  --motion-spring: cubic-bezier(.2,.8,.2,1);
+  --motion-pop: cubic-bezier(.2,.9,.2,1);
+}
+
+.app :where(button, a, input, select, textarea, [role="button"]) {
+  transition-property: transform, box-shadow, border-color, background-color, color, opacity;
+  transition-duration: 170ms;
+  transition-timing-function: ease;
+}
+
+.app :where(button, [role="button"]):not(:disabled):active {
+  transform: scale(.97);
+}
+
+.app :where(input, select, textarea):focus {
+  transition-duration: 200ms;
+}
+
+.app :where(.nav a, .nav button, .sidebar a, .sidebar button):hover svg,
+.app :where(.nav a, .nav button, .sidebar a, .sidebar button):focus-visible svg {
+  transform: scale(1.1);
+  transition: transform 180ms var(--motion-spring);
+}
+
+/* Pages shared by Admin/Coordinator plus Alumni and Employer page roots. */
+.app .main > :where(.content, .alumni-page-content, .employer-page, .view) {
+  animation: system-page-enter 420ms var(--motion-spring) both;
+}
+
+/* Tables and repeatable lists enter progressively instead of popping in. */
+.app :where(tbody tr, .notification-item, .comment-item, .comment-row,
+  .coord-post-card, .connect-job-card, .alumni-person-card) {
+  animation: system-row-enter 340ms var(--motion-spring) both;
+}
+.app :where(tbody tr, .notification-item, .comment-item, .comment-row,
+  .coord-post-card, .connect-job-card, .alumni-person-card):nth-child(2) { animation-delay: 35ms; }
+.app :where(tbody tr, .notification-item, .comment-item, .comment-row,
+  .coord-post-card, .connect-job-card, .alumni-person-card):nth-child(3) { animation-delay: 70ms; }
+.app :where(tbody tr, .notification-item, .comment-item, .comment-row,
+  .coord-post-card, .connect-job-card, .alumni-person-card):nth-child(4) { animation-delay: 105ms; }
+.app :where(tbody tr, .notification-item, .comment-item, .comment-row,
+  .coord-post-card, .connect-job-card, .alumni-person-card):nth-child(n+5) { animation-delay: 135ms; }
+
+.app :where(tbody tr) {
+  transition: background-color 160ms ease, box-shadow 160ms ease;
+}
+
+/* Every modal implementation used across the four role portals. */
+.app :where(.modal-overlay, .coord-modal-backdrop, .employer-modal-overlay,
+  .alumni-action-overlay, .resume-preview-overlay) {
+  animation: system-overlay-enter 190ms ease both;
+}
+.app :where(.tracer-modal, .coord-modal, .employer-modal-card,
+  .alumni-action-modal, .resume-preview-modal) {
+  animation: system-dialog-enter 290ms var(--motion-pop) both;
+  transform-origin: 50% 40%;
+}
+
+/* Menus, filters, notification panels, and settings panels. */
+.app :where(.topbar-popover, .admin-menu, .action-menu, .coord-alumni-dropdown,
+  [role="menu"], [role="listbox"]) {
+  animation: system-popover-enter 220ms var(--motion-pop) both;
+  transform-origin: top right;
+}
+
+.app :where(.toast.show, .network-toast.show) {
+  animation: system-toast-enter 300ms var(--motion-pop) both;
+}
+
+/* Clear feedback when dynamically adding comments, alerts, and status chips. */
+.app :where(.field-error, .account-settings-error, .coord-attendance-notice) {
+  animation: system-feedback-enter 260ms var(--motion-spring) both;
+}
+
+@keyframes system-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes system-row-enter {
+  from { opacity: 0; transform: translateY(7px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes system-overlay-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes system-dialog-enter {
+  from { opacity: 0; transform: translateY(14px) scale(.975); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes system-popover-enter {
+  from { opacity: 0; transform: translateY(-6px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes system-toast-enter {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes system-feedback-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app *, .app *::before, .app *::after {
+    animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Tracer analytics chart motion (mounted again whenever an accordion opens). */
+.tracer-rating-seg {
+  transform-origin: left center;
+  animation: tracer-bar-grow 720ms 100ms cubic-bezier(.2,.8,.2,1) both;
+}
+@keyframes tracer-item-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tracer-accordion-open {
+  from { opacity: 0; transform: translateY(-8px) scaleY(.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tracer-chart-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tracer-row-rise {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tracer-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes tracer-vbar-grow {
+  from { opacity: .4; transform: scaleY(0); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+@keyframes tracer-donut-reveal {
+  from { opacity: 0; transform: rotate(-70deg) scale(.72); clip-path: circle(0% at 50% 50%); }
+  to { opacity: 1; transform: none; clip-path: circle(72% at 50% 50%); }
+}
+@keyframes tracer-count-pop {
+  from { opacity: 0; transform: scale(.6); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes tracer-legend-enter {
+  from { opacity: 0; transform: translateX(-7px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tracer-tag-pop {
+  from { opacity: 0; transform: scale(.82) translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tracer-line-draw { to { stroke-dashoffset: 0; } }
+@keyframes tracer-area-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
