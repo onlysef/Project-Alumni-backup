@@ -5,6 +5,7 @@ import { Modal } from "../common/Primitives.jsx";
 import { DashboardSettingsForm } from "../admin/AdminTopbar.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
+import { getNotificationTarget } from "../../services/notificationNavigation.js";
 
 function fmtNotifTime(d) {
   const diffMin = Math.round((Date.now() - new Date(d).getTime()) / 60000);
@@ -16,6 +17,7 @@ function fmtNotifTime(d) {
 }
 
 export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast = () => {}, restricted = false }) {
+  const navigate = useNavigate();
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -75,6 +77,11 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
 
   const badge = settings?.dashboardNotifications ? unread : 0;
 
+  function openNotification(notification) {
+    setPanel(null);
+    navigate(getNotificationTarget("alumni", notification));
+  }
+
   return (
     <>
     <header className="topbar alumni-topbar">
@@ -102,7 +109,7 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
         <div className="modal-head"><h3>Notifications</h3><button type="button" aria-label="Close notifications" onClick={() => setPanel(null)}>×</button></div>
         <div className="notification-list">
           {notifications.length === 0 ? <p style={{ padding: "20px", textAlign: "center", color: "#999", fontSize: "13px" }}>No notifications yet.</p> : notifications.map((n, i) => (
-            <article key={n._id ?? i} className={`notification-item${n.is_read ? "" : " is-unread"}`}><strong>{n.title || "Notification"}</strong><span>{n.message || n.body}</span><time>{fmtNotifTime(n.createdAt)}</time></article>
+            <article key={n._id ?? i} className={`notification-item notification-link${n.is_read ? "" : " is-unread"}`} role="button" tabIndex={0} onClick={() => openNotification(n)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openNotification(n); } }}><strong>{n.title || "Notification"}</strong><span>{n.message || n.body}</span><time>{fmtNotifTime(n.createdAt)}</time></article>
           ))}
         </div>
         <div className="modal-actions topbar-modal-actions"><button type="button" disabled={!unread} onClick={markAllRead}>Mark All Read</button><button type="button" onClick={() => setPanel(null)}>Close</button></div>
