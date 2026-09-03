@@ -9,11 +9,17 @@ import toptsuLogo from "../../assets/images/tsu-top-header.webp";
 const ITEMS = [
   ["home", "Home", "alumni-home"],
   ["announcements", "Announcements", "alumni-announcements"],
-  ["employment", "Employment Details", "alumni-employment"],
+  ["employment", "Alumni Profile", "alumni-employment"],
   ["office", "Alumni Office", "alumni-office"],
-  ["suggested", "Suggested Alumni", "alumni-suggested"],
+  ["suggested", "Alumni Network", "alumni-suggested"],
   ["career", "Career Recommendation", "alumni-career"],
   ["jobconnect", "Job Connect", "alumni-job-connect"],
+];
+
+const NAV_SECTIONS = [
+  { label: "Overview", items: ITEMS.slice(0, 1) },
+  { label: "Community", items: [ITEMS[1], ITEMS[3], ITEMS[4]] },
+  { label: "Career", items: [ITEMS[2], ITEMS[5], ITEMS[6]] },
 ];
 
 export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restrictedLabel = "Account Setup" }) {
@@ -33,6 +39,11 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
     navigate(section === "home" ? "/alumni/dashboard" : `/alumni/dashboard?section=${section}`);
     onNavigate?.();
   };
+  const openInstitutionPage = (page) => {
+    if (restricted) return;
+    navigate(`/alumni/${page}`);
+    onNavigate?.();
+  };
   const selectFilter = (filter) => { navigate(filter === "All" ? "/alumni/dashboard?section=announcements" : `/alumni/dashboard?section=announcements&filter=${encodeURIComponent(filter)}`); onNavigate?.(); };
 
   return (
@@ -41,7 +52,7 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
         <button
           type="button"
           className="tsu-brand-link"
-          onClick={() => select("home")}
+          onClick={() => openInstitutionPage("tsu")}
           aria-label="Open Tarlac State University profile"
         >
           <img src={tsuLogo} alt="TSU" className="sidebar-logo" />
@@ -50,12 +61,12 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
           <button
             type="button"
             className="tsu-top-brand-link"
-            onClick={() => select("home")}
+            onClick={() => openInstitutionPage("tsu")}
             aria-label="Open Tarlac State University profile"
           >
             <img src={toptsuLogo} alt="Tarlac State University" className="toptsu-logo" />
           </button>
-          <div className={`alumni-brand ${active === "office" ? "active" : ""}`} onClick={() => select("office")}>
+          <div className="alumni-brand" onClick={() => openInstitutionPage("about")}>
             <img src={alumniLogo} alt="Alumni" className="alumni-logo" />
             <p>Alumni Association<br /> Inc.</p>
           </div>
@@ -75,12 +86,15 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
         </nav>
       ) : (
         <nav className="nav" aria-label="Alumni navigation">
-          {ITEMS.map(([key, label, icon]) => key === "announcements" ? <div className="alumni-nav-group" key={key}>
+          {NAV_SECTIONS.map(({ label: sectionLabel, items }) => <React.Fragment key={sectionLabel}>
+            <div className="nav-category" aria-hidden="true">{sectionLabel}</div>
+            {items.map(([key, label, icon]) => key === "announcements" ? <div className="alumni-nav-group" key={key}>
             <a href="#" className={active === key ? "active" : undefined} onClick={(e) => { e.preventDefault(); collapsed ? select("announcements") : setAnnouncementsOpen(v => !v); }}>
               <span><Icon name={icon} /></span><span>{label}</span>{!collapsed && <b className={announcementsOpen ? "open" : ""} aria-hidden="true" />}
             </a>
             {!collapsed && announcementsOpen && <div className="alumni-nav-sub">{["All", "News", "Events"].map(item => <a key={item} href="#" className={currentFilter === item ? "selected" : ""} onClick={(e) => { e.preventDefault(); selectFilter(item); }}>{item}</a>)}</div>}
           </div> : <a key={key} href="#" className={active === key ? "active" : undefined} onClick={(e) => { e.preventDefault(); select(key); }}><span><Icon name={icon} /></span><span>{label}</span></a>)}
+          </React.Fragment>)}
         </nav>
       )}
       <div className="sidebar-footer"><button className="sidebar-logout" type="button" onClick={logout}><span><Icon name="icon-7" /></span><span>Logout</span></button></div>
