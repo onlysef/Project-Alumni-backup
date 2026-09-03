@@ -6,7 +6,7 @@ import { apiFetch } from "../../services/api.js";
 import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
 
 // Every field below used to be an editable, SAVEABLE default (see
-// useState(initialResume) further down) — a brand-new alumnus with no
+// useState(EMPTY_RESUME) further down) — a brand-new alumnus with no
 // employment/tracer data yet saw this fake identity sitting in the actual
 // form fields, and clicking Save without editing anything persisted it as
 // their real resume, shown to real employers on every job application. The
@@ -26,6 +26,10 @@ export default function JobConnect() {
   const { showToast } = useOutletContext() || {};
   const [search, setSearch] = useState("");
   const [jobType, setJobType] = useState("");
+  const [location, setLocation] = useState("");
+  const [proximity, setProximity] = useState("");
+  const [education, setEducation] = useState("");
+  const [profileLocation, setProfileLocation] = useState("");
   const [resume, setResume] = useState(EMPTY_RESUME);
   const [draftResume, setDraftResume] = useState(EMPTY_RESUME);
   const [editingResume, setEditingResume] = useState(false);
@@ -51,11 +55,14 @@ export default function JobConnect() {
 
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(true);
 
-  function runSearch(keywords, type) {
+  function runSearch(keywords = search, type = jobType, filters = {}) {
     setLoading(true);
     setError("");
-    apiFetch("/alumni/jobs/search", { params: { keywords, type } })
-      .then((d) => { setJobs(d.jobs || []); setUnavailable(!!d.unavailable); setHasProfile(d.hasProfile !== false); })
+    const nextLocation = filters.location ?? location;
+    const nextProximity = filters.proximity ?? proximity;
+    const nextEducation = filters.education ?? education;
+    apiFetch("/alumni/jobs/search", { params: { keywords, type, location: nextLocation, proximity: nextProximity, education: nextEducation } })
+      .then((d) => { setJobs(d.jobs || []); setUnavailable(!!d.unavailable); setHasProfile(d.hasProfile !== false); setProfileLocation(d.profileLocation || ""); })
       .catch(() => setError("Could not load job listings right now."))
       .finally(() => setLoading(false));
   }
@@ -195,8 +202,22 @@ export default function JobConnect() {
     </section>
 
     <section className="job-search-bar">
-      <label><SearchIcon /><input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && runSearch(search, jobType)} placeholder="Search job title, company, or skill" /></label>
-      <select value={jobType} onChange={e => { setJobType(e.target.value); runSearch(search, e.target.value); }}>
+      <label><SearchIcon /><input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && runSearch()} placeholder="Search job title, company, or skill" /></label>
+      <label className="job-location-filter"><span>⌖</span><input value={location} onChange={e => setLocation(e.target.value)} onKeyDown={e => e.key === "Enter" && runSearch()} placeholder="City or province" /></label>
+      <select value={proximity} onChange={e => { const value = e.target.value; setProximity(value); runSearch(search, jobType, { proximity: value }); }} aria-label="Distance from profile location">
+        <option value="">Any distance</option>
+        <option value="nearby">Nearby my profile location</option>
+        <option value="far">Far from my profile location</option>
+      </select>
+      <select value={education} onChange={e => { const value = e.target.value; setEducation(value); runSearch(search, jobType, { education: value }); }} aria-label="Educational attainment required">
+        <option value="">Any educational attainment</option>
+        <option value="high-school">High school</option>
+        <option value="vocational">Vocational / Technical</option>
+        <option value="bachelor">Bachelor's degree</option>
+        <option value="master">Master's degree</option>
+        <option value="doctorate">Doctorate</option>
+      </select>
+      <select value={jobType} onChange={e => { const value = e.target.value; setJobType(value); runSearch(search, value); }}>
         <option value="">All types</option>
         <option value="full-time">Full-time</option>
         <option value="part-time">Part-time</option>
@@ -206,8 +227,9 @@ export default function JobConnect() {
         <option value="internship">Internship/Training</option>
         <option value="volunteer">Volunteer</option>
       </select>
-      <button type="button" onClick={() => runSearch(search, jobType)} disabled={loading}>{loading ? "Searching…" : "Search Jobs"}</button>
+      <button type="button" onClick={() => runSearch()} disabled={loading}>{loading ? "Searching…" : "Search Jobs"}</button>
     </section>
+    {(proximity || location) && <p className="job-filter-note">{proximity && !profileLocation ? "Add your location in Alumni Profile to use the nearby/far filter. " : ""}{profileLocation && proximity ? `Distance is based on your saved profile location: ${profileLocation}. ` : ""}{location ? `Searching jobs in ${location}.` : ""}</p>}
 
     <div className="job-stats">
       <div className="job-stat-clickable" onClick={() => setView("recommended")}><strong>{jobs.length}</strong><span>Recommended jobs</span></div>
