@@ -80,7 +80,7 @@ export default function CareerRecommendation() {
                   <div className="career-skill-tags">{career.skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
                   {career.missing && <div className="career-gap"><b>Skill to develop:</b> {career.missing}</div>}
                 </div>
-                <button className="career-details" type="button" onClick={() => setSelected(career)}>View Path →</button>
+                <button className="career-details" type="button" onClick={() => setSelected(career)}>Skill Gap →</button>
               </article>
             ))}
           </div>
@@ -151,10 +151,6 @@ export default function CareerRecommendation() {
                 ))}
               </div>
             </div>
-          </div>
-
-          <div className="modal-actions coord-profile-actions">
-            <button type="button" onClick={() => setSelected(null)}>Close</button>
           </div>
         </section>
       </Modal>
