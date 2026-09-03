@@ -563,9 +563,6 @@ function AlumniHome({ navigate }) {
             {selectedAlumnus.location && <div><dt>Location</dt><dd>{selectedAlumnus.location}</dd></div>}
             {selectedAlumnus.skills && <div><dt>Skills</dt><dd>{selectedAlumnus.skills}</dd></div>}
           </dl>
-          <div className="modal-actions coord-profile-actions">
-            <button type="button" onClick={() => setSelectedAlumnus(null)}>Close</button>
-          </div>
         </section>
       </Modal>
     )}
