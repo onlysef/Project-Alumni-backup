@@ -8,9 +8,9 @@ const PAGE_SIZE = 60;
 const DEV_PREVIEW = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === "true";
 
 const PREVIEW_SUGGESTIONS = [
-  { _id: "preview-ana", name: "Ana Reyes", role: "Frontend Developer", company: "Northstar Digital", course: "BSIT", year: 2024, industry: "Information Technology", location: "Tarlac City", skills: "React, JavaScript, Figma", matchScore: 94, matchReason: "Same course, overlapping skills" },
-  { _id: "preview-paolo", name: "Paolo Santos", role: "Systems Analyst", company: "Clark Dataworks", course: "BSIS", year: 2023, industry: "Information Technology", location: "Pampanga", skills: "SQL, Business Analysis, Power BI", matchScore: 86, matchReason: "Same industry, nearby batch" },
-  { _id: "preview-mika", name: "Mika Torres", role: "UI / UX Designer", company: "Studio Habi", course: "BSIT", year: 2022, industry: "Information Technology", location: "Metro Manila", skills: "Figma, UI/UX, Prototyping", matchScore: 82, matchReason: "Same course, career path match" },
+  { _id: "preview-ana", name: "Ana Reyes", email: "ana.reyes@example.com", role: "Frontend Developer", company: "Northstar Digital", course: "BSIT", year: 2024, industry: "Information Technology", location: "Tarlac City", skills: "React, JavaScript, Figma", matchScore: 94, matchReason: "Same course, overlapping skills" },
+  { _id: "preview-paolo", name: "Paolo Santos", email: "paolo.santos@example.com", role: "Systems Analyst", company: "Clark Dataworks", course: "BSIS", year: 2023, industry: "Information Technology", location: "Pampanga", skills: "SQL, Business Analysis, Power BI", matchScore: 86, matchReason: "Same industry, nearby batch" },
+  { _id: "preview-mika", name: "Mika Torres", email: "mika.torres@example.com", role: "UI / UX Designer", company: "Studio Habi", course: "BSIT", year: 2022, industry: "Information Technology", location: "Metro Manila", skills: "Figma, UI/UX, Prototyping", matchScore: 82, matchReason: "Same course, career path match" },
   { _id: "preview-carlo", name: "Carlo Mendoza", role: "Network Engineer", company: "Luzon Networks", course: "BSIT", year: 2021, industry: "Information Technology", location: "Tarlac City", skills: "Cisco, Linux, Network Security", matchScore: 78, matchReason: "Same course" },
   { _id: "preview-liza", name: "Liza Ramos", role: "Data Analyst", company: "Central Luzon Analytics", course: "BSCS", year: 2022, industry: "Information Technology", location: "Tarlac City", skills: "SQL, Python, Tableau", matchScore: 75, matchReason: "Overlapping skills" },
   { _id: "preview-juan", name: "Juan Dela Cruz", role: "Software Engineer", company: "Agritech Solutions", course: "BSIT", year: 2024, industry: "Information Technology", location: "Quezon City", skills: "Python, Java, PHP", matchScore: 72, matchReason: "Same course, same batch" },
@@ -172,7 +172,7 @@ export default function SuggestedAlumni() {
     <section className="network-hero">
       <div>
         <span>Explore the TSU alumni community</span>
-        <h1>Alumni You May Know</h1>
+        <h1>Alumni Network</h1>
         <p>Browse professional profiles matched by course, batch, industry, and shared skills.</p>
       </div>
       <div className="network-summary" aria-label="Alumni suggestion summary">
@@ -297,11 +297,12 @@ function ProfileModal({ person, saved, onSave, onClose }) {
         <div><dt>Graduation Year</dt><dd>{person.year || "—"}</dd></div>
         <div><dt>Industry</dt><dd>{person.industry || "—"}</dd></div>
         <div><dt>Location</dt><dd>{person.location || "—"}</dd></div>
+        <div className="profile-detail-wide"><dt>Email</dt><dd>{person.email ? <a href={`mailto:${person.email}`}>{person.email}</a> : "Not available"}</dd></div>
         <div className="profile-detail-wide"><dt>Skills</dt><dd>{person.skills || "Not yet updated"}</dd></div>
       </dl>
       <div className="modal-actions coord-profile-actions network-profile-actions">
         <button className={saved ? "" : "modal-confirm"} type="button" onClick={onSave}>{saved ? "Remove saved" : "☆ Save profile"}</button>
-        <button type="button" onClick={onClose}>Close</button>
+        {person.email && <a className="modal-confirm network-email-button" href={`mailto:${person.email}?subject=${encodeURIComponent(`Hello ${person.name}`)}`}>Send an email</a>}
       </div>
     </section>
   </Modal>;
