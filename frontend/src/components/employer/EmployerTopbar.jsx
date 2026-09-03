@@ -179,7 +179,6 @@ export default function EmployerTopbar({
           </div>
           <div className="modal-actions topbar-modal-actions">
             <button type="button" disabled={notifications.length === 0 || unread === 0} onClick={markAllRead}>Mark All Read</button>
-            <button type="button" onClick={() => setPanel(null)}>Close</button>
           </div>
         </section>
       </Modal>
