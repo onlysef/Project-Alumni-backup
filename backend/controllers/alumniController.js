@@ -514,6 +514,10 @@ const submitTracerStudy = async (req, res) => {
 // alumni's own Employment Details form actually lets them edit — the
 // earlier version also checked employment_type, a field with no input on
 // that form at all, so alumni could never reach 100% no matter what they did.
+// PROFILE_COMPLETENESS_FIELDS is the single checklist the Alumni Profile
+// bar and the Career Recommendations ring both score against, so the two
+// widgets can never disagree. Only fields the alumnus can actually edit on
+// their own Employment Details form are counted.
 function computeProfileCompleteness(emp) {
   if (!emp) return 0;
   const filled = [
@@ -522,8 +526,10 @@ function computeProfileCompleteness(emp) {
     !!emp.job_title,
     !!emp.industry,
     !!emp.work_location,
+    !!emp.skills,
+    !!emp.experience,
   ].filter(Boolean).length;
-  return Math.round((filled / 5) * 100);
+  return Math.round((filled / 7) * 100);
 }
 
 function parseSkillList(skills) {
@@ -600,7 +606,13 @@ const updateMyEmployment = async (req, res) => {
     const {
       employment_status, company_name, job_title, industry, work_location,
       salary_range, date_employed, skills, experience,
+      contact_email, contact_number,
     } = req.body;
+
+    const trimmedEmail = typeof contact_email === 'string' ? contact_email.trim() : '';
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      return res.status(400).json({ message: 'Please enter a valid contact email address.' });
+    }
 
     const updates = {
       employment_status: employment_status || 'Not Yet Updated',
@@ -611,6 +623,8 @@ const updateMyEmployment = async (req, res) => {
       salary_range:      salary_range || '',
       skills:            skills || '',
       experience:        experience || '',
+      contact_email:     trimmedEmail,
+      contact_number:    typeof contact_number === 'string' ? contact_number.trim() : '',
       last_updated:      new Date(),
     };
     // Every other field above always lands in `updates`, so clearing one in
@@ -1657,6 +1671,61 @@ const updateMyResume = async (req, res) => {
   }
 };
 
+const RESUME_FILE_DATA_URI_RE = /^data:(application\/pdf|application\/msword|application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document);base64,([a-zA-Z0-9+/]+=*)$/;
+const MAX_RESUME_FILE_BYTES = 4 * 1024 * 1024; // 4MB decoded
+
+// PUT /api/alumni/resume/file — attach an uploaded resume file (PDF/DOC/DOCX)
+const updateMyResumeFile = async (req, res) => {
+  try {
+    const { fileData, fileName } = req.body;
+    if (typeof fileData !== 'string' || typeof fileName !== 'string' || !fileName.trim()) {
+      return res.status(400).json({ message: 'A file and file name are required.' });
+    }
+    const match = fileData.match(RESUME_FILE_DATA_URI_RE);
+    if (!match) return res.status(400).json({ message: 'Resume file must be a PDF, DOC, or DOCX.' });
+    if (Buffer.byteLength(match[2], 'base64') > MAX_RESUME_FILE_BYTES) {
+      return res.status(400).json({ message: 'Resume file must be smaller than 4MB.' });
+    }
+    const resume = await Resume.findOneAndUpdate(
+      { alumni_id: req.user.id },
+      { $set: { fileData, fileName: fileName.trim().slice(0, 160), fileType: match[1] } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    res.json({ resume: { fileName: resume.fileName, fileType: resume.fileType } });
+  } catch (err) {
+    console.error('updateMyResumeFile error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// DELETE /api/alumni/resume — clear the saved resume entirely so the tool
+// returns to the "create or upload" state. logApplication/getResumeForAlumnus
+// then fall back to the profile-derived suggestion (isSaved: false) again.
+const deleteMyResume = async (req, res) => {
+  try {
+    await Resume.deleteOne({ alumni_id: req.user.id });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deleteMyResume error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// DELETE /api/alumni/resume/file — remove the uploaded file, keeping any
+// field-built resume intact.
+const deleteMyResumeFile = async (req, res) => {
+  try {
+    await Resume.updateOne(
+      { alumni_id: req.user.id },
+      { $set: { fileData: '', fileName: '', fileType: '' } },
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deleteMyResumeFile error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 const getApplications = async (req, res) => {
   try {
     const applications = await JobApplication.find({ alumni_id: req.user.id }).sort({ appliedAt: -1 }).lean();
@@ -1677,16 +1746,26 @@ const logApplication = async (req, res) => {
       return res.status(400).json({ message: 'Job url and title are required.' });
     }
 
+    // Gate applying on a minimum skill match — the alumnus has to close the
+    // gap on their profile first. Skipped for a job already applied to (so a
+    // repeat click can't strand an existing application) and for jobs with
+    // no computed match at all.
+    const alreadyLogged = await JobApplication.exists({ alumni_id: req.user.id, url });
+    if (!alreadyLogged && typeof match === 'number' && match < 50) {
+      return res.status(400).json({ message: 'You need at least a 50% skill match to apply. Add the missing skills to your profile first.' });
+    }
+
     // "internal:<jobId>" is how partner-postings (scoreInternalJobs) tag a
     // job with no real external URL — recovering the real Job's _id here is
     // what lets the employer who posted it actually see this application.
     const internalMatch = /^internal:([a-f0-9]{24})$/.exec(url);
     const job_id = internalMatch ? internalMatch[1] : null;
 
-    // Needed to tell a brand-new application apart from a repeat "Apply now"
-    // click on one already logged — only the former should notify the
-    // employer, otherwise re-opening the same job page would spam them.
-    const alreadyApplied = await JobApplication.exists({ alumni_id: req.user.id, url });
+    // alreadyLogged (checked above) also tells a brand-new application apart
+    // from a repeat "Apply now" click on one already logged — only the
+    // former should notify the employer, otherwise re-opening the same job
+    // page would spam them.
+    const alreadyApplied = alreadyLogged;
 
     const application = await JobApplication.findOneAndUpdate(
       { alumni_id: req.user.id, url },
@@ -1745,4 +1824,20 @@ const updateApplicationStatus = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, getApplications, logApplication, updateApplicationStatus };
+// DELETE /api/alumni/applications/:id — the alumnus cancels a logged
+// application entirely (removes it from their tracker). logApplication
+// upserts by url, so a cancelled job can be applied to again later.
+const deleteApplication = async (req, res) => {
+  try {
+    const deleted = await JobApplication.findOneAndDelete({ _id: req.params.id, alumni_id: req.user.id });
+    if (!deleted) {
+      return res.status(404).json({ message: 'Application not found.' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('deleteApplication error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication };
