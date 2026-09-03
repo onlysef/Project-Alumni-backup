@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
 import { API, authHeaders } from "../../services/api.js";
+import { getNotificationTarget } from "../../services/notificationNavigation.js";
 
 function timeAgo(date) {
   const diff = (Date.now() - new Date(date)) / 1000;
@@ -14,6 +15,7 @@ function timeAgo(date) {
 
 export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast, settings, setSettings }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -60,6 +62,11 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
   }
 
   const notifCount = settings?.dashboardNotifications ? unread : 0;
+
+  function openNotification(notification) {
+    setPanel(null);
+    navigate(getNotificationTarget("coordinator", notification));
+  }
 
   function previewTheme(theme) {
     document.body.classList.toggle("dark-mode", theme === "dark");
@@ -146,7 +153,7 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
               </p>
             ) : (
               notifications.map((n, i) => (
-                <article key={n._id ?? i} className={`notification-item${n.is_read ? "" : " is-unread"}`}>
+                <article key={n._id ?? i} className={`notification-item notification-link${n.is_read ? "" : " is-unread"}`} role="button" tabIndex={0} onClick={() => openNotification(n)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openNotification(n); } }}>
                   <strong>{n.title || "Notification"}</strong>
                   <span>{n.message || n.body}</span>
                   <time>{timeAgo(n.createdAt)}</time>
