@@ -112,7 +112,7 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
             <article key={n._id ?? i} className={`notification-item notification-link${n.is_read ? "" : " is-unread"}`} role="button" tabIndex={0} onClick={() => openNotification(n)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openNotification(n); } }}><strong>{n.title || "Notification"}</strong><span>{n.message || n.body}</span><time>{fmtNotifTime(n.createdAt)}</time></article>
           ))}
         </div>
-        <div className="modal-actions topbar-modal-actions"><button type="button" disabled={!unread} onClick={markAllRead}>Mark All Read</button><button type="button" onClick={() => setPanel(null)}>Close</button></div>
+        <div className="modal-actions topbar-modal-actions"><button type="button" disabled={!unread} onClick={markAllRead}>Mark All Read</button></div>
       </section>
     </Modal>
     <Modal open={panel === "settings"} onClose={() => setPanel(null)} className="topbar-popover settings-popover">
@@ -175,12 +175,9 @@ function TwoFactorToggle() {
 }
 
 function AccountSettingsPanel({ onClose }) {
-  const { user, updateUser } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const fileInputRef = useRef(null);
   const [employment, setEmployment] = useState(null);
-  const [avatarSaving, setAvatarSaving] = useState(false);
-  const [avatarMsg, setAvatarMsg] = useState("");
   const [securityOpen, setSecurityOpen] = useState(false);
   const initials = `${(user?.firstName || "?")[0] || ""}${(user?.lastName || "")[0] || ""}`.toUpperCase();
   const previewMode = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === "true";
@@ -212,39 +209,6 @@ function AccountSettingsPanel({ onClose }) {
     return () => window.removeEventListener("alumni-employment-updated", syncEmployment);
   }, [previewMode]);
 
-  function handlePhotoChange(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (loadEvent) => {
-      const avatarUrl = loadEvent.target.result;
-      setAvatarSaving(true);
-      setAvatarMsg("");
-      try {
-        const response = await fetch(`${API}/alumni/avatar`, {
-          method: "PUT",
-          headers: authHeaders(),
-          body: JSON.stringify({ avatarUrl }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.message || "Could not update photo.");
-        updateUser({ avatarUrl: data.avatarUrl });
-        setAvatarMsg("Photo updated.");
-      } catch (error) {
-        if (previewMode) {
-          updateUser({ avatarUrl });
-          setAvatarMsg("Photo preview updated.");
-        } else {
-          setAvatarMsg(error.message);
-        }
-      } finally {
-        setAvatarSaving(false);
-      }
-    };
-    reader.readAsDataURL(file);
-    event.target.value = "";
-  }
-
   const displayName = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || "Alumni";
   const course = user?.course || (previewMode ? "BSIT" : "Course not yet updated");
   const graduationYear = user?.graduationYear || (previewMode ? 2024 : null);
@@ -252,21 +216,21 @@ function AccountSettingsPanel({ onClose }) {
   const company = employment?.company_name && employment.company_name !== "N/A" ? employment.company_name : "Company not yet updated";
   const location = employment?.work_location || "Location not yet updated";
   const skills = employment?.skills || "Skills not yet updated";
+  // Same 7-field checklist the backend's computeProfileCompleteness scores,
+  // so this bar and the Career Recommendations ring always show one number.
   const completeFields = [
-    user?.firstName,
-    user?.lastName,
-    user?.email,
-    course && !course.includes("not yet"),
-    graduationYear,
-    employment?.job_title,
+    employment?.employment_status && employment.employment_status !== "Not Yet Updated",
     employment?.company_name && employment.company_name !== "N/A",
+    employment?.job_title,
+    employment?.industry,
     employment?.work_location,
     employment?.skills,
+    employment?.experience,
   ];
   const completeness = Math.round((completeFields.filter(Boolean).length / completeFields.length) * 100);
 
   function openFullProfile() {
-    navigate("/alumni/dashboard?section=employment");
+    navigate("/alumni/dashboard?section=employment&edit=1");
     onClose?.();
   }
 
@@ -279,7 +243,6 @@ function AccountSettingsPanel({ onClose }) {
     <div className="account-profile-identity">
       <div className="account-profile-avatar-wrap">
         <div className="account-settings-avatar account-profile-avatar">{user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : initials}</div>
-        <button type="button" className="account-photo-shortcut" aria-label="Change profile photo" disabled={avatarSaving} onClick={() => fileInputRef.current?.click()}>✎</button>
       </div>
       <div>
         <h3>{displayName}</h3>
@@ -295,10 +258,7 @@ function AccountSettingsPanel({ onClose }) {
 
     <div className="account-profile-actions">
       <button type="button" onClick={openFullProfile}>Edit Profile</button>
-      <button type="button" className="secondary" disabled={avatarSaving} onClick={() => fileInputRef.current?.click()}>{avatarSaving ? "Uploading…" : "Change Photo"}</button>
-      <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
     </div>
-    {avatarMsg && <span className="account-settings-hint account-profile-message">{avatarMsg}</span>}
 
     <div className="account-profile-facts">
       <ProfileFact icon={<WorkIcon />} label="Current workplace" value={company} />
