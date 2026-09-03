@@ -818,7 +818,7 @@
 .hours-list > div:last-child { border-bottom: 0; }
 .hours-list strong { color: #473b3f; }.hours-list span { color: #6c5e62; }.hours-list .closed-day span { color: #a68f95; }
 .hours-note { margin: 14px 0 0; padding: 10px 12px; border-radius: 5px; background: #faf5e8; color: #75633a; font-size: 10px; }
-.office-side { display: grid; gap: 14px; }
+.office-side { display: grid; align-self: start; align-content: start; gap: 14px; }
 .office-contact-card { padding: 23px; }
 .office-contact-card h2 { margin-bottom: 18px; }
 .contact-row { display: grid; grid-template-columns: 28px 1fr; gap: 10px; margin: 16px 0; }
