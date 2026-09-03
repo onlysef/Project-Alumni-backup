@@ -42,11 +42,11 @@ function todayISO() {
 const JS_DAY_TO_LABEL = [null, "M", "T", "W", "TH", "F", "S"];
 
 // Only the next `count` dates that are actually working days — nothing else is selectable.
-function generateValidDates(workingDays, count = 14) {
+function generateValidDates(workingDays, count = 14, startOffset = 0) {
   const dates = [];
   const base = new Date();
   base.setHours(0, 0, 0, 0);
-  for (let i = 0; dates.length < count && i < 90; i++) {
+  for (let i = startOffset; dates.length < count && i < 90; i++) {
     const cur = new Date(base);
     cur.setDate(base.getDate() + i);
     const label = JS_DAY_TO_LABEL[cur.getDay()];
@@ -200,7 +200,9 @@ function AppointmentForm({ settings }) {
   }, [open]);
 
   const officeClosed = settings?.office_status === "Closed";
-  const validDates = generateValidDates(settings?.working_days || []);
+  // If staff marked the office closed today, do not offer today's date;
+  // the next selectable choice is still a configured working day.
+  const validDates = generateValidDates(settings?.working_days || [], 14, officeClosed ? 1 : 0);
 
   // The staff/date pair a picked date+staff belongs to changed — the old
   // time selection may no longer be valid, and no server call to keep it in sync.
@@ -264,13 +266,13 @@ function AppointmentForm({ settings }) {
         <p className="account-settings-hint">Loading office availability…</p>
       ) : (
         <>
-          {officeClosed && <div className="office-inquiry-error">The office is currently closed. Appointments cannot be booked right now.</div>}
+          {officeClosed && <div className="office-inquiry-success">The office is closed today, but you can request an appointment for the next available office day.</div>}
           {staffList.length === 0 ? (
             <p className="office-inquiry-error">No staff are currently accepting appointments. Please try again later or send an inquiry instead.</p>
           ) : (
             <label>
               <span>Staff</span>
-              <select value={staffId} onChange={(e) => setStaffId(e.target.value)} required disabled={officeClosed}>
+              <select value={staffId} onChange={(e) => setStaffId(e.target.value)} required>
                 <option value="" disabled>Select a staff member</option>
                 {staffList.map((s) => <option key={s._id} value={s._id}>{s.name} ({s.role})</option>)}
               </select>
@@ -281,7 +283,7 @@ function AppointmentForm({ settings }) {
           ) : (
             <label>
               <span>Date</span>
-              <select value={date} onChange={(e) => setDate(e.target.value)} required disabled={officeClosed}>
+              <select value={date} onChange={(e) => setDate(e.target.value)} required>
                 <option value="" disabled>Select a date</option>
                 {validDates.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
               </select>
@@ -289,7 +291,7 @@ function AppointmentForm({ settings }) {
           )}
           <label>
             <span>Time</span>
-            <select value={time} onChange={(e) => setTime(e.target.value)} required disabled={officeClosed || !date || !staffId}>
+            <select value={time} onChange={(e) => setTime(e.target.value)} required disabled={!date || !staffId}>
               <option value="" disabled>
                 {!date || !staffId ? "Pick a staff member and date first" : slotsLoading ? "Loading…" : openSlots.length === 0 ? "No open times for this date" : "Select a time"}
               </option>
@@ -298,7 +300,7 @@ function AppointmentForm({ settings }) {
           </label>
           <label>
             <span>Purpose</span>
-            <select value={purpose} onChange={(e) => setPurpose(e.target.value)} required disabled={officeClosed}>
+            <select value={purpose} onChange={(e) => setPurpose(e.target.value)} required>
               <option value="" disabled>Select a purpose</option>
               {PURPOSE_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -314,7 +316,7 @@ function AppointmentForm({ settings }) {
       {status && <div className={status.ok ? "office-inquiry-success" : "office-inquiry-error"}>{status.text}</div>}
       <div className="office-inquiry-actions">
         <button type="button" className="office-inquiry-cancel" onClick={() => setOpen(false)} disabled={sending}>Cancel</button>
-        <button type="submit" disabled={sending || loading || officeClosed || staffList.length === 0 || validDates.length === 0}>{sending ? "Booking…" : "Book"}</button>
+        <button type="submit" disabled={sending || loading || staffList.length === 0 || validDates.length === 0}>{sending ? "Booking…" : "Book"}</button>
       </div>
     </form>
   );
