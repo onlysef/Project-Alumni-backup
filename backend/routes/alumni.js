@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, getApplications, logApplication, updateApplicationStatus } = require('../controllers/alumniController');
+const { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication } = require('../controllers/alumniController');
 const { getAnnouncements, toggleLike, getComments, addComment, trackShare } = require('../controllers/announcementController');
 const { getAlumniEvents, toggleInterested, getCoordinatorNotifications, markNotificationsRead } = require('../controllers/eventController');
 const { getOfficeSettings, getAvailableStaff, bookAppointment, getBookedSlots } = require('../controllers/appointmentController');
@@ -25,9 +25,13 @@ router.get('/job-alerts',            protect, authorize('alumni'), getJobAlertsP
 router.put('/job-alerts',            protect, authorize('alumni'), updateJobAlertsPref);
 router.get('/resume',                protect, authorize('alumni'), getMyResume);
 router.put('/resume',                protect, authorize('alumni'), updateMyResume);
+router.delete('/resume',             protect, authorize('alumni'), deleteMyResume);
+router.put('/resume/file',           protect, authorize('alumni'), updateMyResumeFile);
+router.delete('/resume/file',        protect, authorize('alumni'), deleteMyResumeFile);
 router.get('/applications',          protect, authorize('alumni'), getApplications);
 router.post('/applications',         protect, authorize('alumni'), logApplication);
 router.patch('/applications/:id/status', protect, authorize('alumni'), updateApplicationStatus);
+router.delete('/applications/:id',   protect, authorize('alumni'), deleteApplication);
 router.get('/employment',            protect, authorize('alumni'), getMyEmployment);
 router.put('/employment',            protect, authorize('alumni'), updateMyEmployment);
 router.put('/password',              protect, authorize('alumni'), updatePassword);
