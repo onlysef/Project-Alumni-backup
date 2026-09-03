@@ -144,11 +144,15 @@ function useSkillTip(job) {
 // requests before a ~24h lockout, which a single page of job cards would
 // blow through instantly. The TSU logo placeholder stays until there's a
 // real, reliable source of per-company logos.
+const MIN_APPLY_MATCH = 50;
+
 export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onApply }) {
   const description = descriptionPreview(job.description, 220);
   const { tip: skillTip, ref: skillGapRef } = useSkillTip(job);
+  const hasMatch = job.match !== null && job.match !== undefined;
+  const locked = !applied && hasMatch && job.match < MIN_APPLY_MATCH;
   return <article className="connect-job-card">
-    {job.match !== null && job.match !== undefined && (
+    {hasMatch && (
       <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
     )}
     <div className="job-company-logo"><img src={alumniLogo} alt={`${job.company} logo`} /></div>
@@ -158,7 +162,9 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
       <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div>{applied && <span className="connect-applied-badge">✓ Applied</span>}</div>
       {description && <p className="connect-job-description">{description}</p>}
       <div className="connect-card-buttons">
-        {job.internal ? (
+        {locked ? (
+          <button className="apply-job apply-locked" type="button" disabled aria-disabled="true">Apply now</button>
+        ) : job.internal ? (
           <button className={`apply-job${applied ? " already-applied" : ""}`} type="button" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</button>
         ) : (
           <a className={`apply-job${applied ? " already-applied" : ""}`} href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</a>
@@ -170,17 +176,23 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
           </button>
         )}
       </div>
+      {locked && <p className="apply-gate-note">You need at least {MIN_APPLY_MATCH}% match to apply. Add the missing skills to your profile to unlock this.</p>}
       <small className="job-partner">{job.internal ? "Posted by a TSU partner employer" : "via Careerjet"}</small>
     </div>
-    {job.skills?.length > 0 && (
-      <aside className="connect-skill-gap" ref={skillGapRef}>
-        <b>Skill Gap</b>
-        <div>{job.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
-        <small>
-          {skillTip || (job.skills.some(s => s.matched) ? "Highlighted skills are already on your profile — the rest are worth adding." : "These skills are requested for this role but aren't on your profile yet.")}
-          {job.createdAt && " (based on your profile as of when you saved this job)"}
-        </small>
-      </aside>
-    )}
+    {job.skills?.length > 0 && (() => {
+      const sorted = [...job.skills].sort((a, b) => Number(b.matched) - Number(a.matched));
+      const have = job.skills.filter(s => s.matched).length;
+      return (
+        <aside className="connect-skill-gap" ref={skillGapRef}>
+          <b>Skill Match</b>
+          <span className="skill-match-ratio">{have} of {job.skills.length} skills matched</span>
+          <div>{sorted.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+          <small>
+            {skillTip || (have ? "The green skills are already on your profile — add the rest to raise your match." : "None of these are on your profile yet — adding them raises your match.")}
+            {job.createdAt && " (based on your profile as of when you saved this job)"}
+          </small>
+        </aside>
+      );
+    })()}
   </article>;
 }
