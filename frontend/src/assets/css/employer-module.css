@@ -356,3 +356,29 @@ body.dark-mode .applicant-resume-document b { color: #201c1e; }
   .employer-panel-heading { align-items: flex-start; gap: 12px; }
   .employer-panel-heading > span { white-space: nowrap; }
 }
+
+/* Modern motion for employer pages, lists, dialogs, and interactive cards. */
+.employer-app .employer-page { animation: employer-page-in 420ms cubic-bezier(.2,.8,.2,1) both; }
+.employer-app .employer-page > * { animation: employer-rise-in 460ms cubic-bezier(.2,.8,.2,1) both; }
+.employer-app .employer-page > :nth-child(2) { animation-delay: 55ms; }
+.employer-app .employer-page > :nth-child(3) { animation-delay: 100ms; }
+.employer-app .employer-page > :nth-child(n+4) { animation-delay: 140ms; }
+.employer-app :is(.employer-panel,.employer-quick-card,.applicant-overview-stat,.appointment-card,.employer-job-card) {
+  transition: transform 200ms ease, box-shadow 220ms ease, border-color 200ms ease;
+}
+.employer-app :is(.employer-panel,.employer-quick-card,.applicant-overview-stat,.appointment-card,.employer-job-card):hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(70,0,20,.10);
+}
+.employer-app .employer-modal-overlay { animation: employer-overlay-in 200ms ease both; }
+.employer-app .employer-modal-card { animation: employer-modal-in 300ms cubic-bezier(.2,.9,.2,1) both; }
+@keyframes employer-page-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes employer-rise-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes employer-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes employer-modal-in { from { opacity: 0; transform: translateY(14px) scale(.975); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .employer-app *, .employer-app *::before, .employer-app *::after {
+    animation-duration: .01ms !important; animation-delay: 0ms !important;
+    transition-duration: .01ms !important; scroll-behavior: auto !important;
+  }
+}
