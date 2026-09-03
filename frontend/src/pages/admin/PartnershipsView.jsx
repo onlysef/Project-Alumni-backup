@@ -19,6 +19,11 @@ function mapPartnership(p) {
   };
 }
 
+function PartnershipStatus({ status }) {
+  const tone = String(status || "pending").toLowerCase().replace(/\s+/g, "-");
+  return <span className={`partnership-status-pill ${tone}`}>{status || "Pending"}</span>;
+}
+
 export default function PartnershipsView() {
   const { showToast } = useOutletContext();
   const [rows, setRows]             = useState([]);
@@ -145,7 +150,7 @@ export default function PartnershipsView() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={visible(r) ? "" : "is-hidden"}>
-                  <td>{r.partner}</td><td>{r.type}</td><td>{r.contact}</td><td>{r.status}</td>
+                  <td>{r.partner}</td><td>{r.type}</td><td>{r.contact}</td><td><PartnershipStatus status={r.status} /></td>
                   <td>
                     <ActionMenu
                       actions={partnerActionList(r.status)}
@@ -220,7 +225,7 @@ function PartnershipModal({ entry, onClose, onSubmit }) {
             <div><strong>Partner Name</strong><span>{row.partner}</span></div>
             <div><strong>Type</strong><span>{row.type}</span></div>
             <div><strong>Contact Email</strong><span>{row.contact}</span></div>
-            <div><strong>Status</strong><span>{row.status}</span></div>
+            <div><strong>Status</strong><span><PartnershipStatus status={row.status} /></span></div>
             <div><strong>Description</strong><span>{row.description || "—"}</span></div>
           </div>
           <div className="modal-actions" style={{ padding: "0 20px 20px" }}>
