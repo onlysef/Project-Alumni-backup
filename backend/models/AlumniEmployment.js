@@ -24,6 +24,11 @@ const alumniEmploymentSchema = new mongoose.Schema({
   reason_unemployed:     { type: String, default: null },
   skills:                { type: String, default: '' },
   experience:            { type: String, default: '' },
+  // Alumnus-managed contact details, separate from the account's login
+  // email (User.email) — a preferred reachable email / phone shown on the
+  // profile and to coordinators.
+  contact_email:         { type: String, default: '' },
+  contact_number:        { type: String, default: '' },
   last_updated:          { type: Date, default: Date.now },
   // Set only by syncTracerToEmployment — tracks which version of this
   // alumnus's TracerStudyResponse (by its updatedAt) has already been
