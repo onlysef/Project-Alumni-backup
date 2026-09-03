@@ -163,7 +163,6 @@ export function CoordinatorTopbar({ title, collapsed, onToggleSidebar, showToast
           </div>
           <div className="modal-actions topbar-modal-actions">
             <button type="button" onClick={handleMarkAllRead}>Mark All Read</button>
-            <button type="button" onClick={() => setPanel(null)}>Close</button>
           </div>
         </section>
       </Modal>
