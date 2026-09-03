@@ -234,7 +234,7 @@ export default function SuggestedAlumni() {
     </>}
 
     {selected && <ProfileModal person={selected} saved={savedIds.has(selected._id)} onSave={() => toggleSaved(selected)} onClose={() => setSelected(null)} />}
-    <div className={`network-toast${notice ? " show" : ""}`} role="status" aria-live="polite">{notice}</div>
+    {notice && <div className="network-toast show" role="status" aria-live="polite">{notice}</div>}
   </div>;
 }
 
@@ -260,26 +260,32 @@ function PersonInfo({ person, showMatch = true }) {
   </div>;
 }
 
+// The whole card opens the profile; Save and Hide sit as icon buttons in the
+// top-right corner and stop the click from bubbling to the card.
+function cardKeyActivate(handler) {
+  return (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handler(); }
+  };
+}
+
 function ProfileCard({ person, saved, onDismiss, onSave, onView }) {
-  return <article className="alumni-person-card interactive-person-card discovery-person-card">
-    <button className="dismiss-suggestion" type="button" aria-label={`Hide ${person.name}`} onClick={onDismiss}>×</button>
+  return <article className="alumni-person-card interactive-person-card discovery-person-card card-clickable" role="button" tabIndex={0} onClick={onView} onKeyDown={cardKeyActivate(onView)} aria-label={`View ${person.name}'s profile`}>
+    <div className="person-card-corner">
+      <button className={`card-corner-btn${saved ? " is-saved" : ""}`} type="button" aria-label={saved ? `Remove ${person.name} from saved` : `Save ${person.name}`} aria-pressed={saved} onClick={(e) => { e.stopPropagation(); onSave(); }}>{saved ? "★" : "☆"}</button>
+      <button className="card-corner-btn dismiss-suggestion" type="button" aria-label={`Hide ${person.name}`} onClick={(e) => { e.stopPropagation(); onDismiss(); }}>×</button>
+    </div>
     <Avatar person={person} />
     <PersonInfo person={person} />
-    <div className="person-card-actions">
-      <button className="network-primary" type="button" onClick={onView}>View profile</button>
-      <button className={`network-secondary${saved ? " is-saved" : ""}`} type="button" onClick={onSave}>{saved ? "✓ Saved" : "☆ Save"}</button>
-    </div>
   </article>;
 }
 
 function SavedProfileCard({ person, onRemove, onView }) {
-  return <article className="alumni-person-card interactive-person-card saved-person-card">
+  return <article className="alumni-person-card interactive-person-card saved-person-card card-clickable" role="button" tabIndex={0} onClick={onView} onKeyDown={cardKeyActivate(onView)} aria-label={`View ${person.name}'s profile`}>
+    <div className="person-card-corner">
+      <button className="card-corner-btn is-saved" type="button" aria-label={`Remove ${person.name} from saved`} aria-pressed="true" onClick={(e) => { e.stopPropagation(); onRemove(); }}>★</button>
+    </div>
     <Avatar person={person} />
     <PersonInfo person={person} />
-    <div className="person-card-actions">
-      <button className="network-primary" type="button" onClick={onView}>View profile</button>
-      <button className="network-secondary is-saved" type="button" onClick={onRemove}>Remove saved</button>
-    </div>
   </article>;
 }
 
@@ -301,9 +307,17 @@ function ProfileModal({ person, saved, onSave, onClose }) {
         <div className="profile-detail-wide"><dt>Skills</dt><dd>{person.skills || "Not yet updated"}</dd></div>
       </dl>
       <div className="modal-actions coord-profile-actions network-profile-actions">
-        <button className={saved ? "" : "modal-confirm"} type="button" onClick={onSave}>{saved ? "Remove saved" : "☆ Save profile"}</button>
-        {person.email && <a className="modal-confirm network-email-button" href={`mailto:${person.email}?subject=${encodeURIComponent(`Hello ${person.name}`)}`}>Send an email</a>}
+        <button className={saved ? "" : "modal-confirm"} type="button" onClick={onSave}><StarIcon filled={saved} />{saved ? "Remove saved" : "Save profile"}</button>
+        {person.email && <a className="modal-confirm network-email-button" href={`mailto:${person.email}?subject=${encodeURIComponent(`Hello ${person.name}`)}`}><MailIcon />Send an email</a>}
       </div>
     </section>
   </Modal>;
+}
+
+function StarIcon({ filled }) {
+  return <svg className="btn-icon" viewBox="0 0 24 24" aria-hidden="true" style={{ fill: filled ? "currentColor" : "none" }}><path d="m12 3 2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.8-5.4 2.8 1-6L5.3 9.4l6-.9z" /></svg>;
+}
+
+function MailIcon() {
+  return <svg className="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>;
 }
