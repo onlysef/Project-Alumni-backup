@@ -16,8 +16,10 @@ const HOME_ICONS = {
   viewSuggested: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2370001d' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12s3.4-5 9-5 9 5 9 5-3.4 5-9 5-9-5-9-5z'/%3E%3Ccircle cx='12' cy='12' r='2.4'/%3E%3C/svg%3E",
 };
 
-function LogoImage({ variant = "blue" }) {
-  return <div className={`announcement-image logo-image ${variant}`}><img src={alumniLogo} alt="Company logo" /></div>;
+function SocialActionIcon({ type }) {
+  if (type === "like") return <svg className="social-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10v10H4V10h3Zm2 10h7.5a2 2 0 0 0 1.94-1.52l1.17-4.7A2 2 0 0 0 17.67 11H14l.55-3.3A2.2 2.2 0 0 0 12.38 5L9 10v10Z" /></svg>;
+  if (type === "comment") return <svg className="social-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.8 7.5 9.3 9.3 0 0 1-3.65-.76L4 20l1.3-4A7.1 7.1 0 0 1 4.5 12 7.5 7.5 0 0 1 12.3 4.5 7.5 7.5 0 0 1 20 11.5Z" /></svg>;
+  return <svg className="social-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 5 7 7-7 7v-4.4c-4.6 0-7.4 1.4-9 4.4.45-5.7 3.5-9.4 9-9.4V5Z" /></svg>;
 }
 
 function EventImage({ date, second = false, image, title }) {
@@ -122,7 +124,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   useEffect(() => {
     fetch(`${API}/alumni/announcements?limit=20`, { headers: authHeaders() })
       .then((r) => r.json())
-      .then((d) => setNews((d.announcements || []).filter((a) => a.type === "News")))
+      .then((d) => setNews(d.announcements || []))
       .catch(() => {})
       .finally(() => setNewsLoading(false));
   }, []);
@@ -314,21 +316,40 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
       {newsLoading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading news…</p>}
       {!newsLoading && news.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No news posted yet.</p>}
       {!newsLoading && news.slice(0, filter === "News" ? news.length : 3).map((ann) => (
-        <article className="announcement-card" key={ann._id}>
-          {ann.imageUrl
-            ? <div className="announcement-image"><img src={ann.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>
-            : <LogoImage />}
-          <div className="announcement-body">
-            <span className="announcement-tag">{ann.type}</span>
+        <article className="announcement-card news-post" key={ann._id}>
+          <header className="news-post-head">
+            <span className="news-post-avatar"><img src={alumniLogo} alt="" /></span>
+            <div className="news-post-byline">
+              <b>TSU Alumni Association Office</b>
+              <span>
+                {new Date(ann.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}
+                {" · "}<span className="news-post-tag">{ann.type}</span>
+              </span>
+            </div>
+          </header>
+          <div className="news-post-text">
             <h2>{ann.title}</h2>
             <p>{ann.description}</p>
             {ann.location && <p className="announcement-location">📍 {ann.location}</p>}
-            <div className="announcement-meta">
-              <time>{new Date(ann.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}</time>
-              <button className={`meta-action${ann.isLikedByMe ? " active" : ""}`} type="button" onClick={() => toggleLikeNews(ann)}>Like <b>{ann.likesCount}</b></button>
-              <button className="meta-action" type="button" onClick={() => openComments(ann)}>Comments <b>{ann.commentsCount}</b></button>
-              <button className={`meta-action${ann.isSharedByMe ? " active" : ""}`} type="button" onClick={() => shareNews(ann)}>Share <b>{ann.sharesCount}</b></button>
+          </div>
+          {ann.imageUrl
+            ? <div className="news-post-media"><img src={ann.imageUrl} alt="" /></div>
+            : <div className="news-post-media logo-fallback"><img src={alumniLogo} alt="" /></div>}
+          {(ann.likesCount > 0 || ann.commentsCount > 0 || ann.sharesCount > 0) && (
+            <div className="news-post-counts">
+              <span className="news-post-likes">
+                {ann.likesCount > 0 && <><SocialActionIcon type="like" />{ann.likesCount}</>}
+              </span>
+              <span className="news-post-cs">
+                {ann.commentsCount > 0 && <button type="button" onClick={() => openComments(ann)}>{ann.commentsCount} comment{ann.commentsCount === 1 ? "" : "s"}</button>}
+                {ann.sharesCount > 0 && <span>{ann.sharesCount} share{ann.sharesCount === 1 ? "" : "s"}</span>}
+              </span>
             </div>
+          )}
+          <div className="news-post-actions">
+            <button className={`meta-action${ann.isLikedByMe ? " active" : ""}`} type="button" onClick={() => toggleLikeNews(ann)}><SocialActionIcon type="like" />Like</button>
+            <button className="meta-action" type="button" onClick={() => openComments(ann)}><SocialActionIcon type="comment" />Comment</button>
+            <button className={`meta-action${ann.isSharedByMe ? " active" : ""}`} type="button" onClick={() => shareNews(ann)}><SocialActionIcon type="share" />Share</button>
           </div>
         </article>
       ))}
@@ -336,7 +357,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
 
     {visible("Job Postings") && <section className="announcement-section"><div className="section-heading"><h3>Job Postings</h3>{filter === "Job Postings" && <span>Tip: Complete your profile to get more accurate job recommendations.</span>}</div>
       {jobsLoading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading job postings…</p>}
-      {!jobsLoading && jobPostings.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No matching job postings yet — complete your Employment Details to get recommendations.</p>}
+      {!jobsLoading && jobPostings.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No matching job postings yet — complete your Alumni Profile to get recommendations.</p>}
       {!jobsLoading && jobPostings.length > 0 && (
         // Reuses Job Connect's own card sizing (scoped under .job-connect-page)
         // so this preview looks identical to the real list, not a smaller
@@ -492,7 +513,7 @@ function AlumniHome({ navigate }) {
         <div className="profile-ring" style={{ "--pct": profileCompleteness }}><strong>{summaryLoading ? "…" : `${profileCompleteness}%`}</strong></div>
         <h2>{profileCompleteness >= 70 ? "Your profile looks strong" : "Your profile needs an update"}</h2>
         <p>Add your latest role, skills, and certifications to improve job and alumni recommendations.</p>
-        <button type="button" onClick={() => navigate("/alumni/dashboard?section=employment")}>Update Employment Details</button>
+        <button type="button" onClick={() => navigate("/alumni/dashboard?section=employment")}>Update Alumni Profile</button>
       </aside>
     </section>
 
@@ -515,7 +536,7 @@ function AlumniHome({ navigate }) {
           <span>{person.score} {person.category}</span>
         </article>)}
       </div>
-      <button className="similar-view-all" type="button" onClick={() => navigate("/alumni/dashboard?section=suggested")} title="View suggested alumni"><img src={HOME_ICONS.viewSuggested} alt="" aria-hidden="true" /><span>Suggested Alumni</span></button>
+      <button className="similar-view-all" type="button" onClick={() => navigate("/alumni/dashboard?section=suggested")} title="View alumni network"><img src={HOME_ICONS.viewSuggested} alt="" aria-hidden="true" /><span>Alumni Network</span></button>
     </section>
 
     {selectedAlumnus && (
@@ -669,6 +690,8 @@ function ActionModal({ modal, onClose }) {
   </div>;
 }
 
+const COMMENT_EMOJIS = ["😀", "😂", "😍", "👍", "❤️", "🎉"];
+
 function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
   const { announcement, comments, loading, text, submitting } = state;
   return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label="Comments">
@@ -684,13 +707,19 @@ function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
           </div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div className="alumni-comment-composer">
+        <div className="alumni-comment-emojis" aria-label="Add emoji">
+          {COMMENT_EMOJIS.map((emoji) => (
+            <button type="button" key={emoji} aria-label={`Add ${emoji}`} onClick={() => onChangeText(text + emoji)}>
+              {emoji}
+            </button>
+          ))}
+        </div>
         <input
           type="text"
           value={text}
           onChange={(e) => onChangeText(e.target.value)}
           placeholder="Write a comment…"
-          style={{ flex: 1, padding: "8px 14px", border: "1px solid #ccc", borderRadius: 20, fontSize: 13, outline: "none" }}
           onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); }}
         />
         <button type="button" className="primary-card-btn" disabled={submitting || !text.trim()} onClick={onSubmit}>Send</button>
