@@ -312,7 +312,10 @@
         .tsu-values p b { color: var(--tsu-title); }
         .tsu-section-heading { margin-bottom: 22px; }
         .tsu-section-heading h2 small { color: var(--tsu-accent); font-size: .46em; letter-spacing: .1em; }
-        .tsu-strategic-list { margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; list-style: none; }
+        /* Single column so the leading letters read straight down as the
+           acronym S-O-A-R-H-I-G-H-E-R ("SOAR HIGHER"). A 2-column grid made
+           the sequence zig-zag and look shuffled. */
+        .tsu-strategic-list { margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 10px; list-style: none; }
         .tsu-strategic-list li { display: grid; grid-template-columns: 38px 1fr; gap: 12px; align-items: start; padding: 14px; border-radius: 10px; background: var(--tsu-soft-bg); }
         .tsu-strategic-list i, .tsu-roadmap-card li i { display: grid; place-items: center; min-height: 34px; border-radius: 8px; background: rgba(250,200,83,.18); color: var(--tsu-title); font-style: normal; font-weight: 900; }
         .tsu-strategic-list p { margin: 0; color: var(--tsu-muted); font-size: 14px; line-height: 1.55; }
