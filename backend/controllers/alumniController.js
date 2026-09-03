@@ -941,7 +941,7 @@ const PLACEHOLDER_EMPLOYMENT_VALUES = new Set(['N/A', 'None', 'null', 'undefined
 const cleanEmploymentValue = (v) => (v && !PLACEHOLDER_EMPLOYMENT_VALUES.has(v) ? v : '');
 
 // GET /api/alumni/suggested?course=&year=&search=&limit=
-// Backs the "Suggested Alumni" directory — this used to be 8 hardcoded
+// Backs the Alumni Network directory — this used to be 8 hardcoded
 // fake profiles with no backend behind them at all.
 const getSuggestedAlumni = async (req, res) => {
   try {
@@ -955,7 +955,7 @@ const getSuggestedAlumni = async (req, res) => {
     const [me, myEmp, users, allCourses, allYears] = await Promise.all([
       User.findById(req.user.id).select('course graduationYear').lean(),
       AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
-      User.find(match, 'firstName lastName course graduationYear avatarUrl').sort({ lastName: 1 }).lean(),
+      User.find(match, 'firstName lastName email course graduationYear avatarUrl').sort({ lastName: 1 }).lean(),
       User.distinct('course', { role: 'alumni', status: 'active', course: { $nin: [null, ''] } }),
       User.distinct('graduationYear', { role: 'alumni', status: 'active', graduationYear: { $ne: null } }),
     ]);
@@ -975,6 +975,7 @@ const getSuggestedAlumni = async (req, res) => {
       return {
         _id: u._id,
         name: `${u.firstName} ${u.lastName}`,
+        email: u.email || '',
         avatarUrl: u.avatarUrl || '',
         role: cleanEmploymentValue(emp?.job_title) || 'Not yet updated',
         company: cleanEmploymentValue(emp?.company_name) || 'Not yet updated',
@@ -1416,12 +1417,32 @@ const EMPLOYMENT_TYPE_LABELS = {
 const CONTRACT_PERIOD_BY_TYPE = { 'full-time': 'f', 'part-time': 'p' };
 const CONTRACT_TYPE_BY_TYPE = { permanent: 'p', contract: 'c', temporary: 't', internship: 'i', volunteer: 'v' };
 
+const EDUCATION_LEVELS = {
+  'high-school': /high school|secondary school|senior high/i,
+  vocational: /vocational|technical (?:course|certificate)|tesda/i,
+  bachelor: /bachelor(?:'s)?|college degree|undergraduate degree|b\.?(?:s|a|sc)\.?/i,
+  master: /master(?:'s)?|postgraduate degree|mba\b|m\.?(?:s|a)\.?/i,
+  doctorate: /doctorate|ph\.?d\.?|doctoral degree/i,
+};
+
+function isSameArea(jobLocation, profileLocation) {
+  const job = String(jobLocation || '').toLowerCase();
+  const profile = String(profileLocation || '').toLowerCase().trim();
+  if (!job || !profile) return false;
+  if (job.includes(profile) || profile.includes(job)) return true;
+  const profileParts = profile.split(/[,/\-]/).map((part) => part.trim()).filter((part) => part.length >= 4);
+  return profileParts.some((part) => job.includes(part));
+}
+
 const searchJobs = async (req, res) => {
   try {
-    const { keywords = '', location = '', type = '', page = 1, pagesize = 20, sort = 'relevance' } = req.query;
+    const { keywords = '', location = '', type = '', proximity = '', education = '', page = 1, pagesize = 20, sort = 'relevance' } = req.query;
 
     const employment = await AlumniEmployment.findOne({ alumni_id: req.user.id }).lean();
     const userSkillsText = employment?.skills || '';
+    const profileLocation = String(employment?.work_location || '').trim();
+    const requestedLocation = String(location || '').trim();
+    const effectiveLocation = requestedLocation || (proximity === 'nearby' ? profileLocation : '');
 
     // With no explicit search typed, "Recommended for You" is only
     // meaningful if the Careerjet query itself is seeded from the
@@ -1461,7 +1482,7 @@ const searchJobs = async (req, res) => {
     try {
       data = await careerjetService.searchJobs({
         keywords: baseKeywords,
-        location,
+        location: effectiveLocation,
         contracttype: CONTRACT_TYPE_BY_TYPE[type] || '',
         contractperiod: CONTRACT_PERIOD_BY_TYPE[type] || '',
         page,
@@ -1482,7 +1503,10 @@ const searchJobs = async (req, res) => {
     // (unlike guessing a "work setup" from the description text used to be).
     const typeLabel = EMPLOYMENT_TYPE_LABELS[type] || '';
 
-    const jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location, typeLabel });
+    let jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location: effectiveLocation, typeLabel });
+    if (proximity === 'nearby' && profileLocation) jobs = jobs.filter((job) => isSameArea(job.location, profileLocation));
+    if (proximity === 'far' && profileLocation) jobs = jobs.filter((job) => !isSameArea(job.location, profileLocation));
+    if (EDUCATION_LEVELS[education]) jobs = jobs.filter((job) => EDUCATION_LEVELS[education].test(job.description));
 
     // "Recommended for You" only makes sense as jobs with an actual match —
     // a real search (user typed something) still shows everything Careerjet
@@ -1496,6 +1520,7 @@ const searchJobs = async (req, res) => {
       page: data.page || Number(page),
       pages: data.pages ?? 1,
       hasProfile: !!profileKeywords,
+      profileLocation,
     });
   } catch (err) {
     console.error('searchJobs error:', err);
