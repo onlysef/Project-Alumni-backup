@@ -1,11 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
 import toptsuLogo from "../../assets/images/tsu-top-header.webp";
 import { API, authHeaders } from "../../services/api.js";
+import { getNotificationTarget } from "../../services/notificationNavigation.js";
 
 const LAST_READ_KEY = "adminNotifReadAt";
+const READ_ITEMS_KEY = "adminNotifReadItems";
+
+function notificationKey(notification) {
+  return [
+    notification.type || "notification",
+    notification.resource_id || "none",
+    notification.createdAt || "unknown",
+  ].join(":");
+}
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -20,11 +30,16 @@ function timeAgo(dateStr) {
 
 export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [lastReadAt, setLastReadAt] = useState(() => {
     const stored = localStorage.getItem(LAST_READ_KEY);
     return stored ? new Date(stored) : new Date(0);
+  });
+  const [readItems, setReadItems] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(READ_ITEMS_KEY)) || []); }
+    catch { return new Set(); }
   });
   const pollRef = useRef(null);
 
@@ -82,14 +97,41 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
     if (panel === "notifications") fetchNotifications();
   }, [panel, fetchNotifications]);
 
-  const unread = notifications.filter((n) => new Date(n.createdAt) > lastReadAt).length;
+  const isUnread = (notification) =>
+    new Date(notification.createdAt) > lastReadAt
+    && !readItems.has(notificationKey(notification));
+  const unread = notifications.filter(isUnread).length;
   const badge = settings.dashboardNotifications ? unread : 0;
 
   function markAllRead() {
     const now = new Date();
     setLastReadAt(now);
     localStorage.setItem(LAST_READ_KEY, now.toISOString());
+    setReadItems(new Set());
+    localStorage.removeItem(READ_ITEMS_KEY);
     showToast("Notifications marked as read.");
+  }
+
+  function markOneRead(notification) {
+    const key = notificationKey(notification);
+    setReadItems((current) => {
+      if (current.has(key)) return current;
+      const next = new Set(current);
+      next.add(key);
+      localStorage.setItem(READ_ITEMS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function openNotification(notification) {
+    markOneRead(notification);
+    setPanel(null);
+    const target = getNotificationTarget("admin", notification);
+    if (["like", "comment", "share", "announcement"].includes(notification.type) && notification.resource_id) {
+      navigate("/admin/announcements", { state: { postId: notification.resource_id } });
+      return;
+    }
+    navigate(target);
   }
 
   return (
@@ -146,7 +188,7 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
               </p>
             ) : (
               notifications.map((n, i) => (
-                <article key={n._id ?? i} className={`notification-item${new Date(n.createdAt) > lastReadAt ? " is-unread" : ""}`}>
+                <article key={n._id ?? notificationKey(n) ?? i} className={`notification-item notification-link${isUnread(n) ? " is-unread" : ""}`} role="button" tabIndex={0} onClick={() => openNotification(n)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openNotification(n); } }}>
                   <strong>{n.title}</strong>
                   <span>{n.body}</span>
                   <time>{timeAgo(n.createdAt)}</time>
