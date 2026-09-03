@@ -2598,7 +2598,7 @@ body.dark-mode .network-profile-summary > div:last-child small { color: #d4bdc3;
 .alumni-app .announcement-image {
   order: 2;
   width: 100%;
-  height: clamp(190px, 25vw, 280px);
+  height: 170px;
   min-height: 0;
   margin: 0;
   border-radius: 0;
@@ -2714,7 +2714,7 @@ body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83,
   .alumni-app .announcements-page { max-width: none; }
   .alumni-app .announcement-body { padding: 15px 14px 12px; }
   .alumni-app .announcement-body h2 { font-size: 18px; }
-  .alumni-app .announcement-image { height: 200px; }
+  .alumni-app .announcement-image { height: 150px; }
   .alumni-app .announcement-meta { flex-wrap: wrap; gap: 3px; }
   .alumni-app .announcement-meta time { flex-basis: 100%; margin-bottom: 4px; }
   .alumni-app .meta-action { flex: 1; min-width: 0; }
