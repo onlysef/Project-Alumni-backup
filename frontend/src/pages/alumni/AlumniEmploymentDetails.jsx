@@ -108,10 +108,10 @@ export default function AlumniEmploymentDetails() {
         const mapped = mapEmploymentToForm(d.employment);
         setForm(mapped);
         setSaved(mapped);
-        // A brand-new record (nothing saved yet) starts in edit mode so
-        // there's something to fill in right away, instead of showing a
-        // form full of disabled, empty fields with no obvious next step.
-        setEditing(!d.employment);
+        // The profile always opens in preview mode. Editing is an explicit
+        // action, including for a brand-new alumnus, so this page doesn't
+        // look like an unfinished form before they choose Edit Profile.
+        setEditing(false);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -175,8 +175,8 @@ export default function AlumniEmploymentDetails() {
   return <div className="alumni-page-content employment-details-page">
     <div className="employment-grid">
       <section className="employment-form-card">
-        <div className="employment-card-head"><div><span>Employment record</span><h2>Employment Details</h2></div><span className={`status-pill ${saved.status.toLowerCase()}`}>{saved.status}</span></div>
-        <form onSubmit={submit}>
+        <div className="employment-card-head"><div><span>Alumni profile</span><h2>Alumni Profile</h2></div><span className={`status-pill ${saved.status.toLowerCase()}`}>{saved.status}</span></div>
+        <form className={editing ? "profile-edit-form" : "profile-preview-form"} onSubmit={submit}>
           <div className="employment-block"><h3>Work Information</h3><div className="employment-fields">
             <Field label="Employment Status"><select disabled={!editing} value={form.status} onChange={e => update("status", e.target.value)}><option>Employed</option><option>Self-employed</option><option>Unemployed</option></select></Field>
             <Field label="Company Name"><input disabled={!editing} value={form.company} onChange={e => update("company", e.target.value)} /></Field>
@@ -219,7 +219,7 @@ export default function AlumniEmploymentDetails() {
               </select>
             </Field>
           </div></div>
-          <div className="employment-actions">{editing ? <><button type="button" className="secondary-employment-btn" onClick={() => { setForm(saved); const restored = mapFormToEmployment(saved); localStorage.setItem(EMPLOYMENT_PROFILE_KEY, JSON.stringify(restored)); window.dispatchEvent(new CustomEvent("alumni-employment-updated", { detail: restored })); setEditing(false); }}><img src={EMPLOYMENT_ICONS.cancel} alt="" aria-hidden="true" />Cancel</button><button className="primary-employment-btn" type="submit" disabled={saving}><img src={EMPLOYMENT_ICONS.save} alt="" aria-hidden="true" />{saving ? "Saving…" : "Save Changes"}</button></> : <button type="button" className="primary-employment-btn" onClick={() => setEditing(true)}><img src={EMPLOYMENT_ICONS.edit} alt="" aria-hidden="true" />Edit Details</button>}</div>
+          <div className="employment-actions">{editing ? <><button type="button" className="secondary-employment-btn" onClick={() => { setForm(saved); const restored = mapFormToEmployment(saved); localStorage.setItem(EMPLOYMENT_PROFILE_KEY, JSON.stringify(restored)); window.dispatchEvent(new CustomEvent("alumni-employment-updated", { detail: restored })); setEditing(false); }}><img src={EMPLOYMENT_ICONS.cancel} alt="" aria-hidden="true" />Cancel</button><button className="primary-employment-btn" type="submit" disabled={saving}><img src={EMPLOYMENT_ICONS.save} alt="" aria-hidden="true" />{saving ? "Saving…" : "Save Profile"}</button></> : <button type="button" className="primary-employment-btn" onClick={() => setEditing(true)}><img src={EMPLOYMENT_ICONS.edit} alt="" aria-hidden="true" />Edit Profile</button>}</div>
         </form>
       </section>
 
