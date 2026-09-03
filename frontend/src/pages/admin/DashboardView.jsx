@@ -127,7 +127,7 @@ function MiniBarChart({ rows }) {
           <div className="tracer-vbar-wrap">
             <div
               className="tracer-vbar"
-              style={{ height: `${Math.max((r.count / max) * 100, 8)}%`, background: CHART_PALETTE[i % CHART_PALETTE.length] }}
+              style={{ height: `${Math.max((r.count / max) * 100, 8)}%`, background: VERTICAL_CHART_COLORS[i % VERTICAL_CHART_COLORS.length] }}
               title={`${r.label}: ${r.count}`}
             >
               <span className="tracer-vbar-value">{r.count}</span>
@@ -215,6 +215,8 @@ const RATING_COLORS = {
   Beginner: "#6b4226", "Non-Acceptable": "#8f8f8f",
 };
 
+const VERTICAL_CHART_COLORS = ["#b51f3d", "#f0b43c", "#9b6cff", "#21b6a8", "#4f8df7", "#f47b35"];
+
 function RatingMatrix({ rows }) {
   const hasData = rows?.some((r) => Object.keys(r.ratings).length > 0);
   if (!hasData) return <p className="tracer-empty">No responses yet.</p>;
@@ -259,6 +261,9 @@ function RatingMatrix({ rows }) {
 }
 
 function TracerAccordionRow({ num, title, subtitle, open, onToggle, children }) {
+  const hasOpened = useRef(open);
+  if (open) hasOpened.current = true;
+
   return (
     <div className="tracer-accordion-item">
       <button
@@ -277,7 +282,15 @@ function TracerAccordionRow({ num, title, subtitle, open, onToggle, children }) 
           </svg>
         </span>
       </button>
-      {open && <div className="tracer-accordion-body">{children}</div>}
+      {hasOpened.current && (
+        <div
+          className={`tracer-accordion-collapse${open ? " open" : ""}`}
+          aria-hidden={!open}
+          inert={open ? undefined : "true"}
+        >
+          <div className="tracer-accordion-body">{children}</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -534,6 +547,7 @@ export default function DashboardView() {
   const [tracerCount, setTracerCount]     = useState(null);
   const [postActivities, setPostActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [activityWindow, setActivityWindow] = useState("24");
   const [tracerAnalytics, setTracerAnalytics] = useState(null);
   const [tracerCollege, setTracerCollege] = useState("CCS");
 
@@ -572,27 +586,6 @@ export default function DashboardView() {
       } catch {}
     }
 
-    async function fetchActivities() {
-      try {
-        const res = await fetch(`${API}/admin/announcements/activity`, { headers: authHeaders() });
-        if (!res.ok) return;
-        const data = await res.json();
-        const raw = data.activities || [];
-        const seen = new Map();
-        for (const a of raw) {
-          const key = `${a.user_id || a.user_name}|${a.announcement_id || a.announcement_title}|${a.action}`;
-          const prev = seen.get(key);
-          if (!prev || new Date(a.createdAt) > new Date(prev.createdAt)) seen.set(key, a);
-        }
-        const deduped = [...seen.values()].sort(
-          (x, y) => new Date(y.createdAt) - new Date(x.createdAt)
-        );
-        setPostActivities(deduped);
-      } catch {} finally {
-        setActivitiesLoading(false);
-      }
-    }
-
     async function fetchSurveyStats() {
       try {
         const res = await fetch(`${API}/admin/employment/survey-stats`, { headers: authHeaders() });
@@ -607,14 +600,12 @@ export default function DashboardView() {
     }
 
     fetchTotalUsers();
-    fetchActivities();
     fetchEmploymentStats();
     fetchCourseJobStats();
     fetchSurveyStats();
 
     const interval = setInterval(() => {
       fetchTotalUsers();
-      fetchActivities();
       fetchEmploymentStats();
       fetchCourseJobStats();
       fetchSurveyStats();
@@ -623,16 +614,45 @@ export default function DashboardView() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    async function fetchActivities() {
+      setActivitiesLoading(true);
+      try {
+        const limit = activityWindow === "all" ? 50 : 20;
+        const res = await fetch(`${API}/admin/announcements/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const seen = new Map();
+        for (const activity of data.activities || []) {
+          const key = `${activity.user_id || activity.user_name}|${activity.announcement_id || activity.announcement_title}|${activity.action}`;
+          const previous = seen.get(key);
+          if (!previous || new Date(activity.createdAt) > new Date(previous.createdAt)) seen.set(key, activity);
+        }
+        if (!cancelled) {
+          setPostActivities([...seen.values()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+        }
+      } catch {} finally {
+        if (!cancelled) setActivitiesLoading(false);
+      }
+    }
+    fetchActivities();
+    const interval = setInterval(fetchActivities, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [activityWindow]);
+
+  useEffect(() => {
+    let cancelled = false;
       async function fetchDonutStats() {
       try {
         const qs  = donutCourse !== "All" ? `?course=${donutCourse}` : "";
         const res = await fetch(`${API}/admin/employment/donut-stats${qs}`, { headers: authHeaders() });
-        if (!res.ok) return;
+        if (!res.ok || cancelled) return;
         const data = await res.json();
-        setDonutData(data);
+        if (!cancelled) setDonutData(data);
       } catch {}
     }
     fetchDonutStats();
+    return () => { cancelled = true; };
   }, [donutCourse]);
 
   useEffect(() => {
@@ -758,7 +778,6 @@ export default function DashboardView() {
                   options={DONUT_COURSES}
                   onSelect={(label) => {
                     setDonutCourse(label);
-                    setDonutData(null);
                     showToast(`Employment chart: ${label}`);
                   }}
                   trigger={(toggle) => (
@@ -790,15 +809,28 @@ export default function DashboardView() {
 
         <aside className="right-stack">
           <section className="panel">
-            <div className="panel-head light">Recent Post Activities</div>
-            <div className="activity-list">
+            <div className="panel-head light">
+              <span>{activityWindow === "all" ? "Post Activity History" : "Recent Post Activities"}</span>
+              <Dropdown
+                menuClassName="filter-menu activity-window-menu"
+                active={activityWindow === "24" ? "Last 24 hours" : activityWindow === "168" ? "Last 7 days" : "Full history"}
+                options={["Last 24 hours", "Last 7 days", "Full history"]}
+                onSelect={(label) => setActivityWindow(label === "Last 24 hours" ? "24" : label === "Last 7 days" ? "168" : "all")}
+                trigger={(toggle) => (
+                  <button className="filter activity-window-filter" type="button" onClick={toggle}>
+                    {activityWindow === "24" ? "Last 24 hours" : activityWindow === "168" ? "Last 7 days" : "Full history"}
+                  </button>
+                )}
+              />
+            </div>
+            <div className="activity-list recent-post-activity-list" key={activityWindow}>
               {activitiesLoading ? (
                 <div className="activity" style={{ justifyContent: "center", color: "var(--muted, #76656a)", fontSize: 13 }}>
                   Loading…
                 </div>
               ) : postActivities.length === 0 ? (
                 <div className="activity" style={{ justifyContent: "center", color: "var(--muted, #76656a)", fontSize: 13 }}>
-                  No recent activity yet.
+                  {activityWindow === "all" ? "No activity history yet." : "No activity in this period."}
                 </div>
               ) : postActivities.map((a) => (
                 <div
