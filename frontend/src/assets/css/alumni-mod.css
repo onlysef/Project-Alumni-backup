@@ -679,6 +679,15 @@
 .skills-chip-list { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 39px; padding: 8px 11px; border: 1px solid #cdbdc1; border-radius: 5px; background: #f7f4f5; }
 .skill-chip { padding: 4px 10px; border-radius: 12px; border: 1px solid #e1d0d4; background: #fff; color: #4d3f43; font-size: 11px; font-weight: 700; }
 .skills-empty { color: #92838a; font-size: 12px; font-style: italic; }
+.skills-editor { display: grid; gap: 7px; }
+.skills-edit-list { align-items: center; min-height: 39px; padding: 6px 8px; background: #fff; }
+.skills-edit-list input { flex: 1 1 120px; width: auto; min-width: 100px; height: 26px; padding: 0 4px; border: 0; background: transparent; }
+.skills-edit-list input:focus { box-shadow: none; }
+.skill-chip { display: inline-flex; align-items: center; gap: 5px; }
+.skill-chip button { display: grid; place-items: center; width: 15px; height: 15px; padding: 0; border: 0; border-radius: 50%; background: #e8d8dc; color: #70001d; font-size: 13px; line-height: 1; cursor: pointer; }
+.skill-chip button:hover { background: #70001d; color: #fff; }
+.add-skill-button { justify-self: start; padding: 5px 9px; border: 1px solid #70001d; border-radius: 5px; background: #fff; color: #70001d; font-size: 10px; font-weight: 800; cursor: pointer; }
+.add-skill-button:hover { background: #fdf0f2; }
 .employment-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 26px; }
 .primary-employment-btn, .secondary-employment-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 8px 13px; border-radius: 5px; font-size: 11px; font-weight: 800; line-height: 1; cursor: pointer; }
 .primary-employment-btn img, .secondary-employment-btn img { display: block; width: 14px; height: 14px; flex: 0 0 auto; }
