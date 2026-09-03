@@ -1,4 +1,5 @@
 import React from "react";
+import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
 
 const strategicDirections = [
   ["S", "Sustainable student support programs", "to improve access to quality education to become globally competitive."],
@@ -27,33 +28,65 @@ export default function TsuLandingView() {
   return (
     <section className="content view tsu-landing-view active-view">
       <article className="tsu-document">
-        <h2>Vision</h2>
-        <p>A globally competitive university recognized for excellence in sciences and emerging technologies.</p>
+        <header className="tsu-hero">
+          <div className="tsu-hero-copy">
+            <span className="tsu-eyebrow">Truth · Service · Unity</span>
+            <h1>Tarlac State University</h1>
+            <p>
+              A premier state university committed to academic excellence, responsive innovation,
+              and meaningful service to the community.
+            </p>
+          </div>
+          <div className="tsu-seal-wrap">
+            <img src={tsuLogo} alt="Tarlac State University seal" />
+          </div>
+        </header>
 
-        <h2>Mission</h2>
-        <p>
-          TSU shall develop highly competitive and empowered human resources fostering responsive global education,
-          future-proof research culture, inclusive and relevant extension programs, and sustainable production projects.
-        </p>
+        <div className="tsu-content-grid">
+          <section className="tsu-info-card">
+            <span>Our aspiration</span>
+            <h2>Vision</h2>
+            <p>A globally competitive university recognized for excellence in sciences and emerging technologies.</p>
+          </section>
 
-        <h2>Core Values</h2>
-        <p><strong>T</strong>-ruth in words, action and character</p>
-        <p><strong>S</strong>-ervice with excellence and compassion</p>
-        <p><strong>U</strong>-nity in diversity</p>
+          <section className="tsu-info-card">
+            <span>Our purpose</span>
+            <h2>Mission</h2>
+            <p>
+              TSU shall develop highly competitive and empowered human resources fostering responsive global education,
+              future-proof research culture, inclusive and relevant extension programs, and sustainable production projects.
+            </p>
+          </section>
 
-        <h3>Strategic Directions (SOAR HIGHER):</h3>
-        <ul>
-          {strategicDirections.map(([letter, lead, rest], index) => (
-            <li key={`${letter}-${index}`}>
-              <strong>{letter} - {lead}</strong>{rest ? ` ${rest}` : ""}
-            </li>
-          ))}
-        </ul>
+          <section className="tsu-info-card tsu-values-card">
+            <span>What guides us</span>
+            <h2>Core Values</h2>
+            <div className="tsu-values">
+              <p><strong>T</strong><span><b>Truth</b> in words, action and character</span></p>
+              <p><strong>S</strong><span><b>Service</b> with excellence and compassion</span></p>
+              <p><strong>U</strong><span><b>Unity</b> in diversity</span></p>
+            </div>
+          </section>
+        </div>
 
-        <h3>Approved Roadmaps:</h3>
-        <ul>
-          {roadmaps.map((roadmap) => <li key={roadmap}>{roadmap}</li>)}
-        </ul>
+        <section className="tsu-list-card">
+          <div className="tsu-section-heading"><span>Institutional priorities</span><h2>Strategic Directions <small>SOAR HIGHER</small></h2></div>
+          <ul className="tsu-strategic-list">
+            {strategicDirections.map(([letter, lead, rest], index) => (
+              <li key={`${letter}-${index}`}>
+                <i>{letter}</i>
+                <p><strong>{lead}</strong>{rest ? ` ${rest}` : ""}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="tsu-list-card tsu-roadmap-card">
+          <div className="tsu-section-heading"><span>Development framework</span><h2>Approved Roadmaps</h2></div>
+          <ol>
+            {roadmaps.map((roadmap, index) => <li key={roadmap}><i>{String(index + 1).padStart(2, "0")}</i><span>{roadmap}</span></li>)}
+          </ol>
+        </section>
       </article>
     </section>
   );
