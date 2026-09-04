@@ -8,6 +8,7 @@ import { accountActionList, actionLabels } from "../../data.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
+import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
 function capitalize(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -64,15 +65,6 @@ function AccountStatusBadge({ status }) {
   }[status] || "pending";
   return <span className={`status-badge account-status ${cls}`}>{status}</span>;
 }
-
-const COLLEGES = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
-const CCS_COURSES = ["BSIT", "BSCS", "BSIS", "BSIM"];
-// Was a fixed 2020-2024 list — same staleness bug as coordinator
-// AlumniContacts' year filter (fixed automatically, same reasoning): any
-// batch graduating after the hardcoded ceiling had no option to pick from
-// when creating/editing their account.
-const CURRENT_YEAR = new Date().getFullYear();
-const BATCH_YEARS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
 export default function AccountsView() {
   const { showToast } = useOutletContext();
@@ -789,7 +781,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
           }}
         >
           <div className="admin-entry-fields">
-            <label>First Name
+            <label><span className="field-label">First Name<span className="required-asterisk">*</span></span>
               <input type="text" name="firstName" defaultValue={row?.firstName || ""} required />
             </label>
             <label>Middle Initial
@@ -802,10 +794,10 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
                 aria-label="Middle initial"
               />
             </label>
-            <label>Last Name
+            <label><span className="field-label">Last Name<span className="required-asterisk">*</span></span>
               <input type="text" name="lastName" defaultValue={row?.lastName || ""} required />
             </label>
-            <label>Email
+            <label><span className="field-label">Email<span className="required-asterisk">*</span></span>
               <input type="email" name="email" defaultValue={row?.email || ""} required />
             </label>
             <label>Role
@@ -817,14 +809,14 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
               </select>
             </label>
             {(role === "Alumni" || role === "Coordinator") && (
-              <label>College
-                <select name="college" value={college} onChange={(e) => setCollege(e.target.value)} required>
+              <label><span className="field-label">College<span className="required-asterisk">*</span></span>
+                <select name="college" value={college} onChange={(e) => { setCollege(e.target.value); setCourse(""); }} required>
                   <option value="">— Select college —</option>
                   {COLLEGES.map((c) => <option key={c}>{c}</option>)}
                 </select>
               </label>
             )}
-            {isEdit && role === "Employer" && (
+            {role === "Employer" && (
               <label>Partner Company
                 <select name="partnershipId" value={partnershipId} onChange={(e) => setPartnershipId(e.target.value)}>
                   <option value="">— Not linked to a partnership —</option>
@@ -833,10 +825,10 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
               </label>
             )}
             {role === "Alumni" && (
-              <label>Course
+              <label><span className="field-label">Course<span className="required-asterisk">*</span></span>
                 <select name="course" value={course} onChange={(e) => setCourse(e.target.value)} required>
                   <option value="">— Select course —</option>
-                  {CCS_COURSES.map((c) => <option key={c}>{c}</option>)}
+                  {(COURSES_BY_COLLEGE[college] || []).map((c) => <option key={c}>{c}</option>)}
                 </select>
               </label>
             )}
@@ -849,11 +841,17 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
               </label>
             )}
             {role === "Alumni" && (
-              <label>Graduation Year
-                <select name="graduationYear" defaultValue={row?.graduationYear || ""}>
-                  <option value="">— Select year —</option>
-                  {BATCH_YEARS.map((y) => <option key={y}>{y}</option>)}
-                </select>
+              <label><span className="field-label">Graduation Year<span className="required-asterisk">*</span></span>
+                <input
+                  type="number"
+                  name="graduationYear"
+                  defaultValue={row?.graduationYear || ""}
+                  placeholder="e.g. 2024"
+                  min="1900"
+                  max="2100"
+                  step="1"
+                  required
+                />
               </label>
             )}
             {isEdit && (

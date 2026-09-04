@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
@@ -236,9 +237,11 @@ function DetailModal({ response, onClose }) {
   );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Main Page ────────────────────────────────────────────────────────────────
 
-export default function TracerResponsesViewer({ open, onClose, showToast }) {
+export default function TracerResponsesView() {
+  const { showToast } = useOutletContext();
+
   const [responses, setResponses]       = useState([]);
   const [loading, setLoading]           = useState(false);
   const [page, setPage]                 = useState(1);
@@ -249,6 +252,8 @@ export default function TracerResponsesViewer({ open, onClose, showToast }) {
   const [search, setSearch]             = useState("");
   const [college, setCollege]           = useState("");
   const [colleges, setColleges]         = useState([]);
+  const [batch, setBatch]               = useState("");
+  const [batches, setBatches]           = useState([]);
   const [dateFrom, setDateFrom]         = useState("");
   const [dateTo, setDateTo]             = useState("");
 
@@ -258,17 +263,16 @@ export default function TracerResponsesViewer({ open, onClose, showToast }) {
   const LIMIT       = 10;
   const searchTimer = useRef(null);
 
-  // Load distinct colleges whenever the modal opens, merging with base list
   useEffect(() => {
-    if (!open) return;
     fetch(`${API}/admin/employment/responses/colleges`, { headers: authHeaders() })
       .then(r => r.json())
       .then(d => {
         const merged = [...new Set([...BASE_COLLEGES, ...(d.colleges || [])])].sort();
         setColleges(merged);
+        setBatches(d.batches || []);
       })
       .catch(() => setColleges([...BASE_COLLEGES]));
-  }, [open]);
+  }, []);
 
   // Debounce search
   useEffect(() => {
@@ -278,11 +282,10 @@ export default function TracerResponsesViewer({ open, onClose, showToast }) {
   }, [searchInput]);
 
   const fetchResponses = useCallback(async () => {
-    if (!open) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        search, college, date_from: dateFrom, date_to: dateTo,
+        search, college, batch, date_from: dateFrom, date_to: dateTo,
         page, limit: LIMIT,
       });
       const res  = await fetch(`${API}/admin/employment/responses?${params}`, { headers: authHeaders() });
@@ -296,20 +299,9 @@ export default function TracerResponsesViewer({ open, onClose, showToast }) {
     } finally {
       setLoading(false);
     }
-  }, [open, search, college, dateFrom, dateTo, page]);
+  }, [search, college, batch, dateFrom, dateTo, page]);
 
   useEffect(() => { fetchResponses(); }, [fetchResponses]);
-
-  // Reset state on close
-  useEffect(() => {
-    if (!open) {
-      setResponses([]); setPage(1); setTotal(0); setPages(0);
-      setSearchInput(""); setSearch("");
-      setCollege("");
-      setDateFrom(""); setDateTo("");
-      setDetail(null);
-    }
-  }, [open]);
 
   async function handleViewAnswer(alumni_id) {
     setDetailLoading(true);
@@ -327,198 +319,140 @@ export default function TracerResponsesViewer({ open, onClose, showToast }) {
 
   const from = total === 0 ? 0 : (page - 1) * LIMIT + 1;
   const to   = Math.min(page * LIMIT, total);
+  const hasActiveFilters = Boolean(college || batch || dateFrom || dateTo || search);
 
   return (
-    <>
-      <Modal open={open} onClose={onClose}>
-        <div style={{
-          width: "min(960px, 96vw)",
-          maxHeight: "92vh",
-          display: "flex",
-          flexDirection: "column",
-          background: "#fff",
-          borderRadius: 12,
-          boxShadow: "0 8px 40px rgba(0,0,0,0.22)",
-          overflow: "hidden",
-        }}>
-          {/* Header */}
-          <div style={{
-            background: `linear-gradient(135deg, ${MAROON} 0%, #8b1a2e 100%)`,
-            color: "#fff",
-            padding: "16px 24px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexShrink: 0,
-          }}>
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 17, color: GOLD, letterSpacing: "0.02em" }}>
-                Tracer Form Responses
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
-                Alumni who submitted the tracer study form
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              style={{
-                background: "rgba(255,255,255,0.15)", border: "none", color: "#fff",
-                width: 32, height: 32, borderRadius: 6, cursor: "pointer",
-                fontSize: 18, lineHeight: "32px", textAlign: "center",
-              }}
-            >×</button>
-          </div>
+    <section className="content tracer-responses-view view active-view">
+      <div className="admin-hero" aria-label="Tracer responses header">
+        <h1 className="admin-hero-title">Tracer Form Responses</h1>
+        <p className="admin-hero-subtitle">
+          Browse every alumni tracer study submission — search by name, filter by college and
+          submission date, and open a response to see the full answer sheet.
+        </p>
+      </div>
 
-          {/* Filters */}
-          <div style={{
-            display: "flex", flexWrap: "wrap", gap: 10, padding: "14px 20px",
-            borderBottom: "1px solid #e4cccc", background: "#faf5f5", flexShrink: 0,
-          }}>
+      <section className="employment-card">
+        <div className="emp-search-row">
+          <input
+            type="text"
+            className="emp-search"
+            placeholder="Search by name…"
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+          />
+          <select className="table-filter" style={{ marginBottom: 0, minHeight: 36 }} value={college} onChange={e => { setCollege(e.target.value); setPage(1); }}>
+            <option value="">All colleges</option>
+            {colleges.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select className="table-filter" style={{ marginBottom: 0, minHeight: 36 }} value={batch} onChange={e => { setBatch(e.target.value); setPage(1); }}>
+            <option value="">All batches</option>
+            {batches.map(b => <option key={b} value={b}>Batch {b}</option>)}
+          </select>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 12, color: "#76656a", whiteSpace: "nowrap" }}>Date:</span>
             <input
-              type="text"
-              placeholder="Search by name…"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              style={inputStyle}
+              type="date"
+              title="Date submitted from"
+              value={dateFrom}
+              onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+              className="emp-search"
+              style={{ minWidth: 130, flex: "none" }}
             />
-            <select value={college} onChange={e => { setCollege(e.target.value); setPage(1); }} style={inputStyle}>
-              <option value="">All colleges</option>
-              {colleges.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-              <span style={{ fontSize: 12, color: "#76656a", whiteSpace: "nowrap" }}>Date:</span>
-              <input
-                type="date"
-                title="Date submitted from"
-                value={dateFrom}
-                onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-                style={{ ...inputStyle, minWidth: 130, flex: "none" }}
-              />
-              <span style={{ fontSize: 12, color: "#76656a" }}>–</span>
-              <input
-                type="date"
-                title="Date submitted to"
-                value={dateTo}
-                onChange={e => { setDateTo(e.target.value); setPage(1); }}
-                style={{ ...inputStyle, minWidth: 130, flex: "none" }}
-              />
-            </div>
-            {(college || dateFrom || dateTo || search) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setCollege("");
-                  setDateFrom(""); setDateTo("");
-                  setSearchInput(""); setSearch("");
-                  setPage(1);
-                }}
-                style={{
-                  background: "none", border: "1.5px solid #b0747a", color: "#7B1A2E",
-                  borderRadius: 7, padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer",
-                }}
-              >
-                Clear Filters
-              </button>
-            )}
+            <span style={{ fontSize: 12, color: "#76656a" }}>–</span>
+            <input
+              type="date"
+              title="Date submitted to"
+              value={dateTo}
+              onChange={e => { setDateTo(e.target.value); setPage(1); }}
+              className="emp-search"
+              style={{ minWidth: 130, flex: "none" }}
+            />
           </div>
-
-          {/* Table */}
-          <div style={{ flex: 1, overflowY: "auto", padding: "0 0 4px" }}>
-            <table className="employment-table" style={{ width: "100%" }}>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>College</th>
-                  <th>Course</th>
-                  <th>Date Submitted</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr><td colSpan={5} className="emp-loading">Loading responses…</td></tr>
-                ) : responses.length === 0 ? (
-                  <tr><td colSpan={5} className="emp-empty">No tracer form submissions found.</td></tr>
-                ) : responses.map(r => (
-                  <tr key={r._id}>
-                    <td data-label="Name">{r.name}</td>
-                    <td data-label="College">{r.college || "—"}</td>
-                    <td data-label="Course">{r.course || "—"}</td>
-                    <td data-label="Date Submitted">{fmtDate(r.submittedAt)}</td>
-                    <td data-label="Actions">
-                      <button
-                        type="button"
-                        disabled={detailLoading}
-                        onClick={() => handleViewAnswer(r.alumni_id)}
-                        style={{
-                          background: MAROON, color: "#fff", border: "none",
-                          borderRadius: 6, padding: "5px 13px",
-                          fontSize: 12, fontWeight: 600, cursor: "pointer",
-                          opacity: detailLoading ? 0.6 : 1,
-                        }}
-                      >
-                        View Answer
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination + footer */}
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "10px 20px", borderTop: "1px solid #e4cccc",
-            flexShrink: 0, flexWrap: "wrap", gap: 8,
-          }}>
-            <span style={{ fontSize: 12, color: "#76656a" }}>
-              {total > 0 ? `Showing ${from}–${to} of ${total} response${total !== 1 ? "s" : ""}` : "No responses found"}
-            </span>
-            {pages > 1 && (
-              <div className="emp-pagination-controls">
-                <button className="emp-pagination-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹</button>
-                {Array.from({ length: Math.min(pages, 5) }, (_, i) => {
-                  const start = Math.max(1, Math.min(page - 2, pages - 4));
-                  return start + i;
-                }).filter(p => p >= 1 && p <= pages).map(p => (
-                  <button
-                    key={p}
-                    className={`emp-pagination-btn${p === page ? " active" : ""}`}
-                    onClick={() => setPage(p)}
-                  >{p}</button>
-                ))}
-                <button className="emp-pagination-btn" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>›</button>
-              </div>
-            )}
+          {hasActiveFilters && (
             <button
               type="button"
-              onClick={onClose}
-              style={{
-                background: "none", border: "1.5px solid #ccc", color: "#444",
-                borderRadius: 7, padding: "7px 18px", fontSize: 13,
-                fontWeight: 600, cursor: "pointer",
+              className="see-toggle"
+              style={{ marginTop: 0 }}
+              onClick={() => {
+                setCollege(""); setBatch("");
+                setDateFrom(""); setDateTo("");
+                setSearchInput(""); setSearch("");
+                setPage(1);
               }}
             >
-              Close
+              Clear Filters
             </button>
-          </div>
+          )}
         </div>
-      </Modal>
+
+        <table className="employment-table" style={{ width: "100%" }}>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>College</th>
+              <th>Course</th>
+              <th>Date Submitted</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={5} className="emp-loading">Loading responses…</td></tr>
+            ) : responses.length === 0 ? (
+              <tr><td colSpan={5} className="emp-empty">No tracer form submissions found.</td></tr>
+            ) : responses.map(r => (
+              <tr key={r._id}>
+                <td data-label="Name">{r.name}</td>
+                <td data-label="College">{r.college || "—"}</td>
+                <td data-label="Course">{r.course || "—"}</td>
+                <td data-label="Date Submitted">{fmtDate(r.submittedAt)}</td>
+                <td data-label="Actions">
+                  <button
+                    type="button"
+                    disabled={detailLoading}
+                    onClick={() => handleViewAnswer(r.alumni_id)}
+                    style={{
+                      background: MAROON, color: "#fff", border: "none",
+                      borderRadius: 6, padding: "5px 13px",
+                      fontSize: 12, fontWeight: 600, cursor: "pointer",
+                      opacity: detailLoading ? 0.6 : 1,
+                    }}
+                  >
+                    View Answer
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "10px 4px 0", flexWrap: "wrap", gap: 8,
+        }}>
+          <span style={{ fontSize: 12, color: "#76656a" }}>
+            {total > 0 ? `Showing ${from}–${to} of ${total} response${total !== 1 ? "s" : ""}` : "No responses found"}
+          </span>
+          {pages > 1 && (
+            <div className="emp-pagination-controls">
+              <button className="emp-pagination-btn" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>‹</button>
+              {Array.from({ length: Math.min(pages, 5) }, (_, i) => {
+                const start = Math.max(1, Math.min(page - 2, pages - 4));
+                return start + i;
+              }).filter(p => p >= 1 && p <= pages).map(p => (
+                <button
+                  key={p}
+                  className={`emp-pagination-btn${p === page ? " active" : ""}`}
+                  onClick={() => setPage(p)}
+                >{p}</button>
+              ))}
+              <button className="emp-pagination-btn" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>›</button>
+            </div>
+          )}
+        </div>
+      </section>
 
       {detail && <DetailModal response={detail} onClose={() => setDetail(null)} />}
-    </>
+    </section>
   );
 }
-
-const inputStyle = {
-  border: "1.5px solid #ddd",
-  borderRadius: 7,
-  padding: "7px 10px",
-  fontSize: 13,
-  background: "#fff",
-  color: "#2d2024",
-  minWidth: 150,
-  flex: "1 1 auto",
-};

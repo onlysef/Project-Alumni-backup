@@ -14,6 +14,38 @@ function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// workLocation is a free-text field, not a real two-value enum — the tracer
+// form's own radio options are "Local (within your home country)"/"Abroad
+// (outside your home country)", but bulk-migrated records often carry a
+// literal city name instead ("Clark", "Taguig", "Clark, Pampanga"). Every
+// one of those IS local (a Philippine city can't be "abroad"), so the only
+// reliable signal is whether the value mentions abroad/overseas at all —
+// anything that doesn't is Local, regardless of exact wording.
+const ABROAD_REGEX = /abroad|overseas/i;
+
+// Canonical label used to bucket a raw workLocation value into exactly the
+// two categories the tracer form's own options describe — used both by the
+// aggregation $group stages (so charts don't fragment into one bucket per
+// stray city name) and anywhere a human-readable label is shown.
+function normalizeWorkLocationLabel(raw) {
+  if (!raw) return null;
+  return ABROAD_REGEX.test(raw) ? 'Abroad (outside your home country)' : 'Local (within your home country)';
+}
+
+// Builds the $match condition for filters.workLocation ('local'/'abroad')
+// + filters.negateWorkLocation. Resolves to a single "does this value count
+// as abroad?" test (via ABROAD_REGEX) so "local" correctly matches free-text
+// city names too, and negation is derived by flipping that same test rather
+// than re-matching the literal word "local"/"abroad" (which silently missed
+// city names — negating "local" that way would have wrongly caught them as
+// "not local").
+function workLocationCondition(location, negate) {
+  const wantsAbroad = (location === 'abroad') !== !!negate;
+  return wantsAbroad
+    ? { $regex: ABROAD_REGEX }
+    : { $nin: [null, ''], $not: ABROAD_REGEX };
+}
+
 // ─── Intent Detection ─────────────────────────────────────────────────────────
 
 const TOPIC_PATTERNS = {
@@ -992,9 +1024,7 @@ async function queryIndustry(filters) {
     pipeline.push({ $match: { employmentStatus: { $nin: [null, ''], $not: { $regex: `^${filters.excludeEmploymentStatus}`, $options: 'i' } } } });
   }
   if (filters.workLocation) {
-    pipeline.push({ $match: { workLocation: filters.negateWorkLocation
-      ? { $nin: [null, ''], $not: { $regex: filters.workLocation, $options: 'i' } }
-      : { $regex: filters.workLocation, $options: 'i' } } });
+    pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
   }
   if (filters.jobTitleRegex) pipeline.push({ $match: { jobTitle: { $regex: filters.jobTitleRegex, $options: 'i' } } });
 
@@ -1334,9 +1364,7 @@ async function queryCompetencies(filters) {
 async function queryWorkLocation(filters) {
   const locMatch = { workLocation: { $nin: [null, ''] } };
   if (filters.workLocation) {
-    locMatch.workLocation = filters.negateWorkLocation
-      ? { $not: { $regex: filters.workLocation, $options: 'i' } }
-      : { $regex: filters.workLocation, $options: 'i' };
+    locMatch.workLocation = workLocationCondition(filters.workLocation, filters.negateWorkLocation);
   }
 
   // Also count the STABLE cohort alone (program/year/gender, workLocation
@@ -1350,7 +1378,7 @@ async function queryWorkLocation(filters) {
     Graduate.aggregate([
       ...stablePipeline(filters),
       { $match: locMatch },
-      { $group: { _id: '$workLocation', count: { $sum: 1 } } },
+      { $group: { _id: { $cond: [{ $regexMatch: { input: '$workLocation', regex: ABROAD_REGEX } }, 'Abroad (outside your home country)', 'Local (within your home country)'] }, count: { $sum: 1 } } },
       { $sort: { count: -1 } },
     ]),
     Graduate.aggregate([
@@ -1536,7 +1564,12 @@ async function queryWorkLocationByProgram(filters, location) {
       $group: {
         _id:     '$_prog',
         total:   { $sum: 1 },
-        matched: { $sum: { $cond: [{ $regexMatch: { input: '$workLocation', regex: new RegExp(location, 'i') } }, 1, 0] } },
+        matched: { $sum: { $cond: [
+          location === 'abroad'
+            ? { $regexMatch: { input: '$workLocation', regex: ABROAD_REGEX } }
+            : { $not: [{ $regexMatch: { input: '$workLocation', regex: ABROAD_REGEX } }] },
+          1, 0,
+        ] } },
       },
     },
     { $match: { total: { $gte: 3 } } },
@@ -2144,9 +2177,7 @@ async function queryNames(filters, question = '') {
     pipeline.push({ $match: { employmentStatus: { $nin: [null, ''], $not: { $regex: `^${filters.excludeEmploymentStatus}`, $options: 'i' } } } });
   }
   if (filters.workLocation) {
-    pipeline.push({ $match: { workLocation: filters.negateWorkLocation
-      ? { $nin: [null, ''], $not: { $regex: filters.workLocation, $options: 'i' } }
-      : { $regex: filters.workLocation, $options: 'i' } } });
+    pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
   }
   if (filters.furtherEducation === 'No') {
     // Alumni who didn't pursue often have null/empty furtherEducation, not the string "No"
@@ -2702,9 +2733,7 @@ async function queryCount(filters) {
     postDedup.furtherEducation = { $regex: `^${filters.furtherEducation}`, $options: 'i' };
   }
   if (filters.workLocation) {
-    postDedup.workLocation = filters.negateWorkLocation
-      ? { $nin: [null, ''], $not: { $regex: filters.workLocation, $options: 'i' } }
-      : { $regex: filters.workLocation, $options: 'i' };
+    postDedup.workLocation = workLocationCondition(filters.workLocation, filters.negateWorkLocation);
   }
   if (filters.jobRelated === 'directly') {
     // "Yes, it is directly related" or plain "Yes" — exclude anything with "somewhat"
@@ -2845,7 +2874,7 @@ async function queryOverview(filters) {
   const locRows = await Graduate.aggregate([
     ...base,
     { $match: { workLocation: { $nin: [null, ''] } } },
-    { $group: { _id: '$workLocation', count: { $sum: 1 } } },
+    { $group: { _id: { $cond: [{ $regexMatch: { input: '$workLocation', regex: ABROAD_REGEX } }, 'Abroad (outside your home country)', 'Local (within your home country)'] }, count: { $sum: 1 } } },
     { $sort: { count: -1 } },
   ]);
   // Denominator matches queryWorkLocation()'s own denominator (only
@@ -3303,7 +3332,7 @@ async function queryInner(question, seedFilters = {}) {
       // generic queryRate() (overall employment rate) — silently dropping
       // the location filter and answering a different question.
       : filters.workLocation
-      ? querySimpleRate(filters, { workLocation: { $regex: filters.workLocation, $options: 'i' } }, `work ${filters.workLocation === 'local' ? 'locally' : filters.workLocation}`)
+      ? querySimpleRate(filters, { workLocation: workLocationCondition(filters.workLocation, false) }, `work ${filters.workLocation === 'local' ? 'locally' : filters.workLocation}`)
       // Same gap as workLocation above: filters.industry IS correctly
       // extracted for "what percentage work in the IT industry" questions,
       // but with no branch here, execution fell through to the generic

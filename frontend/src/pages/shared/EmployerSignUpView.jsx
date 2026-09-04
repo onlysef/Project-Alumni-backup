@@ -1,11 +1,14 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { API } from "../../services/api.js";
-import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
-const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 const CURRENT_YEAR = new Date().getFullYear();
-const BATCH_YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR - i);
+
+const PARTNER_TYPES = [
+  "Information Technology & BPO", "Manufacturing", "Banking & Finance",
+  "Healthcare", "Retail & Trade", "Education", "Government",
+  "Construction & Engineering", "Hospitality & Tourism", "Agriculture", "Others",
+];
 
 function EyeIcon({ open }) {
   return open ? (
@@ -20,15 +23,21 @@ function EyeIcon({ open }) {
   );
 }
 
-// Reuses the exact same glassmorphism login design (login-style.css,
-// alumni-office.jpg background, waving-hand icon) the live Login page
-// already uses — same .page/.card/.left-panel/.right-panel class structure,
-// so this gets that visual treatment for free with no new CSS of its own.
-export default function AlumniSignUpView() {
+// Employer accounts have no public "Sign Up" page — this page only works
+// when opened via a special invite link an admin sent (see
+// PartnershipsView.jsx's "Send Invite" / employerInviteController.js), which
+// carries a one-time ?token= that's validated below before the form unlocks.
+export default function EmployerSignUpView() {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") || "";
+
+  const [tokenState, setTokenState] = useState("checking"); // checking | valid | invalid
+  const [tokenError, setTokenError] = useState("");
+  const [lockedEmail, setLockedEmail] = useState("");
+
   const [form, setForm] = useState({
-    firstName: "", middleInitial: "", lastName: "", email: "",
+    firstName: "", lastName: "", company: "", partnerType: "",
     password: "", confirmPassword: "",
-    college: "", course: "", track: "", graduationYear: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -36,18 +45,20 @@ export default function AlumniSignUpView() {
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  useEffect(() => {
+    if (!token) { setTokenState("invalid"); setTokenError("This invite link is missing its token."); return; }
+    fetch(`${API}/auth/employer-invite/${token}`)
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { setTokenState("invalid"); setTokenError(data.message || "This invite link is invalid."); return; }
+        setLockedEmail(data.email || "");
+        setTokenState("valid");
+      })
+      .catch(() => { setTokenState("invalid"); setTokenError("Could not connect to server."); });
+  }, [token]);
+
   function update(field) {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
-  }
-
-  // Switching colleges clears the previously-picked course/track — the old
-  // selection almost certainly isn't even in the new college's course list
-  // (e.g. "BSIT" picked under CCS makes no sense once college changes to
-  // COE), so leaving it in place would silently submit a mismatched
-  // course/college pair.
-  function handleCollegeChange(e) {
-    const college = e.target.value;
-    setForm((f) => ({ ...f, college, course: "", track: "" }));
   }
 
   async function handleSubmit(e) {
@@ -55,7 +66,7 @@ export default function AlumniSignUpView() {
     setError("");
     setSuccess("");
 
-    if (!form.firstName || !form.lastName || !form.email || !form.password || !form.college || !form.course || !form.graduationYear) {
+    if (!form.firstName || !form.lastName || !form.company || !form.partnerType || !form.password) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -70,19 +81,17 @@ export default function AlumniSignUpView() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`${API}/auth/register-alumni`, {
+      const res = await fetch(`${API}/auth/register-partner`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          token,
           firstName: form.firstName,
-          middleInitial: form.middleInitial,
           lastName: form.lastName,
-          email: form.email,
+          company: form.company,
+          partnerType: form.partnerType,
+          email: lockedEmail,
           password: form.password,
-          college: form.college,
-          course: form.course,
-          track: form.track,
-          graduationYear: form.graduationYear,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -103,10 +112,6 @@ export default function AlumniSignUpView() {
       <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
       <link rel="stylesheet" href="/assets/css/login-style.css" />
       <style>{`
-        /* Sign-up-only additions — the shared login-style.css was sized for
-           a short email+password form, not this many fields. Everything
-           else (the glass card, background, colors, inputs, button) comes
-           from that shared stylesheet untouched. */
         .right-panel.signup-panel { max-height: min(84vh, 760px); overflow-y: auto; }
         .signup-note { font-size: 11px; color: var(--gray-text); margin-top: -4px; }
       `}</style>
@@ -118,21 +123,36 @@ export default function AlumniSignUpView() {
               <div className="welcome-wave" aria-hidden="true">
                 <span className="wave-hand-image"></span>
               </div>
-              <p className="welcome-heading">Join<br /><span className="name">TSU Alumni Portal</span></p>
+              <p className="welcome-heading">Partner with<br /><span className="name">TSU Alumni Portal</span></p>
               <p className="welcome-sub">
-                Create your Alumni Portal account. Connect with fellow<br />
-                graduates, explore career opportunities, and stay<br />
-                updated with your alma mater.
+                Create your employer account to post job opportunities<br />
+                and connect with TSU alumni graduates.
               </p>
             </div>
           </section>
 
           <section className="right-shell">
             <div className="right-panel signup-panel">
-              <h1 className="login-title">Sign Up</h1>
+              <h1 className="login-title">Employer Sign Up</h1>
               <div className="title-underline"></div>
 
-              {error && (
+              {tokenState === "checking" && (
+                <div className="form-group">
+                  <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, textAlign: "center", background: "#f7fafc", color: "#4a5568", border: "1px solid #e2e8f0" }}>
+                    Checking invite link…
+                  </div>
+                </div>
+              )}
+
+              {tokenState === "invalid" && (
+                <div className="form-group">
+                  <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, textAlign: "center", background: "#fff5f5", color: "#c53030", border: "1px solid #fc8181" }}>
+                    {tokenError} Please contact the TSU Alumni Office for a new invite link.
+                  </div>
+                </div>
+              )}
+
+              {tokenState === "valid" && error && (
                 <div className="form-group">
                   <div style={{ padding: "10px 14px", borderRadius: 8, fontSize: 13, textAlign: "center", background: "#fff5f5", color: "#c53030", border: "1px solid #fc8181" }}>
                     {error}
@@ -147,7 +167,7 @@ export default function AlumniSignUpView() {
                 </div>
               )}
 
-              {!success && (
+              {tokenState === "valid" && !success && (
                 <form onSubmit={handleSubmit} noValidate style={{ width: "100%", display: "flex", flexDirection: "column", gap: 14 }}>
                   <div className="form-group">
                     <label htmlFor="firstname">First Name</label>
@@ -170,79 +190,35 @@ export default function AlumniSignUpView() {
                   </div>
 
                   <div className="form-group">
-                    <label htmlFor="middleinitial">Middle Initial <span className="signup-note">(optional)</span></label>
-                    <div className="input-wrap">
-                      <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      <input type="text" id="middleinitial" value={form.middleInitial} onChange={update("middleInitial")} placeholder="ex. S" maxLength={2} />
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="email">Email</label>
+                    <label htmlFor="email">Email <span className="signup-note">(from your invite)</span></label>
                     <div className="input-wrap">
                       <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
                       </svg>
-                      <input type="email" id="email" value={form.email} onChange={update("email")} placeholder="ex. jl.delacruz@student.tsu.edu.ph" autoComplete="email" />
+                      <input type="email" id="email" value={lockedEmail} readOnly disabled />
                     </div>
                   </div>
 
                   <div className="form-group">
-                    <label htmlFor="college">College</label>
+                    <label htmlFor="company">Company Name</label>
                     <div className="input-wrap">
-                      <select id="college" value={form.college} onChange={handleCollegeChange} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
-                        <option value="">— Select college —</option>
-                        {COLLEGES.map((c) => <option key={c}>{c}</option>)}
+                      <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m-1 4h1m4-4h1m-1 4h1M9 21v-4h6v4" />
+                      </svg>
+                      <input type="text" id="company" value={form.company} onChange={update("company")} placeholder="ex. Acme Corporation" autoComplete="organization" />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="partnerType">Industry Type</label>
+                    <div className="input-wrap">
+                      <select id="partnerType" value={form.partnerType} onChange={update("partnerType")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                        <option value="">— Select industry —</option>
+                        {PARTNER_TYPES.map((t) => <option key={t}>{t}</option>)}
                       </select>
                       <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                       </svg>
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label htmlFor="course">Course</label>
-                    <div className="input-wrap">
-                      <select
-                        id="course"
-                        value={form.course}
-                        onChange={update("course")}
-                        disabled={!form.college}
-                        style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}
-                      >
-                        <option value="">{form.college ? "— Select course —" : "Select a college first"}</option>
-                        {(COURSES_BY_COLLEGE[form.college] || []).map((c) => <option key={c}>{c}</option>)}
-                      </select>
-                      <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                      </svg>
-                    </div>
-                  </div>
-
-                  {form.course === "BSIT" && (
-                    <div className="form-group">
-                      <label htmlFor="track">BSIT Track <span className="signup-note">(optional)</span></label>
-                      <div className="input-wrap">
-                        <select id="track" value={form.track} onChange={update("track")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
-                          <option value="">— Select track —</option>
-                          {BSIT_TRACKS.map((t) => <option key={t}>{t}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="form-group">
-                    <label htmlFor="gradyear">Graduation Year</label>
-                    <div className="input-wrap">
-                      <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <select id="gradyear" value={form.graduationYear} onChange={update("graduationYear")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
-                        <option value="">— Select year —</option>
-                        {BATCH_YEARS.map((y) => <option key={y}>{y}</option>)}
-                      </select>
                     </div>
                   </div>
 

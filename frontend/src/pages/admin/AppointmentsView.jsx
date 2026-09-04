@@ -136,57 +136,40 @@ function ConfirmDialog({ open, message, confirmLabel = "Confirm", danger = false
   );
 }
 
-function validateStaffNamePart(val) {
-  const trimmed = val.trim();
-  if (!trimmed) return "This field is required.";
-  if (/[^a-zA-Z\s.'`-]/.test(trimmed)) return "Please use letters only.";
-  return "";
-}
-
-function validateStaffEmail(val) {
-  const trimmed = val.trim();
-  if (!trimmed) return "This field is required.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "Please enter a valid email address.";
-  return "";
-}
-
-function splitStaffName(fullName) {
-  const trimmed = (fullName || "").trim();
-  if (!trimmed) return { firstName: "", lastName: "" };
-  const parts = trimmed.split(/\s+/);
-  return {
-    firstName: parts[0],
-    lastName:  parts.slice(1).join(" "),
-  };
-}
-
 function StaffModal({ mode, item, saving, onClose, onSubmit }) {
   const isEdit = mode === "edit";
-  const initial = splitStaffName(item?.name);
-  const [firstName, setFirstName]           = useState(initial.firstName);
-  const [lastName, setLastName]             = useState(initial.lastName);
-  const [email, setEmail]                   = useState(item?.email || "");
-  const [firstNameError, setFirstNameError] = useState("");
-  const [lastNameError, setLastNameError]   = useState("");
-  const [emailError, setEmailError]         = useState("");
+  const [adminList, setAdminList]   = useState([]);
+  const [adminsLoading, setAdminsLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState("");
+  const [selectError, setSelectError] = useState("");
 
-  function handleFirstNameChange(e) {
-    const val = e.target.value;
-    setFirstName(val);
-    if (firstNameError) setFirstNameError(validateStaffNamePart(val));
-  }
+  useEffect(() => {
+    fetch(`${API}/admin/users`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((data) => {
+        const list = (data.users || [])
+          .filter((u) => u.role === "admin" && u.status !== "suspended")
+          .map((u) => ({
+            id:    u._id,
+            name:  `${u.firstName} ${u.lastName}`.trim(),
+            email: u.email,
+          }));
+        setAdminList(list);
+        if (isEdit && item?.email) {
+          const match = list.find((a) => a.email.toLowerCase() === item.email.toLowerCase());
+          if (match) setSelectedId(match.id);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAdminsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function handleLastNameChange(e) {
-    const val = e.target.value;
-    setLastName(val);
-    if (lastNameError) setLastNameError(validateStaffNamePart(val));
-  }
-
-  function handleEmailChange(e) {
-    const val = e.target.value;
-    setEmail(val);
-    if (emailError) setEmailError(validateStaffEmail(val));
-  }
+  const selected = adminList.find((a) => a.id === selectedId) || null;
+  // Legacy staff rows created before this dropdown existed may not match any
+  // current admin account by email — keep their original name/email visible
+  // and submittable until the admin picks a real account to replace them.
+  const legacyFallback = isEdit && !selected && item ? { name: item.name, email: item.email } : null;
 
   return (
     <Modal open onClose={onClose}>
@@ -199,69 +182,42 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
           className="admin-entry-form"
           onSubmit={(e) => {
             e.preventDefault();
-            const fErr = validateStaffNamePart(firstName);
-            const lErr = validateStaffNamePart(lastName);
-            const eErr = validateStaffEmail(email);
-            if (fErr || lErr || eErr) {
-              setFirstNameError(fErr);
-              setLastNameError(lErr);
-              setEmailError(eErr);
-              return;
-            }
+            const person = selected || legacyFallback;
+            if (!person) { setSelectError("Please select an admin account."); return; }
             const f = e.currentTarget.elements;
             onSubmit({
-              name:   `${firstName.trim()} ${lastName.trim()}`,
-              role:   f.role.value,
-              email:  email.trim(),
+              name:   person.name,
+              role:   item?.role || "Admin",
+              email:  person.email,
               status: f.status.value,
             });
           }}
         >
           <div className="admin-entry-fields">
             <label>
-              First Name
-              <input
-                type="text"
-                name="firstName"
-                value={firstName}
-                onChange={handleFirstNameChange}
-                onBlur={() => setFirstNameError(validateStaffNamePart(firstName))}
-                required
-              />
-              {firstNameError && <span className="field-error">{firstNameError}</span>}
-            </label>
-            <label>
-              Last Name
-              <input
-                type="text"
-                name="lastName"
-                value={lastName}
-                onChange={handleLastNameChange}
-                onBlur={() => setLastNameError(validateStaffNamePart(lastName))}
-                required
-              />
-              {lastNameError && <span className="field-error">{lastNameError}</span>}
-            </label>
-            <label>
-              Role
-              <select name="role" defaultValue={item?.role === "Counselor" || item?.role === "Registrar" ? "President" : (item?.role || "Staff")} required>
-                <option value="Staff">Staff</option>
-                <option value="Admin">Admin</option>
-                <option value="Coordinator">Coordinator</option>
-                <option value="President">President</option>
+              Admin Account
+              <select
+                name="admin_user"
+                value={selectedId}
+                onChange={(e) => { setSelectedId(e.target.value); setSelectError(""); }}
+                required={!legacyFallback}
+              >
+                <option value="" disabled>
+                  {adminsLoading ? "Loading admin accounts…" : "Select an admin account"}
+                </option>
+                {legacyFallback && (
+                  <option value="" disabled>
+                    {legacyFallback.name} ({legacyFallback.email}) — current, no matching account
+                  </option>
+                )}
+                {adminList.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.email})</option>
+                ))}
               </select>
-            </label>
-            <label>
-              Email
-              <input
-                type="email"
-                name="email"
-                value={email}
-                onChange={handleEmailChange}
-                onBlur={() => setEmailError(validateStaffEmail(email))}
-                required
-              />
-              {emailError && <span className="field-error">{emailError}</span>}
+              {!adminsLoading && adminList.length === 0 && !legacyFallback && (
+                <span className="field-error">No admin accounts found.</span>
+              )}
+              {selectError && <span className="field-error">{selectError}</span>}
             </label>
             <label>
               Status
@@ -274,15 +230,7 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button
-              type="submit"
-              disabled={
-                saving ||
-                !!validateStaffNamePart(firstName) ||
-                !!validateStaffNamePart(lastName) ||
-                !!validateStaffEmail(email)
-              }
-            >
+            <button type="submit" disabled={saving || (!selected && !legacyFallback)}>
               {saving ? "Saving…" : isEdit ? "Save Changes" : "Add Staff"}
             </button>
           </div>
@@ -558,6 +506,32 @@ export default function AppointmentsView() {
     }));
   }
 
+  // Specific one-off closed dates (public holidays, university-declared
+  // suspensions) on top of the recurring weekly Days above — previously
+  // this had no schema field or UI at all, so alumni could book on a
+  // holiday since nothing ever checked for one.
+  const [newHolidayDate, setNewHolidayDate] = useState("");
+
+  function addHoliday() {
+    if (!newHolidayDate) return;
+    setFormSettings((prev) => {
+      const existing = prev.holidays || [];
+      if (existing.includes(newHolidayDate)) return prev;
+      return { ...prev, holidays: [...existing, newHolidayDate] };
+    });
+    setNewHolidayDate("");
+  }
+
+  function removeHoliday(d) {
+    if (!editingSettings) return;
+    setFormSettings((prev) => ({ ...prev, holidays: (prev.holidays || []).filter((x) => x !== d) }));
+  }
+
+  function fmtHolidayDate(d) {
+    const [y, m, day] = d.split("-").map(Number);
+    return new Date(y, m - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+
   // ── Staff ────────────────────────────────────────────────────
 
   async function fetchStaff() {
@@ -777,6 +751,56 @@ export default function AppointmentsView() {
                         {d}
                       </button>
                     ))}
+                  </div>
+                </label>
+
+                <label>
+                  <span>Holidays:</span>
+                  <div>
+                    {editingSettings && (
+                      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                        <input
+                          type="date"
+                          value={newHolidayDate}
+                          onChange={(e) => setNewHolidayDate(e.target.value)}
+                          style={{ flex: 1 }}
+                        />
+                        <button type="button" onClick={addHoliday} disabled={!newHolidayDate}>
+                          + Add
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {(formSettings.holidays || []).length === 0 ? (
+                        <span style={{ fontSize: 12, color: "var(--muted, #76656a)" }}>No holidays set.</span>
+                      ) : (
+                        [...formSettings.holidays].sort().map((d) => (
+                          <span
+                            key={d}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 6,
+                              background: "#f7eeee", color: "#570013", borderRadius: 999,
+                              padding: "4px 10px", fontSize: 12, fontWeight: 600,
+                            }}
+                          >
+                            {fmtHolidayDate(d)}
+                            {editingSettings && (
+                              <button
+                                type="button"
+                                aria-label={`Remove ${d}`}
+                                onClick={() => removeHoliday(d)}
+                                style={{
+                                  background: "none", border: "none", color: "#570013",
+                                  cursor: "pointer", fontWeight: 800, padding: 0, lineHeight: 1,
+                                }}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </label>
               </div>

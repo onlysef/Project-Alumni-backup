@@ -77,7 +77,7 @@ const getOfficeSettings = async (req, res) => {
 // PATCH /api/admin/appointments/settings
 const updateOfficeSettings = async (req, res) => {
   try {
-    const { office_status, start_time, end_time, working_days } = req.body;
+    const { office_status, start_time, end_time, working_days, holidays } = req.body;
     let settings = await OfficeSettings.findOne();
     if (!settings) settings = new OfficeSettings();
 
@@ -85,6 +85,7 @@ const updateOfficeSettings = async (req, res) => {
     if (start_time    !== undefined) settings.start_time    = start_time;
     if (end_time      !== undefined) settings.end_time      = end_time;
     if (working_days  !== undefined) settings.working_days  = working_days;
+    if (holidays      !== undefined) settings.holidays      = holidays;
 
     await settings.save();
     res.json({ message: 'Office settings saved.', settings });
@@ -203,13 +204,18 @@ async function createAppointmentRecord({ alumni_id, alumni_name, staff_id, appoi
 
   const settings = await OfficeSettings.findOne();
   if (settings) {
-    // A temporary office closure should not prevent alumni from reserving a
-    // future working-day slot. It only makes today's date unavailable; the
-    // working-day and office-hour checks below still protect every booking.
-    const today = new Date();
-    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    if (settings.office_status === 'Closed' && appointment_date <= todayStr) {
-      return { ok: false, status: 400, message: 'The office is closed today. Please choose the next available office day.' };
+    // office_status only takes TODAY off the table (an unplanned same-day
+    // closure) — it must not block booking a future date the office will
+    // actually be open for. A planned future closure belongs in `holidays`
+    // instead; see that check right below.
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    if (settings.office_status === 'Closed' && appointment_date === todayStr) {
+      return { ok: false, status: 400, message: 'The office is closed today. Appointments cannot be booked for today, but you can still book a future date.' };
+    }
+
+    if ((settings.holidays || []).includes(appointment_date)) {
+      return { ok: false, status: 400, message: 'The office is closed on this date (holiday). Please pick another day.' };
     }
 
     const [year, month, day] = appointment_date.split('-').map(Number);

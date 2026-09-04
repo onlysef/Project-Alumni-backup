@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Partnership = require('../models/Partnership');
 const Graduate = require('../models/Graduate');
+const EmployerInvite = require('../models/EmployerInvite');
 const { generateOTP, sendOTPEmail } = require('../utils/emailService');
 
 const signToken = (userId, role, college = '', tokenVersion = 0) =>
@@ -38,9 +39,6 @@ const login = async (req, res) => {
     }
 
     if (user.status === 'pending') {
-      if (user.role === 'employer') {
-        return res.status(403).json({ message: 'Your account is pending admin approval. Please wait before logging in.' });
-      }
       user.status = 'active';
       await user.save();
     }
@@ -408,9 +406,9 @@ const registerAlumni = async (req, res) => {
 // POST /api/auth/register-partner
 const registerPartner = async (req, res) => {
   try {
-    const { firstName, lastName, company, partnerType, email, password } = req.body;
+    const { token, firstName, lastName, company, partnerType, email, password } = req.body;
 
-    if (!firstName || !lastName || !company || !partnerType || !email || !password) {
+    if (!token || !firstName || !lastName || !company || !partnerType || !email || !password) {
       return res.status(400).json({ message: 'All fields are required.' });
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -420,13 +418,24 @@ const registerPartner = async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 8 characters.' });
     }
 
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
+    // There is no public sign-up page for employers — this endpoint only
+    // works with a valid, unused, unexpired invite sent by an admin (see
+    // employerInviteController.js), and only for the exact email it was
+    // issued to.
+    const normalizedEmail = email.toLowerCase().trim();
+    const invite = await EmployerInvite.findOne({ token });
+    if (!invite) return res.status(400).json({ message: 'This invite link is invalid.' });
+    if (invite.used) return res.status(400).json({ message: 'This invite link has already been used.' });
+    if (invite.expiresAt < new Date()) return res.status(400).json({ message: 'This invite link has expired. Please request a new one.' });
+    if (invite.email !== normalizedEmail) return res.status(400).json({ message: 'This invite link was issued for a different email address.' });
+
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) return res.status(400).json({ message: 'Email is already registered.' });
 
     const partnership = await Partnership.create({
       name:    company.trim(),
       type:    partnerType,
-      contact: email.toLowerCase().trim(),
+      contact: normalizedEmail,
       status:  'Pending',
     });
 
@@ -434,16 +443,20 @@ const registerPartner = async (req, res) => {
     await User.create({
       firstName: firstName.trim(),
       lastName:  lastName.trim(),
-      email:     email.toLowerCase().trim(),
+      email:     normalizedEmail,
       password:  hashed,
       role:      'employer',
-      status:    'pending',
+      status:    'active',
       firstLogin: false,
       company:   company.trim(),
       partnershipId: partnership._id,
     });
 
-    res.status(201).json({ message: 'Registration submitted. Please wait for admin approval before logging in.' });
+    invite.used   = true;
+    invite.usedAt = new Date();
+    await invite.save();
+
+    res.status(201).json({ message: 'Registration successful! You can now log in.' });
   } catch (err) {
     console.error('registerPartner error:', err);
     res.status(500).json({ message: 'Server error.' });

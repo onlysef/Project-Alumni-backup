@@ -41,7 +41,7 @@ export function currentTime() {
 export const viewRoutes = {
   
   dashboard: "Dashboard",
-  employment: "Alumni Employment Details",
+  employment: "Alumni Record",
   appointments: "Appointments",
   accounts: "Manage Accounts",
   announcements: "Post Announcements",
@@ -50,20 +50,54 @@ export const viewRoutes = {
   about: "Alumni Association Inc.",
 };
 
-export const navItems = [
-  { view: "dashboard", icon: "icon-1", label: "Dashboard" },
-  { view: "employment", icon: "icon-2", label: "Alumni Employment Details" },
-  { view: "appointments", icon: "icon-3", label: "Appointments" },
-  { view: "accounts", icon: "icon-4", label: "Manage Accounts", children: [
-      { key: "Admin", label: "Admin" },
-      { key: "Alumni", label: "Alumni" },
-      { key: "Coordinator", label: "Coordinator" },
-      { key: "Employer", label: "Employer" },
-  ] },
-  { view: "announcements", icon: "icon-5", label: "Post Announcements" },
-  { view: "partnerships", icon: "icon-6", label: "Partnerships" },
-  { view: "aiassistant", icon: "icon-15", label: "AC - AI Assistant" },
+export const navGroups = [
+  {
+    group: "Overview",
+    items: [
+      { view: "dashboard", icon: "icon-1", label: "Dashboard" },
+    ],
+  },
+  {
+    group: "Tracer Study",
+    items: [
+      { view: "tracer-dashboard", icon: "icon-14", label: "Tracer Dashboard" },
+      { view: "tracer-responses", icon: "icon-20", label: "Tracer Responses" },
+      { view: "tracer-form-editor", icon: "icon-18", label: "Edit Tracer Form" },
+    ],
+  },
+  {
+    group: "Employment",
+    items: [
+      { view: "employment", icon: "icon-2", label: "Alumni Record" },
+      { view: "export-employment", icon: "icon-17", label: "Export Alumni Record" },
+      { view: "notify-alumni", icon: "icon-9", label: "Notify Alumni" },
+    ],
+  },
+  {
+    group: "Community",
+    items: [
+      { view: "appointments", icon: "icon-3", label: "Appointments" },
+      { view: "announcements", icon: "icon-5", label: "Post Announcements" },
+      { view: "partnerships", icon: "icon-6", label: "Partnerships" },
+    ],
+  },
+  {
+    group: "System",
+    items: [
+      { view: "accounts", icon: "icon-4", label: "Manage Accounts", children: [
+          { key: "Admin", label: "Admin" },
+          { key: "Alumni", label: "Alumni" },
+          { key: "Coordinator", label: "Coordinator" },
+          { key: "Employer", label: "Employer" },
+      ] },
+      { view: "aiassistant", icon: "icon-15", label: "AC - AI Assistant" },
+    ],
+  },
 ];
+
+// Flat list, derived from navGroups — kept for any code that just needs to
+// look up a nav item by view without caring about grouping.
+export const navItems = navGroups.flatMap((g) => g.items);
 
 export const adminMenuChoices = {
   "accounts-role": ["All", "Admin", "Alumni", "Coordinator", "Employer"],

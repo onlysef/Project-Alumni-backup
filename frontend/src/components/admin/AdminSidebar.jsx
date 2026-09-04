@@ -4,12 +4,17 @@ import Icon from "../common/Icon.jsx";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
 import toptsuLogo from "../../assets/images/tsu-top-header.webp";
-import { navItems } from "../../data.js";
+import { navGroups } from "../../data.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 const VIEW_TO_PATH = {
   dashboard:    "/admin/dashboard",
+  "tracer-dashboard": "/admin/tracer-dashboard",
+  "tracer-responses": "/admin/tracer-responses",
+  "tracer-form-editor": "/admin/tracer-form-editor",
   employment:   "/admin/employment",
+  "export-employment": "/admin/export-employment",
+  "notify-alumni": "/admin/notify-alumni",
   appointments: "/admin/appointments",
   accounts:     "/admin/accounts",
   announcements:"/admin/announcements",
@@ -88,63 +93,61 @@ export function AdminSidebar({ collapsed, onNavigate }) {
         </div>
       </div>
       <nav className="nav" aria-label="Main navigation">
-        {navItems.map((item, index) => {
-          const hasChildren = Array.isArray(item.children) && item.children.length > 0;
-          const isOpen = openMenu === item.view;
-          const category = ({ 0: "Overview", 1: "Alumni management", 4: "Engagement", 6: "Tools" })[index];
+        {navGroups.map((group) => (
+          <div className="nav-group-section" key={group.group}>
+            <div className="nav-section-label">{group.group}</div>
+            {group.items.map((item) => {
+              const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+              const isOpen = openMenu === item.view;
 
-          if (hasChildren) {
-            return (
-              <React.Fragment key={item.view}>
-              {category && <div className="nav-category" aria-hidden="true">{category}</div>}
-              <div className="nav-group">
+              if (hasChildren) {
+                return (
+                  <div key={item.view} className="nav-group">
+                    <a
+                      className={view === item.view ? "active" : undefined}
+                      href="#"
+                      aria-expanded={isOpen}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleSelect(item.view);
+                        if (!collapsed) setOpenMenu(isOpen ? null : item.view);
+                      }}
+                    >
+                      <span><Icon name={item.icon} /></span>
+                      <span className="nav-item-label">{item.label}</span>
+                      <span className={`nav-caret sidebar-chevron${isOpen ? " open" : ""}`} aria-hidden="true" />
+                    </a>
+                    <div className={`nav-sub${isOpen ? " open" : ""}`}>
+                      {item.children.map((child) => (
+                        <a
+                          key={child.key}
+                          className={new URLSearchParams(location.search).get("role") === child.key ? "selected" : undefined}
+                          href="#"
+                          tabIndex={isOpen ? 0 : -1}
+                          onClick={(e) => { e.preventDefault(); handleSelect(item.view, child.key); }}
+                        >
+                          <span>{child.label}</span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
                 <a
+                  key={item.view}
                   className={view === item.view ? "active" : undefined}
                   href="#"
-                  aria-expanded={isOpen}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleSelect(item.view);
-                    if (!collapsed) setOpenMenu(isOpen ? null : item.view);
-                  }}
+                  onClick={(e) => { e.preventDefault(); setOpenMenu(null); handleSelect(item.view); }}
                 >
                   <span><Icon name={item.icon} /></span>
-                  <span className="nav-item-label">{item.label}</span>
-                  <span className={`nav-caret sidebar-chevron${isOpen ? " open" : ""}`} aria-hidden="true" />
+                  <span>{item.label}</span>
                 </a>
-                <div className={`nav-sub${isOpen ? " open" : ""}`}>
-                  {item.children.map((child) => (
-                    <a
-                      key={child.key}
-                      className={new URLSearchParams(location.search).get("role") === child.key ? "selected" : undefined}
-                      href="#"
-                      tabIndex={isOpen ? 0 : -1}
-                      onClick={(e) => { e.preventDefault(); handleSelect(item.view, child.key); }}
-                    >
-                      <span>{child.label}</span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-              </React.Fragment>
-            );
-          }
-
-          return (
-            <React.Fragment key={item.view}>
-            {category && <div className="nav-category" aria-hidden="true">{category}</div>}
-            <a
-              key={item.view}
-              className={view === item.view ? "active" : undefined}
-              href="#"
-              onClick={(e) => { e.preventDefault(); setOpenMenu(null); handleSelect(item.view); }}
-            >
-              <span><Icon name={item.icon} /></span>
-              <span>{item.label}</span>
-            </a>
-            </React.Fragment>
-          );
-        })}
+              );
+            })}
+          </div>
+        ))}
       </nav>
       <div className="sidebar-footer">
         <button className="sidebar-logout" type="button" onClick={logout} aria-label="Logout">

@@ -134,7 +134,7 @@ export function EmploymentChart({ data }) {
   const segments = [
     { label: "Employed",      pct: ep, count: data.employed,     color: "#941527", end: ep },
     { label: "Unemployed",    pct: up, count: data.unemployed,   color: "#e9ad69", end: ep + up },
-    { label: "Unidentified",  pct: ip, count: data.unidentified, color: "#8f8f8f", end: 100 },
+    { label: "Not Yet Updated", pct: ip, count: data.unidentified, color: "#8f8f8f", end: 100 },
   ];
   const chartKey = `${data.employed}-${data.unemployed}-${data.unidentified}-${data.total}`;
 
@@ -183,9 +183,9 @@ export function EmploymentChart({ data }) {
         <div className="legend-row"><span className="swatch peach" style={{ background: "#e9ad69" }} /><span>Unemployed</span><b>{data.unemployed} · {up}%</b></div>
         <div className="legend-row"><span className="swatch gray"  style={{ background: "#d7d7d7" }} /><span>Unidentified</span><b>{data.unidentified} · {ip}%</b></div>
         <div className="chart-insights">
-          <div><strong>Employed</strong><span>{data.employed} alumni</span></div>
-          <div><strong>Unemployed</strong><span>{data.unemployed} alumni</span></div>
-          <div><strong>No Data</strong><span>{data.unidentified} records</span></div>
+          {segments.filter((s) => s.count > 0).map((s) => (
+            <div key={s.label}><strong>{s.label}</strong><span>{s.count} {s.label === "Not Yet Updated" ? "records" : "alumni"}</span></div>
+          ))}
           <div><strong>Total</strong><span>{data.total} alumni</span></div>
         </div>
       </div>

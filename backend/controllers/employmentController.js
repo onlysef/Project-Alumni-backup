@@ -7,6 +7,8 @@ const EmploymentActivity  = require('../models/EmploymentActivity');
 const User                = require('../models/User');
 const XLSX                = require('xlsx');
 const { escapeRegex }     = require('../utils/escapeRegex');
+const { FIXED_KEYS }      = require('../utils/tracerFixedKeys');
+const { getResumeForAlumnus } = require('../utils/resumeBuilder');
 
 // Maps programsCompleted → User.course code
 function mapProgramToCourse(programsCompleted) {
@@ -152,6 +154,21 @@ const listProjection = {
 };
 
 // ── EMPLOYMENT RECORDS ────────────────────────────────────────────────────────
+
+// GET /api/admin/employment/batch-years  ← static, before /:id
+// Actual distinct graduation years across all alumni — the Employment,
+// Export, and Notify pages' "Batch Year" filters used to hardcode a fixed
+// [2020..2024] list, which silently hid every alumnus from any other batch
+// (this dataset alone ranges from 2000 to 2025).
+const getBatchYears = async (req, res) => {
+  try {
+    const years = await User.distinct('graduationYear', { role: 'alumni', graduationYear: { $ne: null } });
+    res.json({ years: years.sort((a, b) => b - a) });
+  } catch (err) {
+    console.error('getBatchYears error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
 
 // GET /api/admin/employment/alumni-without-record  ← static, before /:id
 const getAlumniWithoutRecord = async (req, res) => {
@@ -322,9 +339,80 @@ const exportEmploymentRecords = async (req, res) => {
           'Salary Range':          '$salary_range',
           'Job Related to Course': { $cond: ['$job_related_to_course', 'Yes', 'No'] },
           'Last Updated':          { $dateToString: { format: '%m/%d/%Y', date: '$last_updated' } },
+          __alumni_id:             '$alumni_id',
+          __college:               '$alumni.college',
         },
       },
     ]);
+
+    // Add the alumni's full tracer study answers as extra columns — every
+    // distinct college represented in this export gets its own form config
+    // read, and every question across all of them (fixed-schema or custom,
+    // rating tables exploded one column per row) becomes its own column,
+    // de-duplicated by question id so the same fixed field from two
+    // colleges' forms doesn't produce two columns.
+    const distinctColleges = [...new Set(records.map((r) => r.__college).filter(Boolean))];
+    const [configs, tracers] = await Promise.all([
+      distinctColleges.length ? TracerFormConfig.find({ college: { $in: distinctColleges } }).lean() : [],
+      TracerStudyResponse.find({ alumni_id: { $in: records.map((r) => r.__alumni_id) } }).lean(),
+    ]);
+    const tracerByAlumni = new Map(tracers.map((t) => [String(t.alumni_id), t]));
+
+    const getAnswer = (t, qid) => {
+      if (!t) return undefined;
+      if (Object.prototype.hasOwnProperty.call(t, qid)) return t[qid];
+      const extra = t.extra_answers instanceof Map ? Object.fromEntries(t.extra_answers) : (t.extra_answers || {});
+      return extra[qid];
+    };
+
+    const columns = [];
+    const seen = new Set();
+    configs.forEach((cfg) => {
+      (cfg.config?.pages || []).forEach((page) => {
+        (page.questions || []).forEach((q) => {
+          if (q.type === 'static_text') return;
+          if (q.id === 'consent') return; // validated client-side only, never persisted — always blank
+          if (q.type === 'rating_table') {
+            (q.rows || []).forEach((row) => {
+              const key = `${q.id}::${row.key}`;
+              if (seen.has(key)) return;
+              seen.add(key);
+              columns.push({ id: q.id, rowKey: row.key, header: `${q.label} - ${row.label}` });
+            });
+            return;
+          }
+          if (seen.has(q.id)) return;
+          seen.add(q.id);
+          columns.push({ id: q.id, header: q.label });
+        });
+      });
+    });
+
+    records.forEach((r) => {
+      const t = tracerByAlumni.get(String(r.__alumni_id));
+      columns.forEach((col) => {
+        const raw = getAnswer(t, col.id);
+        let val;
+        if (col.rowKey) {
+          val = (raw && raw[col.rowKey]) || '';
+        } else if (col.id === 'placeOfWork') {
+          // This question is only ever meant to be answered "Local" or
+          // "Abroad" — some responses predate that and still hold a
+          // specific place instead (e.g. "Taguig", "Clark, Pampanga"),
+          // which read as noise mixed in with everyone else's Local/Abroad
+          // answers. Every such legacy value on file is a Philippine city,
+          // so it's normalized to "Local" here rather than left as-is.
+          const v = String(raw || '').toLowerCase();
+          val = !v ? '' : v.includes('abroad') ? 'Abroad' : 'Local';
+        } else {
+          val = Array.isArray(raw) ? raw.join('; ') : (raw ?? '');
+        }
+        const header = Object.prototype.hasOwnProperty.call(r, col.header) ? `${col.header} (Tracer)` : col.header;
+        r[header] = val;
+      });
+      delete r.__alumni_id;
+      delete r.__college;
+    });
 
     const adminName = await resolveAdminName(req.user.id);
     logActivity(req.user.id, adminName, 'exported employment list', '', `${format} — ${records.length} records`);
@@ -384,8 +472,10 @@ const getEmploymentRecord = async (req, res) => {
           alumni_id:             1,
           name:                  { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
           email:                 '$alumni.email',
+          college:               '$alumni.college',
           course:                '$alumni.course',
           graduation_year:       '$alumni.graduationYear',
+          avatarUrl:             '$alumni.avatarUrl',
           employment_status:     1,
           company_name:          1,
           job_title:             1,
@@ -419,18 +509,74 @@ const getEmploymentRecord = async (req, res) => {
       const extraResolved = await resolveExtraFromTracer(extra_answers);
 
       tracer_data = {
+        // Employment (already used by the compact summary above the full record)
         occupationTitle:       tracer.occupationTitle       || '',
         industryField:         tracer.industryField         || '',
         jobRelatedToDegree:    tracer.jobRelatedToDegree    || '',
         presentEmploymentType: tracer.presentEmploymentType || '',
         yearsInCurrentJob:     tracer.yearsInCurrentJob     || '',
-        companyName:           extraResolved.company_name   || '',
-        workLocation:          extraResolved.work_location  || '',
+        // Genuine TracerStudyResponse fields — safe to round-trip through
+        // "Edit Record" since they map 1:1 to real question ids.
+        companyName:           tracer.companyName           || '',
+        placeOfWork:           tracer.placeOfWork           || '',
+        // Best-effort fuzzy-matched fallbacks from custom questions (e.g. a
+        // college whose form uses its own differently-labeled "Company"
+        // question instead of the fixed field) — display-only backup for
+        // the Employment Summary section above; deliberately NOT reused as
+        // an editable field's value since these don't map to any single
+        // real question id and saving them back could write to the wrong
+        // place. See resolveExtraFromTracer's own comment for the matching rules.
+        resolvedCompanyName:   extraResolved.company_name   || '',
+        resolvedWorkLocation:  extraResolved.work_location  || '',
         submittedAt:           tracer.submittedAt           || null,
+
+        // Full tracer study answers — the "whole record" view shows all of
+        // this, not just the employment slice above.
+        contactNumber:            tracer.contactNumber            || '',
+        gender:                   tracer.gender                   || '',
+        programsCompleted:        tracer.programsCompleted        || [],
+        professionalExam:         tracer.professionalExam         || '',
+        professionalExamName:     tracer.professionalExamName     || '',
+        employmentStatus:         tracer.employmentStatus         || '',
+        reasonsNotEmployed:       tracer.reasonsNotEmployed        || [],
+        furtherEducation:         tracer.furtherEducation         || '',
+        furtherEducationType:     tracer.furtherEducationType     || '',
+        pursuedTrainings:         tracer.pursuedTrainings         || '',
+        trainingType:             tracer.trainingType             || '',
+        personalGrowthRatings:    tracer.personalGrowthRatings    || {},
+        promotedInJob:                     tracer.promotedInJob                     || '',
+        significantAccomplishments:        tracer.significantAccomplishments        || '',
+        professionalCertifications:        tracer.professionalCertifications        || '',
+        professionalDevelopmentActivities: tracer.professionalDevelopmentActivities || '',
+        extra_answers,
       };
     }
 
-    res.json({ record: { ...result[0], tracer_data } });
+    // Which questions are "new" for this specific alumni — custom/imported
+    // questions on their college's CURRENT form they haven't answered yet,
+    // plus anything an admin explicitly flagged via Notify Alumni. Same
+    // computation as getMyTracerResponse/getNotifyCandidates, surfaced here
+    // too so the Edit Record modal can highlight them instead of them
+    // blending in with every other already-answered field.
+    let newQuestionIds = [];
+    if (tracer) {
+      const cfg = await TracerFormConfig.findOne({ college: result[0].college }).lean();
+      const answeredKeys = new Set(Object.keys(tracer_data.extra_answers || {}));
+      const pendingIds   = new Set(tracer.pendingUpdateQuestionIds || []);
+      (cfg?.config?.pages || []).forEach((p) => (p.questions || []).forEach((q) => {
+        if (q.type === 'static_text') return;
+        if (pendingIds.has(q.id)) { newQuestionIds.push(q.id); return; }
+        if (!FIXED_KEYS.has(q.id) && !answeredKeys.has(q.id)) newQuestionIds.push(q.id);
+      }));
+    }
+
+    // Alumni's own Job Connect profile/resume (summary, skills, experience,
+    // education, certifications, projects, languages) — falls back to a
+    // suggestion built from their actual data if they never explicitly
+    // saved one, same as the employer-facing "View resume" already does.
+    const { resume, isSaved: resumeIsSaved } = await getResumeForAlumnus(result[0].alumni_id);
+
+    res.json({ record: { ...result[0], tracer_data, resume, resume_is_saved: resumeIsSaved, new_question_ids: newQuestionIds } });
   } catch (err) {
     console.error('getEmploymentRecord error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -648,20 +794,27 @@ const getSurveyStats = async (req, res) => {
   }
 };
 
-// GET /api/admin/employment/donut-stats?course=BSIT
+// GET /api/admin/employment/donut-stats — accepts the same filter set as
+// getTracerAnalytics (college/course/track/batch range/gender/employment
+// status/job-related/further education/survey year), plus the legacy
+// ?course= param this chart's own dropdown still sends.
 const getDonutStats = async (req, res) => {
   try {
-    const { course = '' } = req.query;
+    const { userMatch, tracerMatch, needsTracerJoin } = buildEmploymentChartFilters(req.query);
 
     const pipeline = [
       { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
       { $match: { '_user.0': { $exists: true } } },
       { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
-      { $match: { '_u.role': 'alumni' } },
+      { $match: { '_u.role': 'alumni', ...userMatch } },
     ];
 
-    if (course && ['BSIT', 'BSCS', 'BSIS', 'BSIM'].includes(course)) {
-      pipeline.push({ $match: { '_u.course': course } });
+    if (needsTracerJoin) {
+      pipeline.push(
+        { $lookup: { from: 'tracerstudyresponses', localField: 'alumni_id', foreignField: 'alumni_id', as: '_tracer' } },
+        { $addFields: { _t: { $arrayElemAt: ['$_tracer', 0] } } },
+        { $match: tracerMatch },
+      );
     }
 
     pipeline.push({
@@ -746,34 +899,136 @@ const SKILL_LABELS = {
   criticalThinkingSkills: 'Critical Thinking Skills',
 };
 
-// GET /api/admin/employment/tracer-analytics
+const notBlank = (field) => ({ [field]: { $nin: ['', null] } });
+
+// Groups by a case-INsensitive key so typos like "MAle" merge into
+// "Male" instead of showing as a separate bucket. The display label
+// used is whichever exact casing occurred most often in that group
+// (first $group ranks casing variants by count, second $group picks
+// the top one via $first after the sort) — not just the first one
+// Mongo happens to encounter.
+const ciGroup = (valueExpr) => [
+  { $group: { _id: { norm: { $toLower: valueExpr }, orig: valueExpr }, count: { $sum: 1 } } },
+  { $sort: { count: -1 } },
+  { $group: { _id: '$_id.norm', label: { $first: '$_id.orig' }, count: { $sum: '$count' } } },
+  { $sort: { count: -1 } },
+];
+const groupCount = (field) => [
+  { $match: notBlank(field) },
+  ...ciGroup(`$${field}`),
+];
+
+// Case-insensitive exact-match filter — lets a canonical label picked from
+// an already-normalized options list (see getTracerFilterOptions) match
+// every casing variant of that value actually stored in the DB, the same
+// tolerance ciGroup already applies when grouping for display.
+const ciEq = (field, value) => ({ [field]: { $regex: `^${escapeRegex(value)}$`, $options: 'i' } });
+
+// Builds the two $match objects shared by getTracerAnalytics and
+// exportTracerAnalytics so the filter-to-query translation lives in exactly
+// one place. `userLookupMatch` applies to the joined `_user` array (scopes
+// which alumni are considered at all); `tracerMatch` applies to the
+// TracerStudyResponse document itself (scopes which of THOSE alumni's
+// answers count) — kept separate because User-side filters (college/course/
+// batch) and TracerStudyResponse-side filters (gender/employmentStatus/etc.)
+// answer different questions: a non-respondent has no gender/employmentStatus
+// at all, so KPIs like "alumni who haven't responded yet" must only ever be
+// scoped by the User-side filters, never the response-side ones.
+function buildTracerFilterMatch(query) {
+  const college           = (query.college || '').trim().toUpperCase();
+  const course            = (query.course || '').trim().toUpperCase();
+  // BSIT-only specialization (User.track: TSM/WMA/NA) — only meaningful
+  // once a course is picked, same dependency the frontend's cascading
+  // Course → Track select already enforces.
+  const track             = (query.track || '').trim().toUpperCase();
+  const graduationYearFrom = parseInt(query.graduationYearFrom, 10);
+  const graduationYearTo   = parseInt(query.graduationYearTo, 10);
+  const gender             = (query.gender || '').trim();
+  const employmentStatus   = (query.employmentStatus || '').trim();
+  const jobRelatedToDegree = (query.jobRelatedToDegree || '').trim();
+  const furtherEducation   = (query.furtherEducation || '').trim();
+  const surveyYear         = parseInt(query.surveyYear, 10);
+
+  const userScope = { role: 'alumni' };
+  if (college) userScope.college = college;
+  if (course)  userScope.course  = course;
+  if (track)   userScope.track   = track;
+  if (!isNaN(graduationYearFrom) || !isNaN(graduationYearTo)) {
+    userScope.graduationYear = {};
+    if (!isNaN(graduationYearFrom)) userScope.graduationYear.$gte = graduationYearFrom;
+    if (!isNaN(graduationYearTo))   userScope.graduationYear.$lte = graduationYearTo;
+  }
+
+  const userLookupMatch = { '_user.0.role': 'alumni' };
+  if (college) userLookupMatch['_user.0.college'] = college;
+  if (course)  userLookupMatch['_user.0.course']  = course;
+  if (track)   userLookupMatch['_user.0.track']   = track;
+  if (userScope.graduationYear) userLookupMatch['_user.0.graduationYear'] = userScope.graduationYear;
+
+  const tracerMatch = {};
+  if (gender)             Object.assign(tracerMatch, ciEq('gender', gender));
+  if (employmentStatus)   Object.assign(tracerMatch, ciEq('employmentStatus', employmentStatus));
+  if (jobRelatedToDegree) Object.assign(tracerMatch, ciEq('jobRelatedToDegree', jobRelatedToDegree));
+  if (furtherEducation)   Object.assign(tracerMatch, ciEq('furtherEducation', furtherEducation));
+  if (!isNaN(surveyYear)) tracerMatch.$expr = { $eq: [{ $year: '$submittedAt' }, surveyYear] };
+
+  return { userScope, userLookupMatch, tracerMatch };
+}
+
+// Same 10-field filter vocabulary as buildTracerFilterMatch above, but
+// shaped for aggregations that start from AlumniEmployment (getDonutStats)
+// and join the alumnus's User/TracerStudyResponse docs as singular `_u`/`_t`
+// sub-documents (via $arrayElemAt) rather than the raw `_user` array
+// TracerStudyResponse-rooted aggregations use — so the match keys need
+// `_u.`/`_t.` prefixes instead.
+function buildEmploymentChartFilters(query) {
+  const college           = (query.college || '').trim().toUpperCase();
+  const course            = (query.course || '').trim().toUpperCase();
+  const track             = (query.track || '').trim().toUpperCase();
+  const graduationYearFrom = parseInt(query.graduationYearFrom, 10);
+  const graduationYearTo   = parseInt(query.graduationYearTo, 10);
+  const gender             = (query.gender || '').trim();
+  const employmentStatus   = (query.employmentStatus || '').trim();
+  const jobRelatedToDegree = (query.jobRelatedToDegree || '').trim();
+  const furtherEducation   = (query.furtherEducation || '').trim();
+  const surveyYear         = parseInt(query.surveyYear, 10);
+
+  const userMatch = {};
+  if (college) userMatch['_u.college'] = college;
+  if (course)  userMatch['_u.course']  = course;
+  if (track)   userMatch['_u.track']   = track;
+  if (!isNaN(graduationYearFrom) || !isNaN(graduationYearTo)) {
+    userMatch['_u.graduationYear'] = {};
+    if (!isNaN(graduationYearFrom)) userMatch['_u.graduationYear'].$gte = graduationYearFrom;
+    if (!isNaN(graduationYearTo))   userMatch['_u.graduationYear'].$lte = graduationYearTo;
+  }
+
+  const tracerMatch = {};
+  if (gender)             Object.assign(tracerMatch, ciEq('_t.gender', gender));
+  if (employmentStatus)   Object.assign(tracerMatch, ciEq('_t.employmentStatus', employmentStatus));
+  if (jobRelatedToDegree) Object.assign(tracerMatch, ciEq('_t.jobRelatedToDegree', jobRelatedToDegree));
+  if (furtherEducation)   Object.assign(tracerMatch, ciEq('_t.furtherEducation', furtherEducation));
+  if (!isNaN(surveyYear)) tracerMatch.$expr = { $eq: [{ $year: '$_t.submittedAt' }, surveyYear] };
+
+  const needsTracerJoin = !!(gender || employmentStatus || jobRelatedToDegree || furtherEducation || !isNaN(surveyYear));
+
+  return { userMatch, tracerMatch, needsTracerJoin };
+}
+
 // Powers the "Tracer Study Analytics" dashboard section — one aggregation
 // covering every tracer-form section (respondent profile, exam, employment,
 // occupation/industry, unemployment reasons, personal growth, further
-// education, promotion, professional development).
-const getTracerAnalytics = async (req, res) => {
-  try {
-    const college = (req.query.college || '').trim().toUpperCase();
-    const notBlank = (field) => ({ [field]: { $nin: ['', null] } });
+// education, promotion, professional development) plus a set of headline
+// KPI numbers, all scoped by the same combined filter set (see
+// buildTracerFilterMatch above). Shared by getTracerAnalytics (the dashboard
+// endpoint) and exportTracerAnalytics (the Excel "Summary" sheet) so this
+// pipeline exists in exactly one place.
+async function computeTracerAnalytics(query) {
+    const { userScope, userLookupMatch, tracerMatch } = buildTracerFilterMatch(query);
+    const tracerMatchStage = Object.keys(tracerMatch).length ? [{ $match: tracerMatch }] : [];
 
-    // Groups by a case-INsensitive key so typos like "MAle" merge into
-    // "Male" instead of showing as a separate bucket. The display label
-    // used is whichever exact casing occurred most often in that group
-    // (first $group ranks casing variants by count, second $group picks
-    // the top one via $first after the sort) — not just the first one
-    // Mongo happens to encounter.
-    const ciGroup = (valueExpr) => [
-      { $group: { _id: { norm: { $toLower: valueExpr }, orig: valueExpr }, count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $group: { _id: '$_id.norm', label: { $first: '$_id.orig' }, count: { $sum: '$count' } } },
-      { $sort: { count: -1 } },
-    ];
-    const groupCount = (field) => [
-      { $match: notBlank(field) },
-      ...ciGroup(`$${field}`),
-    ];
-
-    const [result] = await TracerStudyResponse.aggregate([
+    const [[result], totalAlumniOnRoll, totalActiveAlumni] = await Promise.all([
+      TracerStudyResponse.aggregate([
       // Deleting an alumni account doesn't always reach every linked record
       // (e.g. accounts removed before cascade-delete covered
       // TracerStudyResponse, or removed directly in the database) — an
@@ -788,20 +1043,29 @@ const getTracerAnalytics = async (req, res) => {
       // this dashboard's "alumni" stats silently included non-alumni
       // accounts' leftover answers.
       //
-      // Optional college filter — admin sees every college by default (no
-      // college scoping applies to admin, unlike coordinators), but can
-      // narrow the dashboard to one college at a time via ?college=.
+      // College/course/batch-year filters (userLookupMatch) narrow which
+      // alumni are considered at all; the remaining tracer-only filters
+      // (tracerMatch/tracerMatchStage) narrow which of those alumni's
+      // answers count — prepended to every facet branch below so every
+      // chart AND every KPI is scoped by the identical combined filter set.
       { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
-      { $match: college ? { '_user.0.role': 'alumni', '_user.0.college': college } : { '_user.0.role': 'alumni' } },
+      { $match: userLookupMatch },
       {
         $facet: {
-          total: [{ $count: 'count' }],
+          // Deliberately NOT prefixed with tracerMatchStage — this counts
+          // every alumnus in the User-side filter scope regardless of
+          // whether/how they answered the tracer-only fields, since a
+          // non-respondent has no gender/employmentStatus/etc. at all.
+          totalInUserScope: [{ $count: 'count' }],
 
-          byGender: groupCount('gender'),
+          total: [...tracerMatchStage, { $count: 'count' }],
+
+          byGender: [...tracerMatchStage, ...groupCount('gender')],
           // Some bulk-migrated records stored multiple selected programs as a
           // single ';'-joined array element instead of separate elements —
           // split those apart so each program is counted individually.
           byProgram: [
+            ...tracerMatchStage,
             { $unwind: { path: '$programsCompleted', preserveNullAndEmptyArrays: false } },
             { $project: { parts: { $split: ['$programsCompleted', ';'] } } },
             { $unwind: '$parts' },
@@ -811,56 +1075,66 @@ const getTracerAnalytics = async (req, res) => {
             { $limit: 10 },
           ],
 
-          examStatus: groupCount('professionalExam'),
+          examStatus: [...tracerMatchStage, ...groupCount('professionalExam')],
           examNames: [
+            ...tracerMatchStage,
             { $match: notBlank('professionalExamName') },
             ...ciGroup('$professionalExamName'),
             { $limit: 10 },
           ],
 
-          byEmploymentStatus: groupCount('employmentStatus'),
+          byEmploymentStatus: [...tracerMatchStage, ...groupCount('employmentStatus')],
           byJobRelevance: [
+            ...tracerMatchStage,
             { $match: { employmentStatus: 'Yes', ...notBlank('jobRelatedToDegree') } },
             ...ciGroup('$jobRelatedToDegree'),
           ],
           byDuration: [
+            ...tracerMatchStage,
             { $match: { employmentStatus: 'Yes', ...notBlank('yearsInCurrentJob') } },
             ...ciGroup('$yearsInCurrentJob'),
           ],
 
           topOccupations: [
+            ...tracerMatchStage,
             { $match: { employmentStatus: 'Yes', ...notBlank('occupationTitle') } },
             ...ciGroup('$occupationTitle'),
             { $limit: 10 },
           ],
           byIndustry: [
+            ...tracerMatchStage,
             { $match: { employmentStatus: 'Yes', ...notBlank('industryField') } },
             ...ciGroup('$industryField'),
           ],
 
           unemploymentReasons: [
+            ...tracerMatchStage,
             { $match: { employmentStatus: { $in: ['No', 'Never Employed'] } } },
             { $unwind: { path: '$reasonsNotEmployed', preserveNullAndEmptyArrays: false } },
             ...ciGroup('$reasonsNotEmployed'),
           ],
 
           personalGrowth: [
+            ...tracerMatchStage,
             { $project: { ratings: { $objectToArray: '$personalGrowthRatings' } } },
             { $unwind: '$ratings' },
             { $match: { 'ratings.v': { $nin: ['', null] } } },
             { $group: { _id: { skill: '$ratings.k', rating: '$ratings.v' }, count: { $sum: 1 } } },
           ],
 
-          byFurtherEducation: groupCount('furtherEducation'),
-          byTrainings: groupCount('pursuedTrainings'),
+          byFurtherEducation: [...tracerMatchStage, ...groupCount('furtherEducation')],
+          byTrainings: [...tracerMatchStage, ...groupCount('pursuedTrainings')],
 
-          byPromotion: groupCount('promotedInJob'),
-          byAccomplishments: groupCount('significantAccomplishments'),
+          byPromotion: [...tracerMatchStage, ...groupCount('promotedInJob')],
+          byAccomplishments: [...tracerMatchStage, ...groupCount('significantAccomplishments')],
 
-          byCertifications: groupCount('professionalCertifications'),
-          byDevActivities: groupCount('professionalDevelopmentActivities'),
+          byCertifications: [...tracerMatchStage, ...groupCount('professionalCertifications')],
+          byDevActivities: [...tracerMatchStage, ...groupCount('professionalDevelopmentActivities')],
         },
       },
+      ]),
+      User.countDocuments(userScope),
+      User.countDocuments({ ...userScope, status: 'active' }),
     ]);
 
     const mapRows = (rows) => (rows || []).map((r) => ({ label: r.label ?? r._id, count: r.count }));
@@ -873,8 +1147,62 @@ const getTracerAnalytics = async (req, res) => {
       return { skill: label, ratings };
     });
 
-    res.json({
-      total: result.total?.[0]?.count ?? 0,
+    // KPI tiles for the dashboard header — all derived in JS from facet
+    // branches already computed above, no extra Mongo round-trips.
+    // "Total Active Alumni"/"Total Alumni on Roll"/"Not-Yet Tracer
+    // Response"/"Overall Tracer Response Rate" intentionally use only the
+    // User-side filter scope (totalAlumniOnRoll/totalInUserScope), never the
+    // tracer-only filters — see buildTracerFilterMatch's comment.
+    const YES_STARTS = /^yes/i;
+    // "Employed" here includes self-employed respondents — matches
+    // getDonutStats() and every AI-chatbot aggregation, which all treat
+    // self-employed as employed. A plain /^yes$/i (excluding "Self-Employed")
+    // made this KPI tile silently disagree with the donut chart right below it.
+    const YES = /^yes$|^self[- ]?employed$/i;
+    // Same "unemployed" vocabulary the unemploymentReasons facet above
+    // already uses ($in: ['No', 'Never Employed']) — matched as a regex here
+    // since these labels went through ciGroup's casing normalization.
+    const NOT_EMPLOYED = /^no$|never/i;
+    const findCount = (rows, re) => rows.reduce((s, r) => (re.test(r.label) ? s + r.count : s), 0);
+
+    const totalRespondents     = result.total?.[0]?.count ?? 0;
+    const totalInUserScope     = result.totalInUserScope?.[0]?.count ?? 0;
+    const notYetTracerResponse = Math.max(0, totalAlumniOnRoll - totalInUserScope);
+    const overallResponseRate  = totalAlumniOnRoll ? Math.round((totalInUserScope / totalAlumniOnRoll) * 100) : 0;
+
+    const employedRespondents          = findCount(mapRows(result.byEmploymentStatus), YES);
+    const unemployedRespondents        = findCount(mapRows(result.byEmploymentStatus), NOT_EMPLOYED);
+    const employmentRate               = totalRespondents ? Math.round((employedRespondents / totalRespondents) * 100) : 0;
+    const furtherEducationCount        = findCount(mapRows(result.byFurtherEducation), YES);
+    const professionalDevelopmentCount = findCount(mapRows(result.byDevActivities), YES);
+    const awardsCount                  = findCount(mapRows(result.byAccomplishments), YES_STARTS);
+
+    const RATING_SCORE = { excellent: 5, competent: 4, satisfactory: 3, beginner: 2, 'non-acceptable': 1 };
+    let growthSum = 0, growthN = 0;
+    (result.personalGrowth || []).forEach((r) => {
+      const score = RATING_SCORE[String(r._id.rating).toLowerCase().trim()];
+      if (score) { growthSum += score * r.count; growthN += r.count; }
+    });
+    const avgPersonalGrowthScore = growthN ? +(growthSum / growthN).toFixed(2) : null;
+
+    const kpis = {
+      totalActiveAlumni,
+      totalAlumniOnRoll,
+      totalTracerRespondents: totalRespondents,
+      notYetTracerResponse,
+      overallResponseRate,
+      employedRespondents,
+      unemployedRespondents,
+      employmentRate,
+      furtherEducationCount,
+      professionalDevelopmentCount,
+      awardsCount,
+      avgPersonalGrowthScore,
+    };
+
+    return {
+      kpis,
+      total: totalRespondents,
       respondentProfile: {
         byGender: mapRows(result.byGender),
         byProgram: mapRows(result.byProgram),
@@ -906,9 +1234,211 @@ const getTracerAnalytics = async (req, res) => {
         byCertifications: mapRows(result.byCertifications),
         byDevActivities: mapRows(result.byDevActivities),
       },
-    });
+    };
+}
+
+// GET /api/admin/employment/tracer-analytics
+const getTracerAnalytics = async (req, res) => {
+  try {
+    const data = await computeTracerAnalytics(req.query);
+    res.json(data);
   } catch (err) {
     console.error('getTracerAnalytics error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/admin/employment/tracer-filter-options  ← static, before /:id
+// Supplies the option lists for the Tracer Dashboard's filter dropdowns.
+// Fetched once, unfiltered, on page mount rather than recomputed per applied
+// filter — these vocabularies change rarely, and recomputing them from an
+// already-filtered subset would make other dropdowns' options shrink/
+// disappear as soon as one filter is picked. College/course options aren't
+// included here — they're a fixed application vocabulary, not user-submitted
+// free text, so the frontend keeps them as a static constant instead of a DB
+// round-trip.
+const getTracerFilterOptions = async (req, res) => {
+  try {
+    const dedupField = (field) =>
+      TracerStudyResponse.aggregate([...groupCount(field), { $project: { _id: 0, label: 1 } }]);
+
+    const [genders, employmentStatuses, jobRelated, furtherEd, years, gradBounds] = await Promise.all([
+      dedupField('gender'),
+      dedupField('employmentStatus'),
+      dedupField('jobRelatedToDegree'),
+      dedupField('furtherEducation'),
+      TracerStudyResponse.aggregate([
+        { $match: notBlank('submittedAt') },
+        { $group: { _id: { $year: '$submittedAt' } } },
+        { $sort: { _id: -1 } },
+      ]),
+      User.aggregate([
+        { $match: { role: 'alumni', graduationYear: { $ne: null } } },
+        { $group: { _id: null, min: { $min: '$graduationYear' }, max: { $max: '$graduationYear' } } },
+      ]),
+    ]);
+
+    res.json({
+      genders:                   genders.map((g) => g.label),
+      employmentStatuses:        employmentStatuses.map((g) => g.label),
+      jobRelatedToDegreeOptions: jobRelated.map((g) => g.label),
+      furtherEducationOptions:   furtherEd.map((g) => g.label),
+      surveyYears:               years.map((y) => y._id).filter(Boolean),
+      graduationYearBounds:      gradBounds[0] ? { min: gradBounds[0].min, max: gradBounds[0].max } : { min: null, max: null },
+    });
+  } catch (err) {
+    console.error('getTracerFilterOptions error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+const TRACER_KPI_LABELS = {
+  totalActiveAlumni:            'Total Active Alumni',
+  totalAlumniOnRoll:            'Total Alumni on Roll',
+  totalTracerRespondents:       'Total Tracer Respondents',
+  notYetTracerResponse:         'Not-Yet Tracer Response',
+  overallResponseRate:          'Overall Tracer Response Rate (%)',
+  employedRespondents:          'Total Employed',
+  unemployedRespondents:        'Total Unemployed',
+  employmentRate:               'Employment Rate (%)',
+  furtherEducationCount:        'Further Education (Yes)',
+  professionalDevelopmentCount: 'Professional Development (Yes)',
+  awardsCount:                  'Awards / Recognition (Yes)',
+  avgPersonalGrowthScore:       'Avg. Personal Growth Score (1-5)',
+};
+
+// Array-of-arrays for the Excel export's "Summary" sheet: KPI values, then
+// one Label/Count/Percent block per existing chart section — same shape the
+// dashboard's own per-chart CSV export already uses (distCsv/ratingMatrixCsv
+// in TracerDashboardView.jsx), just server-side so it can sit in one sheet.
+function buildTracerSummaryRows(data) {
+  const rows = [['Tracer Study Analytics — Summary'], []];
+
+  rows.push(['KPI', 'Value']);
+  Object.entries(TRACER_KPI_LABELS).forEach(([key, label]) => {
+    rows.push([label, data.kpis[key] ?? '']);
+  });
+  rows.push([]);
+
+  const pctOf = (count, total) => (total > 0 ? `${Math.round((count / total) * 100)}%` : '');
+  function distBlock(title, list) {
+    rows.push([title]);
+    rows.push(['Label', 'Count', 'Percent']);
+    const total = (list || []).reduce((a, r) => a + r.count, 0);
+    (list || []).forEach((r) => rows.push([r.label, r.count, pctOf(r.count, total)]));
+    rows.push([]);
+  }
+
+  distBlock('Respondent Profile — By Gender', data.respondentProfile.byGender);
+  distBlock('Respondent Profile — By Program', data.respondentProfile.byProgram);
+  distBlock('Professional Examination — Participation', data.professionalExam.byStatus);
+  distBlock('Employment Overview — Status', data.employmentOverview.byStatus);
+  distBlock('Employment Overview — Job-Relatedness', data.employmentOverview.byJobRelevance);
+  distBlock('Employment Overview — Duration in Current Job', data.employmentOverview.byDuration);
+  distBlock('Occupation and Industry — Top Occupations', data.occupationIndustry.topOccupations);
+  distBlock('Occupation and Industry — By Industry', data.occupationIndustry.byIndustry);
+  distBlock('Unemployment Reasons', data.unemploymentReasons);
+  distBlock('Further Education — Pursued Further Education', data.furtherEducation.byFurtherEducation);
+  distBlock('Further Education — Pursued Trainings', data.furtherEducation.byTrainings);
+  distBlock('Promotion and Recognition — Promoted in Current Job', data.promotion.byPromotion);
+  distBlock('Promotion and Recognition — Significant Accomplishments', data.promotion.byAccomplishments);
+  distBlock('Professional Development — Certifications', data.professionalDevelopment.byCertifications);
+  distBlock('Professional Development — Activities', data.professionalDevelopment.byDevActivities);
+
+  rows.push(['Personal Growth Assessment']);
+  rows.push(['Skill', 'Rating', 'Count', 'Percent']);
+  (data.personalGrowth || []).forEach(({ skill, ratings }) => {
+    const total = Object.values(ratings).reduce((a, b) => a + b, 0);
+    Object.entries(ratings).forEach(([rating, count]) => {
+      rows.push([skill, rating, count, pctOf(count, total)]);
+    });
+  });
+
+  return rows;
+}
+
+// GET /api/admin/employment/tracer-analytics/export  ← static, before /:id
+// Modeled directly on exportEmploymentRecords above. CSV is the raw
+// per-respondent rows only (single-table by nature); Excel additionally gets
+// a "Summary" sheet (KPIs + every chart section) built from the exact same
+// computeTracerAnalytics() the dashboard itself renders, so the export
+// always agrees with what's on screen for the same applied filters.
+const exportTracerAnalytics = async (req, res) => {
+  try {
+    const { format = 'csv' } = req.query;
+    const { userLookupMatch, tracerMatch } = buildTracerFilterMatch(req.query);
+    const tracerMatchStage = Object.keys(tracerMatch).length ? [{ $match: tracerMatch }] : [];
+
+    const respondentRows = await TracerStudyResponse.aggregate([
+      { $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: '_user' } },
+      { $match: userLookupMatch },
+      ...tracerMatchStage,
+      { $addFields: { _u: { $arrayElemAt: ['$_user', 0] } } },
+      { $sort: { submittedAt: -1 } },
+      {
+        $project: {
+          _id: 0,
+          Name:                                  { $concat: ['$_u.firstName', ' ', '$_u.lastName'] },
+          College:                                '$_u.college',
+          Course:                                 '$_u.course',
+          Track:                                  { $ifNull: ['$_u.track', ''] },
+          'Batch Year':                           { $ifNull: ['$_u.graduationYear', ''] },
+          Gender:                                 '$gender',
+          'Employment Status':                    '$employmentStatus',
+          Occupation:                             '$occupationTitle',
+          Industry:                               '$industryField',
+          'Job Related to Degree':                '$jobRelatedToDegree',
+          'Years in Current Job':                 '$yearsInCurrentJob',
+          'Professional Exam':                    '$professionalExam',
+          'Exam Name':                            '$professionalExamName',
+          'Further Education':                    '$furtherEducation',
+          'Pursued Trainings':                    '$pursuedTrainings',
+          'Promoted in Job':                      '$promotedInJob',
+          'Significant Accomplishments':          '$significantAccomplishments',
+          'Professional Certifications':          '$professionalCertifications',
+          'Professional Development Activities':  '$professionalDevelopmentActivities',
+          'Submitted At':                         { $dateToString: { format: '%m/%d/%Y', date: '$submittedAt' } },
+        },
+      },
+    ]);
+
+    const adminName = await resolveAdminName(req.user.id);
+    logActivity(req.user.id, adminName, 'exported tracer analytics', '', `${format} — ${respondentRows.length} records`);
+
+    if (format === 'excel') {
+      const summaryData = await computeTracerAnalytics(req.query);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(buildTracerSummaryRows(summaryData)), 'Summary');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(respondentRows), 'Respondent Data');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      res.set({
+        'Content-Type':        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': 'attachment; filename="tracer-analytics.xlsx"',
+      });
+      return res.send(buf);
+    }
+
+    const headers = respondentRows.length
+      ? Object.keys(respondentRows[0])
+      : ['Name','College','Course','Track','Batch Year','Gender','Employment Status','Occupation','Industry',
+         'Job Related to Degree','Years in Current Job','Professional Exam','Exam Name','Further Education',
+         'Pursued Trainings','Promoted in Job','Significant Accomplishments','Professional Certifications',
+         'Professional Development Activities','Submitted At'];
+
+    const csv = [
+      headers.map((h) => `"${h}"`).join(','),
+      ...respondentRows.map((r) =>
+        headers.map((h) => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',')
+      ),
+    ].join('\n');
+
+    res.set({
+      'Content-Type':        'text/csv; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="tracer-analytics.csv"',
+    });
+    res.send('﻿' + csv);
+  } catch (err) {
+    console.error('exportTracerAnalytics error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -969,7 +1499,7 @@ const syncTracerToEmployment = async (req, res) => {
       const reasonsArr = Array.isArray(tracer.reasonsNotEmployed) ? tracer.reasonsNotEmployed : [];
       const jrd = String(tracer.jobRelatedToDegree || '').toLowerCase().trim();
 
-      const updates = {
+      const computed = {
         employment_status:     mapTracerStatus(tracer.employmentStatus),
         job_title:             tracer.occupationTitle       || '',
         industry:              tracer.industryField         || '',
@@ -977,9 +1507,25 @@ const syncTracerToEmployment = async (req, res) => {
         reason_unemployed:     reasonsArr.join('; '),
         employment_type:       tracer.presentEmploymentType || '',
         years_in_current_job:  tracer.yearsInCurrentJob     || '',
-        last_updated:          new Date(),
-        tracer_synced_at:      new Date(),
         ...extraResolved,
+      };
+
+      // `pending` above is keyed off TracerStudyResponse.updatedAt, which
+      // Mongoose bumps on ANY change to that document — including fields
+      // that have nothing to do with employment data (e.g. Notify Alumni's
+      // pendingUpdateQuestionIds flag). Without this comparison, that alone
+      // used to overwrite last_updated with "now" even though none of the
+      // actual synced fields changed, making the Employment table's "Last
+      // Updated" column lie about when the alumni's data was really touched.
+      const current = await AlumniEmployment.findOne({ alumni_id: tracer.alumni_id }).lean();
+      const changed = !current || Object.keys(computed).some(
+        (k) => JSON.stringify(current[k] ?? null) !== JSON.stringify(computed[k] ?? null)
+      );
+
+      const updates = {
+        ...computed,
+        tracer_synced_at: new Date(),
+        ...(changed ? { last_updated: new Date() } : {}),
       };
 
       await AlumniEmployment.findOneAndUpdate(
@@ -1158,10 +1704,85 @@ const deleteTracerQuestion = async (req, res) => {
   }
 };
 
+// GET /api/admin/employment/notify-candidates
+// Same filter set as getEmploymentRecords, but each row also reports how many
+// of the alumni's college's current custom/imported tracer-form questions
+// they haven't answered yet ("new questions" — added or imported after they
+// last submitted). Lets the Notify Alumni page target only alumni who
+// actually have something new to fill in, instead of everyone matching the
+// filters regardless of whether they need to do anything.
+const getNotifyCandidates = async (req, res) => {
+  try {
+    const {
+      search = '', status = '', college = '', course = '', batch_year = '',
+      new_questions_only = '', page = 1, limit = 25,
+    } = req.query;
+
+    const pageNum  = Math.max(1, parseInt(page, 10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10)));
+
+    const base = buildBasePipeline({ search, status, college, course, batch_year, company: '' });
+    const allRecords = await AlumniEmployment.aggregate([
+      ...base,
+      { $sort: { last_updated: -1 } },
+      listProjection,
+    ]);
+
+    // Small, college-keyed set of "answerable, non-fixed" question ids per
+    // current form config — cheap to hold in memory (one doc per college).
+    const configs = await TracerFormConfig.find({}).select('college config').lean();
+    const collegeQuestionIds = new Map();
+    configs.forEach((c) => {
+      const ids = new Set();
+      (c.config?.pages || []).forEach((p) => (p.questions || []).forEach((q) => {
+        if (q.type !== 'static_text' && !FIXED_KEYS.has(q.id)) ids.add(q.id);
+      }));
+      collegeQuestionIds.set(c.college, ids);
+    });
+
+    const alumniIds = allRecords.map((r) => r.alumni_id);
+    const responses = await TracerStudyResponse.find({ alumni_id: { $in: alumniIds } })
+      .select('alumni_id extra_answers pendingUpdateQuestionIds').lean();
+    const responseByAlumni = new Map(responses.map((r) => [String(r.alumni_id), r]));
+
+    const withCounts = allRecords.map((r) => {
+      const resp = responseByAlumni.get(String(r.alumni_id));
+      // null = alumni never submitted at all — a different case (they need
+      // the full form, not just the new-question gap) so it's kept distinct
+      // from 0 ("submitted before and is fully caught up").
+      let newQuestionsCount = null;
+      if (resp) {
+        const answeredKeys = new Set(Object.keys(resp.extra_answers || {}));
+        const pendingIds   = new Set(resp.pendingUpdateQuestionIds || []);
+        const questionIds  = collegeQuestionIds.get(r.college) || new Set();
+        const autoNew      = [...questionIds].filter((id) => !answeredKeys.has(id) && !pendingIds.has(id)).length;
+        newQuestionsCount  = autoNew + pendingIds.size;
+      }
+      return { ...r, newQuestionsCount };
+    });
+
+    const filtered = new_questions_only === 'true'
+      ? withCounts.filter((r) => r.newQuestionsCount > 0)
+      : withCounts;
+
+    const total = filtered.length;
+    const skip  = (pageNum - 1) * limitNum;
+    const records = filtered.slice(skip, skip + limitNum);
+
+    res.json({
+      records,
+      pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) || 1 },
+    });
+  } catch (err) {
+    console.error('getNotifyCandidates error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // POST /api/admin/employment/notify
 const { sendEmploymentReminderBulk } = require('../utils/emailService');
 
-// Mirrors NOTIFY_ALUMNI_DISABLED in frontend/src/pages/admin/EmploymentView.jsx.
+// Mirrors NOTIFY_ALUMNI_DISABLED in frontend/src/pages/admin/NotifyAlumniView.jsx.
 // The 254 bulk-migrated alumni accounts must not be emailed until explicitly
 // authorized — the frontend button is disabled, but that alone doesn't stop
 // a direct API call, so this is the actual enforcement point. Flip both
@@ -1173,14 +1794,34 @@ const notifyAlumniToUpdate = async (req, res) => {
     if (NOTIFY_ALUMNI_DISABLED) {
       return res.status(403).json({ message: 'Alumni notifications are disabled — email permission not yet granted for the migrated alumni batch.' });
     }
-    const { college, course } = req.body;
+    const { college, course, alumni_ids, question_ids } = req.body;
     const query = { role: 'alumni', status: 'active' };
-    if (college) query.college = college;
-    if (course)  query.course  = course;
+    // Explicit selection (checked rows on the Notify Alumni page) takes
+    // priority over the college/course scope — those two are mutually
+    // exclusive ways of picking a recipient list, not filters that combine.
+    if (Array.isArray(alumni_ids) && alumni_ids.length > 0) {
+      query._id = { $in: alumni_ids };
+    } else {
+      if (college) query.college = college;
+      if (course)  query.course  = course;
+    }
 
     const alumni = await User.find(query).select('email');
     if (alumni.length === 0)
       return res.status(404).json({ message: 'No active alumni found matching the filters.' });
+
+    // Optional: admin picked specific existing questions (not just
+    // auto-detected new ones) that these alumni should re-answer/update —
+    // flagged on their TracerStudyResponse so the alumni-side "new
+    // questions" gate surfaces them too. Only meaningful for alumni who
+    // already have a response; someone who's never submitted gets the full
+    // form regardless and doesn't need this flag.
+    if (Array.isArray(question_ids) && question_ids.length > 0) {
+      await TracerStudyResponse.updateMany(
+        { alumni_id: { $in: alumni.map((a) => a._id) } },
+        { $addToSet: { pendingUpdateQuestionIds: { $each: question_ids } } },
+      );
+    }
 
     const emails = alumni.map(a => a.email);
     await sendEmploymentReminderBulk(emails);
@@ -1201,7 +1842,7 @@ const notifyAlumniToUpdate = async (req, res) => {
 // GET /api/admin/employment/responses/colleges
 const getTracerResponseColleges = async (req, res) => {
   try {
-    const result = await TracerStudyResponse.aggregate([
+    const lookup = [
       {
         $lookup: {
           from:         'users',
@@ -1211,11 +1852,28 @@ const getTracerResponseColleges = async (req, res) => {
         },
       },
       { $unwind: { path: '$alumni', preserveNullAndEmptyArrays: false } },
-      { $match: { 'alumni.role': 'alumni', 'alumni.college': { $exists: true, $ne: '' } } },
-      { $group: { _id: '$alumni.college' } },
-      { $sort: { _id: 1 } },
+      { $match: { 'alumni.role': 'alumni' } },
+    ];
+
+    const [colleges, batches] = await Promise.all([
+      TracerStudyResponse.aggregate([
+        ...lookup,
+        { $match: { 'alumni.college': { $exists: true, $ne: '' } } },
+        { $group: { _id: '$alumni.college' } },
+        { $sort: { _id: 1 } },
+      ]),
+      TracerStudyResponse.aggregate([
+        ...lookup,
+        { $match: { 'alumni.graduationYear': { $exists: true, $ne: null } } },
+        { $group: { _id: '$alumni.graduationYear' } },
+        { $sort: { _id: -1 } },
+      ]),
     ]);
-    res.json({ colleges: result.map(r => r._id).filter(Boolean) });
+
+    res.json({
+      colleges: colleges.map(r => r._id).filter(Boolean),
+      batches:  batches.map(r => r._id).filter(Boolean),
+    });
   } catch (err) {
     console.error('getTracerResponseColleges error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -1226,7 +1884,7 @@ const getTracerResponseColleges = async (req, res) => {
 const getTracerResponses = async (req, res) => {
   try {
     const {
-      search = '', college = '', employment_status = '',
+      search = '', college = '', batch = '', employment_status = '',
       date_from = '', date_to = '',
       page = 1, limit = 10,
     } = req.query;
@@ -1258,6 +1916,7 @@ const getTracerResponses = async (req, res) => {
     ];
 
     if (college) base.push({ $match: { 'alumni.college': college } });
+    if (batch)   base.push({ $match: { 'alumni.graduationYear': parseInt(batch, 10) } });
     if (search) {
       base.push({
         $match: {
@@ -1335,14 +1994,17 @@ const getTracerResponseDetail = async (req, res) => {
 
 module.exports = {
   getAlumniWithoutRecord,
+  getBatchYears,
   createEmploymentRecord,
   syncTracerToEmployment,
   backfillEmploymentRecords,
-  getCourseJobStats,
   getDonutStats,
+  getCourseJobStats,
   getSurveyStats,
   getEmploymentStats,
   getTracerAnalytics,
+  getTracerFilterOptions,
+  exportTracerAnalytics,
   getEmploymentRecords,
   getEmploymentRecord,
   updateEmploymentRecord,
@@ -1355,6 +2017,7 @@ module.exports = {
   deleteTracerQuestion,
   reorderTracerQuestions,
   notifyAlumniToUpdate,
+  getNotifyCandidates,
   getTracerResponseColleges,
   getTracerResponses,
   getTracerResponseDetail,

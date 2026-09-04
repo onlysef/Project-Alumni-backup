@@ -25,19 +25,7 @@ const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill } = req
 
 // The set of keys that the TracerStudyResponse schema handles directly.
 // Everything else in the submitted answers object goes into extra_answers.
-const FIXED_KEYS = new Set([
-  'consent', // validated on frontend; not persisted
-  'contactNumber', 'gender',
-  'programsCompleted', 'professionalExam', 'professionalExamName',
-  'employmentStatus', 'companyName', 'placeOfWork', 'occupationTitle', 'industryField',
-  'presentEmploymentType', 'jobRelatedToDegree', 'yearsInCurrentJob',
-  'reasonsNotEmployed',
-  'furtherEducation', 'furtherEducationType',
-  'pursuedTrainings', 'trainingType',
-  'personalGrowthRatings',
-  'promotedInJob', 'significantAccomplishments',
-  'professionalCertifications', 'professionalDevelopmentActivities',
-]);
+const { FIXED_KEYS } = require('../utils/tracerFixedKeys');
 
 // Maps the tracer form's employmentStatus answer to AlumniEmployment status enum.
 // The tracer form typically uses "Yes" / "No" / "Never Employed".
@@ -299,7 +287,7 @@ const completeOnboarding = async (req, res) => {
 const getMyTracerResponse = async (req, res) => {
   try {
     const response = await TracerStudyResponse.findOne({ alumni_id: req.user.id }).lean();
-    if (!response) return res.json({ submitted: false, data: null });
+    if (!response) return res.json({ submitted: false, data: null, newQuestionsCount: null });
 
     // Convert extra_answers Map to plain object if needed
     if (response.extra_answers instanceof Map) {
@@ -308,21 +296,37 @@ const getMyTracerResponse = async (req, res) => {
       response.extra_answers = obj;
     }
 
-    res.json({ submitted: true, data: response });
+    // How many of this alumni's college's current custom/imported questions
+    // they haven't answered yet, PLUS any existing questions an admin has
+    // explicitly flagged for re-answering (pendingUpdateQuestionIds) — lets
+    // the frontend gate login routing to the "new questions" view (see
+    // ProtectedRoute) instead of only computing this after the alumni is
+    // already on the tracer-study page.
+    const alumniUser = await User.findById(req.user.id).select('college').lean();
+    const cfg = alumniUser?.college ? await TracerFormConfig.findOne({ college: alumniUser.college }).lean() : null;
+    const answeredKeys = new Set(Object.keys(response.extra_answers || {}));
+    const pendingIds   = new Set(response.pendingUpdateQuestionIds || []);
+    let newQuestionsCount = 0;
+    (cfg?.config?.pages || []).forEach((p) => (p.questions || []).forEach((q) => {
+      if (q.type === 'static_text') return;
+      if (pendingIds.has(q.id)) { newQuestionsCount++; return; }
+      if (!FIXED_KEYS.has(q.id) && !answeredKeys.has(q.id)) newQuestionsCount++;
+    }));
+
+    res.json({ submitted: true, data: response, newQuestionsCount });
   } catch (err) {
     console.error('getMyTracerResponse error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
 
-// POST /api/alumni/tracer-study
-// Accepts a flat answers object. Upserts the TracerStudyResponse so alumni can
-// re-submit to update their answers. Also auto-syncs the AlumniEmployment record.
-const submitTracerStudy = async (req, res) => {
-  try {
-    const alumniId = req.user.id;
-    const body     = req.body;
-
+// Shared core of submitTracerStudy — accepts an explicit alumniId/college so
+// it can be reused by the admin's own "Edit Record -> tracer data" endpoint
+// (updateAlumniTracerData below), which needs every downstream effect a real
+// alumni submission gets (AlumniEmployment sync, course/track sync, AI
+// chatbot Graduate/embedding sync) since an admin correction should stay
+// consistent everywhere the alumni's own submission would.
+async function saveTracerAnswers(alumniId, college, body) {
     // Separate extra (custom admin-added) answers from the fixed schema fields
     const extra_answers = {};
     for (const [key, value] of Object.entries(body)) {
@@ -359,6 +363,11 @@ const submitTracerStudy = async (req, res) => {
           professionalDevelopmentActivities: body.professionalDevelopmentActivities || '',
           extra_answers,
           submittedAt: new Date(),
+          // Any admin-flagged "please update this" questions are addressed
+          // by this submit (the whole answers object is saved, including
+          // whatever was shown for those ids) — clear the flag so the
+          // alumni isn't routed back to the same screen on next login.
+          pendingUpdateQuestionIds: [],
         },
       },
       { upsert: true, new: true }
@@ -367,7 +376,7 @@ const submitTracerStudy = async (req, res) => {
     // Auto-sync employment record from tracer answers.
     // Extra custom questions (company name, work location) are resolved by label matching.
     const employmentUpdate = extractEmploymentFromTracer(body);
-    const extraFields      = await resolveExtraEmploymentFields(extra_answers, req.user.college);
+    const extraFields      = await resolveExtraEmploymentFields(extra_answers, college);
     Object.assign(employmentUpdate, extraFields);
 
     // When alumni is not employed, explicitly clear work-related fields so stale
@@ -498,10 +507,38 @@ const submitTracerStudy = async (req, res) => {
     } catch (syncErr) {
       console.error('AI chatbot Graduate sync failed (non-blocking):', syncErr.message);
     }
+}
 
+// POST /api/alumni/tracer-study
+// Accepts a flat answers object. Upserts the TracerStudyResponse so alumni can
+// re-submit to update their answers. Also auto-syncs the AlumniEmployment record.
+const submitTracerStudy = async (req, res) => {
+  try {
+    await saveTracerAnswers(req.user.id, req.user.college, req.body);
     res.status(200).json({ message: 'Tracer study submitted successfully.' });
   } catch (err) {
     console.error('submitTracerStudy error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// PATCH /api/admin/employment/:id/tracer — admin editing an alumni's full
+// tracer study record (not just the AlumniEmployment slice updateEmploymentRecord
+// covers). Reuses the exact same save path as the alumni's own submit, so an
+// admin correction gets the same downstream sync (AlumniEmployment, course/
+// track, AI chatbot Graduate/embeddings) a real resubmission would.
+const updateAlumniTracerData = async (req, res) => {
+  try {
+    const emp = await AlumniEmployment.findById(req.params.id).select('alumni_id').lean();
+    if (!emp) return res.status(404).json({ message: 'Employment record not found.' });
+
+    const alumniUser = await User.findById(emp.alumni_id).select('college').lean();
+    if (!alumniUser) return res.status(404).json({ message: 'Alumni not found.' });
+
+    await saveTracerAnswers(emp.alumni_id, alumniUser.college || '', req.body);
+    res.json({ message: 'Alumni record updated.' });
+  } catch (err) {
+    console.error('updateAlumniTracerData error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -1840,4 +1877,4 @@ const deleteApplication = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication };
+module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, updateAlumniTracerData, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication };
