@@ -343,9 +343,11 @@ const BLANK_CONFIG = { version: 1, pages: [] };
 
 // Resolve which college's config to load:
 //   - Admin: uses ?college= query param
-//   - Alumni: uses their own college from req.user.college
+//   - Alumni/Coordinator: uses their own college from req.user.college —
+//     a coordinator can only ever read/edit the tracer form for the college
+//     they're assigned to, never another one via a tampered query param.
 function resolveCollege(req) {
-  if (req.user?.role === 'alumni') return req.user.college || 'CCS';
+  if (req.user?.role === 'alumni' || req.user?.role === 'coordinator') return req.user.college || 'CCS';
   return (req.query.college || '').trim().toUpperCase() || 'CCS';
 }
 

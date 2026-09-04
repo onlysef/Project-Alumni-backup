@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { Modal } from "../../components/common/Primitives.jsx";
+import AvatarCropper from "../../components/common/AvatarCropper.jsx";
+import SkillsEditor from "../../components/common/SkillsEditor.jsx";
 
 const EMPLOYMENT_ICONS = {
   edit: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z'/%3E%3Cpath d='M14 8l3 3'/%3E%3C/svg%3E",
@@ -52,7 +54,7 @@ const INDUSTRIES = [
 const BLANK = {
   status: "Employed", company: "", position: "", industry: "", location: "",
   hired: "", salary: "", skills: "", experience: "",
-  contactEmail: "", contactNumber: "",
+  contactEmail: "", contactNumber: "", facebook: "", linkedin: "",
 };
 const EMPLOYMENT_PROFILE_KEY = "alumniEmploymentProfile";
 
@@ -74,6 +76,8 @@ function mapEmploymentToForm(emp) {
     experience: emp.experience || "",
     contactEmail:  emp.contact_email || "",
     contactNumber: emp.contact_number || "",
+    facebook:      emp.facebook || "",
+    linkedin:      emp.linkedin || "",
   };
 }
 
@@ -94,6 +98,8 @@ function mapFormToEmployment(form) {
     experience: form.experience,
     contact_email: form.contactEmail,
     contact_number: form.contactNumber,
+    facebook: form.facebook,
+    linkedin: form.linkedin,
   };
 }
 
@@ -250,6 +256,8 @@ export default function AlumniEmploymentDetails() {
         <ProfileRow icon={<HistoryIcon />} label="Education" value={education || "Not yet updated"} />
         <ProfileRow icon={<MailIcon />} label="Contact email" value={profile.contactEmail || "Not yet updated"} />
         <ProfileRow icon={<PhoneIcon />} label="Contact number" value={profile.contactNumber || "Not yet updated"} />
+        <ProfileRow icon={<LinkIcon />} label="Facebook" value={profile.facebook || "Not yet updated"} />
+        <ProfileRow icon={<LinkIcon />} label="LinkedIn" value={profile.linkedin || "Not yet updated"} />
         <button type="button" className="profile-edit-trigger" onClick={() => setEditing(true)}>Edit Profile</button>
       </aside>
     </div>;
@@ -272,6 +280,8 @@ export default function AlumniEmploymentDetails() {
         <div className="employment-block"><h3>Contact Information</h3><div className="employment-fields two-columns">
           <Field label="Contact Email"><input type="email" value={form.contactEmail} onChange={e => update("contactEmail", e.target.value)} placeholder="you@example.com" /></Field>
           <Field label="Contact Number"><input type="tel" inputMode="tel" value={form.contactNumber} onChange={e => update("contactNumber", e.target.value)} placeholder="09XX XXX XXXX" maxLength={30} /></Field>
+          <Field label="Facebook"><input type="text" value={form.facebook} onChange={e => update("facebook", e.target.value)} placeholder="facebook.com/yourname" /></Field>
+          <Field label="LinkedIn"><input type="text" value={form.linkedin} onChange={e => update("linkedin", e.target.value)} placeholder="linkedin.com/in/yourname" /></Field>
         </div><p className="employment-field-hint">Shown on your profile and to the alumni office. Your login email ({user?.email || "—"}) stays private.</p></div>
         <div className="employment-block"><h3>Work Information</h3><div className="employment-fields">
           <Field label="Employment Status"><select value={form.status} onChange={e => update("status", e.target.value)}><option>Employed</option><option>Self-employed</option><option>Unemployed</option></select></Field>
@@ -318,113 +328,7 @@ export default function AlumniEmploymentDetails() {
   </div>;
 }
 
-function AvatarCropper({ src, busy, onCancel, onSave }) {
-  const VIEW = 260;
-  const OUTPUT = 320;
-  const imgRef = useRef(null);
-  const dragRef = useRef(null);
-  const [nat, setNat] = useState({ w: 0, h: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [pos, setPos] = useState({ x: 0, y: 0 });
-
-  const base = nat.w && nat.h ? Math.max(VIEW / nat.w, VIEW / nat.h) : 1;
-  const dispW = nat.w * base * zoom;
-  const dispH = nat.h * base * zoom;
-
-  const clamp = useCallback((p) => {
-    const maxX = Math.max(0, (dispW - VIEW) / 2);
-    const maxY = Math.max(0, (dispH - VIEW) / 2);
-    return { x: Math.min(maxX, Math.max(-maxX, p.x)), y: Math.min(maxY, Math.max(-maxY, p.y)) };
-  }, [dispW, dispH]);
-
-  useEffect(() => { setPos((p) => clamp(p)); }, [clamp]);
-
-  function onImgLoad(e) {
-    setNat({ w: e.target.naturalWidth, h: e.target.naturalHeight });
-    setZoom(1);
-    setPos({ x: 0, y: 0 });
-  }
-  function onPointerDown(e) {
-    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  }
-  function onPointerMove(e) {
-    if (!dragRef.current) return;
-    const d = dragRef.current;
-    setPos(clamp({ x: d.ox + (e.clientX - d.sx), y: d.oy + (e.clientY - d.sy) }));
-  }
-  function endDrag() { dragRef.current = null; }
-
-  function handleSave() {
-    const canvas = document.createElement("canvas");
-    canvas.width = OUTPUT;
-    canvas.height = OUTPUT;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, OUTPUT, OUTPUT);
-    const k = OUTPUT / VIEW;
-    ctx.drawImage(
-      imgRef.current,
-      (VIEW / 2 + pos.x - dispW / 2) * k,
-      (VIEW / 2 + pos.y - dispH / 2) * k,
-      dispW * k,
-      dispH * k,
-    );
-    onSave(canvas.toDataURL("image/jpeg", 0.9));
-  }
-
-  return (
-    <Modal open onClose={busy ? () => {} : onCancel} className="avatar-cropper-modal">
-      <div className="avatar-cropper" role="dialog" aria-modal="true" aria-label="Adjust profile photo">
-        <div className="modal-head"><h3>Adjust photo</h3><button type="button" aria-label="Cancel" disabled={busy} onClick={onCancel}>×</button></div>
-        <p className="avatar-cropper-hint">Drag to reposition · use the slider to zoom.</p>
-        <div
-          className="avatar-cropper-stage"
-          style={{ width: VIEW, height: VIEW }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-        >
-          <img
-            ref={imgRef}
-            src={src}
-            alt=""
-            draggable="false"
-            onLoad={onImgLoad}
-            style={{ width: dispW || "auto", height: dispH || "auto", transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
-          />
-          <div className="avatar-cropper-ring" />
-        </div>
-        <input type="range" min="1" max="3" step="0.01" value={zoom} disabled={busy} onChange={(e) => setZoom(Number(e.target.value))} aria-label="Zoom" />
-        <div className="avatar-cropper-actions">
-          <button type="button" className="secondary-employment-btn" disabled={busy} onClick={onCancel}>Cancel</button>
-          <button type="button" className="primary-employment-btn" disabled={busy || !nat.w} onClick={handleSave}>{busy ? "Saving…" : "Save Photo"}</button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function Field({ label, children }) { return <label className="employment-field"><span>{label}</span>{children}</label>; }
-function SkillsEditor({ value, onChange }) {
-  const [draft, setDraft] = useState("");
-  const skills = value.split(",").map((skill) => skill.trim()).filter(Boolean);
-  const addSkill = () => {
-    const skill = draft.trim().replace(/,+/g, "");
-    if (!skill || skills.some((item) => item.toLowerCase() === skill.toLowerCase())) { setDraft(""); return; }
-    onChange([...skills, skill].join(", "));
-    setDraft("");
-  };
-  const removeSkill = (skill) => onChange(skills.filter((item) => item !== skill).join(", "));
-  return <div className="skills-editor">
-    <div className="skills-chip-list skills-edit-list">
-      {skills.map((skill) => <span key={skill} className="skill-chip">{skill}<button type="button" onClick={() => removeSkill(skill)} aria-label={`Remove ${skill}`}>×</button></span>)}
-      <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addSkill(); } }} placeholder={skills.length ? "Add another skill" : "e.g. Python"} />
-    </div>
-    <button type="button" className="add-skill-button" onClick={addSkill}>+ Add skill</button>
-  </div>;
-}
 function ProfileRow({ icon, label, value, children }) { return <div className="profile-row"><i>{icon}</i><div><span>{label}</span>{children ?? <strong>{value}</strong>}</div></div>; }
 function RoleIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="2" /><path d="M9 7V5h6v2" /><path d="M4 12h16" /></svg>; }
 function IndustryIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18" /><path d="M4 20V9l6 4V9l6 4V9l4 2v9" /></svg>; }
@@ -434,3 +338,4 @@ function PhoneIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path 
 function SkillsIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 9-4 3 4 3" /><path d="m16 9 4 3-4 3" /><path d="m14 5-4 14" /></svg>; }
 function ExperienceIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg>; }
 function HistoryIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h14" /><path d="M6 12h14" /><path d="M6 18h14" /><circle cx="3.5" cy="6" r=".8" /><circle cx="3.5" cy="12" r=".8" /><circle cx="3.5" cy="18" r=".8" /></svg>; }
+function LinkIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15 15 9" /><path d="M11 6l1.5-1.5a3.5 3.5 0 0 1 5 5L16 11" /><path d="M13 18l-1.5 1.5a3.5 3.5 0 0 1-5-5L8 13" /></svg>; }

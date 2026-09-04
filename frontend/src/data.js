@@ -66,7 +66,7 @@ export const navGroups = [
     ],
   },
   {
-    group: "Employment",
+    group: "Alumni Management",
     items: [
       { view: "employment", icon: "icon-2", label: "Alumni Record" },
       { view: "export-employment", icon: "icon-17", label: "Export Alumni Record" },

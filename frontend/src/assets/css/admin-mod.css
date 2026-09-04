@@ -981,7 +981,7 @@
 
         .grid {
             display: grid;
-            grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+            grid-template-columns: 1fr;
             gap: clamp(14px, 1.4vw, 17px);
             align-items: start;
         }
@@ -1001,7 +1001,8 @@
         }
 
         .panel:has(.assistant-menu),
-        .panel:has(.tracer-filter-downloads) {
+        .panel:has(.tracer-filter-downloads),
+        .panel:has(.activity-window-menu) {
             overflow: visible;
         }
 
@@ -3237,6 +3238,7 @@
            same white-pill-on-maroon language as .chart-export-button, instead
            of the flat translucent-white boxes these used before. */
         .tracer-editor-college-select,
+        .tracer-editor-college-locked,
         .tracer-editor-import-btn {
             border: 1px solid #ead7da;
             border-radius: 7px;
@@ -3248,6 +3250,14 @@
             background: #fff;
             color: #570013;
             transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+        }
+
+        /* A coordinator's college is locked, not a real dropdown — no
+           hover/pointer affordance since clicking it does nothing. */
+        .tracer-editor-college-locked {
+            cursor: default;
+            display: inline-flex;
+            align-items: center;
         }
 
         .tracer-editor-college-select:hover,
@@ -7055,6 +7065,18 @@
         body.dark-mode .status-badge.account-status.active    { background: rgba(40, 122, 78, 0.22); color: #7be0a6; border-color: rgba(123, 224, 166, 0.4); }
         body.dark-mode .status-badge.account-status.pending   { background: rgba(137, 90, 0, 0.28); color: #f0cf86; border-color: rgba(240, 207, 134, 0.4); }
         body.dark-mode .status-badge.account-status.suspended { background: rgba(138, 31, 47, 0.28); color: #f3a3ad; border-color: rgba(243, 163, 173, 0.4); }
+
+        .record-fields-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 2px 18px;
+        }
+
+        @media (max-width: 600px) {
+            .record-fields-grid {
+                grid-template-columns: 1fr;
+            }
+        }
 
         .tracer-q-list {
             display: grid;

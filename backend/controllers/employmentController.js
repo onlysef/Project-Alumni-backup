@@ -162,7 +162,9 @@ const listProjection = {
 // (this dataset alone ranges from 2000 to 2025).
 const getBatchYears = async (req, res) => {
   try {
-    const years = await User.distinct('graduationYear', { role: 'alumni', graduationYear: { $ne: null } });
+    const match = { role: 'alumni', graduationYear: { $ne: null } };
+    if (req.query.college) match.college = req.query.college;
+    const years = await User.distinct('graduationYear', match);
     res.json({ years: years.sort((a, b) => b - a) });
   } catch (err) {
     console.error('getBatchYears error:', err);
@@ -487,6 +489,12 @@ const getEmploymentRecord = async (req, res) => {
           employment_type:       1,
           years_in_current_job:  1,
           reason_unemployed:     1,
+          skills:                1,
+          experience:            1,
+          contact_email:         1,
+          contact_number:        1,
+          facebook:              1,
+          linkedin:              1,
           last_updated:          1,
           createdAt:             1,
           updatedAt:             1,
@@ -495,6 +503,12 @@ const getEmploymentRecord = async (req, res) => {
     ]);
 
     if (!result.length) return res.status(404).json({ message: 'Employment record not found.' });
+    // Set by the coordinator route middleware — a coordinator can only view
+    // a record belonging to their own college, even by guessing/hand-
+    // crafting another alumni's record id directly in the URL.
+    if (req.forcedCollege && result[0].college !== req.forcedCollege) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
 
     // Attach tracer study snapshot so the admin view modal can show it
     const tracer = await TracerStudyResponse.findOne({ alumni_id: result[0].alumni_id }).lean();
@@ -576,7 +590,15 @@ const getEmploymentRecord = async (req, res) => {
     // saved one, same as the employer-facing "View resume" already does.
     const { resume, isSaved: resumeIsSaved } = await getResumeForAlumnus(result[0].alumni_id);
 
-    res.json({ record: { ...result[0], tracer_data, resume, resume_is_saved: resumeIsSaved, new_question_ids: newQuestionIds } });
+    // Contact Email/Number aren't asked for on this record from scratch —
+    // they already exist elsewhere (the account's own login email, already
+    // fetched above as `email`; the tracer study's own "Contact Number"
+    // question) — so admin/coordinator sees that instead of a blank field
+    // that looks like it was never filled in at all.
+    const contact_email  = result[0].contact_email  || result[0].email || '';
+    const contact_number = result[0].contact_number || tracer?.contactNumber || '';
+
+    res.json({ record: { ...result[0], contact_email, contact_number, tracer_data, resume, resume_is_saved: resumeIsSaved, new_question_ids: newQuestionIds } });
   } catch (err) {
     console.error('getEmploymentRecord error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -591,6 +613,7 @@ const updateEmploymentRecord = async (req, res) => {
       work_location, salary_range, job_related_to_course,
       date_employed, reason_unemployed,
       employment_type, years_in_current_job,
+      skills, experience, contact_email, contact_number, facebook, linkedin,
     } = req.body;
 
     const VALID_STATUSES = ['Not Yet Updated', 'Employed', 'Unemployed', 'Self-employed'];
@@ -610,6 +633,17 @@ const updateEmploymentRecord = async (req, res) => {
       return res.status(400).json({ message: 'Industry or business type is required.' });
     }
 
+    // Set by the coordinator route middleware — checked before any update
+    // is applied, so a coordinator can never edit a record outside their
+    // own college even by hand-crafting a request with another alumni's id.
+    if (req.forcedCollege) {
+      const existing = await AlumniEmployment.findById(req.params.id).populate('alumni_id', 'college').lean();
+      if (!existing) return res.status(404).json({ message: 'Employment record not found.' });
+      if ((existing.alumni_id?.college || '') !== req.forcedCollege) {
+        return res.status(403).json({ message: 'Access denied.' });
+      }
+    }
+
     const updates = {
       employment_status,
       company_name:          company_name?.trim()        || '',
@@ -622,6 +656,12 @@ const updateEmploymentRecord = async (req, res) => {
       reason_unemployed:     reason_unemployed?.trim()   || '',
       employment_type:       employment_type?.trim()     || '',
       years_in_current_job:  years_in_current_job?.trim() || '',
+      skills:                skills?.trim()              || '',
+      experience:            experience?.trim()          || '',
+      contact_email:         contact_email?.trim()       || '',
+      contact_number:        contact_number?.trim()      || '',
+      facebook:              facebook?.trim()            || '',
+      linkedin:              linkedin?.trim()             || '',
       last_updated:          new Date(),
     };
 
@@ -641,6 +681,48 @@ const updateEmploymentRecord = async (req, res) => {
     res.json({ message: 'Employment record updated.', record });
   } catch (err) {
     console.error('updateEmploymentRecord error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// Mirrors alumniController.js's own AVATAR_DATA_URI_RE/MAX_AVATAR_BYTES —
+// same validation, just for an admin/coordinator setting someone ELSE's
+// photo (that endpoint only ever writes to req.user.id, the caller's own
+// account) rather than duplicating a shared constant across two files for
+// two small regex/size checks.
+const AVATAR_DATA_URI_RE = /^data:image\/(png|jpe?g|gif|webp);base64,([a-zA-Z0-9+/]+=*)$/;
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024; // 2MB decoded
+
+// PATCH /api/admin/employment/:id/avatar  (also mounted under /coordinator,
+// scoped to their college via req.forcedCollege — see updateEmploymentRecord)
+const updateEmploymentRecordAvatar = async (req, res) => {
+  try {
+    const { avatarUrl } = req.body;
+    if (typeof avatarUrl !== 'string') return res.status(400).json({ message: 'avatarUrl is required.' });
+
+    const match = avatarUrl.match(AVATAR_DATA_URI_RE);
+    if (!match) return res.status(400).json({ message: 'Avatar must be a PNG, JPEG, GIF, or WEBP image.' });
+
+    const decodedSize = Buffer.byteLength(match[2], 'base64');
+    if (decodedSize > MAX_AVATAR_BYTES) {
+      return res.status(400).json({ message: 'Avatar image must be smaller than 2MB.' });
+    }
+
+    const emp = await AlumniEmployment.findById(req.params.id).populate('alumni_id', 'college firstName lastName').lean();
+    if (!emp) return res.status(404).json({ message: 'Employment record not found.' });
+    if (req.forcedCollege && (emp.alumni_id?.college || '') !== req.forcedCollege) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
+
+    await User.findByIdAndUpdate(emp.alumni_id._id, { avatarUrl });
+
+    const adminName = await resolveAdminName(req.user.id);
+    const alumniName = emp.alumni_id ? `${emp.alumni_id.firstName} ${emp.alumni_id.lastName}` : 'Unknown';
+    logActivity(req.user.id, adminName, "updated alumni's profile photo", alumniName);
+
+    res.json({ avatarUrl });
+  } catch (err) {
+    console.error('updateEmploymentRecordAvatar error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -1805,6 +1887,10 @@ const notifyAlumniToUpdate = async (req, res) => {
       if (college) query.college = college;
       if (course)  query.course  = course;
     }
+    // Set by the coordinator route middleware — scopes the query to their
+    // assigned college even when alumni_ids was used, so a coordinator can
+    // never sneak in another college's alumni via a hand-crafted request.
+    if (req.forcedCollege) query.college = req.forcedCollege;
 
     const alumni = await User.find(query).select('email');
     if (alumni.length === 0)
@@ -1974,6 +2060,12 @@ const getTracerResponseDetail = async (req, res) => {
 
     if (!response) return res.status(404).json({ message: 'No tracer response found for this alumni.' });
     if (!user)     return res.status(404).json({ message: 'Alumni not found.' });
+    // Set by the coordinator route middleware — a coordinator can only open
+    // a response belonging to their own college, even by guessing/hand-
+    // crafting another alumni's id directly in the URL.
+    if (req.forcedCollege && user.college !== req.forcedCollege) {
+      return res.status(403).json({ message: 'Access denied.' });
+    }
 
     // Normalize extra_answers (Mongoose Map → plain object)
     let extra = {};
@@ -2008,6 +2100,7 @@ module.exports = {
   getEmploymentRecords,
   getEmploymentRecord,
   updateEmploymentRecord,
+  updateEmploymentRecordAvatar,
   getEmploymentActivity,
   exportEmploymentRecords,
   logPrintActivity,

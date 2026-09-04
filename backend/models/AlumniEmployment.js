@@ -29,6 +29,8 @@ const alumniEmploymentSchema = new mongoose.Schema({
   // profile and to coordinators.
   contact_email:         { type: String, default: '' },
   contact_number:        { type: String, default: '' },
+  facebook:              { type: String, default: '' },
+  linkedin:              { type: String, default: '' },
   last_updated:          { type: Date, default: Date.now },
   // Set only by syncTracerToEmployment — tracks which version of this
   // alumnus's TracerStudyResponse (by its updatedAt) has already been
