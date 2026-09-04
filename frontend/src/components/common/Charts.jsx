@@ -136,6 +136,7 @@ export function EmploymentChart({ data }) {
     { label: "Unemployed",    pct: up, count: data.unemployed,   color: "#e9ad69", end: ep + up },
     { label: "Unidentified",  pct: ip, count: data.unidentified, color: "#8f8f8f", end: 100 },
   ];
+  const chartKey = `${data.employed}-${data.unemployed}-${data.unidentified}-${data.total}`;
 
   function handleMove(e) {
     const donut = donutRef.current;
@@ -161,19 +162,26 @@ export function EmploymentChart({ data }) {
   }
 
   return (
-    <div className="chart-body donut-layout" ref={containerRef} style={{ position: "relative" }}>
-      <div
-        className="donut"
-        ref={donutRef}
-        aria-label={`Employment distribution — ${data.total} alumni`}
-        style={{ background }}
-        onMouseMove={handleMove}
-        onMouseLeave={() => setTip(null)}
-      />
+    <div key={chartKey} className="chart-body donut-layout donut-data-transition" ref={containerRef} style={{ position: "relative" }}>
+      <div className="donut-shell">
+        <div
+          className="donut"
+          ref={donutRef}
+          role="img"
+          aria-label={`Employment distribution — ${data.total} alumni`}
+          style={{ background }}
+          onMouseMove={handleMove}
+          onMouseLeave={() => setTip(null)}
+        />
+        <div className="donut-center" aria-hidden="true">
+          <strong>{data.total}</strong>
+          <span>Total Alumni</span>
+        </div>
+      </div>
       <div className="legend">
-        <div className="legend-row"><span className="swatch red"   style={{ background: "#941527" }} /><span>Employed — {ep}%</span></div>
-        <div className="legend-row"><span className="swatch peach" style={{ background: "#e9ad69" }} /><span>Unemployed — {up}%</span></div>
-        <div className="legend-row"><span className="swatch gray"  style={{ background: "#d7d7d7" }} /><span>Unidentified — {ip}%</span></div>
+        <div className="legend-row"><span className="swatch red"   style={{ background: "#941527" }} /><span>Employed</span><b>{data.employed} · {ep}%</b></div>
+        <div className="legend-row"><span className="swatch peach" style={{ background: "#e9ad69" }} /><span>Unemployed</span><b>{data.unemployed} · {up}%</b></div>
+        <div className="legend-row"><span className="swatch gray"  style={{ background: "#d7d7d7" }} /><span>Unidentified</span><b>{data.unidentified} · {ip}%</b></div>
         <div className="chart-insights">
           <div><strong>Employed</strong><span>{data.employed} alumni</span></div>
           <div><strong>Unemployed</strong><span>{data.unemployed} alumni</span></div>
@@ -198,6 +206,18 @@ export function EmploymentChart({ data }) {
 // Same palette as the Course vs Job chart above — red, gold, peach, brown —
 // extended with harmonious shades for categories beyond 4.
 export const CHART_PALETTE = ["#941527", "#dea045", "#eaaa63", "#6b4226", "#570013", "#c23b52", "#e9ad69", "#8f8f8f"];
+// Donuts need stronger hue separation than the brand-toned bar palette,
+// especially for adjacent or very small segments on dark backgrounds.
+const MINI_DONUT_PALETTE = [
+  "#b51f3d", // crimson
+  "#f0b43c", // gold
+  "#9b6cff", // purple
+  "#21b6a8", // teal
+  "#4f8df7", // blue
+  "#f47b35", // orange
+  "#d7d7d7", // neutral
+  "#e85d9e", // pink
+];
 
 // Small donut — best for binary/few-category distributions (Yes/No, gender, status).
 export function MiniDonut({ rows }) {
@@ -208,7 +228,12 @@ export function MiniDonut({ rows }) {
     const pct   = total > 0 ? (r.count / total) * 100 : 0;
     const start = acc;
     acc += pct;
-    return { ...r, pct: Math.round(pct), start, end: acc, color: CHART_PALETTE[i % CHART_PALETTE.length] };
+    // Keep LGBTQIA+ visually distinct from the adjacent gold/orange gender
+    // category instead of assigning two nearly identical warm colors.
+    const color = /lgbtq/i.test(String(r.label))
+      ? "#9b6cff"
+      : MINI_DONUT_PALETTE[i % MINI_DONUT_PALETTE.length];
+    return { ...r, pct: Math.round(pct), start, end: acc, color };
   });
   const gradient = segments.map((s) => `${s.color} ${s.start}% ${s.end}%`).join(", ");
   return (

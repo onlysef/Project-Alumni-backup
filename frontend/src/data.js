@@ -69,7 +69,7 @@ export const adminMenuChoices = {
   "accounts-role": ["All", "Admin", "Alumni", "Coordinator", "Employer"],
   "accounts-status": ["All", "Active", "Pending", "Suspended"],
   "announcement-date": ["All", "Today", "This Month", "This Year"],
-  "announcement-type": ["All", "News"],
+  "announcement-type": ["All", "News", "Announcement", "Job Posting"],
   "partner-type": [
     "All",
     "Information Technology & BPO",

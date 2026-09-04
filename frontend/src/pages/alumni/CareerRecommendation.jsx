@@ -80,7 +80,7 @@ export default function CareerRecommendation() {
                   <div className="career-skill-tags">{career.skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
                   {career.missing && <div className="career-gap"><b>Skill to develop:</b> {career.missing}</div>}
                 </div>
-                <button className="career-details" type="button" onClick={() => setSelected(career)}>View Path →</button>
+                <button className="career-details" type="button" onClick={() => setSelected(career)}>Skill Gap →</button>
               </article>
             ))}
           </div>
@@ -91,15 +91,15 @@ export default function CareerRecommendation() {
         <section className="skills-profile">
           <div className="career-side-head"><span>Based on your profile</span><h2>Your Skill Strengths</h2></div>
           {!loading && !data?.hasSkills && (
-            <p style={{ margin: "0 0 12px", color: "#76656a", fontSize: 12 }}>Add your skills in Employment Details to see your strengths here.</p>
+            <p style={{ margin: "0 0 12px", color: "#76656a", fontSize: 12 }}>Add your skills in your Alumni Profile to see your strengths here.</p>
           )}
           {skillStrengths.map((s) => <Skill key={s.name} name={s.name} value={s.value} matched={s.matched} />)}
           <div className="profile-tip"><b>Tip</b><p>Add certifications and recent projects to improve your recommendations.</p></div>
         </section>
         <section className="career-next">
           <h3>Suggested next step</h3>
-          <p>{loading ? "Thinking about what would help most…" : (data?.nextStep || "Fill out your Employment Details to start getting career recommendations.")}</p>
-          <button type="button" onClick={() => navigate("/alumni/dashboard?section=employment")}>Update Employment Details</button>
+          <p>{loading ? "Thinking about what would help most…" : (data?.nextStep || "Fill out your Alumni Profile to start getting career recommendations.")}</p>
+          <button type="button" onClick={() => navigate("/alumni/dashboard?section=employment")}>Update Alumni Profile</button>
         </section>
       </aside>
     </div>
@@ -151,10 +151,6 @@ export default function CareerRecommendation() {
                 ))}
               </div>
             </div>
-          </div>
-
-          <div className="modal-actions coord-profile-actions">
-            <button type="button" onClick={() => setSelected(null)}>Close</button>
           </div>
         </section>
       </Modal>

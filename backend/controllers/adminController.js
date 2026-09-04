@@ -635,30 +635,35 @@ const getNotifications = async (req, res) => {
 
     const notifications = [
       ...pendingUsers.map(u => ({
+        resource_id: u._id,
         type: 'pending_user',
         title: 'New employer registration',
         body: `${u.company || `${u.firstName} ${u.lastName}`} is waiting for account approval.`,
         createdAt: u.createdAt,
       })),
       ...empActivity.map(a => ({
-        type: 'employment',
-        title: 'Employment update',
-        body: `${a.user_name} ${a.action}.`,
+        resource_id: a.announcement_id || a._id,
+        type: a.action === 'liked' ? 'like' : a.action === 'shared' ? 'share' : 'comment',
+        title: a.action === 'liked' ? 'New post like' : a.action === 'shared' ? 'Post shared' : 'New post comment',
+        body: `${a.user_name} ${a.action} “${a.announcement_title || 'your post'}”.`,
         createdAt: a.createdAt,
       })),
       ...pendingPartners.map(p => ({
+        resource_id: p._id,
         type: 'partnership',
         title: 'Partnership request',
         body: `${p.name} needs review.`,
         createdAt: p.createdAt,
       })),
       ...recentAnnouncements.map(a => ({
+        resource_id: a._id,
         type: 'announcement',
         title: 'Announcement posted',
         body: `"${a.title}" was published.`,
         createdAt: a.createdAt,
       })),
       ...pendingAppointments.map(a => ({
+        resource_id: a._id,
         type: 'appointment',
         title: 'Appointment request',
         body: `${a.alumni_name} requested an appointment${a.purpose ? ` — ${a.purpose}` : ''}.`,

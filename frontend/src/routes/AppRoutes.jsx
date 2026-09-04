@@ -133,6 +133,14 @@ export default function AppRoutes() {
               }
             />
             <Route
+              path="tsu"
+              element={<ProtectedRoute allowedRoles={["alumni"]}><TsuLandingView /></ProtectedRoute>}
+            />
+            <Route
+              path="about"
+              element={<ProtectedRoute allowedRoles={["alumni"]}><AboutView /></ProtectedRoute>}
+            />
+            <Route
               path="onboarding"
               element={
                 <ProtectedRoute allowedRoles={["alumni"]} skipOnboarding skipTracerStudy>

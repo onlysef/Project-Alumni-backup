@@ -109,13 +109,16 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
         </div>
       </div>
       <nav className="nav" aria-label="Main navigation">
-        {items.map((item) => {
+        {items.map((item, index) => {
           const hasChildren = Array.isArray(item.children) && item.children.length > 0;
           const isOpen = openMenu === item.view;
+          const category = ({ 0: "Overview", 1: "Event management", 3: "Alumni management", 5: "Tools" })[index];
 
           if (hasChildren) {
             return (
-              <div key={item.view} className="nav-group">
+              <React.Fragment key={item.view}>
+              {category && <div className="nav-category" aria-hidden="true">{category}</div>}
+              <div className="nav-group">
                 <a
                   className={view === item.view ? "active" : undefined}
                   href="#"
@@ -144,10 +147,13 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
                   ))}
                 </div>
               </div>
+              </React.Fragment>
             );
           }
 
           return (
+            <React.Fragment key={item.view}>
+            {category && <div className="nav-category" aria-hidden="true">{category}</div>}
             <a
               key={item.view}
               className={view === item.view ? "active" : undefined}
@@ -157,6 +163,7 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
               <span><Icon name={item.icon} /></span>
               <span>{item.label}</span>
             </a>
+            </React.Fragment>
           );
         })}
       </nav>

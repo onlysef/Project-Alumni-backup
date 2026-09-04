@@ -6,7 +6,7 @@ import { apiFetch } from "../../services/api.js";
 import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
 
 // Every field below used to be an editable, SAVEABLE default (see
-// useState(initialResume) further down) — a brand-new alumnus with no
+// useState(EMPTY_RESUME) further down) — a brand-new alumnus with no
 // employment/tracer data yet saw this fake identity sitting in the actual
 // form fields, and clicking Save without editing anything persisted it as
 // their real resume, shown to real employers on every job application. The
@@ -26,8 +26,16 @@ export default function JobConnect() {
   const { showToast } = useOutletContext() || {};
   const [search, setSearch] = useState("");
   const [jobType, setJobType] = useState("");
+  const [location, setLocation] = useState("");
+  const [proximity, setProximity] = useState("");
+  const [education, setEducation] = useState("");
+  const [profileLocation, setProfileLocation] = useState("");
   const [resume, setResume] = useState(EMPTY_RESUME);
   const [draftResume, setDraftResume] = useState(EMPTY_RESUME);
+  const [resumeSaved, setResumeSaved] = useState(false);
+  const [resumeFile, setResumeFile] = useState(null); // { fileName } once an uploaded file is on record
+  const [resumeFileBusy, setResumeFileBusy] = useState(false);
+  const resumeFileInputRef = useRef(null);
   const [editingResume, setEditingResume] = useState(false);
   const [resumePreviewOpen, setResumePreviewOpen] = useState(false);
 
@@ -37,6 +45,7 @@ export default function JobConnect() {
   const [unavailable, setUnavailable] = useState(false);
   const [hasProfile, setHasProfile] = useState(true);
   const [detailsJob, setDetailsJob] = useState(null);
+  const [confirmJob, setConfirmJob] = useState(null);
 
   const [partnerJobs, setPartnerJobs] = useState([]);
   const [partnerJobsLoading, setPartnerJobsLoading] = useState(true);
@@ -51,11 +60,14 @@ export default function JobConnect() {
 
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(true);
 
-  function runSearch(keywords, type) {
+  function runSearch(keywords = search, type = jobType, filters = {}) {
     setLoading(true);
     setError("");
-    apiFetch("/alumni/jobs/search", { params: { keywords, type } })
-      .then((d) => { setJobs(d.jobs || []); setUnavailable(!!d.unavailable); setHasProfile(d.hasProfile !== false); })
+    const nextLocation = filters.location ?? location;
+    const nextProximity = filters.proximity ?? proximity;
+    const nextEducation = filters.education ?? education;
+    apiFetch("/alumni/jobs/search", { params: { keywords, type, location: nextLocation, proximity: nextProximity, education: nextEducation } })
+      .then((d) => { setJobs(d.jobs || []); setUnavailable(!!d.unavailable); setHasProfile(d.hasProfile !== false); setProfileLocation(d.profileLocation || ""); })
       .catch(() => setError("Could not load job listings right now."))
       .finally(() => setLoading(false));
   }
@@ -90,6 +102,8 @@ export default function JobConnect() {
     // the (now genuinely empty) default state alone instead of treating an
     // empty object as "loaded data."
     apiFetch("/alumni/resume").then((d) => {
+      setResumeSaved(!!d.isSaved);
+      setResumeFile(d.resume?.fileName ? { fileName: d.resume.fileName } : null);
       if (!d.resume || Object.keys(d.resume).length === 0) return;
       const loaded = { ...EMPTY_RESUME };
       RESUME_FIELDS.forEach((key) => { if (d.resume[key] !== undefined) loaded[key] = d.resume[key]; });
@@ -111,6 +125,10 @@ export default function JobConnect() {
   // something already applied to.
   function logApply(job) {
     const alreadyApplied = appliedUrls.has(job.url);
+    if (!alreadyApplied && typeof job.match === "number" && job.match < 50) {
+      showToast?.("You need at least 50% match to apply. Add the missing skills to your profile first.");
+      return;
+    }
     apiFetch("/alumni/applications", { method: "POST", body: job })
       .then((d) => {
         if (!d.application) return;
@@ -123,6 +141,20 @@ export default function JobConnect() {
   function updateApplicationStatus(id, status) {
     setApplications((prev) => prev.map((a) => (a._id === id ? { ...a, status } : a)));
     apiFetch(`/alumni/applications/${id}/status`, { method: "PATCH", body: { status } }).catch(() => loadApplications());
+  }
+
+  function confirmApply() {
+    if (!confirmJob) return;
+    logApply(confirmJob);
+    setConfirmJob(null);
+  }
+
+  function cancelApplication(app) {
+    if (!window.confirm(`Cancel your application to ${app.title}? This removes it from your tracker.`)) return;
+    setApplications((prev) => prev.filter((a) => a._id !== app._id));
+    apiFetch(`/alumni/applications/${app._id}`, { method: "DELETE" })
+      .then(() => showToast?.("Application cancelled."))
+      .catch(() => { showToast?.("Could not cancel. Please try again."); loadApplications(); });
   }
 
   useEffect(() => { runSearch(search, jobType); loadSavedJobs(); loadPartnerJobs(); loadJobAlertsPref(); loadResume(); loadApplications(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -163,9 +195,60 @@ export default function JobConnect() {
   const saveResumeEdit = () => {
     setResume(draftResume);
     setEditingResume(false);
+    setResumeSaved(true);
     apiFetch("/alumni/resume", { method: "PUT", body: draftResume }).catch(() => {});
   };
   const previewResume = editingResume ? draftResume : resume;
+
+  function handleResumeFilePick(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    const okTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (!okTypes.includes(file.type)) { showToast?.("Upload a PDF, DOC, or DOCX file."); return; }
+    if (file.size > 4 * 1024 * 1024) { showToast?.("Resume file must be smaller than 4MB."); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setResumeFileBusy(true);
+      apiFetch("/alumni/resume/file", { method: "PUT", body: { fileData: e.target.result, fileName: file.name } })
+        .then((d) => {
+          setResumeFile({ fileName: d.resume?.fileName || file.name });
+          setResumeSaved(true);
+          showToast?.("Resume file uploaded.");
+        })
+        .catch((err) => showToast?.(err?.message || "Could not upload the file."))
+        .finally(() => setResumeFileBusy(false));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeResumeFile() {
+    if (!window.confirm("Remove your uploaded resume file?")) return;
+    setResumeFileBusy(true);
+    apiFetch("/alumni/resume/file", { method: "DELETE" })
+      .then(() => { setResumeFile(null); showToast?.("Resume file removed."); })
+      .catch(() => showToast?.("Could not remove the file."))
+      .finally(() => setResumeFileBusy(false));
+  }
+
+  function deleteResume() {
+    if (!window.confirm("Delete your saved resume and start over? This can't be undone.")) return;
+    setResumeFileBusy(true);
+    apiFetch("/alumni/resume", { method: "DELETE" })
+      .then(() => {
+        setResumeSaved(false);
+        setResumeFile(null);
+        setResume(EMPTY_RESUME);
+        setDraftResume(EMPTY_RESUME);
+        showToast?.("Resume deleted.");
+      })
+      .catch(() => showToast?.("Could not delete the resume."))
+      .finally(() => setResumeFileBusy(false));
+  }
 
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportRef = useRef(null);
@@ -195,8 +278,22 @@ export default function JobConnect() {
     </section>
 
     <section className="job-search-bar">
-      <label><SearchIcon /><input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && runSearch(search, jobType)} placeholder="Search job title, company, or skill" /></label>
-      <select value={jobType} onChange={e => { setJobType(e.target.value); runSearch(search, e.target.value); }}>
+      <label><SearchIcon /><input value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === "Enter" && runSearch()} placeholder="Search job title, company, or skill" /></label>
+      <label className="job-location-filter"><span>⌖</span><input value={location} onChange={e => setLocation(e.target.value)} onKeyDown={e => e.key === "Enter" && runSearch()} placeholder="City or province" /></label>
+      <select value={proximity} onChange={e => { const value = e.target.value; setProximity(value); runSearch(search, jobType, { proximity: value }); }} aria-label="Distance from profile location">
+        <option value="">Any distance</option>
+        <option value="nearby">Nearby my profile location</option>
+        <option value="far">Far from my profile location</option>
+      </select>
+      <select value={education} onChange={e => { const value = e.target.value; setEducation(value); runSearch(search, jobType, { education: value }); }} aria-label="Educational attainment required">
+        <option value="">Any educational attainment</option>
+        <option value="high-school">High school</option>
+        <option value="vocational">Vocational / Technical</option>
+        <option value="bachelor">Bachelor's degree</option>
+        <option value="master">Master's degree</option>
+        <option value="doctorate">Doctorate</option>
+      </select>
+      <select value={jobType} onChange={e => { const value = e.target.value; setJobType(value); runSearch(search, value); }}>
         <option value="">All types</option>
         <option value="full-time">Full-time</option>
         <option value="part-time">Part-time</option>
@@ -206,8 +303,9 @@ export default function JobConnect() {
         <option value="internship">Internship/Training</option>
         <option value="volunteer">Volunteer</option>
       </select>
-      <button type="button" onClick={() => runSearch(search, jobType)} disabled={loading}>{loading ? "Searching…" : "Search Jobs"}</button>
+      <button type="button" onClick={() => runSearch()} disabled={loading}>{loading ? "Searching…" : "Search Jobs"}</button>
     </section>
+    {(proximity || location) && <p className="job-filter-note">{proximity && !profileLocation ? "Add your location in Alumni Profile to use the nearby/far filter. " : ""}{profileLocation && proximity ? `Distance is based on your saved profile location: ${profileLocation}. ` : ""}{location ? `Searching jobs in ${location}.` : ""}</p>}
 
     <div className="job-stats">
       <div className="job-stat-clickable" onClick={() => setView("recommended")}><strong>{jobs.length}</strong><span>Recommended jobs</span></div>
@@ -256,12 +354,12 @@ export default function JobConnect() {
 
         {((view === "recommended" && !error && !recommendedLoading) || view === "saved") && !!results.length && (
           <div className="job-connect-list">
-            {results.map(job => <JobCard key={job.url || job.title} job={job} saved={savedUrls.has(job.url)} applied={appliedUrls.has(job.url)} onToggleSave={() => toggleSave(job)} onViewDetails={() => setDetailsJob(job)} onApply={() => logApply(job)} />)}
+            {results.map(job => <JobCard key={job.url || job.title} job={job} saved={savedUrls.has(job.url)} applied={appliedUrls.has(job.url)} onToggleSave={() => toggleSave(job)} onViewDetails={() => setDetailsJob(job)} onApply={() => job.internal ? setConfirmJob(job) : logApply(job)} />)}
           </div>
         )}
         {view === "applications" && !!results.length && (
           <div className="job-connect-list">
-            {results.map(app => <ApplicationCard key={app._id || app.url} app={app} onStatusChange={(status) => updateApplicationStatus(app._id, status)} onViewDetails={() => setDetailsJob(app)} />)}
+            {results.map(app => <ApplicationCard key={app._id || app.url} app={app} onStatusChange={(status) => updateApplicationStatus(app._id, status)} onViewDetails={() => setDetailsJob(app)} onCancel={() => cancelApplication(app)} />)}
           </div>
         )}
       </main>
@@ -269,17 +367,38 @@ export default function JobConnect() {
       <aside className="job-connect-side">
         <section className="application-tracker resume-creation">
           <div><span>Resume tools</span><h2>Resume Creation</h2></div>
+          <input ref={resumeFileInputRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden onChange={handleResumeFilePick} />
           {editingResume ? (
             <ResumeEditor value={draftResume} onChange={updateDraft} />
-          ) : (
+          ) : resumeFile ? (
+            <div className="resume-file-card">
+              <ResumeFileIcon />
+              <div><b>{resumeFile.fileName}</b><span>Uploaded resume — employers see this file.</span></div>
+            </div>
+          ) : resumeSaved ? (
             <ResumePreview resume={resume} />
+          ) : (
+            <div className="resume-empty">
+              <b>No resume yet</b>
+              <p>Create a resume from your alumni profile, or upload a PDF/DOC/DOCX file. Employers see it on every application.</p>
+            </div>
           )}
-          <div className="resume-actions">
+          <div className={`resume-actions${editingResume ? "" : resumeFile ? " resume-actions--two" : !resumeSaved ? " resume-actions--stack" : ""}`}>
             {editingResume ? (
               <>
                 <button className="resume-preview-btn" type="button" onClick={() => setResumePreviewOpen(true)}><ResumePreviewIcon />Preview</button>
                 <button className="resume-edit" type="button" onClick={cancelResumeEdit}><ResumeCloseIcon />Cancel</button>
                 <button className="resume-export" type="button" onClick={saveResumeEdit}><ResumeCheckIcon />Save</button>
+              </>
+            ) : resumeFile ? (
+              <>
+                <button className="resume-edit" type="button" disabled={resumeFileBusy} onClick={() => resumeFileInputRef.current?.click()}><ResumeEditIcon />{resumeFileBusy ? "Working…" : "Replace file"}</button>
+                <button className="resume-edit" type="button" disabled={resumeFileBusy} onClick={removeResumeFile}><ResumeCloseIcon />Remove file</button>
+              </>
+            ) : !resumeSaved ? (
+              <>
+                <button className="resume-edit" type="button" onClick={beginResumeEdit}><ResumeEditIcon />Create a resume</button>
+                <button className="resume-export" type="button" disabled={resumeFileBusy} onClick={() => resumeFileInputRef.current?.click()}><ResumeExportIcon />{resumeFileBusy ? "Uploading…" : "Upload a resume"}</button>
               </>
             ) : (
               <>
@@ -297,6 +416,15 @@ export default function JobConnect() {
               </>
             )}
           </div>
+          {!editingResume && !resumeFile && resumeSaved && (
+            <div className="resume-secondary-links">
+              <button type="button" disabled={resumeFileBusy} onClick={() => resumeFileInputRef.current?.click()}>{resumeFileBusy ? "Working…" : "Upload a file instead"}</button>
+              <button type="button" className="danger" disabled={resumeFileBusy} onClick={deleteResume}>Delete resume</button>
+            </div>
+          )}
+          {!editingResume && resumeFile && (
+            <button type="button" className="resume-upload-link danger" disabled={resumeFileBusy} onClick={deleteResume}>Delete resume &amp; start over</button>
+          )}
         </section>
         <section className="job-tip-card"><b>Resume tip</b><p>Keep your resume updated before exporting so employers see your latest skills, projects, and experience.</p></section>
       </aside>
@@ -339,11 +467,45 @@ export default function JobConnect() {
             )}
             {detailsJob.skills?.length > 0 && (
               <div className="job-details-skills">
-                <b>Skill Gap</b>
-                <div>{detailsJob.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+                <b>Skill Match</b>
+                <span className="skill-match-ratio">{detailsJob.skills.filter(s => s.matched).length} of {detailsJob.skills.length} skills matched</span>
+                <div>{[...detailsJob.skills].sort((a, b) => Number(b.matched) - Number(a.matched)).map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
               </div>
             )}
-            <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
+            {!appliedUrls.has(detailsJob.url) && typeof detailsJob.match === "number" && detailsJob.match < 50 ? (
+              <>
+                <button className="apply-job job-details-apply apply-locked" type="button" disabled aria-disabled="true">Apply now</button>
+                <p className="apply-gate-note">You need at least 50% match to apply. Add the missing skills to your profile to unlock this.</p>
+              </>
+            ) : (
+              <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+    {confirmJob && (
+      <div className="resume-preview-overlay" role="dialog" aria-modal="true" aria-label="Confirm application">
+        <div className="resume-preview-modal apply-confirm-modal">
+          <div className="resume-preview-modal-head">
+            <div><span>Confirm application</span><h2>{confirmJob.title}</h2></div>
+            <button type="button" onClick={() => setConfirmJob(null)} aria-label="Close"><ResumeCloseIcon /></button>
+          </div>
+          <div className="apply-confirm-body">
+            <p className="apply-confirm-meta">
+              {confirmJob.company}{[confirmJob.location, confirmJob.type].filter(Boolean).length ? ` · ${[confirmJob.location, confirmJob.type].filter(Boolean).join(" · ")}` : ""}
+              {typeof confirmJob.match === "number" ? ` · ${confirmJob.match}% match` : ""}
+            </p>
+            <p className="apply-confirm-note">This resume will be sent to the employer. Update it under Resume tools first if anything is out of date.</p>
+            <div className="apply-confirm-resume">
+              {resumeFile
+                ? <div className="resume-file-card"><ResumeFileIcon /><div><b>{resumeFile.fileName}</b><span>Your uploaded resume file.</span></div></div>
+                : <ResumePreview resume={resume} />}
+            </div>
+          </div>
+          <div className="resume-actions apply-confirm-actions">
+            <button className="resume-edit" type="button" onClick={() => setConfirmJob(null)}><ResumeCloseIcon />Cancel</button>
+            <button className="resume-export" type="button" onClick={confirmApply}><ResumeCheckIcon />Confirm application</button>
           </div>
         </div>
       </div>
@@ -354,7 +516,7 @@ export default function JobConnect() {
 
 const APPLICATION_STATUSES = ["Applied", "Interview Scheduled", "Offer Received", "Rejected", "Withdrawn"];
 
-function ApplicationCard({ app, onStatusChange, onViewDetails }) {
+function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
   const description = descriptionPreview(app.description, 220);
   return <article className="connect-job-card">
     {app.match !== null && app.match !== undefined && (
@@ -373,13 +535,15 @@ function ApplicationCard({ app, onStatusChange, onViewDetails }) {
       <div className="connect-card-buttons">
         <a className="apply-job" href={app.url} target="_blank" rel="noopener noreferrer">View posting</a>
         <button className="view-job" type="button" onClick={onViewDetails}>See details <ArrowIcon /></button>
+        <button className="cancel-application" type="button" onClick={onCancel}>Cancel application</button>
       </div>
       <small className="job-partner">via Careerjet</small>
     </div>
     {app.skills?.length > 0 && (
       <aside className="connect-skill-gap">
-        <b>Skill Gap</b>
-        <div>{app.skills.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+        <b>Skill Match</b>
+        <span className="skill-match-ratio">{app.skills.filter(s => s.matched).length} of {app.skills.length} skills matched</span>
+        <div>{[...app.skills].sort((a, b) => Number(b.matched) - Number(a.matched)).map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
         <small>Based on your profile as of when you applied.</small>
       </aside>
     )}
@@ -452,6 +616,10 @@ function ResumeCheckIcon() {
 
 function ResumeCloseIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10" /><path d="M17 7 7 17" /></svg>;
+}
+
+function ResumeFileIcon() {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6" /><path d="M9 17h4" /></svg>;
 }
 
 function resumeFilename(resume) {

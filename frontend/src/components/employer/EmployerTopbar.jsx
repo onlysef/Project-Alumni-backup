@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
 import { DashboardSettingsForm } from "../admin/AdminTopbar.jsx";
 import { API, authHeaders } from "../../services/api.js";
+import { getNotificationTarget } from "../../services/notificationNavigation.js";
 
 function timeAgo(date) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 1000));
@@ -23,6 +24,7 @@ export default function EmployerTopbar({
   showToast,
 }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -109,6 +111,11 @@ export default function EmployerTopbar({
 
   const badge = settings.dashboardNotifications ? unread : 0;
 
+  function openNotification(notification) {
+    setPanel(null);
+    navigate(getNotificationTarget("employer", notification));
+  }
+
   return (
     <>
       <header className="topbar employer-shared-topbar">
@@ -158,7 +165,11 @@ export default function EmployerTopbar({
             ) : notifications.map((notification, index) => (
               <article
                 key={notification._id ?? index}
-                className={`notification-item${notification.is_read ? "" : " is-unread"}`}
+                className={`notification-item notification-link${notification.is_read ? "" : " is-unread"}`}
+                role="button"
+                tabIndex={0}
+                onClick={() => openNotification(notification)}
+                onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openNotification(notification); } }}
               >
                 <strong>{notification.title || "Notification"}</strong>
                 <span>{notification.message || notification.body}</span>
@@ -168,7 +179,6 @@ export default function EmployerTopbar({
           </div>
           <div className="modal-actions topbar-modal-actions">
             <button type="button" disabled={notifications.length === 0 || unread === 0} onClick={markAllRead}>Mark All Read</button>
-            <button type="button" onClick={() => setPanel(null)}>Close</button>
           </div>
         </section>
       </Modal>

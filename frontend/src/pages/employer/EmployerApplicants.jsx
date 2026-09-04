@@ -172,7 +172,14 @@ export default function EmployerApplicants() {
       {!resumeLoading && resumeApplicant.resume === null && (
         <div className="employer-empty"><b>No resume on file</b><span>{resumeApplicant.alumni_id?.firstName} hasn't saved a resume through Job Connect yet.</span></div>
       )}
-      {!resumeLoading && resumeApplicant.resume && (<>
+      {!resumeLoading && resumeApplicant.resume?.fileData && (
+        <div className="applicant-resume-file">
+          <b>{resumeApplicant.resume.fileName || "Resume file"}</b>
+          <span>{resumeApplicant.alumni_id?.firstName} uploaded this file as their resume.</span>
+          <a className="employer-primary-btn" href={resumeApplicant.resume.fileData} download={resumeApplicant.resume.fileName || "resume"} target="_blank" rel="noopener noreferrer">Download resume</a>
+        </div>
+      )}
+      {!resumeLoading && resumeApplicant.resume && !resumeApplicant.resume.fileData && (<>
         {!resumeApplicant.resumeIsSaved && (
           <p className="resume-derived-note">Built from {resumeApplicant.alumni_id?.firstName}'s alumni profile — they haven't saved a formal resume through Job Connect yet.</p>
         )}

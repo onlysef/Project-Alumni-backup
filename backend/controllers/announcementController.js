@@ -232,15 +232,23 @@ const trackShare = async (req, res) => {
   }
 };
 
-// GET /api/admin/announcements/activity  — last 20 post interactions
+// GET /api/admin/announcements/activity — recent post interactions only.
 const getRecentActivity = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 20, 50);
-    const activities = await ActivityLog.find()
+    const fullHistory = req.query.hours === 'all';
+    const requestedHours = parseInt(req.query.hours);
+    const hours = fullHistory ? null : (Number.isFinite(requestedHours)
+      ? Math.min(168, Math.max(1, requestedHours))
+      : 24);
+    const match = fullHistory
+      ? {}
+      : { createdAt: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) } };
+    const activities = await ActivityLog.find(match)
       .sort({ createdAt: -1 })
       .limit(limit)
       .select('user_name action announcement_title announcement_id createdAt');
-    res.json({ activities });
+    res.json({ activities, windowHours: hours, fullHistory });
   } catch (err) {
     console.error('getRecentActivity error:', err);
     res.status(500).json({ message: 'Server error.' });

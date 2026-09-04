@@ -203,8 +203,13 @@ async function createAppointmentRecord({ alumni_id, alumni_name, staff_id, appoi
 
   const settings = await OfficeSettings.findOne();
   if (settings) {
-    if (settings.office_status === 'Closed') {
-      return { ok: false, status: 400, message: 'The office is currently closed. Appointments cannot be booked.' };
+    // A temporary office closure should not prevent alumni from reserving a
+    // future working-day slot. It only makes today's date unavailable; the
+    // working-day and office-hour checks below still protect every booking.
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    if (settings.office_status === 'Closed' && appointment_date <= todayStr) {
+      return { ok: false, status: 400, message: 'The office is closed today. Please choose the next available office day.' };
     }
 
     const [year, month, day] = appointment_date.split('-').map(Number);

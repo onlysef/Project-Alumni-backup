@@ -42,11 +42,11 @@ function todayISO() {
 const JS_DAY_TO_LABEL = [null, "M", "T", "W", "TH", "F", "S"];
 
 // Only the next `count` dates that are actually working days — nothing else is selectable.
-function generateValidDates(workingDays, count = 14) {
+function generateValidDates(workingDays, count = 14, startOffset = 0) {
   const dates = [];
   const base = new Date();
   base.setHours(0, 0, 0, 0);
-  for (let i = 0; dates.length < count && i < 90; i++) {
+  for (let i = startOffset; dates.length < count && i < 90; i++) {
     const cur = new Date(base);
     cur.setDate(base.getDate() + i);
     const label = JS_DAY_TO_LABEL[cur.getDay()];
@@ -60,6 +60,85 @@ function generateValidDates(workingDays, count = 14) {
   }
   return dates;
 }
+
+const OFFICE_SERVICES = [
+  {
+    key: "records",
+    iconKey: "records",
+    title: "Alumni Records",
+    text: "Update your contact, employment, and personal information.",
+    requirements: [
+      "One valid government-issued ID",
+      "Your alumni or student number",
+      "The details to be updated (address, contact number, email, employer, job title)",
+      "Supporting document for a name change (e.g. marriage certificate)",
+    ],
+    process: [
+      "Book an appointment or visit the Alumni Office during office hours.",
+      "Present your valid ID and alumni/student number for verification.",
+      "Fill out the records update form with your current information.",
+      "Staff encodes the changes and issues a confirmation.",
+      "Updates reflect on your alumni profile within 3–5 working days.",
+    ],
+  },
+  {
+    key: "documents",
+    iconKey: "docs",
+    title: "Document Requests",
+    text: "Request certifications and alumni-related documents.",
+    requirements: [
+      "One valid government-issued ID",
+      "Your alumni or student number",
+      "Authorization letter and a copy of the owner's ID if requesting for someone else",
+      "Payment for certification and documentary stamp fees",
+    ],
+    process: [
+      "Send an inquiry or book an appointment, stating the document you need.",
+      "Present your valid ID for verification at the office.",
+      "Fill out the document request form and settle the fees.",
+      "Receive a claim stub with the release date (usually 3–5 working days).",
+      "Return on the release date to claim the document, or request email/courier release where available.",
+    ],
+  },
+  {
+    key: "membership",
+    iconKey: "membership",
+    title: "Membership Support",
+    text: "Get help with alumni ID and association membership.",
+    requirements: [
+      "One valid government-issued ID",
+      "Your alumni or student number",
+      "Two recent 1x1 or 2x2 ID photos (for a new or replacement alumni ID)",
+      "Proof of payment for membership dues or the ID replacement fee",
+    ],
+    process: [
+      "Visit the Alumni Office or book an appointment for membership assistance.",
+      "Verify your identity and confirm your graduation details.",
+      "Complete the membership or alumni ID application form.",
+      "Pay the membership dues or ID replacement fee at the cashier.",
+      "Claim your alumni ID or membership confirmation on the given release date.",
+    ],
+  },
+  {
+    key: "career",
+    iconKey: "career",
+    title: "Career Assistance",
+    text: "Access job referrals, mentoring, and career resources.",
+    requirements: [
+      "An updated résumé or curriculum vitae",
+      "Your alumni or student number",
+      "An active email address and contact number",
+      "Portfolio or credentials relevant to your field (optional)",
+    ],
+    process: [
+      "Send an inquiry or book an appointment for career assistance.",
+      "Share your résumé and the support you need (referral, mentoring, resources).",
+      "The office matches you with job leads, partner employers, or a mentor.",
+      "Attend the scheduled mentoring session or job-matching endorsement.",
+      "Receive follow-up updates on referrals and openings by email.",
+    ],
+  },
+];
 
 const OFFICE_ICONS = {
   location: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2370001d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11z'/%3E%3Ccircle cx='12' cy='10' r='2.6'/%3E%3Cpath d='M9 22h6'/%3E%3C/svg%3E",
@@ -99,6 +178,7 @@ function computeOfficeStatus(settings) {
 
 export default function AlumniOffice() {
   const [settings, setSettings] = useState(null);
+  const [openService, setOpenService] = useState(null);
 
   useEffect(() => {
     fetch(`${API}/alumni/appointments/settings`, { headers: authHeaders() })
@@ -118,11 +198,30 @@ export default function AlumniOffice() {
       <div className="office-side"><section className="office-contact-card"><h2>Contact & Location</h2><div className="contact-row"><img className="contact-icon" src={OFFICE_ICONS.location} alt="" aria-hidden="true" /><div><span>Visit us</span><strong>Alumni Center, Lucinda Campus<br />Tarlac State University</strong></div></div><div className="contact-row"><img className="contact-icon" src={OFFICE_ICONS.phone} alt="" aria-hidden="true" /><div><span>Call us</span><strong>(045) 606-8123 local 205</strong></div></div><div className="contact-row"><img className="contact-icon" src={OFFICE_ICONS.mail} alt="" aria-hidden="true" /><div><span>Email us</span><strong>{OFFICE_EMAIL}</strong></div></div><InquiryForm /></section><section className="visit-reminder"><b>Before you visit</b><p>Bring one valid ID and your alumni or student number for faster verification.</p></section></div>
     </div>
 
-    <section className="office-services"><div className="office-services-head"><span>Available assistance</span><h2>Alumni Office Services</h2></div><div className="service-grid"><Service icon={OFFICE_ICONS.records} title="Alumni Records" text="Update your contact, employment, and personal information." /><Service icon={OFFICE_ICONS.docs} title="Document Requests" text="Request certifications and alumni-related documents." /><Service icon={OFFICE_ICONS.membership} title="Membership Support" text="Get help with alumni ID and association membership." /><Service icon={OFFICE_ICONS.career} title="Career Assistance" text="Access job referrals, mentoring, and career resources." /></div></section>
+    <section className="office-services"><div className="office-services-head"><span>Available assistance</span><h2>Alumni Office Services</h2><p className="office-services-hint">Tap a service to see what to bring and how the process works.</p></div><div className="service-grid">{OFFICE_SERVICES.map((s) => <Service key={s.key} service={s} icon={OFFICE_ICONS[s.iconKey]} open={openService === s.key} onToggle={() => setOpenService(openService === s.key ? null : s.key)} />)}</div>{OFFICE_SERVICES.filter((s) => s.key === openService).map((s) => <ServiceDetail key={s.key} service={s} />)}</section>
   </div>;
 }
 
-function Service({ icon, title, text }) { return <article className="office-service"><i><img src={icon} alt="" aria-hidden="true" /></i><div><h3>{title}</h3><p>{text}</p></div></article>; }
+function Service({ service, icon, open, onToggle }) {
+  return <button type="button" className={`office-service${open ? " is-open" : ""}`} aria-expanded={open} onClick={onToggle}>
+    <i><img src={icon} alt="" aria-hidden="true" /></i>
+    <div><h3>{service.title}</h3><p>{service.text}</p></div>
+    <span className="office-service-caret" aria-hidden="true" />
+  </button>;
+}
+
+function ServiceDetail({ service }) {
+  return <div className="service-detail">
+    <div className="service-detail-col">
+      <h4>What to bring</h4>
+      <ul>{service.requirements.map((r, i) => <li key={i}>{r}</li>)}</ul>
+    </div>
+    <div className="service-detail-col">
+      <h4>How the process works</h4>
+      <ol>{service.process.map((p, i) => <li key={i}>{p}</li>)}</ol>
+    </div>
+  </div>;
+}
 
 function InquiryForm() {
   const [open, setOpen] = useState(false);
@@ -184,10 +283,12 @@ function AppointmentForm({ settings }) {
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [otherPurpose, setOtherPurpose] = useState("");
   const [bookedTimes, setBookedTimes] = useState([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [status, setStatus] = useState(null);
+  const [dateError, setDateError] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -200,7 +301,27 @@ function AppointmentForm({ settings }) {
   }, [open]);
 
   const officeClosed = settings?.office_status === "Closed";
-  const validDates = generateValidDates(settings?.working_days || []);
+  // If staff marked the office closed today, do not offer today's date;
+  // the next selectable choice is still a configured working day.
+  const validDates = generateValidDates(settings?.working_days || [], 14, officeClosed ? 1 : 0);
+  const validDateSet = new Set(validDates.map((d) => d.value));
+  const minDate = validDates[0]?.value || "";
+  const maxDate = validDates[validDates.length - 1]?.value || "";
+  const openDayNames = DAY_DEFS
+    .filter(([, code]) => code && (settings?.working_days || []).includes(code))
+    .map(([name]) => name)
+    .join(", ");
+
+  function handleDatePick(value) {
+    if (!value) { setDate(""); setDateError(""); return; }
+    if (!validDateSet.has(value)) {
+      setDate("");
+      setDateError(openDayNames ? `The office is open on ${openDayNames}. Please pick one of those days.` : "The office is closed on that day.");
+      return;
+    }
+    setDateError("");
+    setDate(value);
+  }
 
   // The staff/date pair a picked date+staff belongs to changed — the old
   // time selection may no longer be valid, and no server call to keep it in sync.
@@ -236,17 +357,19 @@ function AppointmentForm({ settings }) {
     if (!date) { setStatus({ ok: false, text: "Please select a date." }); return; }
     if (!time) { setStatus({ ok: false, text: "Please select a time." }); return; }
     if (!purpose) { setStatus({ ok: false, text: "Please select a purpose." }); return; }
+    const finalPurpose = purpose === "Other" ? otherPurpose.trim() : purpose;
+    if (purpose === "Other" && !finalPurpose) { setStatus({ ok: false, text: "Please describe your purpose." }); return; }
     setSending(true);
     try {
       const res = await fetch(`${API}/alumni/appointments`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ staff_id: staffId, appointment_date: date, appointment_time: time, purpose }),
+        body: JSON.stringify({ staff_id: staffId, appointment_date: date, appointment_time: time, purpose: finalPurpose }),
       });
       const data = await res.json();
       if (!res.ok) { setStatus({ ok: false, text: data.message || "Could not book this appointment." }); return; }
       setStatus({ ok: true, text: data.message || "Booked!" });
-      setStaffId(""); setDate(""); setTime(""); setPurpose("");
+      setStaffId(""); setDate(""); setTime(""); setPurpose(""); setOtherPurpose(""); setDateError("");
     } catch {
       setStatus({ ok: false, text: "Could not connect to server." });
     } finally {
@@ -264,13 +387,13 @@ function AppointmentForm({ settings }) {
         <p className="account-settings-hint">Loading office availability…</p>
       ) : (
         <>
-          {officeClosed && <div className="office-inquiry-error">The office is currently closed. Appointments cannot be booked right now.</div>}
+          {officeClosed && <div className="office-inquiry-success">The office is closed today, but you can request an appointment for the next available office day.</div>}
           {staffList.length === 0 ? (
             <p className="office-inquiry-error">No staff are currently accepting appointments. Please try again later or send an inquiry instead.</p>
           ) : (
             <label>
               <span>Staff</span>
-              <select value={staffId} onChange={(e) => setStaffId(e.target.value)} required disabled={officeClosed}>
+              <select value={staffId} onChange={(e) => setStaffId(e.target.value)} required>
                 <option value="" disabled>Select a staff member</option>
                 {staffList.map((s) => <option key={s._id} value={s._id}>{s.name} ({s.role})</option>)}
               </select>
@@ -281,28 +404,46 @@ function AppointmentForm({ settings }) {
           ) : (
             <label>
               <span>Date</span>
-              <select value={date} onChange={(e) => setDate(e.target.value)} required disabled={officeClosed}>
-                <option value="" disabled>Select a date</option>
-                {validDates.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-              </select>
+              <input type="date" value={date} min={minDate} max={maxDate} onChange={(e) => handleDatePick(e.target.value)} required />
+              {dateError
+                ? <span className="office-field-note is-error">{dateError}</span>
+                : openDayNames && <span className="office-field-note">Open on {openDayNames}.</span>}
             </label>
           )}
           <label>
             <span>Time</span>
-            <select value={time} onChange={(e) => setTime(e.target.value)} required disabled={officeClosed || !date || !staffId}>
-              <option value="" disabled>
-                {!date || !staffId ? "Pick a staff member and date first" : slotsLoading ? "Loading…" : openSlots.length === 0 ? "No open times for this date" : "Select a time"}
-              </option>
-              {openSlots.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
+            {!date || !staffId ? (
+              <p className="time-slot-hint">Pick a staff member and date first.</p>
+            ) : slotsLoading ? (
+              <p className="time-slot-hint">Loading available times…</p>
+            ) : openSlots.length === 0 ? (
+              <p className="time-slot-hint">No open times for this date. Try another day.</p>
+            ) : (
+              <div className="time-slot-grid">
+                {openSlots.map((t) => (
+                  <button
+                    type="button"
+                    key={t.value}
+                    className={`time-slot${time === t.value ? " is-selected" : ""}`}
+                    onClick={() => setTime(t.value)}
+                  >{t.label}</button>
+                ))}
+              </div>
+            )}
           </label>
           <label>
             <span>Purpose</span>
-            <select value={purpose} onChange={(e) => setPurpose(e.target.value)} required disabled={officeClosed}>
+            <select value={purpose} onChange={(e) => setPurpose(e.target.value)} required>
               <option value="" disabled>Select a purpose</option>
               {PURPOSE_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </label>
+          {purpose === "Other" && (
+            <label>
+              <span>Please specify</span>
+              <input type="text" value={otherPurpose} onChange={(e) => setOtherPurpose(e.target.value)} maxLength={120} placeholder="Describe your purpose" required />
+            </label>
+          )}
           {settings && (
             <p className="account-settings-hint">
               Office hours: {fmt24to12(settings.start_time)} – {fmt24to12(settings.end_time)}
@@ -314,7 +455,7 @@ function AppointmentForm({ settings }) {
       {status && <div className={status.ok ? "office-inquiry-success" : "office-inquiry-error"}>{status.text}</div>}
       <div className="office-inquiry-actions">
         <button type="button" className="office-inquiry-cancel" onClick={() => setOpen(false)} disabled={sending}>Cancel</button>
-        <button type="submit" disabled={sending || loading || officeClosed || staffList.length === 0 || validDates.length === 0}>{sending ? "Booking…" : "Book"}</button>
+        <button type="submit" disabled={sending || loading || staffList.length === 0 || validDates.length === 0}>{sending ? "Booking…" : "Book"}</button>
       </div>
     </form>
   );

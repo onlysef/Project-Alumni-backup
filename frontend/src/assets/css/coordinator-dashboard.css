@@ -3943,3 +3943,31 @@ body.dark-mode .coord-profile-summary span { color: #f3e7ea; }
     .coord-chart-legend strong { white-space: normal; }
     .coord-profile-details > div { grid-template-columns: 1fr; gap: 5px; }
 }
+
+/* Modern motion for coordinator views that previously appeared abruptly. */
+.coordinator-app .coordinator-content { animation: coord-page-in 420ms cubic-bezier(.2,.8,.2,1) both; }
+.coordinator-app :is(.coord-hero,.coord-card,.coord-records-card,.coord-contacts-table,.coord-stat,.coord-highlight) {
+    animation: coord-surface-in 460ms cubic-bezier(.2,.8,.2,1) both;
+}
+.coordinator-app .coord-stats > :nth-child(2) { animation-delay: 45ms; }
+.coordinator-app .coord-stats > :nth-child(3) { animation-delay: 90ms; }
+.coordinator-app .coord-stats > :nth-child(n+4) { animation-delay: 130ms; }
+.coordinator-app :is(.coord-card,.coord-records-card,.coord-stat,.coord-highlight) {
+    transition: transform 200ms ease, box-shadow 220ms ease, border-color 200ms ease;
+}
+.coordinator-app :is(.coord-card,.coord-records-card,.coord-stat,.coord-highlight):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(70,0,20,.09);
+}
+.coordinator-app .modal-overlay { animation: coord-overlay-in 200ms ease both; }
+.coordinator-app .tracer-modal { animation: coord-modal-in 300ms cubic-bezier(.2,.9,.2,1) both; }
+@keyframes coord-page-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes coord-surface-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes coord-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes coord-modal-in { from { opacity: 0; transform: translateY(14px) scale(.975); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+    .coordinator-app *, .coordinator-app *::before, .coordinator-app *::after {
+        animation-duration: .01ms !important; animation-delay: 0ms !important;
+        transition-duration: .01ms !important; scroll-behavior: auto !important;
+    }
+}

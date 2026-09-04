@@ -5,7 +5,7 @@ import { AlumniTopbar } from "../components/alumni/AlumniTopbar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch } from "../services/api.js";
 
-const TITLES = { home: "Home", announcements: "Announcements", employment: "Employment Details", office: "Alumni Office", suggested: "Suggested Alumni", career: "Career Recommendation", jobconnect: "Job Connect" };
+const TITLES = { home: "Home", announcements: "Announcements", employment: "Alumni Profile", office: "Alumni Office", suggested: "Alumni Network", career: "Career Recommendation", jobconnect: "Job Connect" };
 
 export default function AlumniLayout() {
   const location = useLocation();
@@ -27,7 +27,8 @@ export default function AlumniLayout() {
     toastTimer.current = setTimeout(() => setToast(""), 2400);
   }, []);
   const section = new URLSearchParams(location.search).get("section") || "home";
-  const title = TITLES[section] || "Home";
+  const page = location.pathname.split("/")[2];
+  const title = page === "tsu" ? "Tarlac State University" : page === "about" ? "Alumni Association" : (TITLES[section] || "Home");
 
   // Server settings win over whatever was cached locally, same as the
   // admin/coordinator dashboards.

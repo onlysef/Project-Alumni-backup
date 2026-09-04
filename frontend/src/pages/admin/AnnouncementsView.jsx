@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
+import { Modal, ConfirmDialog, Dropdown } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
@@ -9,6 +9,7 @@ import alumniLogo from "../../assets/images/alumni-removebg.png";
 
 import { API, authHeaders } from "../../services/api.js";
 const TYPE_ART_CLASS = { News: "" };
+const COMMENT_EMOJIS = ["😀", "😂", "😍", "👍", "❤️", "🎉"];
 
 async function safeJson(res) {
   const text = await res.text();
@@ -51,6 +52,15 @@ export default function AnnouncementsView() {
   const [composer, setComposer]     = useState(null);
   const [commentTarget, setCommentTarget] = useState(null);
   const [confirm, setConfirm]       = useState(null);
+  const likingPosts = React.useRef(new Set());
+
+  // Resolve the viewer against current list state so the modal and card
+  // always show the same interaction counts.
+  const activeCommentPost = commentTarget
+    ? rows.find(r => r.id === commentTarget.id)
+      || recentPosts.find(r => r.id === commentTarget.id)
+      || commentTarget
+    : null;
 
   // Inline quick composer state
   const [quickTitle, setQuickTitle]       = useState("");
@@ -161,13 +171,21 @@ export default function AnnouncementsView() {
   }
 
   async function handleLike(id) {
-    const prev = rows.find(r => r.id === id);
+    if (likingPosts.current.has(id)) return;
+    const prev = rows.find(r => r.id === id)
+      || recentPosts.find(r => r.id === id)
+      || (commentTarget?.id === id ? commentTarget : null);
     if (!prev) return;
+    likingPosts.current.add(id);
     const nowLiked = !prev.liked;
+    const optimisticCount = Math.max(0, prev.likesCount + (nowLiked ? 1 : -1));
 
     const patchLike = (rs, liked, count) => rs.map(r => r.id === id ? { ...r, liked, likesCount: count } : r);
-    setRows(rs => patchLike(rs, nowLiked, nowLiked ? prev.likesCount + 1 : prev.likesCount - 1));
-    setRecentPosts(rs => patchLike(rs, nowLiked, nowLiked ? prev.likesCount + 1 : prev.likesCount - 1));
+    const patchTarget = (liked, count) =>
+      setCommentTarget(r => r?.id === id ? { ...r, liked, likesCount: count } : r);
+    setRows(rs => patchLike(rs, nowLiked, optimisticCount));
+    setRecentPosts(rs => patchLike(rs, nowLiked, optimisticCount));
+    patchTarget(nowLiked, optimisticCount);
 
     try {
       const res  = await fetch(`${API}/admin/announcements/${id}/like`, { method: "POST", headers: authHeaders() });
@@ -175,15 +193,20 @@ export default function AnnouncementsView() {
       if (!res.ok) {
         setRows(rs => rs.map(r => r.id === id ? prev : r));
         setRecentPosts(rs => rs.map(r => r.id === id ? prev : r));
+        setCommentTarget(r => r?.id === id ? prev : r);
         showToast(json.message || "Failed to update like.");
         return;
       }
       setRows(rs => patchLike(rs, json.liked, json.likesCount));
       setRecentPosts(rs => patchLike(rs, json.liked, json.likesCount));
+      patchTarget(json.liked, json.likesCount);
     } catch {
       setRows(rs => rs.map(r => r.id === id ? prev : r));
       setRecentPosts(rs => rs.map(r => r.id === id ? prev : r));
+      setCommentTarget(r => r?.id === id ? prev : r);
       showToast("Could not connect to server.");
+    } finally {
+      likingPosts.current.delete(id);
     }
   }
 
@@ -413,7 +436,7 @@ export default function AnnouncementsView() {
       />
 
        <CommentModal
-        post={commentTarget}
+        post={activeCommentPost}
         onClose={() => setCommentTarget(null)}
         showToast={showToast}
         onLike={handleLike}
@@ -551,6 +574,13 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
 
         {!notFound && (
           <form className="comment-form" onSubmit={handleSubmit}>
+            <div className="comment-emoji-picker" aria-label="Add emoji">
+              {COMMENT_EMOJIS.map(emoji => (
+                <button type="button" key={emoji} aria-label={`Add ${emoji}`} onClick={() => setText(current => current + emoji)}>
+                  {emoji}
+                </button>
+              ))}
+            </div>
             <input
               type="text"
               placeholder="Write a comment…"
@@ -585,6 +615,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
   const [location, setLocation]         = useState("");
   const [titleError, setTitleError]     = useState("");
   const [descError, setDescError]       = useState("");
+  const [category, setCategory]         = useState("News");
 
   useEffect(() => {
     if (composer?.row) {
@@ -592,11 +623,13 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
       setDescription(composer.row.description);
       setImageUrl(composer.row.imageUrl || "");
       setLocation(composer.row.location || "");
+      setCategory(composer.row.type || "News");
     } else {
       setTitle("");
       setDescription("");
       setImageUrl(composer?.initialImage || "");
       setLocation("");
+      setCategory("News");
     }
     setEmojiOpen(false);
     setLocationOpen(false);
@@ -642,7 +675,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
       {
         title:       title.trim(),
         description: description.trim(),
-        type:        "News",
+        type:        category,
         imageUrl,
         location:    location.trim(),
       },
@@ -664,11 +697,27 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
           <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
           <div>
             <strong>TSU Alumni Office</strong>
-            {/* News is the only type this composer can post — Job Postings
-                come from Employers and Events from Coordinators, each
-                through their own dedicated model/flow, so there's nothing
-                else to pick here. */}
-            <span className="admin-choice composer-category" style={{ display: "inline-flex", alignItems: "center", cursor: "default" }}>News</span>
+            <Dropdown
+              menuClassName="filter-menu composer-category-menu"
+              active={category}
+              options={["News", "Announcement", "Job Posting"]}
+              onSelect={setCategory}
+              trigger={(toggle, open) => (
+                <button
+                  type="button"
+                  className="admin-choice composer-category"
+                  aria-expanded={open}
+                  onClick={toggle}
+                >
+                  {category}
+                  <span className="composer-category-caret" aria-hidden="true">
+                    <svg viewBox="0 0 12 8" width="10" height="7" fill="none">
+                      <path d="M1 1.25 6 6.25l5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                </button>
+              )}
+            />
           </div>
         </div>
         <div className="create-post-body">
@@ -747,7 +796,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
             className="composer-icon-action"
             title="Clear all"
             onClick={() => {
-              setTitle(""); setDescription(""); setImageUrl("");
+              setTitle(""); setDescription(""); setImageUrl(""); setCategory("News");
               setLocation(""); setLocationOpen(false);
               showToast("Composer cleared.");
             }}

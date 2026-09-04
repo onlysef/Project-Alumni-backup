@@ -89,6 +89,8 @@ export default function AccountsView() {
   const [openMenuId, setOpenMenuId]   = useState(null);
   const [confirm, setConfirm]         = useState(null);
   const [selected, setSelected]       = useState(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [bulkBusy, setBulkBusy]       = useState(false);
   const [partnerships, setPartnerships] = useState([]);
 
@@ -304,22 +306,64 @@ export default function AccountsView() {
       <section className="admin-card">
         <div className="admin-card-head">
           <h3>Manage Accounts</h3>
-          <div className="accounts-controls filters-open">
-            <input
-              className="admin-search"
-              type="text"
-              name="accounts-search"
-              placeholder="Search name or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search accounts by name or email"
-              autoComplete="off"
-            />
-            {/* Status is the only filter left (Role's own toggle button was
-                removed) — a separate "Filter by:" button that just reveals
-                this one option was one extra click for nothing. This button
-                IS the filter now; clicking it opens its own dropdown. */}
-            <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
+          <div className={`accounts-controls${filtersOpen ? " filters-open" : ""}`}>
+            <div className={`accounts-search-field${search ? " has-value" : ""}`}>
+              <svg className="accounts-search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="m16 16 4 4" />
+              </svg>
+              <input
+                className="admin-search"
+                type="search"
+                name="accounts-search"
+                placeholder="Search accounts…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search accounts by name or email"
+                autoComplete="off"
+              />
+              {search && (
+                <button type="button" className="accounts-search-clear" onClick={() => setSearch("")} aria-label="Clear account search">
+                  ×
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              className={`accounts-filter-toggle${filtersOpen ? " active" : ""}`}
+              aria-expanded={filtersOpen}
+              aria-label={filtersOpen ? "Close account filters" : "Open account filters"}
+              title={filtersOpen ? "Close filters" : "Filter accounts"}
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4 6h16M7 12h10M10 18h4" />
+                <circle cx="7" cy="6" r="1.5" />
+                <circle cx="15" cy="12" r="1.5" />
+                <circle cx="12" cy="18" r="1.5" />
+              </svg>
+              <span className="sr-only">Filter accounts</span>
+            </button>
+            {filtersOpen && (
+              <>
+                <AdminMenu menuKey="accounts-role" label={roleFilter} onSelect={(c) => applyFilter(c, "role")} />
+                <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
+              </>
+            )}
+            <button
+              type="button"
+              className={`add-button account-toolbar-action account-select-toggle${selectionMode ? " active" : ""}`}
+              aria-pressed={selectionMode}
+              onClick={() => {
+                setSelectionMode((active) => {
+                  if (active) setSelected(new Set());
+                  return !active;
+                });
+              }}
+            >
+              <span aria-hidden="true">{selectionMode ? "✓" : "☑"}</span>
+              <span>{selectionMode ? "Done" : "Select"}</span>
+            </button>
             <button type="button" className="add-button import-button account-toolbar-action" onClick={() => setImportOpen(true)}>
               <span aria-hidden="true">⇩</span>
               <span>Import</span>
@@ -379,14 +423,16 @@ export default function AccountsView() {
             <thead>
               <tr>
                 <th style={{ width: 36 }}>
-                  <input
-                    type="checkbox"
-                    className="bulk-checkbox"
-                    checked={allVisSelected}
-                    ref={(el) => { if (el) el.indeterminate = someSelected && !allVisSelected; }}
-                    onChange={toggleAll}
-                    aria-label="Select all"
-                  />
+                  {selectionMode && (
+                    <input
+                      type="checkbox"
+                      className="bulk-checkbox"
+                      checked={allVisSelected}
+                      ref={(el) => { if (el) el.indeterminate = someSelected && !allVisSelected; }}
+                      onChange={toggleAll}
+                      aria-label="Select all"
+                    />
+                  )}
                 </th>
                 <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th>
               </tr>
@@ -397,13 +443,15 @@ export default function AccountsView() {
               ) : rows.map((r) => (
                 <tr key={r.id} className={`${visible(r) ? "" : "is-hidden"}${selected.has(r.id) ? " row-selected" : ""}`}>
                   <td>
-                    <input
-                      type="checkbox"
-                      className="bulk-checkbox"
-                      checked={selected.has(r.id)}
-                      onChange={() => toggleRow(r.id)}
-                      aria-label={`Select ${r.name}`}
-                    />
+                    {selectionMode && (
+                      <input
+                        type="checkbox"
+                        className="bulk-checkbox account-row-selector"
+                        checked={selected.has(r.id)}
+                        onChange={() => toggleRow(r.id)}
+                        aria-label={`Select ${r.name}`}
+                      />
+                    )}
                   </td>
                   <td>{r.name}</td>
                   <td>{r.email}</td>
