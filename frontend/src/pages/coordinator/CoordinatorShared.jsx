@@ -60,6 +60,91 @@ export function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+// Rasterizes one of this file's own <MiniBarChart> <svg> elements to a PNG
+// data URL (for embedding into the .xlsx below, not a standalone download —
+// see downloadChartExcel). A cloned SVG serialized on its own has no access
+// to coordinator-dashboard.css (the blob it's drawn from is a standalone
+// document), so its bar/gridline/label colors are inlined here as a <style>
+// block rather than relying on the clone inheriting rules from the live page.
+function renderSvgToPng(svgEl, { scale = 2, bgColor = "#ffffff" } = {}) {
+  return new Promise((resolve, reject) => {
+    if (!svgEl) { reject(new Error("No chart to export.")); return; }
+    const clone = svgEl.cloneNode(true);
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    style.textContent = `
+      line { stroke: #777; stroke-width: 1; }
+      .coord-chart-grid { stroke: #e6e0e0; }
+      rect { fill: #a00000; }
+      text { fill: #35262a; font-size: 11px; font-family: Arial, Helvetica, sans-serif; }
+      .coord-chart-label { font-size: 9.5px; font-weight: 700; }
+    `;
+    clone.insertBefore(style, clone.firstChild);
+
+    const viewBox = svgEl.viewBox?.baseVal;
+    const width  = viewBox?.width  || svgEl.clientWidth  || 420;
+    const height = viewBox?.height || svgEl.clientHeight || 245;
+
+    const svgUrl = URL.createObjectURL(new Blob(
+      [new XMLSerializer().serializeToString(clone)],
+      { type: "image/svg+xml;charset=utf-8" }
+    ));
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width  = width  * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(svgUrl);
+      resolve({ dataUrl: canvas.toDataURL("image/png"), width: canvas.width, height: canvas.height });
+    };
+    img.onerror = () => { URL.revokeObjectURL(svgUrl); reject(new Error("Could not render chart image.")); };
+    img.src = svgUrl;
+  });
+}
+
+// Builds a real .xlsx (data table + an embedded picture of the chart) so the
+// exported file can be opened straight in Excel with the graph already
+// inside it, not just a separate PNG next to a CSV of numbers. Mirrors the
+// admin Tracer Dashboard's own downloadChartExcel. `exceljs` is dynamically
+// imported (~900KB) so it's only fetched when Export is actually clicked.
+export async function downloadChartExcel(filename, title, csvRows, svgEl) {
+  const img = await renderSvgToPng(svgEl);
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Chart");
+
+  sheet.addRow([title]).font = { bold: true, size: 14 };
+  sheet.addRow([]);
+  csvRows.forEach((row) => sheet.addRow(row));
+  sheet.getRow(3).font = { bold: true };
+
+  const colCount = csvRows[0].length;
+  sheet.getColumn(1).width = 32;
+  for (let c = 2; c <= colCount; c++) sheet.getColumn(c).width = 14;
+
+  const imageId = workbook.addImage({ base64: img.dataUrl.split(",")[1], extension: "png" });
+  sheet.addImage(imageId, {
+    tl: { col: colCount + 1, row: 0 },
+    ext: { width: img.width / 2, height: img.height / 2 },
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function wrapChartLabel(label = "") {
   const words = String(label).split(/\s+/).filter(Boolean);
   const lines = [];

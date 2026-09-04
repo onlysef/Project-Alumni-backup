@@ -19,7 +19,7 @@ const {
   getAlumniWithoutRecord, getBatchYears, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
   getDonutStats, getCourseJobStats, getSurveyStats, getEmploymentStats, getTracerAnalytics,
   getTracerFilterOptions, exportTracerAnalytics,
-  getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
+  getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord, updateEmploymentRecordAvatar,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
   deleteTracerQuestion, reorderTracerQuestions, notifyAlumniToUpdate, getNotifyCandidates,
@@ -109,6 +109,7 @@ router.get('/employment',       getEmploymentRecords);
 router.post('/employment',      createEmploymentRecord);
 router.get('/employment/:id',        getEmploymentRecord);
 router.patch('/employment/:id',      updateEmploymentRecord);
+router.patch('/employment/:id/avatar', updateEmploymentRecordAvatar);
 router.patch('/employment/:id/tracer', updateAlumniTracerData);
 
 // Office settings

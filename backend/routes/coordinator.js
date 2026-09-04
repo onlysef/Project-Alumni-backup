@@ -1,7 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { getEmploymentRecords, getEmploymentActivity, notifyAlumniToUpdate } = require('../controllers/employmentController');
+const {
+  getEmploymentRecords, getEmploymentActivity, notifyAlumniToUpdate, getNotifyCandidates, getBatchYears,
+  getTracerResponses, getTracerResponseDetail,
+  getEmploymentRecord, updateEmploymentRecord, updateEmploymentRecordAvatar, logPrintActivity,
+} = require('../controllers/employmentController');
+const { updateAlumniTracerData } = require('../controllers/alumniController');
 const {
   getEvents, createEvent, updateEvent, deleteEvent,
   getInterestedAlumni, getCoordinatorNotifications, markNotificationsRead,
@@ -11,6 +16,7 @@ const {
   getAttendanceRecords, getAttendanceStats, getEventDetails, exportAttendance,
 } = require('../controllers/attendanceController');
 const { getEventFeedbackSummary } = require('../controllers/feedbackController');
+const { getTracerFormConfig, updateTracerFormConfig, importGoogleFormConfig } = require('../controllers/tracerFormConfigController');
 const User = require('../models/User');
 const AlumniEmployment = require('../models/AlumniEmployment');
 const TracerStudyResponse = require('../models/TracerStudyResponse');
@@ -269,19 +275,60 @@ router.get('/reports/:type', async (req, res) => {
 router.get('/notifications',        getCoordinatorNotifications);
 router.patch('/notifications/read', markNotificationsRead);
 
-// Employment (must declare /activity before plain /employment)
+// Employment (must declare /activity, /notify* before plain /employment)
 router.get('/employment/activity', getEmploymentActivity);
+router.get('/employment/batch-years', (req, res, next) => {
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, getBatchYears);
+router.get('/employment/notify-candidates', (req, res, next) => {
+  // Force coordinator's college — cannot be overridden by query param
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, getNotifyCandidates);
+router.post('/employment/notify', (req, res, next) => {
+  // Scopes the query to the coordinator's college even when alumni_ids was
+  // used to hand-pick recipients — see notifyAlumniToUpdate.
+  req.forcedCollege = req.user.college || '';
+  next();
+}, notifyAlumniToUpdate);
+router.get('/employment/responses', (req, res, next) => {
+  // Force coordinator's college — cannot be overridden by query param
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, getTracerResponses);
+router.get('/employment/responses/:alumni_id', (req, res, next) => {
+  req.forcedCollege = req.user.college || '';
+  next();
+}, getTracerResponseDetail);
 router.get('/employment', (req, res, next) => {
   // Force coordinator's college — cannot be overridden by query param
   if (req.user.college) req.query.college = req.user.college;
   next();
 }, getEmploymentRecords);
-router.post('/employment/notify',  (req, res) => {
-  // Force the coordinator's assigned college — ignore any body.college
-  req.body.college = req.user.college || '';
-  req.body.course  = '';
-  return notifyAlumniToUpdate(req, res);
-});
+router.post('/employment/log-print', logPrintActivity);
+router.get('/employment/:id', (req, res, next) => {
+  req.forcedCollege = req.user.college || '';
+  next();
+}, getEmploymentRecord);
+router.patch('/employment/:id', (req, res, next) => {
+  req.forcedCollege = req.user.college || '';
+  next();
+}, updateEmploymentRecord);
+router.patch('/employment/:id/avatar', (req, res, next) => {
+  req.forcedCollege = req.user.college || '';
+  next();
+}, updateEmploymentRecordAvatar);
+router.patch('/employment/:id/tracer', (req, res, next) => {
+  req.forcedCollege = req.user.college || '';
+  next();
+}, updateAlumniTracerData);
+
+// Tracer form config — resolveCollege() in the controller forces the
+// coordinator's own college regardless of any ?college= query param.
+router.get('/tracer-form-config',                    getTracerFormConfig);
+router.put('/tracer-form-config',                     updateTracerFormConfig);
+router.post('/tracer-form-config/import-google-form', importGoogleFormConfig);
 
 // Attendance — must declare specific paths before /:eventId param routes
 router.get('/attendance/events',                   getAttendanceEvents);

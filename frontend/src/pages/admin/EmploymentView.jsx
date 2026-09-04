@@ -3,6 +3,8 @@ import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
+import AvatarCropper from "../../components/common/AvatarCropper.jsx";
+import SkillsEditor from "../../components/common/SkillsEditor.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
 import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
@@ -56,7 +58,19 @@ const INDUSTRIES = [
   "Other",
 ];
 const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "", company: "" };
-const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
+// Same fixed lists the alumni's own Employment Details form uses — kept
+// identical so an admin editing this on their behalf sees the exact same
+// choices, not a different set that silently diverges over time.
+const SALARY_RANGES = [
+  "Below PHP 15,000",
+  "PHP 15,000 - PHP 25,000",
+  "PHP 25,000 - PHP 35,000",
+  "PHP 35,000 - PHP 45,000",
+  "PHP 45,000 - PHP 60,000",
+  "Above PHP 60,000",
+  "Prefer not to say",
+];
+const EXPERIENCE_LEVELS = ["No experience yet", "Less than 1 year", "1-2 years", "3-5 years", "5-10 years", "10+ years"];
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
 
 const MAROON = "#570013";
@@ -73,19 +87,21 @@ function RecordGroup({ title, children }) {
     <div style={{
       background: "#fff",
       border: "1px solid #f0dfe2",
-      borderRadius: 12,
-      padding: "14px 18px 16px",
-      marginBottom: 14,
-      boxShadow: "0 1px 4px rgba(87,0,19,0.05)",
+      borderRadius: 14,
+      padding: "16px 20px 18px",
+      marginBottom: 16,
+      boxShadow: "0 2px 10px rgba(87,0,19,0.06)",
     }}>
       <div style={{
+        display: "flex", alignItems: "center", gap: 9,
         fontSize: 12, fontWeight: 800, color: MAROON, textTransform: "uppercase",
-        letterSpacing: "0.06em", marginBottom: 10, paddingBottom: 9,
-        borderBottom: `1px solid ${MAROON}14`,
+        letterSpacing: "0.06em", marginBottom: 12, paddingBottom: 10,
+        borderBottom: `1.5px solid ${MAROON}16`,
       }}>
+        <span style={{ width: 5, height: 14, borderRadius: 3, background: MAROON, flexShrink: 0 }} />
         {title}
       </div>
-      <div>{kids}</div>
+      <div className="record-fields-grid">{kids}</div>
     </div>
   );
 }
@@ -94,12 +110,28 @@ function RecordField({ label, value }) {
   const v = Array.isArray(value) ? value.join(", ") : value;
   if (!v && v !== 0) return null;
   return (
-    <div className="record-field-row" style={{
-      display: "grid", gridTemplateColumns: "170px 1fr", gap: "4px 14px",
-      padding: "7px 8px", fontSize: 13, borderRadius: 7,
-    }}>
-      <span style={{ color: "#8a7377", fontWeight: 600 }}>{label}</span>
-      <span style={{ color: "#2d2024", wordBreak: "break-word", fontWeight: 500 }}>{v}</span>
+    <div className="record-field-row" style={{ padding: "8px 10px", borderRadius: 8 }}>
+      <div style={{ fontSize: 10.5, color: "#a8898d", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 14, color: "#2d2024", fontWeight: 600, wordBreak: "break-word", lineHeight: 1.35 }}>
+        {v}
+      </div>
+    </div>
+  );
+}
+
+function RecordLinkField({ label, value }) {
+  if (!value) return null;
+  const href = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  return (
+    <div className="record-field-row" style={{ padding: "8px 10px", borderRadius: 8 }}>
+      <div style={{ fontSize: 10.5, color: "#a8898d", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+        {label}
+      </div>
+      <a href={href} target="_blank" rel="noopener noreferrer" style={{ fontSize: 14, color: MAROON, fontWeight: 600, wordBreak: "break-word", textDecoration: "none" }}>
+        {value}
+      </a>
     </div>
   );
 }
@@ -107,9 +139,9 @@ function RecordField({ label, value }) {
 function RecordMultilineField({ label, value }) {
   if (!value) return null;
   return (
-    <div className="record-field-row" style={{ padding: "7px 8px", fontSize: 13, borderRadius: 7 }}>
-      <div style={{ color: "#8a7377", fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      <div style={{ color: "#2d2024", whiteSpace: "pre-line", lineHeight: 1.5 }}>{value}</div>
+    <div className="record-field-row" style={{ padding: "8px 10px", borderRadius: 8, gridColumn: "1 / -1" }}>
+      <div style={{ fontSize: 10.5, color: "#a8898d", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{label}</div>
+      <div style={{ color: "#2d2024", whiteSpace: "pre-line", lineHeight: 1.55, fontSize: 13.5 }}>{value}</div>
     </div>
   );
 }
@@ -121,8 +153,8 @@ function RecordChips({ label, text }) {
   const items = String(text || "").split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
   if (!items.length) return null;
   return (
-    <div style={{ padding: "7px 8px", fontSize: 13 }}>
-      <div style={{ color: "#8a7377", fontWeight: 600, marginBottom: 6 }}>{label}</div>
+    <div style={{ padding: "8px 10px", gridColumn: "1 / -1" }}>
+      <div style={{ fontSize: 10.5, color: "#a8898d", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 7 }}>{label}</div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {items.map((s, i) => (
           <span key={i} style={{ background: `${MAROON}10`, color: MAROON, padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
@@ -365,6 +397,11 @@ export default function EmploymentView() {
   // Question ids new_question_ids flagged as "new" for this specific alumni
   // (see getEmploymentRecord) — drives the "NEW" tag on EditQuestionField.
   const [editNewQuestionIds, setEditNewQuestionIds] = useState([]);
+  // ─── edit record photo (admin/coordinator setting it on someone else's
+  // behalf — same crop flow as the alumni's own "Upload Photo") ──────────────
+  const avatarInputRef = useRef(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [cropSrc, setCropSrc]       = useState("");
 
   // ─── tracer form editor ─────────────────────────────────────────────────────
 
@@ -504,7 +541,7 @@ export default function EmploymentView() {
     setEditRecord(r);
     setEditNewQuestionIds(newQuestionIds || []);
     setEditForm({
-      employment_status:     r.employment_status     || "",
+      employment_status:     r.employment_status     || "Not Yet Updated",
       company_name:          tracerData?.companyName      || r.company_name          || "",
       job_title:             tracerData?.occupationTitle  || r.job_title             || "",
       industry:              tracerData?.industryField    || r.industry              || "",
@@ -516,6 +553,14 @@ export default function EmploymentView() {
       employment_type:       tracerData?.presentEmploymentType || r.employment_type      || "",
       years_in_current_job:  tracerData?.yearsInCurrentJob    || r.years_in_current_job || "",
       reason_unemployed:     r.reason_unemployed     || "",
+      date_employed:         r.date_employed ? new Date(r.date_employed).toISOString().slice(0, 10) : "",
+      salary_range:          r.salary_range          || "",
+      skills:                r.skills                || "",
+      experience:            r.experience            || "",
+      contact_email:         r.contact_email         || "",
+      contact_number:        r.contact_number        || "",
+      facebook:              r.facebook              || "",
+      linkedin:              r.linkedin              || "",
     });
     setEditErrors({});
 
@@ -583,6 +628,42 @@ export default function EmploymentView() {
       showToast(err.message || "Update failed.");
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  function handleAvatarChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type)) {
+      showToast("Use a PNG, JPEG, GIF, or WEBP image.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast("Image must be smaller than 2MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => setCropSrc(loadEvent.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  async function uploadEditAvatar(avatarUrl) {
+    setAvatarBusy(true);
+    try {
+      const res = await fetch(`${API}/admin/employment/${editRecord._id}/avatar`, {
+        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ avatarUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Could not update photo.");
+      setEditRecord((r) => ({ ...r, avatarUrl }));
+      setViewDetail((d) => (d ? { ...d, avatarUrl } : d));
+      setCropSrc("");
+      showToast("Photo updated.");
+    } catch (err) {
+      showToast(err.message || "Could not update photo.");
+    } finally {
+      setAvatarBusy(false);
     }
   }
 
@@ -683,10 +764,6 @@ export default function EmploymentView() {
     const isNoRecord   = r.employment_status === "Not Yet Updated";
     const jobTitle = td?.occupationTitle || r.job_title    || "";
     const industry = td?.industryField   || r.industry     || "";
-    // Two distinct things — placeOfWork is only ever a "Local"/"Abroad"
-    // radio choice on the tracer form, while work_location is the actual
-    // specific place (e.g. "Clark", "Taguig"), usually entered by an admin.
-    const workArrangement = td?.placeOfWork || "";
     const workLoc = r.work_location || td?.resolvedWorkLocation || "";
     const jrd = String(td?.jobRelatedToDegree || "").toLowerCase().trim();
     const related = td?.jobRelatedToDegree ? (jrd.startsWith("yes") ? "Yes" : "No") : (r.job_related_to_course ? "Yes" : "No");
@@ -696,12 +773,18 @@ export default function EmploymentView() {
       ? `<img src="${r.avatarUrl}" alt="" style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.3)" />`
       : `<div style="width:88px;height:88px;border-radius:50%;background:#fff;color:#570013;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;border:3px solid #fff">${esc(initials)}</div>`;
 
+    const contactRows = [
+      row("Email", r.contact_email || r.email),
+      row("Contact Number", r.contact_number),
+      row("Facebook", r.facebook),
+      row("LinkedIn", r.linkedin),
+    ].filter(Boolean).join("");
+    const contactHtml = section("Contact Information", contactRows);
+
     const summaryRows = [
-      row("Email", r.email),
       !isUnemployed && !isNoRecord ? row("Company Name", td?.companyName || r.company_name) : "",
       !isUnemployed && !isNoRecord ? row("Job Title", jobTitle) : "",
       !isUnemployed && !isNoRecord ? row("Industry", industry) : "",
-      !isUnemployed && !isNoRecord ? row("Work Arrangement", workArrangement) : "",
       !isUnemployed && !isNoRecord ? row("Work Location", workLoc) : "",
       !isUnemployed && !isNoRecord ? row("Employment Type", td?.presentEmploymentType || r.employment_type) : "",
       !isUnemployed && !isNoRecord ? row("Years in Job", td?.yearsInCurrentJob || r.years_in_current_job) : "",
@@ -749,6 +832,7 @@ export default function EmploymentView() {
       </div>
     </div>
     <div class="content">
+      ${contactHtml}
       ${section("Employment Summary", summaryRows)}
       ${resumeHtml}
       ${tracerSectionsHtml}
@@ -1114,7 +1198,7 @@ export default function EmploymentView() {
                     if (q.type === "rating_table") {
                       if (!val || !Object.values(val).some(Boolean)) return null;
                       return (
-                        <div key={q.id} style={{ marginBottom: 8 }}>
+                        <div key={q.id} style={{ gridColumn: "1 / -1", marginBottom: 8 }}>
                           <div style={{ fontSize: 12, color: "#8a7377", fontWeight: 600, margin: "10px 8px 4px" }}>{q.label}</div>
                           <RecordRatingsTable ratings={val} rows={q.rows} />
                         </div>
@@ -1134,14 +1218,6 @@ export default function EmploymentView() {
                   // Tracer data takes priority; fall back to AlumniEmployment stored values
                   const jobTitle = td?.occupationTitle || r.job_title    || "—";
                   const industry = td?.industryField   || r.industry     || "—";
-                  // Two distinct things, not one — placeOfWork is only ever
-                  // "Local (within your home country)" / "Abroad" (a fixed
-                  // radio choice on the tracer form), while work_location is
-                  // the actual specific place (e.g. "Clark", "Taguig"),
-                  // usually entered by an admin via Add/Edit Record. Showing
-                  // only the tracer value used to silently hide a more
-                  // specific location already on file.
-                  const workArrangement = td?.placeOfWork || "";
                   const workLoc = r.work_location || td?.resolvedWorkLocation || "—";
 
                   // jobRelatedToDegree may be a full sentence — check startsWith 'yes'
@@ -1154,29 +1230,37 @@ export default function EmploymentView() {
                     <>
                       {/* Profile banner */}
                       <div style={{
+                        position: "relative", overflow: "hidden",
                         display: "flex", alignItems: "center", gap: 18,
                         background: `linear-gradient(135deg, ${MAROON} 0%, #8b1a2e 100%)`,
-                        borderRadius: 14, padding: "20px 22px", marginBottom: 16,
-                        boxShadow: "0 4px 14px rgba(87,0,19,0.18)",
+                        borderRadius: 16, padding: "22px 24px", marginBottom: 16,
+                        boxShadow: "0 6px 18px rgba(87,0,19,0.22)",
                       }}>
+                        <div style={{ position: "absolute", top: -46, right: -30, width: 150, height: 150, borderRadius: "50%", background: "rgba(255,255,255,0.06)", pointerEvents: "none" }} />
+                        <div style={{ position: "absolute", bottom: -60, right: 70, width: 110, height: 110, borderRadius: "50%", background: "rgba(255,255,255,0.05)", pointerEvents: "none" }} />
                         <AlumniAvatar url={r.avatarUrl} name={r.name} />
-                        <div>
-                          <div style={{ fontSize: 19, fontWeight: 800, color: "#fff" }}>{r.name}</div>
-                          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", marginTop: 3 }}>
+                        <div style={{ position: "relative", minWidth: 0 }}>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "0.01em", overflowWrap: "anywhere" }}>{r.name}</div>
+                          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.82)", marginTop: 4 }}>
                             {r.college ? `${r.college} · ` : ""}{r.course || "—"}{r.graduation_year ? ` · Batch ${r.graduation_year}` : ""}
                           </div>
-                          <div style={{ marginTop: 8 }}><StatusBadge status={r.employment_status} /></div>
+                          <div style={{ marginTop: 9 }}><StatusBadge status={r.employment_status} /></div>
                         </div>
                       </div>
 
+                      <RecordGroup title="Contact Information">
+                        <RecordField label="Email" value={r.contact_email || r.email} />
+                        <RecordField label="Contact Number" value={r.contact_number} />
+                        <RecordLinkField label="Facebook" value={r.facebook} />
+                        <RecordLinkField label="LinkedIn" value={r.linkedin} />
+                      </RecordGroup>
+
                       <RecordGroup title="Employment Summary">
-                        <RecordField label="Email" value={r.email} />
                         {!isUnemployed && !isNoRecord && (
                           <>
                             <RecordField label="Company Name" value={td?.companyName || r.company_name} />
                             <RecordField label="Job Title" value={jobTitle} />
                             <RecordField label="Industry" value={industry} />
-                            <RecordField label="Work Arrangement" value={workArrangement} />
                             <RecordField label="Work Location" value={workLoc} />
                             <RecordField label="Employment Type" value={td?.presentEmploymentType || r.employment_type} />
                             <RecordField label="Years in Job" value={td?.yearsInCurrentJob || r.years_in_current_job} />
@@ -1249,7 +1333,7 @@ export default function EmploymentView() {
                 <button
                   type="button"
                   style={{ background: "var(--maroon)", color: "#fff" }}
-                  onClick={() => { setViewRecord(null); openEdit(viewRecord, viewDetail?.tracer_data, viewDetail?.new_question_ids); }}
+                  onClick={() => { setViewRecord(null); openEdit(viewDetail || viewRecord, viewDetail?.tracer_data, viewDetail?.new_question_ids); }}
                 >
                   Edit Record
                 </button>
@@ -1270,91 +1354,129 @@ export default function EmploymentView() {
             <form onSubmit={handleSaveEdit}>
               <div className="edit-record-form">
 
-                {editForm.employment_status !== "Unemployed" && editForm.employment_status !== "Not Yet Updated" && (
-                  <>
-                    <div className="field-row">
-                      <label>
-                        Company Name{editForm.employment_status === "Employed" ? " *" : ""}
-                        <input
-                          type="text"
-                          value={editForm.company_name}
-                          onChange={e => setEditForm(f => ({ ...f, company_name: e.target.value }))}
-                          placeholder="Company or business name"
-                        />
-                        {editErrors.company_name && <span className="field-error">{editErrors.company_name}</span>}
-                      </label>
-                      <label>
-                        Job Title{editForm.employment_status === "Employed" ? " *" : ""}
-                        <input
-                          type="text"
-                          value={editForm.job_title}
-                          onChange={e => setEditForm(f => ({ ...f, job_title: e.target.value }))}
-                          placeholder="Your job title"
-                        />
-                        {editErrors.job_title && <span className="field-error">{editErrors.job_title}</span>}
-                      </label>
-                    </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid #e4cccc" }}>
+                  <AlumniAvatar url={editRecord.avatarUrl} name={editRecord.name} />
+                  <div>
+                    <button type="button" className="secondary-employment-btn" disabled={avatarBusy} onClick={() => avatarInputRef.current?.click()}>
+                      {avatarBusy ? "Uploading…" : "Change Photo"}
+                    </button>
+                    <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={handleAvatarChange} />
+                    <p style={{ fontSize: 11, color: "#9a8080", margin: "6px 0 0" }}>PNG, JPEG, GIF, or WEBP · max 2MB</p>
+                  </div>
+                </div>
 
-                    <div className="field-row">
-                      <label>
-                        Industry{["Employed", "Self-employed"].includes(editForm.employment_status) ? " *" : ""}
-                        <select
-                          value={editForm.industry}
-                          onChange={e => setEditForm(f => ({ ...f, industry: e.target.value }))}
-                        >
-                          <option value="">Select industry…</option>
-                          {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                        </select>
-                        {editErrors.industry && <span className="field-error">{editErrors.industry}</span>}
-                      </label>
-                      <label>
-                        Work Location{editForm.employment_status === "Employed" ? " *" : ""}
-                        <input
-                          type="text"
-                          value={editForm.work_location}
-                          onChange={e => setEditForm(f => ({ ...f, work_location: e.target.value }))}
-                          placeholder="City, Province"
-                        />
-                        {editErrors.work_location && <span className="field-error">{editErrors.work_location}</span>}
-                      </label>
-                    </div>
-
-                    <div className="field-row">
-                      <label>
-                        Employment Type
-                        <select
-                          value={editForm.employment_type}
-                          onChange={e => setEditForm(f => ({ ...f, employment_type: e.target.value }))}
-                        >
-                          <option value="">Select type…</option>
-                          {EMPLOYMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                      </label>
-                      <label>
-                        Years in Current Job
-                        <input
-                          type="text"
-                          value={editForm.years_in_current_job}
-                          onChange={e => setEditForm(f => ({ ...f, years_in_current_job: e.target.value }))}
-                          placeholder="e.g. 2 years"
-                        />
-                      </label>
-                    </div>
-
-                    <label style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "8px" }}>
+                <div style={{ marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid #e4cccc" }}>
+                  <h4 style={{ color: "var(--maroon)", fontSize: 14, margin: "0 0 12px" }}>Contact Information</h4>
+                  <div className="field-row">
+                    <label>
+                      Contact Email
                       <input
-                        type="checkbox"
-                        style={{ width: "auto", minHeight: "auto" }}
-                        checked={editForm.job_related_to_course}
-                        onChange={e => setEditForm(f => ({ ...f, job_related_to_course: e.target.checked }))}
+                        type="email"
+                        value={editForm.contact_email}
+                        onChange={e => setEditForm(f => ({ ...f, contact_email: e.target.value }))}
+                        placeholder="you@example.com"
                       />
-                      Job is related to my course
                     </label>
-                  </>
-                )}
+                    <label>
+                      Contact Number
+                      <input
+                        type="tel"
+                        value={editForm.contact_number}
+                        onChange={e => setEditForm(f => ({ ...f, contact_number: e.target.value }))}
+                        placeholder="09XX XXX XXXX"
+                        maxLength={30}
+                      />
+                    </label>
+                  </div>
+                  <div className="field-row">
+                    <label>
+                      Facebook
+                      <input
+                        type="text"
+                        value={editForm.facebook}
+                        onChange={e => setEditForm(f => ({ ...f, facebook: e.target.value }))}
+                        placeholder="facebook.com/name"
+                      />
+                    </label>
+                    <label>
+                      LinkedIn
+                      <input
+                        type="text"
+                        value={editForm.linkedin}
+                        onChange={e => setEditForm(f => ({ ...f, linkedin: e.target.value }))}
+                        placeholder="linkedin.com/in/name"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid #e4cccc" }}>
+                  <h4 style={{ color: "var(--maroon)", fontSize: 14, margin: "0 0 12px" }}>Work Information</h4>
+                  <div className="field-row">
+                    <label>
+                      Employment Status
+                      <select
+                        value={editForm.employment_status}
+                        onChange={e => setEditForm(f => ({ ...f, employment_status: e.target.value }))}
+                      >
+                        <option value="Not Yet Updated">Not Yet Updated</option>
+                        <option value="Employed">Employed</option>
+                        <option value="Self-employed">Self-employed</option>
+                        <option value="Unemployed">Unemployed</option>
+                      </select>
+                    </label>
+                    <label>
+                      Company Name
+                      <input
+                        type="text"
+                        value={editForm.company_name}
+                        onChange={e => setEditForm(f => ({ ...f, company_name: e.target.value }))}
+                        placeholder="Company or business name"
+                      />
+                      {editErrors.company_name && <span className="field-error">{editErrors.company_name}</span>}
+                    </label>
+                  </div>
+
+                  <div className="field-row">
+                    <label>
+                      Job Position
+                      <input
+                        type="text"
+                        value={editForm.job_title}
+                        onChange={e => setEditForm(f => ({ ...f, job_title: e.target.value }))}
+                        placeholder="Your job title"
+                      />
+                      {editErrors.job_title && <span className="field-error">{editErrors.job_title}</span>}
+                    </label>
+                    <label>
+                      Industry
+                      <select
+                        value={editForm.industry}
+                        onChange={e => setEditForm(f => ({ ...f, industry: e.target.value }))}
+                      >
+                        <option value="">Select industry…</option>
+                        {INDUSTRIES.map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                      </select>
+                      {editErrors.industry && <span className="field-error">{editErrors.industry}</span>}
+                    </label>
+                  </div>
+
+                  <div className="field-row">
+                    <label>
+                      Work Location
+                      <input
+                        type="text"
+                        value={editForm.work_location}
+                        onChange={e => setEditForm(f => ({ ...f, work_location: e.target.value }))}
+                        placeholder="City, Province"
+                      />
+                      {editErrors.work_location && <span className="field-error">{editErrors.work_location}</span>}
+                    </label>
+                  </div>
+                </div>
 
                 {editForm.employment_status === "Unemployed" && (
-                  <label>
+                  <label style={{ display: "block", marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid #e4cccc" }}>
                     Reason for Unemployment *
                     <textarea
                       value={editForm.reason_unemployed}
@@ -1365,11 +1487,53 @@ export default function EmploymentView() {
                   </label>
                 )}
 
-                {editForm.employment_status === "Not Yet Updated" && (
-                  <p style={{ color: "var(--muted)", fontSize: "13px", margin: 0 }}>
-                    This alumni has not yet submitted their employment status via the tracer form.
-                  </p>
-                )}
+                <div style={{ marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid #e4cccc" }}>
+                  <h4 style={{ color: "var(--maroon)", fontSize: 14, margin: "0 0 12px" }}>Compensation</h4>
+                  <div className="field-row">
+                    <label>
+                      Date Hired
+                      <input
+                        type="date"
+                        value={editForm.date_employed}
+                        onChange={e => setEditForm(f => ({ ...f, date_employed: e.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Monthly Salary
+                      <select
+                        value={editForm.salary_range}
+                        onChange={e => setEditForm(f => ({ ...f, salary_range: e.target.value }))}
+                      >
+                        <option value="">Select a range…</option>
+                        {editForm.salary_range && !SALARY_RANGES.includes(editForm.salary_range) && (
+                          <option value={editForm.salary_range}>{editForm.salary_range}</option>
+                        )}
+                        {SALARY_RANGES.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 18, paddingTop: 16, borderTop: "1px solid #e4cccc" }}>
+                  <h4 style={{ color: "var(--maroon)", fontSize: 14, margin: "0 0 12px" }}>Qualifications</h4>
+                  <label>
+                    Skills
+                    <SkillsEditor value={editForm.skills} onChange={(value) => setEditForm(f => ({ ...f, skills: value }))} />
+                  </label>
+                  <label style={{ marginTop: 10 }}>
+                    Experience
+                    <select
+                      value={editForm.experience}
+                      onChange={e => setEditForm(f => ({ ...f, experience: e.target.value }))}
+                    >
+                      <option value="">Select experience level…</option>
+                      {editForm.experience && !EXPERIENCE_LEVELS.includes(editForm.experience) && (
+                        <option value={editForm.experience}>{editForm.experience}</option>
+                      )}
+                      {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+                    </select>
+                  </label>
+                </div>
 
                 {Object.keys(editTracerForm).length === 0 ? (
                   <p style={{ color: "var(--muted)", fontSize: 13, margin: "16px 0 0", paddingTop: 16, borderTop: "1px solid #e4cccc" }}>
@@ -1552,6 +1716,8 @@ export default function EmploymentView() {
           </form>
         </section>
       </Modal>
+
+      {cropSrc && <AvatarCropper src={cropSrc} busy={avatarBusy} onCancel={() => setCropSrc("")} onSave={uploadEditAvatar} />}
 
       {/* ── Generic confirm dialog ────────────────────────────────────────────── */}
       <ConfirmDialog

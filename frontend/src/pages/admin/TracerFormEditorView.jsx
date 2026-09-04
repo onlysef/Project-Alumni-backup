@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
 const MAROON = "#570013";
@@ -623,8 +624,16 @@ const COLLEGES = ["CCS","CIT","CAFA","COED","CCJE","CPAG","CBA","CASS","COS","CO
 // launched from the Employment page. ─────────────────────────────────────────
 export default function TracerFormEditorView() {
   const { showToast } = useOutletContext();
+  const { user } = useAuth();
+  // A coordinator can only ever view/edit their own assigned college's
+  // tracer form — no college switcher, no copying another college's form
+  // in as a starting point (that would mean reading a college they don't
+  // manage). The backend enforces this too (resolveCollege in
+  // tracerFormConfigController.js), this just keeps the UI honest about it.
+  const isCoordinator = user?.role === "coordinator";
+  const apiBase = isCoordinator ? `${API}/coordinator` : `${API}/admin`;
 
-  const [college, setCollege] = useState("CCS");
+  const [college, setCollege] = useState(isCoordinator ? (user?.college || "CCS") : "CCS");
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -634,7 +643,7 @@ export default function TracerFormEditorView() {
 
   // ── import dialog state ────────────────────────────────────────────────────────
   const [importOpen, setImportOpen] = useState(false);
-  const [importTab, setImportTab] = useState("college"); // "college" | "gform"
+  const [importTab, setImportTab] = useState(isCoordinator ? "gform" : "college"); // "college" | "gform"
   const [importCollegeSel, setImportCollegeSel] = useState("");
   const [gformUrl, setGformUrl] = useState("");
   const [importBusy, setImportBusy] = useState(false);
@@ -643,7 +652,7 @@ export default function TracerFormEditorView() {
   function loadConfig(col) {
     setCurrentPage(0);
     setLoading(true);
-    fetch(`${API}/admin/tracer-form-config?college=${col}`, { headers: authHeaders() })
+    fetch(`${apiBase}/tracer-form-config?college=${col}`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => setConfig(d.config || { version: 1, pages: [] }))
       .catch(() => setConfig(null))
@@ -704,7 +713,7 @@ export default function TracerFormEditorView() {
   function importFromGoogleForm() {
     if (!gformUrl.trim()) return;
     setImportBusy(true);
-    fetch(`${API}/admin/tracer-form-config/import-google-form`, {
+    fetch(`${apiBase}/tracer-form-config/import-google-form`, {
       method: "POST",
       headers: { ...authHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ url: gformUrl.trim() }),
@@ -828,7 +837,7 @@ export default function TracerFormEditorView() {
     if (!config) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API}/admin/tracer-form-config?college=${college}`, {
+      const res = await fetch(`${apiBase}/tracer-form-config?college=${college}`, {
         method: "PUT",
         headers: authHeaders(),
         body: JSON.stringify({ config }),
@@ -868,8 +877,9 @@ export default function TracerFormEditorView() {
       <div className="admin-hero" aria-label="Edit tracer form header">
         <h1 className="admin-hero-title">Edit Tracer Form</h1>
         <p className="admin-hero-subtitle">
-          Build and manage each college's tracer study questionnaire — add pages and questions,
-          set conditional logic, or import a starting point from another college or a Google Form.
+          {isCoordinator
+            ? `Build and manage the ${college} tracer study questionnaire — add pages and questions, set conditional logic, or import a starting point from a Google Form.`
+            : "Build and manage each college's tracer study questionnaire — add pages and questions, set conditional logic, or import a starting point from another college or a Google Form."}
         </p>
       </div>
 
@@ -878,13 +888,19 @@ export default function TracerFormEditorView() {
         <div style={s.header}>
           <div style={s.headerTitle}>Form Configuration</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <select
-              className="tracer-editor-college-select"
-              value={college}
-              onChange={(e) => setCollege(e.target.value)}
-            >
-              {COLLEGES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            {isCoordinator ? (
+              <span className="tracer-editor-college-locked" title="You can only manage the tracer form for your assigned college">
+                {college}
+              </span>
+            ) : (
+              <select
+                className="tracer-editor-college-select"
+                value={college}
+                onChange={(e) => setCollege(e.target.value)}
+              >
+                {COLLEGES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
             {!loading && config && (
               <button
                 type="button"
@@ -1183,22 +1199,24 @@ export default function TracerFormEditorView() {
                   you click "Save Form".
                 </p>
 
-                <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-                  <button
-                    type="button"
-                    style={{ ...s.tab(importTab === "college"), border: `1.5px solid ${MAROON}30`, borderRadius: 6 }}
-                    onClick={() => setImportTab("college")}
-                  >
-                    Another College
-                  </button>
-                  <button
-                    type="button"
-                    style={{ ...s.tab(importTab === "gform"), border: `1.5px solid ${MAROON}30`, borderRadius: 6 }}
-                    onClick={() => setImportTab("gform")}
-                  >
-                    Google Form Link
-                  </button>
-                </div>
+                {!isCoordinator && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+                    <button
+                      type="button"
+                      style={{ ...s.tab(importTab === "college"), border: `1.5px solid ${MAROON}30`, borderRadius: 6 }}
+                      onClick={() => setImportTab("college")}
+                    >
+                      Another College
+                    </button>
+                    <button
+                      type="button"
+                      style={{ ...s.tab(importTab === "gform"), border: `1.5px solid ${MAROON}30`, borderRadius: 6 }}
+                      onClick={() => setImportTab("gform")}
+                    >
+                      Google Form Link
+                    </button>
+                  </div>
+                )}
 
                 {importTab === "college" ? (
                   <div style={s.fieldRow}>

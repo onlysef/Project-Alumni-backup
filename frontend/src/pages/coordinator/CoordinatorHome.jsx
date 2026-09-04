@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { MiniBarChart, downloadCsv } from "./CoordinatorShared.jsx";
+import { MiniBarChart, downloadChartExcel } from "./CoordinatorShared.jsx";
 
 import { API, apiFetch } from "../../services/api.js";
 
@@ -29,6 +29,8 @@ export default function CoordinatorHome() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [allEvents, setAllEvents] = useState([]);
+  const attendanceChartRef = useRef(null);
+  const feedbackChartRef   = useRef(null);
   const currentYear = new Date().getFullYear();
   const [reportYears, setReportYears] = useState(
     Object.fromEntries(REPORTS.map(r => [r.type, currentYear]))
@@ -103,18 +105,27 @@ export default function CoordinatorHome() {
 
       <div className="coord-dashboard-grid">
         <div className="coord-left-stack">
-          <section className="coord-card">
+          <section className="coord-card" ref={attendanceChartRef}>
             <div className="coord-chart-card-head">
               <h3>Event Attendance</h3>
               <button
                 className="chart-export-button"
                 type="button"
-                onClick={() => {
-                  downloadCsv("event-attendance-chart.csv", [
-                    ["Event", "Attendance"],
-                    ...(chartLabels.length ? chartLabels.map((label, i) => [label, attendanceVals[i] ?? 0]) : [["No data", 0]]),
-                  ]);
-                  showToast?.("Event attendance chart exported.");
+                onClick={async () => {
+                  try {
+                    await downloadChartExcel(
+                      "event-attendance-chart.xlsx",
+                      "Event Attendance",
+                      [
+                        ["Event", "Attendance"],
+                        ...(chartLabels.length ? chartLabels.map((label, i) => [label, attendanceVals[i] ?? 0]) : [["No data", 0]]),
+                      ],
+                      attendanceChartRef.current?.querySelector("svg")
+                    );
+                    showToast?.("Event attendance chart exported.");
+                  } catch {
+                    showToast?.("Could not export the chart.");
+                  }
                 }}
               >
                 <Icon name="icon-download" />
@@ -131,18 +142,27 @@ export default function CoordinatorHome() {
               <strong>{chartLabels.length ? `Total attendance: ${attendanceTotal}` : "No attendance data yet"}</strong>
             </div>
           </section>
-          <section className="coord-card">
+          <section className="coord-card" ref={feedbackChartRef}>
             <div className="coord-chart-card-head">
               <h3>Event Feedback Completion</h3>
               <button
                 className="chart-export-button"
                 type="button"
-                onClick={() => {
-                  downloadCsv("event-feedback-chart.csv", [
-                    ["Event", "Feedback Submissions"],
-                    ...(chartLabels.length ? chartLabels.map((label, i) => [label, feedbackVals[i] ?? 0]) : [["No data", 0]]),
-                  ]);
-                  showToast?.("Event feedback chart exported.");
+                onClick={async () => {
+                  try {
+                    await downloadChartExcel(
+                      "event-feedback-chart.xlsx",
+                      "Event Feedback Completion",
+                      [
+                        ["Event", "Feedback Submissions"],
+                        ...(chartLabels.length ? chartLabels.map((label, i) => [label, feedbackVals[i] ?? 0]) : [["No data", 0]]),
+                      ],
+                      feedbackChartRef.current?.querySelector("svg")
+                    );
+                    showToast?.("Event feedback chart exported.");
+                  } catch {
+                    showToast?.("Could not export the chart.");
+                  }
                 }}
               >
                 <Icon name="icon-download" />
