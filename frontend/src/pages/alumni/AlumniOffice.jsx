@@ -41,17 +41,23 @@ function todayISO() {
 // Aligned with the backend's JS_DAY_TO_LABEL (Date.getDay(): 0=Sun..6=Sat)
 const JS_DAY_TO_LABEL = [null, "M", "T", "W", "TH", "F", "S"];
 
-// Only the next `count` dates that are actually working days — nothing else is selectable.
-function generateValidDates(workingDays, count = 14, startOffset = 0) {
+// Only the next `count` dates that are actually working days and not a
+// marked holiday — nothing else is selectable. `office_status: Closed` only
+// takes today off the list (an unplanned same-day closure) — it doesn't
+// block booking a future date the office will actually be open for; a
+// planned future closure belongs in the holidays list instead.
+function generateValidDates(workingDays, holidays = [], officeClosedToday = false, count = 14) {
   const dates = [];
   const base = new Date();
   base.setHours(0, 0, 0, 0);
-  for (let i = startOffset; dates.length < count && i < 90; i++) {
+  for (let i = 0; dates.length < count && i < 90; i++) {
     const cur = new Date(base);
     cur.setDate(base.getDate() + i);
     const label = JS_DAY_TO_LABEL[cur.getDay()];
     if (label && workingDays.includes(label)) {
       const iso = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`;
+      if (holidays.includes(iso)) continue;
+      if (i === 0 && officeClosedToday) continue;
       dates.push({
         value: iso,
         label: cur.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
@@ -300,10 +306,12 @@ function AppointmentForm({ settings }) {
       .finally(() => setLoading(false));
   }, [open]);
 
-  const officeClosed = settings?.office_status === "Closed";
-  // If staff marked the office closed today, do not offer today's date;
-  // the next selectable choice is still a configured working day.
-  const validDates = generateValidDates(settings?.working_days || [], 14, officeClosed ? 1 : 0);
+  // "Closed" only takes today off the bookable list (see generateValidDates)
+  // — it no longer disables the whole form, since a same-day closure
+  // shouldn't stop booking a future date the office will be open for.
+  const officeClosedToday = settings?.office_status === "Closed";
+  const validDates = generateValidDates(settings?.working_days || [], settings?.holidays || [], officeClosedToday);
+  const noDatesAvailable = !loading && validDates.length === 0;
   const validDateSet = new Set(validDates.map((d) => d.value));
   const minDate = validDates[0]?.value || "";
   const maxDate = validDates[validDates.length - 1]?.value || "";
@@ -387,7 +395,11 @@ function AppointmentForm({ settings }) {
         <p className="account-settings-hint">Loading office availability…</p>
       ) : (
         <>
-          {officeClosed && <div className="office-inquiry-success">The office is closed today, but you can request an appointment for the next available office day.</div>}
+          {officeClosedToday && (
+            <div className="office-inquiry-error">
+              The office is closed today, so today isn't bookable, but you can still book any other available day below.
+            </div>
+          )}
           {staffList.length === 0 ? (
             <p className="office-inquiry-error">No staff are currently accepting appointments. Please try again later or send an inquiry instead.</p>
           ) : (
@@ -399,8 +411,8 @@ function AppointmentForm({ settings }) {
               </select>
             </label>
           )}
-          {validDates.length === 0 ? (
-            <p className="office-inquiry-error">No upcoming office days are configured. Please try again later.</p>
+          {noDatesAvailable ? (
+            <p className="office-inquiry-error">No upcoming office days are available right now. Please try again later.</p>
           ) : (
             <label>
               <span>Date</span>
@@ -455,7 +467,7 @@ function AppointmentForm({ settings }) {
       {status && <div className={status.ok ? "office-inquiry-success" : "office-inquiry-error"}>{status.text}</div>}
       <div className="office-inquiry-actions">
         <button type="button" className="office-inquiry-cancel" onClick={() => setOpen(false)} disabled={sending}>Cancel</button>
-        <button type="submit" disabled={sending || loading || staffList.length === 0 || validDates.length === 0}>{sending ? "Booking…" : "Book"}</button>
+        <button type="submit" disabled={sending || loading || staffList.length === 0 || noDatesAvailable}>{sending ? "Booking…" : "Book"}</button>
       </div>
     </form>
   );

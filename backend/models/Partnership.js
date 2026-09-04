@@ -15,7 +15,10 @@ const partnershipSchema = new mongoose.Schema({
     'Agriculture',
     'Others',
   ], required: true },
-  contact:          { type: String, required: true, trim: true },
+  // Set at self-registration (registerPartner); admin-created partnerships
+  // via the Add/Edit Partnership form no longer collect this, so it can't
+  // stay required or every admin-side create/update would fail validation.
+  contact:          { type: String, default: '', trim: true },
   status:      { type: String, enum: ['Active', 'Pending', 'Archived'], default: 'Pending' },
   description: { type: String, default: '' },
 }, { timestamps: true });

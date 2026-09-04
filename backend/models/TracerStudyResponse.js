@@ -54,6 +54,14 @@ const tracerStudyResponseSchema = new mongoose.Schema({
 
   // Holds answers for any custom questions the admin adds beyond the fixed schema
   extra_answers: { type: Map, of: mongoose.Schema.Types.Mixed, default: {} },
+
+  // Question ids (fixed-schema keys or custom/extra_answers keys) an admin
+  // has explicitly asked this alumni to re-answer/update via Notify Alumni —
+  // separate from "new" questions, since these can be existing, already-
+  // answered questions the admin wants confirmed or corrected. Cleared on
+  // the alumni's next submit. See notifyAlumniToUpdate (employmentController.js)
+  // and submitTracerStudy (alumniController.js).
+  pendingUpdateQuestionIds: { type: [String], default: [] },
 }, { timestamps: true });
 
 module.exports = mongoose.model('TracerStudyResponse', tracerStudyResponseSchema);

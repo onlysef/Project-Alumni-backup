@@ -10,6 +10,11 @@ import EmployerLayout from "../layouts/EmployerLayout";
 
 // Admin pages
 const DashboardView           = lazy(() => import("../pages/admin/DashboardView"));
+const TracerDashboardView     = lazy(() => import("../pages/admin/TracerDashboardView"));
+const TracerResponsesView     = lazy(() => import("../pages/admin/TracerResponsesView"));
+const TracerFormEditorView    = lazy(() => import("../pages/admin/TracerFormEditorView"));
+const ExportEmploymentListView = lazy(() => import("../pages/admin/ExportEmploymentListView"));
+const NotifyAlumniView        = lazy(() => import("../pages/admin/NotifyAlumniView"));
 const EmploymentView          = lazy(() => import("../pages/admin/EmploymentView"));
 const AppointmentsView        = lazy(() => import("../pages/admin/AppointmentsView"));
 const AccountsView            = lazy(() => import("../pages/admin/AccountsView"));
@@ -19,6 +24,7 @@ const AiAssistantView         = lazy(() => import("../pages/admin/AiAssistantVie
 const AboutView               = lazy(() => import("../pages/admin/AboutView"));
 const TsuLandingView          = lazy(() => import("../pages/shared/TsuLandingView"));
 const AlumniSignUpView        = lazy(() => import("../pages/shared/AlumniSignUpView"));
+const EmployerSignUpView      = lazy(() => import("../pages/shared/EmployerSignUpView"));
 
 // Coordinator pages
 const CoordinatorHome         = lazy(() => import("../pages/coordinator/CoordinatorHome"));
@@ -75,6 +81,7 @@ export default function AppRoutes() {
               before the catch-all "*" below so it isn't swallowed by
               RoleRedirect. */}
           <Route path="/signup" element={<AlumniSignUpView />} />
+          <Route path="/employer-signup" element={<EmployerSignUpView />} />
           <Route path="*" element={<RoleRedirect />} />
 
           {/* Admin routes */}
@@ -88,6 +95,11 @@ export default function AppRoutes() {
           >
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard"    element={<DashboardView />} />
+            <Route path="tracer-dashboard" element={<TracerDashboardView />} />
+            <Route path="tracer-responses" element={<TracerResponsesView />} />
+            <Route path="tracer-form-editor" element={<TracerFormEditorView />} />
+            <Route path="export-employment" element={<ExportEmploymentListView />} />
+            <Route path="notify-alumni" element={<NotifyAlumniView />} />
             <Route path="employment"   element={<EmploymentView />} />
             <Route path="appointments" element={<AppointmentsView />} />
             <Route path="accounts"     element={<AccountsView />} />

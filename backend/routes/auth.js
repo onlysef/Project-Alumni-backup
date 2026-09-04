@@ -6,7 +6,9 @@ const ctrl     = require('../controllers/authController');
 const { protect } = require('../middleware/authMiddleware');
 const { loginLimiter, otpLimiter } = require('../middleware/rateLimit');
 const User     = require('../models/User');
+const { validateEmployerInviteToken } = require('../controllers/employerInviteController');
 
+router.get('/employer-invite/:token', validateEmployerInviteToken);
 router.post('/register-partner',  ctrl.registerPartner);
 router.post('/register-alumni',   ctrl.registerAlumni);
 router.post('/login',             loginLimiter, ctrl.login);

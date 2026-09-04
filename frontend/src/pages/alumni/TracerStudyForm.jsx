@@ -39,6 +39,52 @@ function CheckOpt({ checked, onChange, label }) {
   );
 }
 
+// Mirrors backend/utils/tracerFixedKeys.js — the question ids the
+// TracerStudyResponse schema stores as named fields. Anything else is a
+// custom/imported question. Keep both lists in sync.
+const FIXED_KEYS = new Set([
+  "consent",
+  "contactNumber", "gender",
+  "programsCompleted", "professionalExam", "professionalExamName",
+  "employmentStatus", "companyName", "placeOfWork", "occupationTitle", "industryField",
+  "presentEmploymentType", "jobRelatedToDegree", "yearsInCurrentJob",
+  "reasonsNotEmployed",
+  "furtherEducation", "furtherEducationType",
+  "pursuedTrainings", "trainingType",
+  "personalGrowthRatings",
+  "promotedInJob", "significantAccomplishments",
+  "professionalCertifications", "professionalDevelopmentActivities",
+]);
+
+function isAnswerEmpty(val) {
+  if (val === undefined || val === null || val === "") return true;
+  if (Array.isArray(val)) return val.length === 0;
+  if (typeof val === "object") return Object.keys(val).length === 0;
+  return false;
+}
+
+// Questions to surface to an already-submitted alumni: custom/imported
+// questions they haven't answered yet (added after they last submitted), OR
+// any question — including existing/fixed ones — an admin has explicitly
+// flagged via Notify Alumni's "require specific questions" picker. The admin
+// pick can target already-answered questions (asking for a correction/
+// confirmation), which is why it's checked independently of emptiness.
+function getNewQuestions(config, answers, pendingUpdateIds = []) {
+  if (!config) return [];
+  const pending = new Set(pendingUpdateIds);
+  const result = [];
+  config.pages.forEach((page) => {
+    (page.questions || []).forEach((q) => {
+      if (q.type === "static_text") return;
+      if (pending.has(q.id)) { result.push(q); return; }
+      if (FIXED_KEYS.has(q.id)) return;
+      if (!isAnswerEmpty(answers[q.id])) return;
+      result.push(q);
+    });
+  });
+  return result;
+}
+
 // ── Returns true if question q should be shown given the current answers ─────
 function isVisible(q, answers) {
   if (!q.showIf) return true;
@@ -252,7 +298,7 @@ function validatePage(page, answers) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function TracerStudyForm() {
-  const { token, user, firstLogin, setTracerStudyDone } = useAuth();
+  const { token, user, firstLogin, setTracerStudyDone, setTracerUpdateDone } = useAuth();
   const navigate = useNavigate();
 
   // The form has no backend draft-save — without this, refreshing mid-form
@@ -276,6 +322,13 @@ export default function TracerStudyForm() {
   const [error, setError]                 = useState(""); // validation / submission errors
   const [isAlreadySubmitted, setIsAlreadySubmitted] = useState(false);
   const [existingDataLoading, setExistingDataLoading] = useState(true);
+  // An already-submitted alumni with new unanswered questions defaults to a
+  // compact "just the new stuff" view instead of the full multi-page form —
+  // this lets them opt back into editing everything if they want to.
+  const [showFullForm, setShowFullForm] = useState(false);
+  // Question ids an admin explicitly flagged (via Notify Alumni) for this
+  // alumni to re-answer/update — can include already-answered questions.
+  const [pendingUpdateQuestionIds, setPendingUpdateQuestionIds] = useState([]);
 
   // Fetch (or re-fetch) form config from backend
   // keepOnError=true: on failure, preserve existing config (used for background re-fetches)
@@ -362,6 +415,7 @@ export default function TracerStudyForm() {
           });
         }
         setAnswers(flat);
+        setPendingUpdateQuestionIds(Array.isArray(raw.pendingUpdateQuestionIds) ? raw.pendingUpdateQuestionIds : []);
       })
       .catch((err) => console.error("TracerStudyForm: could not load existing response", err))
       .finally(() => setExistingDataLoading(false));
@@ -384,6 +438,9 @@ export default function TracerStudyForm() {
 
   const TOTAL_STEPS = config ? config.pages.length : 6;
   const currentPage = config ? config.pages[step - 1] : null;
+
+  const newQuestions = isAlreadySubmitted ? getNewQuestions(config, answers, pendingUpdateQuestionIds) : [];
+  const showNewQuestionsMode = isAlreadySubmitted && !showFullForm;
 
   function setAnswer(id, value) {
     setAnswers((prev) => ({ ...prev, [id]: value }));
@@ -420,6 +477,34 @@ export default function TracerStudyForm() {
       if (!res.ok) { setError(data.message || "Submission failed. Please try again."); return; }
       try { localStorage.removeItem(draftKey); } catch {}
       setTracerStudyDone();
+      setTracerUpdateDone();
+      navigate("/alumni/dashboard", { replace: true });
+    } catch {
+      setError("Could not connect to server.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Submits just the new-questions view. `answers` already holds every
+  // previously-saved field (loaded on mount) plus whatever was just filled
+  // in here, so this sends the same full payload handleSubmit does — the
+  // only difference is what's rendered/validated on screen.
+  async function handleSubmitNewQuestions() {
+    const err = validatePage({ questions: newQuestions }, answers);
+    if (err) { setError(err); return; }
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch(`${API}/alumni/tracer-study`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(answers),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.message || "Submission failed. Please try again."); return; }
+      try { localStorage.removeItem(draftKey); } catch {}
+      setTracerUpdateDone();
       navigate("/alumni/dashboard", { replace: true });
     } catch {
       setError("Could not connect to server.");
@@ -519,33 +604,35 @@ export default function TracerStudyForm() {
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #eee", padding: "12px 24px" }}>
-        <div style={{ maxWidth: 760, margin: "0 auto" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            {stepTitles.map((_, i) => (
-              <div key={i} style={{
-                fontSize: 11, fontWeight: i + 1 === step ? 700 : 400,
-                color: i + 1 <= step ? MAROON : "#9ca3af",
-                flex: 1, textAlign: "center",
-              }}>
-                {i + 1 <= step ? "●" : "○"}
-              </div>
-            ))}
-          </div>
-          <div style={{ height: 4, background: "#e5e7eb", borderRadius: 99 }}>
-            <div style={{
-              height: "100%", borderRadius: 99,
-              background: `linear-gradient(90deg, ${MAROON}, #9b2235)`,
-              width: `${((step - 1) / (TOTAL_STEPS - 1)) * 100}%`,
-              transition: "width 0.35s ease",
-            }} />
-          </div>
-          <div style={{ textAlign: "right", fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            Page {step} of {TOTAL_STEPS}
+      {/* Progress bar — only meaningful for the full multi-page walkthrough */}
+      {!showNewQuestionsMode && (
+        <div style={{ background: "#fff", borderBottom: "1px solid #eee", padding: "12px 24px" }}>
+          <div style={{ maxWidth: 760, margin: "0 auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              {stepTitles.map((_, i) => (
+                <div key={i} style={{
+                  fontSize: 11, fontWeight: i + 1 === step ? 700 : 400,
+                  color: i + 1 <= step ? MAROON : "#9ca3af",
+                  flex: 1, textAlign: "center",
+                }}>
+                  {i + 1 <= step ? "●" : "○"}
+                </div>
+              ))}
+            </div>
+            <div style={{ height: 4, background: "#e5e7eb", borderRadius: 99 }}>
+              <div style={{
+                height: "100%", borderRadius: 99,
+                background: `linear-gradient(90deg, ${MAROON}, #9b2235)`,
+                width: `${((step - 1) / (TOTAL_STEPS - 1)) * 100}%`,
+                transition: "width 0.35s ease",
+              }} />
+            </div>
+            <div style={{ textAlign: "right", fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+              Page {step} of {TOTAL_STEPS}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Card */}
       <div style={{ maxWidth: 760, margin: "24px auto", padding: "0 16px 40px" }}>
@@ -554,25 +641,13 @@ export default function TracerStudyForm() {
           {/* Section title bar */}
           <div style={{ background: `${MAROON}12`, borderLeft: `4px solid ${MAROON}`, padding: "14px 24px" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: MAROON, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              {currentPage ? currentPage.title : ""}
+              {showNewQuestionsMode
+                ? (newQuestions.length > 0 ? "New Questions to Answer" : "Tracer Study")
+                : (currentPage ? currentPage.title : "")}
             </div>
           </div>
 
           <div style={{ padding: "24px 28px" }}>
-
-            {isAlreadySubmitted && (
-              <div style={{
-                background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e",
-                borderRadius: 6, padding: "10px 14px", marginBottom: 20, fontSize: "0.875rem",
-                display: "flex", alignItems: "flex-start", gap: 8,
-              }}>
-                <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠</span>
-                <span>
-                  You have already submitted this form. Your previous answers are pre-filled below.
-                  You may update them and click <strong>Submit</strong> to save the latest version.
-                </span>
-              </div>
-            )}
 
             {error && (
               <div style={{
@@ -583,34 +658,122 @@ export default function TracerStudyForm() {
               </div>
             )}
 
-            {/* Render all visible questions on the current page */}
-            {currentPage && currentPage.questions
-              .filter((q) => isVisible(q, answers))
-              .map((q) => (
-                <QuestionField
-                  key={q.id}
-                  q={q}
-                  answers={answers}
-                  onAnswer={setAnswer}
-                />
-              ))
-            }
+            {showNewQuestionsMode ? (
+              newQuestions.length > 0 ? (
+                <>
+                  <div style={{
+                    background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e",
+                    borderRadius: 6, padding: "10px 14px", marginBottom: 20, fontSize: "0.875rem",
+                    display: "flex", alignItems: "flex-start", gap: 8,
+                  }}>
+                    <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠</span>
+                    <span>
+                      {newQuestions.length} new question{newQuestions.length !== 1 ? "s were" : " was"} added
+                      to the tracer study since you last submitted. Please answer{" "}
+                      {newQuestions.length !== 1 ? "them" : "it"} below — your previous answers are
+                      already saved and don't need to be re-entered.
+                    </span>
+                  </div>
 
-            {/* Navigation buttons */}
-            <div style={{ display: "flex", gap: 10, marginTop: 28, justifyContent: "space-between" }}>
-              <button
-                type="button"
-                onClick={handleBack}
-                disabled={step === 1}
-                style={{
-                  padding: "9px 24px", borderRadius: 8, border: `1.5px solid ${MAROON}`,
-                  background: "#fff", color: MAROON, fontWeight: 600, fontSize: "0.9rem",
-                  cursor: step === 1 ? "not-allowed" : "pointer",
-                  opacity: step === 1 ? 0.4 : 1, transition: "opacity 0.2s",
-                }}
-              >
-                Back
-              </button>
+                  {newQuestions
+                    .filter((q) => isVisible(q, answers))
+                    .map((q) => (
+                      <QuestionField key={q.id} q={q} answers={answers} onAnswer={setAnswer} />
+                    ))}
+
+                  <div style={{ display: "flex", gap: 10, marginTop: 28, justifyContent: "space-between" }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowFullForm(true)}
+                      style={{
+                        padding: "9px 20px", borderRadius: 8, border: `1.5px solid ${MAROON}`,
+                        background: "#fff", color: MAROON, fontWeight: 600, fontSize: "0.85rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Edit all my answers instead
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSubmitNewQuestions}
+                      disabled={loading}
+                      style={{
+                        padding: "9px 28px", borderRadius: 8, border: "none",
+                        background: MAROON, color: "#fff", fontWeight: 600, fontSize: "0.9rem",
+                        cursor: loading ? "not-allowed" : "pointer",
+                        opacity: loading ? 0.7 : 1,
+                      }}
+                    >
+                      {loading ? "Submitting…" : "Submit"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: "center", padding: "20px 10px" }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                  <p style={{ color: MAROON, fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
+                    You're all caught up!
+                  </p>
+                  <p style={{ color: "#6b7280", fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
+                    There are no new questions for you to answer right now.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowFullForm(true)}
+                    style={{
+                      padding: "9px 20px", borderRadius: 8, border: `1.5px solid ${MAROON}`,
+                      background: "#fff", color: MAROON, fontWeight: 600, fontSize: "0.85rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Edit my answers anyway
+                  </button>
+                </div>
+              )
+            ) : (
+              <>
+                {isAlreadySubmitted && (
+                  <div style={{
+                    background: "#fffbeb", border: "1px solid #fcd34d", color: "#92400e",
+                    borderRadius: 6, padding: "10px 14px", marginBottom: 20, fontSize: "0.875rem",
+                    display: "flex", alignItems: "flex-start", gap: 8,
+                  }}>
+                    <span style={{ fontWeight: 700, flexShrink: 0 }}>⚠</span>
+                    <span>
+                      You have already submitted this form. Your previous answers are pre-filled below.
+                      You may update them and click <strong>Submit</strong> to save the latest version.
+                    </span>
+                  </div>
+                )}
+
+                {/* Render all visible questions on the current page */}
+                {currentPage && currentPage.questions
+                  .filter((q) => isVisible(q, answers))
+                  .map((q) => (
+                    <QuestionField
+                      key={q.id}
+                      q={q}
+                      answers={answers}
+                      onAnswer={setAnswer}
+                    />
+                  ))
+                }
+
+                {/* Navigation buttons */}
+                <div style={{ display: "flex", gap: 10, marginTop: 28, justifyContent: "space-between" }}>
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    disabled={step === 1}
+                    style={{
+                      padding: "9px 24px", borderRadius: 8, border: `1.5px solid ${MAROON}`,
+                      background: "#fff", color: MAROON, fontWeight: 600, fontSize: "0.9rem",
+                      cursor: step === 1 ? "not-allowed" : "pointer",
+                      opacity: step === 1 ? 0.4 : 1, transition: "opacity 0.2s",
+                    }}
+                  >
+                    Back
+                  </button>
 
               {step < TOTAL_STEPS ? (
                 <button
@@ -639,7 +802,9 @@ export default function TracerStudyForm() {
                   {loading ? "Submitting…" : "Submit"}
                 </button>
               )}
-            </div>
+                </div>
+              </>
+            )}
 
           </div>
         </div>

@@ -5,15 +5,20 @@ import { AdminTopbar } from "../components/admin/AdminTopbar.jsx";
 import { apiFetch } from "../services/api.js";
 
 const PATH_TITLES = {
-  "/admin/dashboard":    "Dashboard",
-  "/admin/employment":   "Alumni Employment",
-  "/admin/appointments": "Appointments",
-  "/admin/accounts":     "Accounts",
-  "/admin/announcements":"Announcements",
-  "/admin/partnerships": "Partnerships",
-  "/admin/aiassistant":  "AI Assistant",
-  "/admin/about":        "About",
-  "/admin/tsu":          "Tarlac State University",
+  "/admin/dashboard":        "Dashboard",
+  "/admin/tracer-dashboard": "Tracer Dashboard",
+  "/admin/tracer-responses": "Tracer Responses",
+  "/admin/tracer-form-editor": "Edit Tracer Form",
+  "/admin/employment":       "Alumni Record",
+  "/admin/export-employment":"Export Alumni Record",
+  "/admin/notify-alumni":    "Notify Alumni",
+  "/admin/appointments":     "Appointments",
+  "/admin/accounts":         "Accounts",
+  "/admin/announcements":    "Announcements",
+  "/admin/partnerships":     "Partnerships",
+  "/admin/aiassistant":      "AI Assistant",
+  "/admin/about":            "About",
+  "/admin/tsu":              "Tarlac State University",
 };
 
 export default function AdminLayout() {

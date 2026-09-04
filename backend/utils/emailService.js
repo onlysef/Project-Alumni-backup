@@ -294,4 +294,46 @@ const sendInterviewInvitationEmail = async (to, applicantName, companyName, posi
   });
 };
 
-module.exports = { generateOTP, sendOTPEmail, sendAccountCreatedEmail, sendEmploymentReminderBulk, sendInquiryEmail, sendApplicantMessageEmail, sendInterviewInvitationEmail };
+// Admin -> prospective employer, the special sign-up link (see
+// EmployerInvite model / employerInviteController.js). This is the only way
+// an employer account gets created — there's no public "Sign Up" page for them.
+const sendEmployerInviteEmail = async (to, link) => {
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="background:linear-gradient(135deg,#7B1A2E 0%,#9B2235 100%);padding:32px;text-align:center;">
+        <h1 style="color:#C49A2A;font-family:Georgia,serif;margin:0;font-size:26px;">TSU Alumni Portal</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Employer Partnership Invitation</p>
+      </div>
+      <div style="padding:32px 40px;">
+        <h2 style="color:#2d3748;margin:0 0 10px;font-size:20px;">You're invited to join as a partner employer</h2>
+        <p style="color:#4a5568;margin:0 0 24px;font-size:15px;line-height:1.6;">
+          The TSU Alumni Office has invited you to create an employer account on the
+          Alumni Portal, where you can post job opportunities to our graduates.
+        </p>
+        <div style="text-align:center;margin-bottom:24px;">
+          <a href="${link}"
+             style="display:inline-block;background:#7B1A2E;color:#fff;text-decoration:none;
+                    padding:12px 32px;border-radius:8px;font-size:15px;font-weight:600;">
+            Create Your Employer Account
+          </a>
+        </div>
+        <p style="color:#718096;font-size:13px;margin:0;">
+          This link is unique to you and can only be used once. If you did not expect
+          this invitation, you can safely ignore this email.
+        </p>
+      </div>
+      <div style="background:#f7fafc;padding:16px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+        <p style="color:#a0aec0;font-size:12px;margin:0;">© 2026 TSU Alumni Portal · Tarlac State University</p>
+      </div>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: 'You are invited to join TSU Alumni Portal as an Employer Partner',
+    html,
+  });
+};
+
+module.exports = { generateOTP, sendOTPEmail, sendAccountCreatedEmail, sendEmploymentReminderBulk, sendInquiryEmail, sendApplicantMessageEmail, sendInterviewInvitationEmail, sendEmployerInviteEmail };

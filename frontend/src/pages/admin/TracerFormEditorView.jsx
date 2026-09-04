@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useCallback } from "react";
-import { Modal } from "../../components/common/Primitives.jsx";
+import { useState, useEffect, useCallback } from "react";
+import { useOutletContext } from "react-router-dom";
 
 import { API, authHeaders } from "../../services/api.js";
 const MAROON = "#570013";
@@ -44,14 +44,12 @@ const BLANK_QUESTION = {
 
 // ── Inline styles ─────────────────────────────────────────────────────────────
 const s = {
-  modal: {
-    width: "min(960px, 96vw)",
-    maxHeight: "90vh",
+  card: {
     display: "flex",
     flexDirection: "column",
     background: "#fff",
     borderRadius: 12,
-    boxShadow: "0 8px 40px rgba(0,0,0,0.22)",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
     overflow: "hidden",
   },
   header: {
@@ -62,20 +60,10 @@ const s = {
     justifyContent: "space-between",
     alignItems: "center",
     flexShrink: 0,
+    flexWrap: "wrap",
+    gap: 10,
   },
   headerTitle: { fontWeight: 700, fontSize: 17, color: GOLD, letterSpacing: "0.02em" },
-  closeBtn: {
-    background: "rgba(255,255,255,0.15)",
-    border: "none",
-    color: "#fff",
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    cursor: "pointer",
-    fontSize: 18,
-    lineHeight: "32px",
-    textAlign: "center",
-  },
   tabs: {
     display: "flex",
     borderBottom: `2px solid ${MAROON}22`,
@@ -98,8 +86,6 @@ const s = {
     transition: "color 0.15s",
   }),
   body: {
-    flex: 1,
-    overflowY: "auto",
     padding: "20px 24px",
   },
   pageTitleRow: {
@@ -633,8 +619,11 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
 
 const COLLEGES = ["CCS","CIT","CAFA","COED","CCJE","CPAG","CBA","CASS","COS","COE"];
 
-// ── TracerFormEditor (main export) ────────────────────────────────────────────
-export default function TracerFormEditor({ open, onClose, showToast }) {
+// ── TracerFormEditorView (main export) — full page, was previously a modal
+// launched from the Employment page. ─────────────────────────────────────────
+export default function TracerFormEditorView() {
+  const { showToast } = useOutletContext();
+
   const [college, setCollege] = useState("CCS");
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -661,11 +650,11 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
       .finally(() => setLoading(false));
   }
 
-  // Load config each time the modal opens or college changes
+  // Load config on mount and whenever the college changes.
   useEffect(() => {
-    if (!open) return;
     loadConfig(college);
-  }, [open, college]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [college]);
 
   function closeImportDialog() {
     setImportOpen(false);
@@ -847,7 +836,6 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Save failed.");
       showToast(`${college} tracer form saved. Alumni will see the updated form immediately.`);
-      onClose();
     } catch (err) {
       showToast(err.message || "Save failed. Please try again.");
     } finally {
@@ -876,65 +864,46 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
     : [];
 
   return (
-    <Modal open={open} onClose={onClose}>
-      <div style={s.modal} role="dialog" aria-modal="true" aria-label="Edit Tracer Form">
+    <section className="content tracer-form-editor-view view active-view">
+      <div className="admin-hero" aria-label="Edit tracer form header">
+        <h1 className="admin-hero-title">Edit Tracer Form</h1>
+        <p className="admin-hero-subtitle">
+          Build and manage each college's tracer study questionnaire — add pages and questions,
+          set conditional logic, or import a starting point from another college or a Google Form.
+        </p>
+      </div>
 
+      <div style={s.card}>
         {/* Header */}
         <div style={s.header}>
-          <div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", marginBottom: 2 }}>
-              TSU · Alumni Portal
-            </div>
-            <div style={s.headerTitle}>Edit Tracer Form</div>
-          </div>
+          <div style={s.headerTitle}>Form Configuration</div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <select
+              className="tracer-editor-college-select"
               value={college}
               onChange={(e) => setCollege(e.target.value)}
-              style={{
-                background: "rgba(255,255,255,0.15)",
-                color: "#fff",
-                border: "1px solid rgba(255,255,255,0.35)",
-                borderRadius: 6,
-                padding: "5px 10px",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
             >
-              {COLLEGES.map((c) => <option key={c} value={c} style={{ color: "#000" }}>{c}</option>)}
+              {COLLEGES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             {!loading && config && (
               <button
                 type="button"
-                style={{
-                  background: "rgba(255,255,255,0.15)",
-                  color: "#fff",
-                  border: "1px solid rgba(255,255,255,0.35)",
-                  borderRadius: 6,
-                  padding: "5px 12px",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
+                className="tracer-editor-import-btn"
                 onClick={() => setImportOpen(true)}
                 title="Import questions from another college's form or a Google Form"
               >
                 Import…
               </button>
             )}
-            <button type="button" style={s.closeBtn} onClick={onClose} aria-label="Close">
-              ×
-            </button>
           </div>
         </div>
 
         {loading ? (
-          <div style={{ padding: "48px", textAlign: "center", color: "#76656a", flex: 1 }}>
+          <div style={{ padding: "48px", textAlign: "center", color: "#76656a" }}>
             Loading form configuration…
           </div>
         ) : !config ? (
-          <div style={{ padding: "48px", textAlign: "center", color: "#b04050", flex: 1 }}>
+          <div style={{ padding: "48px", textAlign: "center", color: "#b04050" }}>
             Could not load form configuration. Please try again.
           </div>
         ) : (
@@ -1096,8 +1065,8 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
 
             {/* Footer */}
             <div style={s.footer}>
-              <button type="button" style={s.secondaryBtn} onClick={onClose}>
-                Cancel
+              <button type="button" style={s.secondaryBtn} onClick={() => loadConfig(college)} title="Discard unsaved changes and reload the saved form">
+                Discard Changes
               </button>
               <button
                 type="button"
@@ -1327,6 +1296,6 @@ export default function TracerFormEditor({ open, onClose, showToast }) {
           </div>
         </div>
       )}
-    </Modal>
+    </section>
   );
 }

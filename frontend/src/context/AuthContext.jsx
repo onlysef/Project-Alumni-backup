@@ -1,4 +1,5 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
+import { API } from "../services/api.js";
 
 const AuthContext = createContext(null);
 
@@ -49,6 +50,43 @@ export function AuthProvider({ children }) {
       localStorage.setItem("auth_user", JSON.stringify(u));
     } catch {}
     setTracerStudyCompletedState(true);
+  }
+
+  // Whether this alumni has unanswered questions added to their college's
+  // tracer form after they last submitted — checked once per session so
+  // ProtectedRoute can route a notified alumni straight to the "new
+  // questions" view instead of the dashboard right after login, rather than
+  // only surfacing this once they happen to open the tracer-study page on
+  // their own. null = not checked yet (or not applicable), true/false once resolved.
+  const [needsTracerUpdate, setNeedsTracerUpdateState] = useState(null);
+  const [tracerUpdateChecked, setTracerUpdateChecked] = useState(false);
+
+  useEffect(() => {
+    if (!token || user?.role !== "alumni" || !tracerStudyCompleted) {
+      setTracerUpdateChecked(true);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API}/alumni/tracer-study`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        setNeedsTracerUpdateState((d.newQuestionsCount || 0) > 0);
+        setTracerUpdateChecked(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setNeedsTracerUpdateState(false);
+        setTracerUpdateChecked(true);
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user?.role, tracerStudyCompleted]);
+
+  // Called after a successful tracer-study submit so the alumni isn't
+  // immediately routed right back to the same screen they just completed.
+  function setTracerUpdateDone() {
+    setNeedsTracerUpdateState(false);
   }
 
   // Patches the logged-in user's own cached profile (name, email, etc.) after
@@ -102,7 +140,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, firstLogin, setFirstLoginDone, tracerStudyCompleted, setTracerStudyDone, updateUser, logout }}>
+    <AuthContext.Provider value={{ user, token, firstLogin, setFirstLoginDone, tracerStudyCompleted, setTracerStudyDone, needsTracerUpdate, tracerUpdateChecked, setTracerUpdateDone, updateUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

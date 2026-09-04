@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications, bulkUpdateStatus } = require('../controllers/adminController');
+const { updateAlumniTracerData } = require('../controllers/alumniController');
 const {
   getAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
@@ -10,14 +11,18 @@ const {
 const {
   getPartnerships, createPartnership, updatePartnership, deletePartnership,
 } = require('../controllers/partnershipController');
+const {
+  createEmployerInvite, getEmployerInvites, revokeEmployerInvite,
+} = require('../controllers/employerInviteController');
 const { getAllJobs } = require('../controllers/jobController');
 const {
-  getAlumniWithoutRecord, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
-  getCourseJobStats, getDonutStats, getSurveyStats, getEmploymentStats, getTracerAnalytics,
+  getAlumniWithoutRecord, getBatchYears, createEmploymentRecord, syncTracerToEmployment, backfillEmploymentRecords,
+  getDonutStats, getCourseJobStats, getSurveyStats, getEmploymentStats, getTracerAnalytics,
+  getTracerFilterOptions, exportTracerAnalytics,
   getEmploymentRecords, getEmploymentRecord, updateEmploymentRecord,
   getEmploymentActivity, exportEmploymentRecords, logPrintActivity,
   getTracerQuestions, createTracerQuestion, updateTracerQuestion,
-  deleteTracerQuestion, reorderTracerQuestions, notifyAlumniToUpdate,
+  deleteTracerQuestion, reorderTracerQuestions, notifyAlumniToUpdate, getNotifyCandidates,
   getTracerResponseColleges, getTracerResponses, getTracerResponseDetail,
 } = require('../controllers/employmentController');
 const {
@@ -60,21 +65,29 @@ router.post('/partnerships',       createPartnership);
 router.patch('/partnerships/:id',  updatePartnership);
 router.delete('/partnerships/:id', deletePartnership);
 
+router.get('/employer-invites',        getEmployerInvites);
+router.post('/employer-invites',       createEmployerInvite);
+router.delete('/employer-invites/:id', revokeEmployerInvite);
+
 router.get('/jobs', getAllJobs);
 
 // Employment records — static sub-paths before /:id
-router.get('/employment/course-stats',               getCourseJobStats);
 router.get('/employment/donut-stats',                getDonutStats);
+router.get('/employment/course-stats',               getCourseJobStats);
 router.get('/employment/survey-stats',               getSurveyStats);
 router.get('/employment/stats',                      getEmploymentStats);
 router.get('/employment/tracer-analytics',            getTracerAnalytics);
+router.get('/employment/tracer-filter-options',      getTracerFilterOptions);
+router.get('/employment/tracer-analytics/export',    exportTracerAnalytics);
 router.get('/employment/activity',                   getEmploymentActivity);
 router.get('/employment/export',                     exportEmploymentRecords);
 router.get('/employment/alumni-without-record',      getAlumniWithoutRecord);
+router.get('/employment/batch-years',                getBatchYears);
 router.post('/employment/sync-tracer',               syncTracerToEmployment);
 router.post('/employment/backfill',                  backfillEmploymentRecords);
 router.post('/employment/log-print',                 logPrintActivity);
 router.post('/employment/notify',                    notifyAlumniToUpdate);
+router.get('/employment/notify-candidates',          getNotifyCandidates);
 router.get('/employment/responses/colleges',         getTracerResponseColleges);
 router.get('/employment/responses',                  getTracerResponses);
 router.get('/employment/responses/:alumni_id',       getTracerResponseDetail);
@@ -94,8 +107,9 @@ router.delete('/employment/tracer-questions/:id',     deleteTracerQuestion);
 // Employment CRUD
 router.get('/employment',       getEmploymentRecords);
 router.post('/employment',      createEmploymentRecord);
-router.get('/employment/:id',   getEmploymentRecord);
-router.patch('/employment/:id', updateEmploymentRecord);
+router.get('/employment/:id',        getEmploymentRecord);
+router.patch('/employment/:id',      updateEmploymentRecord);
+router.patch('/employment/:id/tracer', updateAlumniTracerData);
 
 // Office settings
 router.get('/appointments/settings',   getOfficeSettings);

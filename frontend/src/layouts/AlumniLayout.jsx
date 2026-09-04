@@ -9,7 +9,7 @@ const TITLES = { home: "Home", announcements: "Announcements", employment: "Alum
 
 export default function AlumniLayout() {
   const location = useLocation();
-  const { firstLogin, tracerStudyCompleted } = useAuth();
+  const { firstLogin, tracerStudyCompleted, needsTracerUpdate } = useAuth();
   const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
@@ -51,15 +51,18 @@ export default function AlumniLayout() {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");
   }, [settings.theme]);
 
-  // An alumni who hasn't set their password yet or hasn't completed the
-  // tracer study yet must finish that step before the rest of the portal is
-  // reachable — the sidebar/topbar shell still renders (same background,
-  // branding, and Logout button as the rest of the app), but the sidebar's
-  // nav list is withheld so no other section reads as available. These are
-  // two distinct steps (password setup happens first, then the tracer
-  // study), so the label shown has to reflect whichever one is actually
-  // still pending rather than always saying "Account Setup".
-  const restrictedStep = firstLogin ? "Account Setup" : !tracerStudyCompleted ? "Tracer Study" : null;
+  // An alumni who hasn't set their password yet, hasn't completed the tracer
+  // study yet, or has new tracer-study questions to answer (added after they
+  // last submitted, e.g. via a Notify Alumni reminder) must finish that step
+  // before the rest of the portal is reachable — the sidebar/topbar shell
+  // still renders (same background, branding, and Logout button as the rest
+  // of the app), but the sidebar's nav list is withheld so no other section
+  // reads as available. These are three distinct steps, so the label shown
+  // has to reflect whichever one is actually still pending.
+  const restrictedStep = firstLogin ? "Account Setup"
+    : !tracerStudyCompleted ? "Tracer Study"
+    : needsTracerUpdate ? "Update Employment Details"
+    : null;
   const restricted = !!restrictedStep;
 
   useEffect(() => { document.title = `${title} | Tarlac State University`; }, [title]);

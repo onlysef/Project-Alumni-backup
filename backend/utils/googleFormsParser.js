@@ -10,7 +10,13 @@
 // Item shape: [itemId, title, description, type, entries, ...]
 //   entries[0] = [entryId, choices|null, ...unused, requiredFlag]
 //   choices    = [[label, null, null, null, isOtherOrRequired], ...]
-// type 8 = section header (also acts as a page break in multi-page forms).
+// type 8 = PAGE_BREAK (a real multi-page split in the source form).
+// type 6 = TITLE_AND_DESCRIPTION — a plain heading Google renders inline on
+// the same page (no actual page break). Tested against a real tracer-study
+// form that only used these (no type 8 at all) to organize ~24 questions
+// into 5 sections ("Personal Information", "Academic Information", etc.);
+// treating type 6 as page-break-equivalent turns each of those sections into
+// its own page here, instead of dumping every question onto one long page.
 
 const ALLOWED_HOSTS = ['docs.google.com', 'forms.gle'];
 
@@ -20,7 +26,10 @@ const TYPE_MAP = {
   2: 'radio',     // MULTIPLE_CHOICE (Google's name for single-select)
   3: 'select',    // DROPDOWN
   4: 'checkbox',  // CHECKBOXES
+  9: 'text',      // DATE — no dedicated date question type yet; collect as free text rather than drop it
 };
+
+const PAGE_BREAK_TYPES = new Set([8, 6]);
 
 function assertAllowedUrl(rawUrl) {
   let parsed;
@@ -91,9 +100,10 @@ function convertToPages(data) {
   items.forEach((item) => {
     const [itemId, title, , type, entries] = item;
 
-    if (type === 8) {
-      // Section header — starts a new page. Don't flush an empty leading
-      // page if this is the very first item in the form.
+    if (PAGE_BREAK_TYPES.has(type)) {
+      // Real page break (8) or inline section heading (6) — both start a new
+      // page here. Don't flush an empty leading page if this is the very
+      // first item in the form.
       if (started || currentQuestions.length > 0) flushPage();
       currentTitle = title || null;
       currentQuestions = [];

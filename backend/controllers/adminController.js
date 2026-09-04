@@ -73,7 +73,7 @@ function generateTempPassword() {
 // POST /api/admin/users
 const createUser = async (req, res) => {
   try {
-    const { firstName, middleInitial, lastName, email, role, college, course, graduationYear, track } = req.body;
+    const { firstName, middleInitial, lastName, email, role, college, course, graduationYear, track, partnershipId } = req.body;
     if (!firstName || !lastName || !email || !role) {
       return res.status(400).json({ message: 'firstName, lastName, email, and role are required.' });
     }
@@ -116,6 +116,13 @@ const createUser = async (req, res) => {
       if (course)         userData.course         = course.trim().toUpperCase();
       if (graduationYear) userData.graduationYear = Number(graduationYear);
       if (track && userData.course === 'BSIT') userData.track = track;
+    }
+    if (role.toLowerCase() === 'employer' && partnershipId) {
+      const partnership = await Partnership.findById(partnershipId).select('name').lean();
+      if (partnership) {
+        userData.partnershipId = partnershipId;
+        userData.company       = partnership.name;
+      }
     }
 
     const user = await User.create(userData);

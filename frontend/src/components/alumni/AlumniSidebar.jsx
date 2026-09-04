@@ -81,7 +81,7 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
       {restricted ? (
         <nav className="nav" aria-label="Alumni navigation">
           <a href="#" className="active" onClick={(e) => e.preventDefault()}>
-            <span><Icon name={restrictedLabel === "Tracer Study" ? "alumni-tracer" : "alumni-setup"} /></span><span>{restrictedLabel}</span>
+            <span><Icon name={restrictedLabel === "Update Employment Details" ? "alumni-employment" : restrictedLabel === "Tracer Study" ? "alumni-tracer" : "alumni-setup"} /></span><span>{restrictedLabel}</span>
           </a>
         </nav>
       ) : (

@@ -1,17 +1,11 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
-import TracerFormEditor from "./TracerFormEditor.jsx";
-import TracerResponsesViewer from "./TracerResponsesViewer.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
-
-// Temporary: the 254 bulk-migrated alumni accounts must not be emailed until
-// explicitly authorized. Flip back to false once that permission is granted.
-const NOTIFY_ALUMNI_DISABLED = true;
+import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -42,20 +36,7 @@ function groupActivities(acts) {
   return Object.entries(buckets).filter(([, v]) => v.length > 0);
 }
 
-const COLLEGES   = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
 const COURSES    = ["BSIT", "BSCS", "BSIS", "BSIM"];
-const COURSES_BY_COLLEGE = {
-  CCS:  ["BSIT", "BSCS", "BSIS", "BSIM"],
-  COE:  ["BSCE", "BSEE", "BSME", "BSECE"],
-  CBA:  ["BSBA", "BSA", "BSME-Mgt"],
-  COED: ["BEED", "BSED"],
-  COS:  ["BSBio", "BSChem", "BSMath"],
-  CIT:  ["BSIT-Tech", "BSAuto"],
-  CASS: ["ABComm", "ABPolSci"],
-  CCJE: ["BSCrim"],
-  CAFA: ["BSArch", "BFA"],
-  CPAG: ["BPA"],
-};
 const STATUSES   = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
 const ADD_STATUSES = ["Employed", "Unemployed", "Self-employed"];
 const LIMITS     = [10, 25, 50, 100];
@@ -74,11 +55,136 @@ const INDUSTRIES = [
   "Non-Profit/NGO",
   "Other",
 ];
-const BATCH_YEARS = [2020, 2021, 2022, 2023, 2024];
-
 const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "", company: "" };
 const EMPLOYMENT_TYPES = ["Regular/Permanent", "Contractual/Non-regular", "Part-time", "Self-employed/Business owner", "OFW", "Other"];
 const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: "", job_title: "", industry: "", work_location: "", salary_range: "", job_related_to_course: false, date_employed: "", reason_unemployed: "" };
+
+const MAROON = "#570013";
+
+// ── Alumni Record detail helpers (mirrors TracerResponsesView's DetailModal,
+// duplicated rather than shared since that page's own modal is unrelated in
+// scope and already works — this one additionally leads with a profile
+// picture and the employment-specific summary). Each section renders as its
+// own card, and fields inside as zebra-striped rows, instead of a single
+// flat list of label/value pairs. ────────────────────────────────────────────
+function RecordGroup({ title, children }) {
+  const kids = Array.isArray(children) ? children : [children];
+  return (
+    <div style={{
+      background: "#fff",
+      border: "1px solid #f0dfe2",
+      borderRadius: 12,
+      padding: "14px 18px 16px",
+      marginBottom: 14,
+      boxShadow: "0 1px 4px rgba(87,0,19,0.05)",
+    }}>
+      <div style={{
+        fontSize: 12, fontWeight: 800, color: MAROON, textTransform: "uppercase",
+        letterSpacing: "0.06em", marginBottom: 10, paddingBottom: 9,
+        borderBottom: `1px solid ${MAROON}14`,
+      }}>
+        {title}
+      </div>
+      <div>{kids}</div>
+    </div>
+  );
+}
+
+function RecordField({ label, value }) {
+  const v = Array.isArray(value) ? value.join(", ") : value;
+  if (!v && v !== 0) return null;
+  return (
+    <div className="record-field-row" style={{
+      display: "grid", gridTemplateColumns: "170px 1fr", gap: "4px 14px",
+      padding: "7px 8px", fontSize: 13, borderRadius: 7,
+    }}>
+      <span style={{ color: "#8a7377", fontWeight: 600 }}>{label}</span>
+      <span style={{ color: "#2d2024", wordBreak: "break-word", fontWeight: 500 }}>{v}</span>
+    </div>
+  );
+}
+
+function RecordMultilineField({ label, value }) {
+  if (!value) return null;
+  return (
+    <div className="record-field-row" style={{ padding: "7px 8px", fontSize: 13, borderRadius: 7 }}>
+      <div style={{ color: "#8a7377", fontWeight: 600, marginBottom: 4 }}>{label}</div>
+      <div style={{ color: "#2d2024", whiteSpace: "pre-line", lineHeight: 1.5 }}>{value}</div>
+    </div>
+  );
+}
+
+// Skills/Languages are stored as one big string, newline- or comma/semicolon-
+// separated (same convention the Job Connect resume editor writes) — shown
+// as chips instead of one long run-on line.
+function RecordChips({ label, text }) {
+  const items = String(text || "").split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+  if (!items.length) return null;
+  return (
+    <div style={{ padding: "7px 8px", fontSize: 13 }}>
+      <div style={{ color: "#8a7377", fontWeight: 600, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {items.map((s, i) => (
+          <span key={i} style={{ background: `${MAROON}10`, color: MAROON, padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
+            {s}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// `rows` is the question's own row definitions ([{ key, label }, ...]) from
+// the live form config — labels are looked up from there instead of a
+// hardcoded dictionary, so this renders correctly for ANY rating_table
+// question on ANY college's form, not just the seeded personal-growth one.
+function RecordRatingsTable({ ratings, rows }) {
+  const entries = Object.entries(ratings || {}).filter(([, v]) => v);
+  if (!entries.length) return null;
+  const labelFor = (key) => rows?.find((r) => r.key === key)?.label || key;
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 4, borderRadius: 8, overflow: "hidden" }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", padding: "7px 10px", background: MAROON, color: "#fff", width: "55%" }}>Item</th>
+          <th style={{ textAlign: "left", padding: "7px 10px", background: MAROON, color: "#fff" }}>Rating</th>
+        </tr>
+      </thead>
+      <tbody>
+        {entries.map(([key, val], i) => (
+          <tr key={key} style={{ background: i % 2 === 0 ? "#faf5f5" : "#fff" }}>
+            <td style={{ padding: "6px 10px", color: "#2d2024" }}>{labelFor(key)}</td>
+            <td style={{ padding: "6px 10px", color: MAROON, fontWeight: 700 }}>{val}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function AlumniAvatar({ url, name }) {
+  const initials = (name || "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase())
+    .join("") || "?";
+  return url ? (
+    <img
+      src={url}
+      alt={name}
+      style={{ width: 84, height: 84, borderRadius: "50%", objectFit: "cover", border: "3px solid #fff", boxShadow: "0 2px 10px rgba(87,0,19,0.25)", flexShrink: 0 }}
+    />
+  ) : (
+    <div style={{
+      width: 84, height: 84, borderRadius: "50%", background: "#fff", color: MAROON,
+      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, fontWeight: 800,
+      border: "3px solid #fff", boxShadow: "0 2px 10px rgba(87,0,19,0.25)", flexShrink: 0,
+    }}>
+      {initials}
+    </div>
+  );
+}
 
 function StatusBadge({ status }) {
   const cls = {
@@ -88,6 +194,108 @@ function StatusBadge({ status }) {
     "Not Yet Updated": "not-yet-updated",
   }[status] || "not-yet-updated";
   return <span className={`status-badge ${cls}`}>{status || "Not Yet Updated"}</span>;
+}
+
+// Small tag marking a question as newly-added/unanswered (or explicitly
+// flagged via Notify Alumni) — same "new questions" concept already used on
+// the Notify Alumni list and the alumni's own post-login gate, surfaced here
+// too so these don't just blend in with every other already-answered field.
+function NewQuestionTag() {
+  return (
+    <span style={{ background: "#941527", color: "#fff", fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 999, marginLeft: 8 }}>
+      NEW
+    </span>
+  );
+}
+
+// Renders one editable input for a tracer-form question inside the Edit
+// Record modal, matching whichever type the question actually is (mirrors
+// the alumni-facing TracerStudyForm's own QuestionField, but with the
+// plainer admin form styling already used elsewhere in this modal).
+function EditQuestionField({ q, value, onChange, isNew }) {
+  if (q.type === "static_text") return null;
+
+  const wrapStyle = isNew
+    ? { background: "#fffbea", border: "1px solid #fac853", borderRadius: 8, padding: "8px 10px 10px", marginBottom: 10 }
+    : { marginBottom: 14 };
+  const labelNode = <>{q.label}{isNew && <NewQuestionTag />}</>;
+
+  if (q.type === "textarea") {
+    return (
+      <div style={wrapStyle}>
+        <label>
+          {labelNode}
+          <textarea value={value || ""} onChange={(e) => onChange(e.target.value)} />
+        </label>
+      </div>
+    );
+  }
+
+  if (q.type === "radio" || q.type === "select") {
+    return (
+      <div style={wrapStyle}>
+        <label>
+          {labelNode}
+          <select value={value || ""} onChange={(e) => onChange(e.target.value)}>
+            <option value="">Select…</option>
+            {(q.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+        </label>
+      </div>
+    );
+  }
+
+  if (q.type === "checkbox") {
+    const arr = Array.isArray(value) ? value : [];
+    return (
+      <div style={wrapStyle}>
+        <span style={{ display: "block", fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{labelNode}</span>
+        {(q.options || []).map((opt) => (
+          <label key={opt} style={{ flexDirection: "row", alignItems: "center", gap: 8, fontWeight: 400, marginBottom: 4 }}>
+            <input
+              type="checkbox"
+              style={{ width: "auto", minHeight: "auto" }}
+              checked={arr.includes(opt)}
+              onChange={(e) => onChange(e.target.checked ? [...arr, opt] : arr.filter((o) => o !== opt))}
+            />
+            {opt}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
+  if (q.type === "rating_table") {
+    const ratings = (value && typeof value === "object" && !Array.isArray(value)) ? value : {};
+    return (
+      <div style={wrapStyle}>
+        <span style={{ display: "block", fontWeight: 600, fontSize: 13, marginBottom: 6 }}>{labelNode}</span>
+        {(q.rows || []).map((row) => (
+          <div key={row.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
+            <span style={{ fontSize: 13, color: "#2d2024" }}>{row.label}</span>
+            <select
+              style={{ maxWidth: 180 }}
+              value={ratings[row.key] || ""}
+              onChange={(e) => onChange({ ...ratings, [row.key]: e.target.value })}
+            >
+              <option value="">—</option>
+              {(q.ratingOptions || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // "text" and anything else falls back to a plain input
+  return (
+    <div style={wrapStyle}>
+      <label>
+        {labelNode}
+        <input type="text" value={value || ""} onChange={(e) => onChange(e.target.value)} />
+      </label>
+    </div>
+  );
 }
 
 function ConfirmDialog({ open, message, onConfirm, onCancel }) {
@@ -129,6 +337,15 @@ export default function EmploymentView() {
   const [filterOpen, setFilterOpen]         = useState(false);
   const [appliedFilters, setAppliedFilters] = useState(EMPTY_FILTERS);
   const [pendingFilters, setPendingFilters] = useState(EMPTY_FILTERS);
+  // Actual distinct batch years present in the data, not a hardcoded
+  // range — a fixed list silently hid every alumnus outside it.
+  const [batchYears, setBatchYears] = useState([]);
+  useEffect(() => {
+    fetch(`${API}/admin/employment/batch-years`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => setBatchYears(d.years || []))
+      .catch(() => {});
+  }, []);
 
   // ─── view / edit modals ─────────────────────────────────────────────────────
   const [viewRecord, setViewRecord]               = useState(null);
@@ -138,68 +355,28 @@ export default function EmploymentView() {
   const [editForm, setEditForm]       = useState({});
   const [editErrors, setEditErrors]   = useState({});
   const [editSaving, setEditSaving]   = useState(false);
+  // Flat question-id -> value map for the FULL tracer study record (fixed
+  // fields and custom/imported ones alike), edited alongside the existing
+  // AlumniEmployment fields above and saved via a separate request to
+  // /admin/employment/:id/tracer. Empty ({}) when this alumnus has never
+  // submitted a tracer response — editing is limited to the employment
+  // fields only in that case (no tracer response exists yet to correct).
+  const [editTracerForm, setEditTracerForm] = useState({});
+  // Question ids new_question_ids flagged as "new" for this specific alumni
+  // (see getEmploymentRecord) — drives the "NEW" tag on EditQuestionField.
+  const [editNewQuestionIds, setEditNewQuestionIds] = useState([]);
 
   // ─── tracer form editor ─────────────────────────────────────────────────────
-  const [tracerOpen, setTracerOpen]         = useState(false);
-  const [responsesOpen, setResponsesOpen]   = useState(false);
 
   // ─── activities ─────────────────────────────────────────────────────────────
   const [activities, setActivities]             = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activitiesExpanded, setActivitiesExpanded] = useState(false);
 
-  // ─── export ─────────────────────────────────────────────────────────────────
-  const [exportLoading, setExportLoading]   = useState(false);
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  // { left, top } | null — fixed-viewport coordinates the portaled menu below
-  // anchors to (see the portal comment near .emp-export-menu's render for why).
-  const [exportMenuPos, setExportMenuPos]   = useState(null);
-  const exportRef = useRef(null);
-  const exportMenuRef = useRef(null);
 
   // ─── confirm dialog ─────────────────────────────────────────────────────────
   const [confirm, setConfirm] = useState({ open: false, message: "", onConfirm: null });
 
-  // ─── notify alumni (accreditation reminder) ──────────────────────────────────
-  const [notifying, setNotifying] = useState(false);
-  const [notifySent, setNotifySent] = useState(false);
-
-  function handleNotifyAlumni() {
-    const parts = [];
-    if (appliedFilters.college) parts.push(appliedFilters.college);
-    if (appliedFilters.course)  parts.push(appliedFilters.course);
-    const scope = parts.length ? `${parts.join(" · ")} alumni` : "all alumni";
-    setConfirm({
-      open: true,
-      message: `Send a reminder to ${scope} to update their employment details for accreditation?`,
-      onConfirm: async () => {
-        setConfirm(c => ({ ...c, open: false }));
-        setNotifying(true);
-        try {
-          const body = {};
-          if (appliedFilters.college) body.college = appliedFilters.college;
-          if (appliedFilters.course)  body.course  = appliedFilters.course;
-          const res  = await fetch(`${API}/admin/employment/notify`, {
-            method:  'POST',
-            headers: authHeaders(),
-            body:    JSON.stringify(body),
-          });
-          const data = await res.json();
-          if (!res.ok) { showToast(data.message || 'Failed to send notifications.'); return; }
-          setNotifySent(true);
-          setTimeout(() => setNotifySent(false), 2500);
-          showToast(data.message);
-          if (data.failedEmails?.length) {
-            console.warn('Failed to deliver to:', data.failedEmails);
-          }
-        } catch {
-          showToast('Could not connect to server.');
-        } finally {
-          setNotifying(false);
-        }
-      },
-    });
-  }
 
   // ─── add record modal ────────────────────────────────────────────────────────
   const [addOpen, setAddOpen]       = useState(false);
@@ -299,71 +476,63 @@ export default function EmploymentView() {
       .finally(() => setViewDetailLoading(false));
   }, [viewRecord]);
 
-  // ── export menu click-outside ───────────────────────────────────────────────
+  // The Alumni Record's tracer-study sections are rendered straight off this
+  // — the alumni's college's CURRENT live form config — rather than a fixed
+  // set of hardcoded sections, so every page (however many, however titled,
+  // whatever custom questions were added to it) shows up correctly for any
+  // college, not just the ones with pages happening to match a guessed
+  // naming convention. A custom question's id never changes even if the
+  // admin later edits its wording or moves it to a different page, so this
+  // has to be looked up live rather than baked into the stored answer.
+  const [tracerConfig, setTracerConfig] = useState(null);
   useEffect(() => {
-    if (!exportMenuOpen) return;
-    const handler = (e) => {
-      // The menu itself is portaled to <body> now (see its render below), so
-      // it's no longer a DOM descendant of exportRef — without this second
-      // check, a click on "Export as CSV/Excel" would register as "outside"
-      // and close the menu before handleExport's own click handler ever runs.
-      if (exportRef.current?.contains(e.target)) return;
-      if (exportMenuRef.current?.contains(e.target)) return;
-      setExportMenuOpen(false);
-    };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [exportMenuOpen]);
+    // Edit Record opens by closing View Record first (setViewRecord(null)),
+    // which would otherwise clear viewDetail (and this college lookup) right
+    // as the Edit modal needs it — falling back to editRecord's own college
+    // keeps this populated across that handoff instead of resetting to null.
+    const college = viewDetail?.college || editRecord?.college;
+    if (!college) { setTracerConfig(null); return; }
+    fetch(`${API}/admin/tracer-form-config?college=${encodeURIComponent(college)}`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => setTracerConfig(d.config || null))
+      .catch(() => setTracerConfig(null));
+  }, [viewDetail?.college, editRecord?.college]);
 
   // ═══════════════════════════════════════════════════════════ ACTIONS ═════
 
-  async function handleExport(format) {
-    setExportMenuOpen(false);
-    setExportLoading(true);
-    try {
-      const params = new URLSearchParams({
-        format,
-        search,
-        status:     appliedFilters.status,
-        college:    appliedFilters.college,
-        course:     appliedFilters.course,
-        batch_year: appliedFilters.batch_year,
-        company:    appliedFilters.company,
-      });
-      const res = await fetch(`${API}/admin/employment/export?${params}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("auth_token")}` },
-      });
-      if (!res.ok) throw new Error("Export failed.");
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = format === "excel" ? "employment-details.xlsx" : "employment-details.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast(`Exported as ${format.toUpperCase()} successfully.`);
-      setTimeout(fetchActivities, 600);
-    } catch (err) {
-      showToast(err.message || "Export failed.");
-    } finally {
-      setExportLoading(false);
-    }
-  }
-
-  function openEdit(r, tracerData = null) {
+  function openEdit(r, tracerData = null, newQuestionIds = []) {
     setEditRecord(r);
+    setEditNewQuestionIds(newQuestionIds || []);
     setEditForm({
       employment_status:     r.employment_status     || "",
       company_name:          tracerData?.companyName      || r.company_name          || "",
       job_title:             tracerData?.occupationTitle  || r.job_title             || "",
       industry:              tracerData?.industryField    || r.industry              || "",
-      work_location:         tracerData?.workLocation     || r.work_location         || "",
+      // r.work_location (the actual specific place, e.g. "Clark") takes
+      // priority — tracerData.placeOfWork is only ever a "Local"/"Abroad"
+      // radio choice, not a real location, and shouldn't overwrite it.
+      work_location:         r.work_location || tracerData?.resolvedWorkLocation || "",
       job_related_to_course: !!r.job_related_to_course,
       employment_type:       tracerData?.presentEmploymentType || r.employment_type      || "",
       years_in_current_job:  tracerData?.yearsInCurrentJob    || r.years_in_current_job || "",
       reason_unemployed:     r.reason_unemployed     || "",
     });
     setEditErrors({});
+
+    // Flatten the full tracer record the same way the alumni's own form
+    // submits it — fixed-schema fields at the top level, custom/imported
+    // ones merged in by their own id — so this can be saved back through
+    // the exact same path (saveTracerAnswers) a real resubmission uses.
+    // Left empty if this alumnus has never submitted one at all.
+    const flat = {};
+    if (tracerData) {
+      Object.entries(tracerData).forEach(([k, v]) => {
+        if (k === "extra_answers" || k === "submittedAt" || k === "resolvedCompanyName" || k === "resolvedWorkLocation") return;
+        flat[k] = v;
+      });
+      Object.entries(tracerData.extra_answers || {}).forEach(([k, v]) => { flat[k] = v; });
+    }
+    setEditTracerForm(flat);
   }
 
   function validateEdit(f) {
@@ -393,7 +562,20 @@ export default function EmploymentView() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Update failed.");
-      showToast("Employment record updated successfully.");
+
+      // Only present (and only sent) when this alumnus already has a
+      // tracer response to correct — see openEdit's comment.
+      if (Object.keys(editTracerForm).length > 0) {
+        const tracerRes = await fetch(`${API}/admin/employment/${editRecord._id}/tracer`, {
+          method: "PATCH", headers: authHeaders(), body: JSON.stringify(editTracerForm),
+        });
+        if (!tracerRes.ok) {
+          const tracerErr = await tracerRes.json().catch(() => ({}));
+          throw new Error(tracerErr.message || "Employment details saved, but the tracer study fields failed to save.");
+        }
+      }
+
+      showToast("Alumni record updated successfully.");
       setEditRecord(null);
       setRefreshKey(k => k + 1);
       setTimeout(fetchActivities, 600);
@@ -404,35 +586,176 @@ export default function EmploymentView() {
     }
   }
 
-  function printRecord(r) {
+  // Takes just the bare row (only _id/name guaranteed) and fetches the full
+  // record + that college's live form config itself — this used to only
+  // print whatever the caller already had in hand, so the row-level "quick
+  // print" button (which only ever loaded the bare list row) silently
+  // printed an incomplete record with no picture, no tracer pages, and no
+  // resume, while printing from inside the Alumni Record modal looked
+  // complete. Fetching fresh here every time makes both entry points
+  // produce the exact same, always-complete printout.
+  async function printRecord(rowRecord) {
     const w  = window.open("", "_blank");
-    if (!w) { showToast(`${r.name} record is ready to print.`); return; }
+    if (!w) { showToast(`${rowRecord.name} record is ready to print.`); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Alumni Record — ${rowRecord.name}</title></head><body style="font-family:Arial,sans-serif;padding:40px;color:#570013">Loading full record…</body></html>`);
+
+    let r;
+    try {
+      const res = await fetch(`${API}/admin/employment/${rowRecord._id}`, { headers: authHeaders() });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load record.");
+      r = data.record;
+    } catch (err) {
+      w.close();
+      showToast(err.message || "Could not load the full record to print.");
+      return;
+    }
+
+    let config = null;
+    if (r.college) {
+      try {
+        const cfgRes  = await fetch(`${API}/admin/tracer-form-config?college=${encodeURIComponent(r.college)}`, { headers: authHeaders() });
+        const cfgData = await cfgRes.json();
+        config = cfgData.config || null;
+      } catch { /* prints without dynamic tracer sections if this fails */ }
+    }
+
+    const td     = r.tracer_data || null;
+    const resume = r.resume || null;
+
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const fmt = (v) => {
+      if (v === undefined || v === null || v === "") return "";
+      if (Array.isArray(v)) return v.join(", ");
+      if (typeof v === "object") return "";
+      return String(v);
+    };
+    const fmtList = (v) => String(v || "").split(/[,;\n]/).map((s) => s.trim()).filter(Boolean).join(", ");
+    const row    = (label, value) => { const v = fmt(value); return v ? `<tr><th>${esc(label)}</th><td>${esc(v)}</td></tr>` : ""; };
+    const rowPre = (label, value) => { const v = fmt(value); return v ? `<tr><th>${esc(label)}</th><td style="white-space:pre-line">${esc(v)}</td></tr>` : ""; };
+
+    const answerFor = (q) => {
+      if (!td) return undefined;
+      if (Object.prototype.hasOwnProperty.call(td, q.id)) return td[q.id];
+      return td.extra_answers?.[q.id];
+    };
+
+    const section = (title, rowsHtml) => rowsHtml
+      ? `<div class="card"><h2>${esc(title)}</h2><table>${rowsHtml}</table></div>`
+      : "";
+
+    let tracerSectionsHtml = "";
+    if (td && config) {
+      tracerSectionsHtml = config.pages.map((page) => {
+        const rowsHtml = (page.questions || [])
+          .filter((q) => q.type !== "static_text")
+          .map((q) => {
+            if (q.type === "rating_table") {
+              const val = answerFor(q);
+              if (!val || !Object.values(val).some(Boolean)) return "";
+              const sub = (q.rows || [])
+                .filter((rr) => val[rr.key])
+                .map((rr) => `<tr><td>${esc(rr.label)}</td><td><strong>${esc(val[rr.key])}</strong></td></tr>`)
+                .join("");
+              return sub ? `<tr><th colspan="2" style="background:#f0dfe2;color:#570013;width:auto">${esc(q.label)}</th></tr>${sub}` : "";
+            }
+            return row(q.label, answerFor(q));
+          })
+          .filter(Boolean)
+          .join("");
+        return section(page.title, rowsHtml);
+      }).join("");
+    }
+
+    const resumeRows = resume ? [
+      row("LinkedIn", resume.linkedin),
+      rowPre("Summary", resume.summary),
+      row("Skills", fmtList(resume.skills)),
+      rowPre("Experience", resume.experience),
+      rowPre("Education", resume.education),
+      rowPre("Certifications", resume.certifications),
+      rowPre("Projects", resume.projects),
+      row("Languages", fmtList(resume.languages)),
+    ].filter(Boolean).join("") : "";
+    const resumeHtml = section("Profile / Resume", resumeRows);
+
+    const isUnemployed = r.employment_status === "Unemployed";
+    const isNoRecord   = r.employment_status === "Not Yet Updated";
+    const jobTitle = td?.occupationTitle || r.job_title    || "";
+    const industry = td?.industryField   || r.industry     || "";
+    // Two distinct things — placeOfWork is only ever a "Local"/"Abroad"
+    // radio choice on the tracer form, while work_location is the actual
+    // specific place (e.g. "Clark", "Taguig"), usually entered by an admin.
+    const workArrangement = td?.placeOfWork || "";
+    const workLoc = r.work_location || td?.resolvedWorkLocation || "";
+    const jrd = String(td?.jobRelatedToDegree || "").toLowerCase().trim();
+    const related = td?.jobRelatedToDegree ? (jrd.startsWith("yes") ? "Yes" : "No") : (r.job_related_to_course ? "Yes" : "No");
+
+    const initials = (r.name || "").split(" ").filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join("") || "?";
+    const avatarHtml = r.avatarUrl
+      ? `<img src="${r.avatarUrl}" alt="" style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.3)" />`
+      : `<div style="width:88px;height:88px;border-radius:50%;background:#fff;color:#570013;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;border:3px solid #fff">${esc(initials)}</div>`;
+
+    const summaryRows = [
+      row("Email", r.email),
+      !isUnemployed && !isNoRecord ? row("Company Name", td?.companyName || r.company_name) : "",
+      !isUnemployed && !isNoRecord ? row("Job Title", jobTitle) : "",
+      !isUnemployed && !isNoRecord ? row("Industry", industry) : "",
+      !isUnemployed && !isNoRecord ? row("Work Arrangement", workArrangement) : "",
+      !isUnemployed && !isNoRecord ? row("Work Location", workLoc) : "",
+      !isUnemployed && !isNoRecord ? row("Employment Type", td?.presentEmploymentType || r.employment_type) : "",
+      !isUnemployed && !isNoRecord ? row("Years in Job", td?.yearsInCurrentJob || r.years_in_current_job) : "",
+      !isUnemployed && !isNoRecord ? row("Related to Course", related) : "",
+      !isUnemployed && !isNoRecord ? row("Salary Range", r.salary_range) : "",
+      !isUnemployed && !isNoRecord && r.date_employed ? row("Date Employed", fmtDate(r.date_employed)) : "",
+      isUnemployed ? row("Reason Unemployed", r.reason_unemployed) : "",
+      row("Last Updated", fmtDate(r.last_updated)),
+    ].filter(Boolean).join("");
+
+    // A second document.write() on an already-closed stream would just
+    // append after "Loading full record…" instead of replacing it —
+    // document.open() resets the stream so this write starts clean.
+    w.document.open();
     w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Employment Record — ${r.name}</title>
+<title>Alumni Record — ${esc(r.name)}</title>
 <style>
-  body{font-family:Arial,sans-serif;margin:40px;color:#1e1e1e}
-  h1{color:#570013;margin-bottom:22px;font-size:22px}
+  @media print { @page { margin: 14mm; } .card { break-inside: avoid; page-break-inside: avoid; } }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+  body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;margin:0;color:#2d2024;background:#f5eef0;font-size:13px;line-height:1.5}
+  .sheet{max-width:820px;margin:0 auto;background:#fff}
+  .banner{display:flex;align-items:center;gap:20px;background:linear-gradient(135deg,#570013 0%,#8b1a2e 100%);color:#fff;padding:26px 30px}
+  .banner h1{margin:0;font-size:21px;letter-spacing:.01em}
+  .banner p{margin:5px 0 0;font-size:13px;opacity:.85}
+  .badge{display:inline-block;margin-top:9px;padding:4px 13px;border-radius:999px;font-weight:800;font-size:11px;letter-spacing:.03em;background:#fff;color:#570013}
+  .content{padding:24px 30px 8px}
+  .card{background:#fff;border:1px solid #f0dfe2;border-radius:10px;padding:2px 0 0;margin-bottom:16px;overflow:hidden;box-shadow:0 1px 3px rgba(87,0,19,.06)}
+  h2{color:#570013;font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;background:#faf5f5;padding:9px 16px;margin:0;border-bottom:1px solid #f0dfe2}
   table{border-collapse:collapse;width:100%}
-  th,td{border:1px solid #ccc;padding:10px 14px;text-align:left}
-  th{background:#570013;color:#fff;width:200px;font-size:13px}
-  td{background:#f9f9f9;font-size:13px}
-  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:800;font-size:11px}
+  th,td{padding:8px 16px;text-align:left;font-size:12.5px;vertical-align:top;border-bottom:1px solid #f5eaea}
+  th{color:#8a7377;font-weight:700;width:210px}
+  td{color:#2d2024}
+  tr:last-child th, tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) th, tr:nth-child(even) td { background:#fcf8f8; }
+  .footer{margin:10px 0 26px;padding-top:12px;border-top:1px solid #eee;font-size:11px;color:#9a8080;text-align:center}
 </style></head><body>
-<h1>Employment Record</h1>
-<table>
-  <tr><th>Name</th><td>${r.name}</td></tr>
-  <tr><th>College</th><td>${r.college || "—"}</td></tr>
-  <tr><th>Course</th><td>${r.course || "—"}</td></tr>
-  <tr><th>Batch Year</th><td>${r.graduation_year || "—"}</td></tr>
-  <tr><th>Employment Status</th><td>${r.employment_status}</td></tr>
-  <tr><th>Job Title</th><td>${r.job_title || "—"}</td></tr>
-  <tr><th>Industry</th><td>${r.industry || "—"}</td></tr>
-  <tr><th>Work Location</th><td>${r.work_location || "—"}</td></tr>
-  <tr><th>Salary Range</th><td>${r.salary_range || "—"}</td></tr>
-  <tr><th>Related to Course</th><td>${r.job_related_to_course ? "Yes" : "No"}</td></tr>
-  ${r.employment_status === "Unemployed" ? `<tr><th>Reason Unemployed</th><td>${r.reason_unemployed || "—"}</td></tr>` : ""}
-  <tr><th>Last Updated</th><td>${fmtDate(r.last_updated)}</td></tr>
-</table></body></html>`);
+  <div class="sheet">
+    <div class="banner">
+      ${avatarHtml}
+      <div>
+        <h1>${esc(r.name)}</h1>
+        <p>${esc(r.college || "")}${r.college ? " · " : ""}${esc(r.course || "")}${r.graduation_year ? ` · Batch ${r.graduation_year}` : ""}</p>
+        <span class="badge">${esc(r.employment_status || "Not Yet Updated")}</span>
+      </div>
+    </div>
+    <div class="content">
+      ${section("Employment Summary", summaryRows)}
+      ${resumeHtml}
+      ${tracerSectionsHtml}
+      <div class="footer">Printed ${new Date().toLocaleString("en-PH")} — Tarlac State University Alumni Portal</div>
+    </div>
+  </div>
+</body></html>`);
     w.document.close();
     w.print();
     showToast(`${r.name} record sent to printer.`);
@@ -523,63 +846,8 @@ export default function EmploymentView() {
       {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
       <div className="employment-toolbar">
         <div className="section-title">
-          <h3>Employment Details</h3>
+          <h3>Alumni Record</h3>
           <span />
-        </div>
-        <div className="employment-actions">
-          <button
-            type="button"
-            className="maroon-action"
-            disabled={NOTIFY_ALUMNI_DISABLED || notifying}
-            title={NOTIFY_ALUMNI_DISABLED ? "Disabled — email permission not yet granted for the migrated alumni batch" : undefined}
-            onClick={handleNotifyAlumni}
-          >
-            <span><Icon name={notifySent ? "icon-13" : "icon-9"} /></span>
-            <span>{notifying ? "Sending…" : "Notify Alumni"}</span>
-          </button>
-          <div className="emp-export-wrap" ref={exportRef}>
-            <button
-              type="button"
-              className="maroon-action"
-              disabled={exportLoading}
-              onClick={() => {
-                // .employment-card (right below this toolbar, only child of
-                // the same non-stacking-context parent) still painted over
-                // this menu at every z-index tried in place — same trap
-                // ActionMenu.jsx hit with table rows. Portaling to <body>
-                // with fixed coordinates read off the trigger sidesteps
-                // local stacking entirely instead of fighting it.
-                if (!exportMenuOpen) {
-                  const rect = exportRef.current.getBoundingClientRect();
-                  setExportMenuPos({ top: rect.bottom + 4, left: Math.max(6, rect.right - 170) });
-                }
-                setExportMenuOpen(o => !o);
-              }}
-            >
-              <span><Icon name="icon-17" /></span>
-              <span>{exportLoading ? "Exporting…" : "Export List"}</span>
-            </button>
-            {exportMenuOpen && exportMenuPos && createPortal(
-              <div
-                className="emp-export-menu show"
-                ref={exportMenuRef}
-                style={{ position: "fixed", top: exportMenuPos.top, left: exportMenuPos.left, right: "auto" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button type="button" onClick={() => handleExport("csv")}>Export as CSV</button>
-                <button type="button" onClick={() => handleExport("excel")}>Export as Excel</button>
-              </div>,
-              document.body
-            )}
-          </div>
-          <button type="button" className="maroon-action" onClick={() => setResponsesOpen(true)}>
-            <span><Icon name="icon-20" /></span>
-            <span>View Responses</span>
-          </button>
-          <button type="button" className="maroon-action" onClick={() => setTracerOpen(true)}>
-            <span><Icon name="icon-18" /></span>
-            <span>Edit Tracer Form</span>
-          </button>
         </div>
       </div>
 
@@ -784,7 +1052,7 @@ export default function EmploymentView() {
               Batch Year
               <select value={pendingFilters.batch_year} onChange={e => setPendingFilters(f => ({ ...f, batch_year: e.target.value }))}>
                 <option value="">All years</option>
-                {BATCH_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                {batchYears.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
             </label>
             <label>
@@ -814,55 +1082,166 @@ export default function EmploymentView() {
         </div>
       </Modal>
 
-      {/* ── View Record Modal ────────────────────────────────────────────────── */}
+      {/* ── Alumni Record Modal ──────────────────────────────────────────────── */}
       <Modal open={!!viewRecord} onClose={() => setViewRecord(null)}>
-        <section className="tracer-modal wider-modal" role="dialog" aria-modal="true">
+        <section className="tracer-modal wider-modal" role="dialog" aria-modal="true" style={{ maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div className="modal-head">
-            <h3>Employment Record</h3>
+            <h3>Alumni Record</h3>
             <button type="button" aria-label="Close" onClick={() => setViewRecord(null)}>×</button>
           </div>
           {viewRecord && (
             <>
-              {(() => {
-                const r  = viewDetail || viewRecord;
-                const td = viewDetail?.tracer_data || null;
-                const isUnemployed = r.employment_status === "Unemployed";
-                const isNoRecord   = r.employment_status === "Not Yet Updated";
+              <div style={{ flex: 1, overflowY: "auto", background: "#faf6f6", padding: "18px 20px" }}>
+                {(() => {
+                  const r  = viewDetail || viewRecord;
+                  const td = viewDetail?.tracer_data || null;
+                  const resume = viewDetail?.resume || null;
+                  const isUnemployed = r.employment_status === "Unemployed";
+                  const isNoRecord   = r.employment_status === "Not Yet Updated";
 
-                // Tracer data takes priority; fall back to AlumniEmployment stored values
-                const jobTitle = td?.occupationTitle || r.job_title    || "—";
-                const industry = td?.industryField   || r.industry     || "—";
-                const workLoc  = td?.workLocation    || r.work_location || "—";
+                  // Looks up any question's current answer regardless of
+                  // whether it's a fixed-schema field (td.gender, etc.) or a
+                  // custom/imported one (td.extra_answers[id]) — the same
+                  // lookup works for every page on every college's form.
+                  const answerFor = (q) => {
+                    if (!td) return undefined;
+                    if (Object.prototype.hasOwnProperty.call(td, q.id)) return td[q.id];
+                    return td.extra_answers?.[q.id];
+                  };
+                  const renderQuestion = (q) => {
+                    if (q.type === "static_text") return null;
+                    const val = answerFor(q);
+                    if (q.type === "rating_table") {
+                      if (!val || !Object.values(val).some(Boolean)) return null;
+                      return (
+                        <div key={q.id} style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 12, color: "#8a7377", fontWeight: 600, margin: "10px 8px 4px" }}>{q.label}</div>
+                          <RecordRatingsTable ratings={val} rows={q.rows} />
+                        </div>
+                      );
+                    }
+                    // RecordField renders nothing for an empty value too, but
+                    // that check has to happen here as well — otherwise a
+                    // page whose only questions are unanswered still counts
+                    // as "has content" at the array level (a real <RecordField>
+                    // element isn't null even though it renders as one), and
+                    // its section header shows with an empty card beneath it.
+                    const isEmpty = Array.isArray(val) ? val.length === 0 : (!val && val !== 0);
+                    if (isEmpty) return null;
+                    return <RecordField key={q.id} label={q.label} value={val} />;
+                  };
 
-                // jobRelatedToDegree may be a full sentence — check startsWith 'yes'
-                const jrd = String(td?.jobRelatedToDegree || '').toLowerCase().trim();
-                const related = td?.jobRelatedToDegree
-                  ? (jrd.startsWith('yes') ? "Yes" : "No")
-                  : (r.job_related_to_course ? "Yes" : "No");
+                  // Tracer data takes priority; fall back to AlumniEmployment stored values
+                  const jobTitle = td?.occupationTitle || r.job_title    || "—";
+                  const industry = td?.industryField   || r.industry     || "—";
+                  // Two distinct things, not one — placeOfWork is only ever
+                  // "Local (within your home country)" / "Abroad" (a fixed
+                  // radio choice on the tracer form), while work_location is
+                  // the actual specific place (e.g. "Clark", "Taguig"),
+                  // usually entered by an admin via Add/Edit Record. Showing
+                  // only the tracer value used to silently hide a more
+                  // specific location already on file.
+                  const workArrangement = td?.placeOfWork || "";
+                  const workLoc = r.work_location || td?.resolvedWorkLocation || "—";
 
-                return (
-                  <div className="record-details">
-                    <div><strong>Name</strong><span>{r.name}</span></div>
-                    <div><strong>Course</strong><span>{r.course || "—"}</span></div>
-                    <div><strong>Batch Year</strong><span>{r.graduation_year || "—"}</span></div>
-                    <div><strong>Status</strong><span><StatusBadge status={r.employment_status} /></span></div>
-                    {!isUnemployed && !isNoRecord && (
-                      <>
-                        <div><strong>Job Title</strong><span>{jobTitle}</span></div>
-                        <div><strong>Industry</strong><span>{industry}</span></div>
-                        <div><strong>Work Location</strong><span>{workLoc}</span></div>
-                        <div><strong>Employment Type</strong><span>{td?.presentEmploymentType || r.employment_type || "—"}</span></div>
-                        <div><strong>Years in Job</strong><span>{td?.yearsInCurrentJob || r.years_in_current_job || "—"}</span></div>
-                        <div><strong>Related to Course</strong><span>{related}</span></div>
-                      </>
-                    )}
-                    {isUnemployed && (
-                      <div><strong>Reason Unemployed</strong><span>{r.reason_unemployed || "—"}</span></div>
-                    )}
-                    <div><strong>Last Updated</strong><span>{fmtDate(r.last_updated)}</span></div>
-                  </div>
-                );
-              })()}
+                  // jobRelatedToDegree may be a full sentence — check startsWith 'yes'
+                  const jrd = String(td?.jobRelatedToDegree || '').toLowerCase().trim();
+                  const related = td?.jobRelatedToDegree
+                    ? (jrd.startsWith('yes') ? "Yes" : "No")
+                    : (r.job_related_to_course ? "Yes" : "No");
+
+                  return (
+                    <>
+                      {/* Profile banner */}
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 18,
+                        background: `linear-gradient(135deg, ${MAROON} 0%, #8b1a2e 100%)`,
+                        borderRadius: 14, padding: "20px 22px", marginBottom: 16,
+                        boxShadow: "0 4px 14px rgba(87,0,19,0.18)",
+                      }}>
+                        <AlumniAvatar url={r.avatarUrl} name={r.name} />
+                        <div>
+                          <div style={{ fontSize: 19, fontWeight: 800, color: "#fff" }}>{r.name}</div>
+                          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", marginTop: 3 }}>
+                            {r.college ? `${r.college} · ` : ""}{r.course || "—"}{r.graduation_year ? ` · Batch ${r.graduation_year}` : ""}
+                          </div>
+                          <div style={{ marginTop: 8 }}><StatusBadge status={r.employment_status} /></div>
+                        </div>
+                      </div>
+
+                      <RecordGroup title="Employment Summary">
+                        <RecordField label="Email" value={r.email} />
+                        {!isUnemployed && !isNoRecord && (
+                          <>
+                            <RecordField label="Company Name" value={td?.companyName || r.company_name} />
+                            <RecordField label="Job Title" value={jobTitle} />
+                            <RecordField label="Industry" value={industry} />
+                            <RecordField label="Work Arrangement" value={workArrangement} />
+                            <RecordField label="Work Location" value={workLoc} />
+                            <RecordField label="Employment Type" value={td?.presentEmploymentType || r.employment_type} />
+                            <RecordField label="Years in Job" value={td?.yearsInCurrentJob || r.years_in_current_job} />
+                            <RecordField label="Related to Course" value={related} />
+                            <RecordField label="Salary Range" value={r.salary_range} />
+                            <RecordField label="Date Employed" value={r.date_employed ? fmtDate(r.date_employed) : ""} />
+                          </>
+                        )}
+                        {isUnemployed && (
+                          <RecordField label="Reason Unemployed" value={r.reason_unemployed} />
+                        )}
+                        <RecordField label="Last Updated" value={fmtDate(r.last_updated)} />
+                      </RecordGroup>
+
+                      {resume && (
+                        <RecordGroup title="Profile / Resume">
+                          <RecordField label="LinkedIn" value={resume.linkedin} />
+                          <RecordMultilineField label="Summary" value={resume.summary} />
+                          <RecordChips label="Skills" text={resume.skills} />
+                          <RecordMultilineField label="Experience" value={resume.experience} />
+                          <RecordMultilineField label="Education" value={resume.education} />
+                          <RecordMultilineField label="Certifications" value={resume.certifications} />
+                          <RecordMultilineField label="Projects" value={resume.projects} />
+                          <RecordChips label="Languages" text={resume.languages} />
+                          {!viewDetail?.resume_is_saved && (
+                            <div style={{ fontSize: 11, color: "#9a8080", fontStyle: "italic", padding: "4px 8px" }}>
+                              Suggested from their profile data — this alumnus hasn't saved a resume yet.
+                            </div>
+                          )}
+                        </RecordGroup>
+                      )}
+
+                      {viewDetailLoading && (
+                        <p style={{ fontSize: 13, color: "#9a8080", marginTop: 16 }}>Loading full tracer study record…</p>
+                      )}
+
+                      {td && tracerConfig && (
+                        <>
+                          {tracerConfig.pages.map((page) => {
+                            const rendered = (page.questions || []).map(renderQuestion).filter(Boolean);
+                            if (!rendered.length) return null;
+                            return (
+                              <RecordGroup key={page.id} title={page.title}>
+                                {rendered}
+                              </RecordGroup>
+                            );
+                          })}
+
+                          {td.submittedAt && (
+                            <div style={{ textAlign: "center", fontSize: 12, color: "#9a8080", marginTop: 4 }}>
+                              Tracer study submitted: {fmtDate(td.submittedAt)}
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {!td && !viewDetailLoading && (
+                        <p style={{ fontSize: 13, color: "#9a8080", marginTop: 16, textAlign: "center" }}>
+                          This alumni hasn't submitted the tracer study form yet.
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
 
               <div className="modal-actions record-actions">
                 <button type="button" onClick={() => setViewRecord(null)}>Close</button>
@@ -870,7 +1249,7 @@ export default function EmploymentView() {
                 <button
                   type="button"
                   style={{ background: "var(--maroon)", color: "#fff" }}
-                  onClick={() => { setViewRecord(null); openEdit(viewRecord, viewDetail?.tracer_data); }}
+                  onClick={() => { setViewRecord(null); openEdit(viewRecord, viewDetail?.tracer_data, viewDetail?.new_question_ids); }}
                 >
                   Edit Record
                 </button>
@@ -884,7 +1263,7 @@ export default function EmploymentView() {
       <Modal open={!!editRecord} onClose={() => setEditRecord(null)}>
         <section className="tracer-modal wider-modal" role="dialog" aria-modal="true">
           <div className="modal-head">
-            <h3>Edit Employment — {editRecord?.name}</h3>
+            <h3>Edit Alumni Record — {editRecord?.name}</h3>
             <button type="button" onClick={() => setEditRecord(null)}>×</button>
           </div>
           {editRecord && (
@@ -991,6 +1370,44 @@ export default function EmploymentView() {
                     This alumni has not yet submitted their employment status via the tracer form.
                   </p>
                 )}
+
+                {Object.keys(editTracerForm).length === 0 ? (
+                  <p style={{ color: "var(--muted)", fontSize: 13, margin: "16px 0 0", paddingTop: 16, borderTop: "1px solid #e4cccc" }}>
+                    This alumni hasn't submitted the tracer study form yet, so there's no tracer
+                    record to edit here.
+                  </p>
+                ) : tracerConfig && (
+                  <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #e4cccc" }}>
+                    <h4 style={{ color: "var(--maroon)", fontSize: 14, margin: "0 0 14px" }}>
+                      Full Tracer Study Record
+                      {editNewQuestionIds.length > 0 && (
+                        <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: "#941527" }}>
+                          — {editNewQuestionIds.length} new question{editNewQuestionIds.length !== 1 ? "s" : ""} detected
+                        </span>
+                      )}
+                    </h4>
+                    {tracerConfig.pages.map((page) => {
+                      const editable = (page.questions || []).filter((q) => q.type !== "static_text");
+                      if (!editable.length) return null;
+                      return (
+                        <div key={page.id} style={{ marginBottom: 18 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#8a7377", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 8 }}>
+                            {page.title}
+                          </div>
+                          {editable.map((q) => (
+                            <EditQuestionField
+                              key={q.id}
+                              q={q}
+                              value={editTracerForm[q.id]}
+                              onChange={(v) => setEditTracerForm((f) => ({ ...f, [q.id]: v }))}
+                              isNew={editNewQuestionIds.includes(q.id)}
+                            />
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="modal-actions" style={{ padding: "0 20px 18px" }}>
@@ -1003,20 +1420,6 @@ export default function EmploymentView() {
           )}
         </section>
       </Modal>
-
-      {/* ── Tracer Form Editor (integrated 6-page editor) ───────────────────── */}
-      <TracerFormEditor
-        open={tracerOpen}
-        onClose={() => setTracerOpen(false)}
-        showToast={showToast}
-      />
-
-      {/* ── Tracer Responses Viewer ──────────────────────────────────────────── */}
-      <TracerResponsesViewer
-        open={responsesOpen}
-        onClose={() => setResponsesOpen(false)}
-        showToast={showToast}
-      />
 
       {/* ── Add Record Modal ─────────────────────────────────────────────────── */}
       <Modal open={addOpen} onClose={() => setAddOpen(false)}>
