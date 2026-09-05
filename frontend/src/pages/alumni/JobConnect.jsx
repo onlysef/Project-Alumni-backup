@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import ReactDOM from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
@@ -133,7 +134,7 @@ export default function JobConnect() {
       .then((d) => {
         if (!d.application) return;
         setApplications((prev) => prev.some((a) => a.url === job.url) ? prev : [d.application, ...prev]);
-        if (!alreadyApplied) showToast?.(`Applied to ${job.title}.`);
+        if (!alreadyApplied) showToast?.(job.internal ? `Applied to ${job.title}.` : `Marked ${job.title} as viewed. Finish applying on the employer's site.`);
       })
       .catch(() => showToast?.("Could not log your application. Please try again."));
   }
@@ -310,8 +311,6 @@ export default function JobConnect() {
     <div className="job-stats">
       <div className="job-stat-clickable" onClick={() => setView("recommended")}><strong>{jobs.length}</strong><span>Recommended jobs</span></div>
       <div className="job-stat-clickable" onClick={() => setView("saved")}><strong>{savedJobs.length}</strong><span>Saved jobs</span></div>
-      <div className="job-stat-clickable" onClick={() => setView("applications")}><strong>{applications.length}</strong><span>Applications sent</span></div>
-      <div className="job-stat-clickable" onClick={() => setView("applications")}><strong>{applications.filter(a => a.status === "Interview Scheduled").length}</strong><span>Interview scheduled</span></div>
     </div>
 
     <div className="job-connect-layout">
@@ -429,7 +428,7 @@ export default function JobConnect() {
         <section className="job-tip-card"><b>Resume tip</b><p>Keep your resume updated before exporting so employers see your latest skills, projects, and experience.</p></section>
       </aside>
     </div>
-    {resumePreviewOpen && (
+    {resumePreviewOpen && ReactDOM.createPortal(
       <div className="resume-preview-overlay" role="dialog" aria-modal="true" aria-label="Resume preview">
         <div className="resume-preview-modal">
           <div className="resume-preview-modal-head">
@@ -438,9 +437,14 @@ export default function JobConnect() {
           </div>
           <ResumePreview resume={previewResume} mode="modal" />
         </div>
-      </div>
+      </div>,
+      document.body
     )}
-    {detailsJob && (
+    {/* Rendered via a portal straight onto <body> — nested inside the page's
+        own scroll container, these used to inherit whatever scroll position
+        an ancestor happened to be at instead of staying fixed to the actual
+        browser viewport the alumnus is looking at. */}
+    {detailsJob && ReactDOM.createPortal(
       <div className="resume-preview-overlay" role="dialog" aria-modal="true" aria-label="Job details">
         <div className="resume-preview-modal job-details-modal">
           <div className="resume-preview-modal-head">
@@ -472,6 +476,11 @@ export default function JobConnect() {
                 <div>{[...detailsJob.skills].sort((a, b) => Number(b.matched) - Number(a.matched)).map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
               </div>
             )}
+          </div>
+          {/* Kept outside the scrollable .job-details-body so the primary
+              action is always visible on screen, never something the alumnus
+              has to scroll a long description to find. */}
+          <div className="job-details-footer">
             {!appliedUrls.has(detailsJob.url) && typeof detailsJob.match === "number" && detailsJob.match < 50 ? (
               <>
                 <button className="apply-job job-details-apply apply-locked" type="button" disabled aria-disabled="true">Apply now</button>
@@ -482,9 +491,10 @@ export default function JobConnect() {
             )}
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     )}
-    {confirmJob && (
+    {confirmJob && ReactDOM.createPortal(
       <div className="resume-preview-overlay" role="dialog" aria-modal="true" aria-label="Confirm application">
         <div className="resume-preview-modal apply-confirm-modal">
           <div className="resume-preview-modal-head">
@@ -508,7 +518,8 @@ export default function JobConnect() {
             <button className="resume-export" type="button" onClick={confirmApply}><ResumeCheckIcon />Confirm application</button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     )}
   </div>;
 }

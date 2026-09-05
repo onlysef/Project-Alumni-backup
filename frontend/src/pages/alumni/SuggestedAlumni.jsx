@@ -289,6 +289,14 @@ function SavedProfileCard({ person, onRemove, onView }) {
   </article>;
 }
 
+// Alumni type these in freely (e.g. "facebook.com/name" with no scheme), so
+// normalize before using as an href or the link silently resolves relative
+// to the current page instead of opening the external profile.
+function externalHref(value) {
+  if (!value) return "";
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
 function ProfileModal({ person, saved, onSave, onClose }) {
   return <Modal open onClose={onClose}>
     <section className="tracer-modal coord-alumni-profile network-profile-modal" role="dialog" aria-modal="true" aria-label={`${person.name} profile`}>
@@ -308,6 +316,8 @@ function ProfileModal({ person, saved, onSave, onClose }) {
       </dl>
       <div className="modal-actions coord-profile-actions network-profile-actions">
         <button className={saved ? "" : "modal-confirm"} type="button" onClick={onSave}><StarIcon filled={saved} />{saved ? "Remove saved" : "Save profile"}</button>
+        {person.facebook && <a className="network-social-button network-facebook-button" href={externalHref(person.facebook)} target="_blank" rel="noopener noreferrer"><FacebookIcon />Facebook</a>}
+        {person.linkedin && <a className="network-social-button network-linkedin-button" href={externalHref(person.linkedin)} target="_blank" rel="noopener noreferrer"><LinkedInIcon />LinkedIn</a>}
         {person.email && <a className="modal-confirm network-email-button" href={`mailto:${person.email}?subject=${encodeURIComponent(`Hello ${person.name}`)}`}><MailIcon />Send an email</a>}
       </div>
     </section>
@@ -320,4 +330,12 @@ function StarIcon({ filled }) {
 
 function MailIcon() {
   return <svg className="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>;
+}
+
+function FacebookIcon() {
+  return <svg className="btn-icon" viewBox="0 0 24 24" aria-hidden="true" style={{ fill: "currentColor", stroke: "none" }}><path d="M14 8.5h2.2V5.6c-.38-.05-1.68-.16-3.2-.16-3.17 0-5.34 1.99-5.34 5.65v2.75H4.4V17h3.26v9h3.7v-9h3.13l.5-3.16h-3.63v-2.35c0-.91.25-1.54 1.64-1.54Z" /></svg>;
+}
+
+function LinkedInIcon() {
+  return <svg className="btn-icon" viewBox="0 0 24 24" aria-hidden="true" style={{ fill: "currentColor", stroke: "none" }}><path d="M6.94 8.5a1.94 1.94 0 1 0 0-3.88 1.94 1.94 0 0 0 0 3.88ZM5.1 10.2h3.68V19H5.1v-8.8Zm5.86 0h3.53v1.2h.05c.49-.93 1.7-1.9 3.5-1.9 3.74 0 4.43 2.46 4.43 5.66V19h-3.68v-4.06c0-.97-.02-2.22-1.35-2.22-1.36 0-1.57 1.06-1.57 2.15V19h-3.68v-8.8Z" /></svg>;
 }
