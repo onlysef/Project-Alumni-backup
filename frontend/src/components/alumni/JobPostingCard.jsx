@@ -155,11 +155,14 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
     {hasMatch && (
       <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
     )}
-    <div className="job-company-logo"><img src={alumniLogo} alt={`${job.company} logo`} /></div>
+    {/* Real logo only for TSU partner postings, whose employer account
+        actually uploaded one — Careerjet gives no logo or domain to look one
+        up for, so the TSU placeholder stays for those. */}
+    <div className="job-company-logo"><img src={job.companyLogo || alumniLogo} alt={`${job.company} logo`} /></div>
     <div className="connect-job-main">
       {job.posted && <span className="connect-posted">Posted: {formatPostedDate(job.posted)}</span>}
       {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
-      <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div>{applied && <span className="connect-applied-badge">✓ Applied</span>}</div>
+      <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div>{applied && <span className="connect-applied-badge">{job.internal ? "✓ Applied" : "✓ Viewed"}</span>}</div>
       {description && <p className="connect-job-description">{description}</p>}
       <div className="connect-card-buttons">
         {locked ? (
@@ -167,7 +170,12 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
         ) : job.internal ? (
           <button className={`apply-job${applied ? " already-applied" : ""}`} type="button" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</button>
         ) : (
-          <a className={`apply-job${applied ? " already-applied" : ""}`} href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</a>
+          // External (Careerjet) postings only ever open the listing in a new
+          // tab — the system has no way to confirm the alumnus actually
+          // completed an application there, so it can't honestly claim
+          // "Applied" the way it can for internal/partner postings (which do
+          // create a real, employer-visible application record).
+          <a className={`apply-job${applied ? " already-applied" : ""}`} href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>{applied ? "Viewed ✓" : "Apply now"}</a>
         )}
         <button className="view-job" type="button" onClick={onViewDetails}>See details <ArrowIcon /></button>
         {onToggleSave && (

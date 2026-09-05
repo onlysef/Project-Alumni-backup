@@ -819,6 +819,7 @@ function scoreInternalJobs(rawJobs, { userSkillsText }) {
     return {
       title: job.title,
       company: job.partnershipId?.name || 'Company not listed',
+      companyLogo: job.postedBy?.avatarUrl || '',
       location: job.location || 'Philippines',
       type: job.jobType || '',
       posted: job.createdAt || '',
@@ -1041,7 +1042,7 @@ const getSuggestedAlumni = async (req, res) => {
     const empRecords = ids.length
       ? await AlumniEmployment.find(
           { alumni_id: { $in: ids } },
-          'alumni_id job_title company_name industry work_location skills'
+          'alumni_id job_title company_name industry work_location skills facebook linkedin'
         ).lean()
       : [];
     const empMap = new Map(empRecords.map((e) => [String(e.alumni_id), e]));
@@ -1059,6 +1060,8 @@ const getSuggestedAlumni = async (req, res) => {
         industry: cleanEmploymentValue(emp?.industry),
         location: cleanEmploymentValue(emp?.work_location),
         skills: cleanEmploymentValue(emp?.skills),
+        facebook: cleanEmploymentValue(emp?.facebook),
+        linkedin: cleanEmploymentValue(emp?.linkedin),
         course: u.course || '',
         year: u.graduationYear || '',
         matchScore: score,
@@ -1245,6 +1248,39 @@ async function getCareerEmbeddings() {
   return careerEmbeddingsCache;
 }
 
+// A user's profile text (course/role/industry/skills) only changes when they
+// edit their Employment Details, but this page was calling the Hugging Face
+// embedding API on every single visit regardless — the slowest part of the
+// whole response. Cached per user and only recomputed when profileText
+// actually differs from last time, so re-opening/refreshing the page with an
+// unchanged profile skips the network call entirely.
+const userProfileEmbeddingCache = new Map(); // userId -> { profileText, embedding }
+async function getProfileEmbeddingCached(userId, profileText) {
+  const key = String(userId);
+  const cached = userProfileEmbeddingCache.get(key);
+  if (cached && cached.profileText === profileText) return cached.embedding;
+  const embedding = await getEmbedding(profileText);
+  userProfileEmbeddingCache.set(key, { profileText, embedding });
+  return embedding;
+}
+
+// Caps how long a request waits on the (already-guaranteed-not-to-reject)
+// embedding lookup — on a cache miss the HF call keeps running in the
+// background and still populates userProfileEmbeddingCache/careerEmbeddingsCache
+// for the next request, but this request itself falls back to the neutral
+// CS score rather than sitting on a slow/cold external API call.
+function withTimeout(promise, ms, fallback) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) { settled = true; resolve(fallback); }
+    }, ms);
+    promise.then((value) => {
+      if (!settled) { settled = true; clearTimeout(timer); resolve(value); }
+    });
+  });
+}
+
 function missingSkillFor(career, userSkillsText) {
   return career.skills.find((s) => !textContainsSkill(userSkillsText, s)) || null;
 }
@@ -1408,13 +1444,17 @@ const getCareerRecommendations = async (req, res) => {
     // formula — Sr, Er, and Xr don't need the Hugging Face API at all, so if
     // it fails (network/HF down), CS just falls back to a neutral 0.5
     // instead of the whole recommendation failing.
-    const embeddingResult = await Promise.all([getEmbedding(profileText), getCareerEmbeddings()])
-      .then(([profileEmbedding, careerEmbeddings]) =>
-        careerEmbeddings.map((vec) => normalizeCosine(cosineSimilarity(profileEmbedding, vec))))
-      .catch((embedErr) => {
-        console.error('career recommendation embedding failed, CS defaults to neutral:', embedErr.message);
-        return null;
-      });
+    const embeddingResult = await withTimeout(
+      Promise.all([getProfileEmbeddingCached(req.user.id, profileText), getCareerEmbeddings()])
+        .then(([profileEmbedding, careerEmbeddings]) =>
+          careerEmbeddings.map((vec) => normalizeCosine(cosineSimilarity(profileEmbedding, vec))))
+        .catch((embedErr) => {
+          console.error('career recommendation embedding failed, CS defaults to neutral:', embedErr.message);
+          return null;
+        }),
+      3000,
+      null
+    );
 
     const careers = rankCareers(embeddingResult);
     const topCareer = careers[0];
@@ -1617,6 +1657,7 @@ const getPartnerJobPostings = async (req, res) => {
 
     const rawJobs = await Job.find({ status: 'open' })
       .populate('partnershipId', 'name')
+      .populate('postedBy', 'avatarUrl')
       .sort({ createdAt: -1 })
       .lean();
 
