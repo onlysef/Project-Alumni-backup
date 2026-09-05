@@ -2031,15 +2031,11 @@
         .tracer-accordion-body {
             min-height: 0;
             overflow: hidden;
-            padding: 0 18px;
+            padding: 16px 18px 18px;
             background: #fff;
             transform-origin: top center;
             animation: tracer-accordion-open 360ms cubic-bezier(.2,.8,.2,1) both;
             transition: padding 380ms cubic-bezier(.2,.8,.2,1);
-        }
-
-        .tracer-accordion-collapse.open .tracer-accordion-body {
-            padding: 16px 18px 18px;
         }
 
         .tracer-accordion-body .tracer-chart-block {

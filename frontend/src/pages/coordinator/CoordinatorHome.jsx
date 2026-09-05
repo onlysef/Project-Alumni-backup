@@ -1,9 +1,18 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useOutletContext, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { MiniBarChart, downloadChartExcel } from "./CoordinatorShared.jsx";
+import { Dropdown } from "../../components/common/Primitives.jsx";
 
-import { API, apiFetch } from "../../services/api.js";
+import { apiFetch } from "../../services/api.js";
+
+const ACTIVITY_WINDOW_LABELS = { "24": "Last 24 hours", "168": "Last 7 days", all: "Full history" };
+
+// Module-level, not state — survives this component unmounting when the
+// coordinator navigates away and back, so returning to the Dashboard shows
+// the last-known numbers instantly instead of flashing "…" again while a
+// fresh copy loads silently in the background.
+let cachedDashboardData = null;
+const cachedActivity = new Map(); // keyed by activityWindow ("24"/"168"/"all")
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr)) / 1000);
@@ -13,58 +22,61 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-const REPORTS = [
-  { label: "Event Attendance Report",   type: "event-attendance"    },
-  { label: "Top Events Report",         type: "top-events"          },
-  { label: "Feedback Completion Report",type: "feedback-completion" },
-];
-
 export default function CoordinatorHome() {
-  const { showToast } = useOutletContext();
   const navigate = useNavigate();
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
 
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [allEvents, setAllEvents] = useState([]);
-  const attendanceChartRef = useRef(null);
-  const feedbackChartRef   = useRef(null);
-  const currentYear = new Date().getFullYear();
-  const [reportYears, setReportYears] = useState(
-    Object.fromEntries(REPORTS.map(r => [r.type, currentYear]))
-  );
-  const [reportEvents, setReportEvents] = useState(
-    Object.fromEntries(REPORTS.map(r => [r.type, ""]))
-  );
+  const [data, setData] = useState(cachedDashboardData);
+  const [loading, setLoading] = useState(!cachedDashboardData);
+  const [activity, setActivity] = useState(() => cachedActivity.get("24") ?? []);
+  const [activityLoading, setActivityLoading] = useState(!cachedActivity.has("24"));
+  const [activityWindow, setActivityWindow] = useState("24");
 
   useEffect(() => {
-    setLoading(true);
-    Promise.all([
-      apiFetch("/coordinator/dashboard"),
-      apiFetch("/coordinator/attendance/events"),
-    ])
-      .then(([dashboard, events]) => {
-        setData(dashboard);
-        setAllEvents(events.events ?? []);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    function fetchDashboard() {
+      apiFetch("/coordinator/dashboard")
+        .then(res => { cachedDashboardData = res; setData(res); })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+    fetchDashboard();
+    // Keeps stat cards live (e.g. Total Alumni) while the coordinator stays
+    // on this page, not just when they navigate away and back — same 30s
+    // polling interval the Tracer Dashboard already uses.
+    const interval = setInterval(fetchDashboard, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const statCards = [
-    [data?.totalAlumni     ?? "—", "Total Alumni",               "icon-11"],
-    [data?.completedEvents ?? "—", "Annual Completed Events",     "icon-5"],
-    [data?.recentFeedbacks ?? "—", "Recent Feedback Submission",  "icon-13"],
-    [data?.avgRating       ?? "—", "Avg. Event Rating",           "icon-12"],
-  ];
+  useEffect(() => {
+    let cancelled = false;
+    const cached = cachedActivity.get(activityWindow);
+    if (cached) { setActivity(cached); setActivityLoading(false); }
+    else setActivityLoading(true);
+    const limit = activityWindow === "all" ? 50 : 20;
+    function fetchActivity() {
+      apiFetch(`/coordinator/dashboard/activity?hours=${activityWindow}&limit=${limit}`)
+        .then(res => {
+          if (cancelled) return;
+          const list = res.activity ?? [];
+          cachedActivity.set(activityWindow, list);
+          setActivity(list);
+        })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setActivityLoading(false); });
+    }
+    fetchActivity();
+    const interval = setInterval(fetchActivity, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [activityWindow]);
 
-  const chartLabels     = data?.chartEvents?.map(e => e.label)      ?? [];
-  const attendanceVals  = data?.chartEvents?.map(e => e.attendance)  ?? [];
-  const feedbackVals    = data?.chartEvents?.map(e => e.feedbacks)   ?? [];
-  const attendanceTotal = attendanceVals.reduce((sum, value) => sum + Number(value || 0), 0);
-  const feedbackTotal   = feedbackVals.reduce((sum, value) => sum + Number(value || 0), 0);
+  const collegeLabel = data?.college ? ` (${data.college})` : "";
+  const statCards = [
+    [data?.totalAlumni    ?? "—", `Total Alumni${collegeLabel}`,    "icon-11"],
+    [data?.activeAlumni   ?? "—", `Active Alumni${collegeLabel}`,   "icon-user-check"],
+    [data?.inactiveAlumni ?? "—", `Inactive Alumni${collegeLabel}`, "icon-user-x"],
+  ];
 
   return (
     <section className={`content coordinator-content view active-view`}>
@@ -92,200 +104,70 @@ export default function CoordinatorHome() {
             <Icon name={icon} />
           </article>
         ))}
-        <article className={`coord-highlight${loading ? " coord-stat-loading" : ""}`}>
-          <div>
-            <strong>Top Event:</strong>
-            <span>{loading ? "…" : (data?.topEvent ?? "—")}</span>
-            <strong>Low Response:</strong>
-            <span>{loading ? "…" : (data?.lowEvent ?? "—")}</span>
-          </div>
-          <Icon name="icon-trophy" />
-        </article>
       </div>
 
-      <div className="coord-dashboard-grid">
-        <div className="coord-left-stack">
-          <section className="coord-card" ref={attendanceChartRef}>
-            <div className="coord-chart-card-head">
-              <h3>Event Attendance</h3>
-              <button
-                className="chart-export-button"
-                type="button"
-                onClick={async () => {
-                  try {
-                    await downloadChartExcel(
-                      "event-attendance-chart.xlsx",
-                      "Event Attendance",
-                      [
-                        ["Event", "Attendance"],
-                        ...(chartLabels.length ? chartLabels.map((label, i) => [label, attendanceVals[i] ?? 0]) : [["No data", 0]]),
-                      ],
-                      attendanceChartRef.current?.querySelector("svg")
-                    );
-                    showToast?.("Event attendance chart exported.");
-                  } catch {
-                    showToast?.("Could not export the chart.");
-                  }
-                }}
-              >
-                <Icon name="icon-download" />
-                <span>Exports</span>
-              </button>
-            </div>
-            <MiniBarChart
-              title="Event Attendance"
-              values={attendanceVals.length ? attendanceVals : [0]}
-              labels={chartLabels.length   ? chartLabels    : ["No data"]}
-            />
-            <div className="coord-chart-legend" aria-label="Event attendance chart explanation">
-              <span><i className="coord-legend-swatch attendance" aria-hidden="true" />Attendance recorded per event</span>
-              <strong>{chartLabels.length ? `Total attendance: ${attendanceTotal}` : "No attendance data yet"}</strong>
-            </div>
-          </section>
-          <section className="coord-card" ref={feedbackChartRef}>
-            <div className="coord-chart-card-head">
-              <h3>Event Feedback Completion</h3>
-              <button
-                className="chart-export-button"
-                type="button"
-                onClick={async () => {
-                  try {
-                    await downloadChartExcel(
-                      "event-feedback-chart.xlsx",
-                      "Event Feedback Completion",
-                      [
-                        ["Event", "Feedback Submissions"],
-                        ...(chartLabels.length ? chartLabels.map((label, i) => [label, feedbackVals[i] ?? 0]) : [["No data", 0]]),
-                      ],
-                      feedbackChartRef.current?.querySelector("svg")
-                    );
-                    showToast?.("Event feedback chart exported.");
-                  } catch {
-                    showToast?.("Could not export the chart.");
-                  }
-                }}
-              >
-                <Icon name="icon-download" />
-                <span>Exports</span>
-              </button>
-            </div>
-            <MiniBarChart
-              title="Event Feedback Counts"
-              values={feedbackVals.length ? feedbackVals : [0]}
-              labels={chartLabels.length  ? chartLabels   : ["No data"]}
-            />
-            <div className="coord-chart-legend" aria-label="Event feedback chart explanation">
-              <span><i className="coord-legend-swatch feedback" aria-hidden="true" />Feedback submissions per event</span>
-              <strong>{chartLabels.length ? `Total responses: ${feedbackTotal}` : "No feedback data yet"}</strong>
-            </div>
-          </section>
-        </div>
-        <aside className="coord-right-stack">
-          <section className="coord-card coord-activity">
+      <div className="coord-left-stack">
+        <section className="coord-card coord-activity">
+          <div className="coord-chart-card-head">
             <h3>Activity</h3>
-            {loading ? (
-              <p style={{ fontSize: 13, color: "#888" }}>Loading…</p>
-            ) : data?.activity?.length ? (
-              <div className="activity-list">
-                {data.activity.map((a, i) => (
-                  <div
-                    className="activity activity-clickable"
-                    key={a._id ?? i}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      const dest = a.type === "attendance" ? "/coordinator/participation" : "/coordinator/events";
+            <Dropdown
+              menuClassName="filter-menu activity-window-menu"
+              active={ACTIVITY_WINDOW_LABELS[activityWindow]}
+              options={Object.values(ACTIVITY_WINDOW_LABELS)}
+              onSelect={(label) => {
+                const key = Object.keys(ACTIVITY_WINDOW_LABELS).find(k => ACTIVITY_WINDOW_LABELS[k] === label);
+                if (key) setActivityWindow(key);
+              }}
+              trigger={(toggle) => (
+                <button className="filter activity-window-filter" type="button" onClick={toggle}>
+                  {ACTIVITY_WINDOW_LABELS[activityWindow]}
+                </button>
+              )}
+            />
+          </div>
+          {activityLoading ? (
+            <p style={{ fontSize: 13, color: "#888" }}>Loading…</p>
+          ) : activity.length ? (
+            <div className="activity-list">
+              {activity.map((a, i) => {
+                const navigable = a.type === "attendance" || a.type === "feedback";
+                const dest = a.type === "attendance" ? "/coordinator/participation" : "/coordinator/events";
+                return (
+                <div
+                  className={`activity${navigable ? " activity-clickable" : ""}`}
+                  key={a._id ?? i}
+                  role={navigable ? "button" : undefined}
+                  tabIndex={navigable ? 0 : undefined}
+                  onClick={navigable ? () => navigate(dest, { state: { eventId: a.event_id ?? null } }) : undefined}
+                  onKeyDown={navigable ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
                       navigate(dest, { state: { eventId: a.event_id ?? null } });
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        const dest = a.type === "attendance" ? "/coordinator/participation" : "/coordinator/events";
-                        navigate(dest, { state: { eventId: a.event_id ?? null } });
-                      }
-                    }}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <p>
-                      {a.name ? (
-                        <>
-                          <strong>{a.name}</strong>{" "}
-                          {a.detail ?? ""}
-                        </>
-                      ) : (
-                        a.text ?? ""
-                      )}
-                    </p>
-                    <time>{timeAgo(a.time)}</time>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ fontSize: 13, color: "#888" }}>No recent activity.</p>
-            )}
-          </section>
-          <section className="coord-card coord-reports">
-            <h3>Reports</h3>
-            {REPORTS.map((report) => {
-              const year      = reportYears[report.type];
-              const eventId   = reportEvents[report.type];
-              function download() {
-                const token = localStorage.getItem("auth_token");
-                const params = new URLSearchParams({ format: "xlsx" });
-                if (eventId) params.set("eventId", eventId);
-                else params.set("year", year);
-                const url = `${API}/coordinator/reports/${report.type}?${params}`;
-                fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-                  .then(r => r.blob())
-                  .then(blob => {
-                    const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `${report.type}-${eventId || year}.xlsx`;
-                    a.click();
-                    URL.revokeObjectURL(a.href);
-                    showToast?.(`${report.label} downloaded.`);
-                  })
-                  .catch(() => showToast?.("Export failed."));
-              }
-              return (
-                <div className="coord-report-row" key={report.type}>
-                  <span>{report.label}</span>
-                  <div className="coord-report-filters">
-                    <select
-                      className="coord-report-select"
-                      value={eventId}
-                      onChange={e => setReportEvents(prev => ({ ...prev, [report.type]: e.target.value }))}
-                    >
-                      <option value="">All Events</option>
-                      {allEvents.map(ev => (
-                        <option key={String(ev._id)} value={String(ev._id)}>{ev.title}</option>
-                      ))}
-                    </select>
-                    {!eventId && (
-                      <select
-                        className="coord-report-select coord-report-year"
-                        value={year}
-                        onChange={e => setReportYears(prev => ({ ...prev, [report.type]: Number(e.target.value) }))}
-                      >
-                        {Array.from({ length: currentYear - 2019 }, (_, i) => currentYear - i).map(y => (
-                          <option key={y} value={y}>{y}</option>
-                        ))}
-                      </select>
+                    }
+                  } : undefined}
+                  style={navigable ? { cursor: "pointer" } : undefined}
+                >
+                  <p>
+                    {a.name ? (
+                      <>
+                        <strong>{a.name}</strong>{" "}
+                        {a.detail ?? ""}
+                      </>
+                    ) : (
+                      a.text ?? ""
                     )}
-                    <button
-                      className="coord-icon-button"
-                      type="button"
-                      aria-label={`Download ${report.label}`}
-                      onClick={download}
-                    >
-                      <Icon name="icon-download" />
-                    </button>
-                  </div>
+                  </p>
+                  <time>{timeAgo(a.time)}</time>
                 </div>
-              );
-            })}
-          </section>
-        </aside>
+                );
+              })}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13, color: "#888" }}>
+              {activityWindow === "all" ? "No activity history yet." : "No activity in this period."}
+            </p>
+          )}
+        </section>
       </div>
     </section>
   );

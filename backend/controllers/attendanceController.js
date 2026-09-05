@@ -5,6 +5,7 @@ const EventFeedback = require('../models/EventFeedback');
 const Notification  = require('../models/Notification');
 const User          = require('../models/User');
 const { escapeRegex } = require('../utils/escapeRegex');
+const { logActivity, resolveAdminName } = require('./employmentController');
 
 // The routes below take an :eventId param directly and, before this check
 // existed, queried AttendanceLog/Event/EventFeedback for it with no
@@ -187,6 +188,12 @@ const updateAttendance = async (req, res) => {
       feedbackRemoved = result.deletedCount > 0;
     }
 
+    const [staffName, alumni] = await Promise.all([
+      resolveAdminName(req.user.id),
+      User.findById(log.alumni_id, 'firstName lastName').lean(),
+    ]);
+    logActivity(req.user.id, staffName, 'edited attendance record', alumni ? `${alumni.firstName} ${alumni.lastName}` : '', `set to ${log.status}`);
+
     res.json({ message: 'Attendance updated.', log, feedbackRemoved });
   } catch (err) {
     console.error('updateAttendance error:', err);
@@ -207,8 +214,13 @@ const deleteAttendance = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
     }
 
+    const alumni = await User.findById(log.alumni_id, 'firstName lastName').lean();
     await log.deleteOne();
     const result = await EventFeedback.deleteOne({ event_id: log.event_id, alumni_id: log.alumni_id });
+
+    resolveAdminName(req.user.id).then(staffName => {
+      logActivity(req.user.id, staffName, 'deleted attendance record', alumni ? `${alumni.firstName} ${alumni.lastName}` : '');
+    });
 
     res.json({ message: 'Attendance record deleted.', feedbackRemoved: result.deletedCount > 0 });
   } catch (err) {
@@ -347,6 +359,10 @@ const exportAttendance = async (req, res) => {
 
     const feedbackSet = new Set(feedbackDocs.map(f => String(f.alumni_id)));
     const eventTitle  = event?.title || 'Event';
+
+    resolveAdminName(req.user.id).then(staffName => {
+      logActivity(req.user.id, staffName, 'exported attendance report', eventTitle, `${format}, ${logs.length} records`);
+    });
 
     const rows = logs.map(l => ({
       'Event Name':  eventTitle,

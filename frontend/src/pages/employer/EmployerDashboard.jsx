@@ -25,13 +25,19 @@ function ArrowIcon() {
   );
 }
 
+// Module-level, not state — survives this component unmounting when the
+// employer navigates away and back, so returning to the Dashboard shows the
+// last-known jobs/applicants/interviews instantly instead of an empty table
+// while a fresh copy loads silently in the background.
+let cachedEmployerData = null;
+
 export default function EmployerDashboard() {
   const { showToast } = useOutletContext() || {};
-  const [jobs, setJobs] = useState([]);
-  const [partnerships, setPartnerships] = useState([]);
-  const [applicants, setApplicants] = useState([]);
-  const [interviews, setInterviews] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [jobs, setJobs] = useState(cachedEmployerData?.jobs ?? []);
+  const [partnerships, setPartnerships] = useState(cachedEmployerData?.partnerships ?? []);
+  const [applicants, setApplicants] = useState(cachedEmployerData?.applicants ?? []);
+  const [interviews, setInterviews] = useState(cachedEmployerData?.interviews ?? []);
+  const [loading, setLoading] = useState(!cachedEmployerData);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("All");
   const [date, setDate] = useState("All");
@@ -40,8 +46,8 @@ export default function EmployerDashboard() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
 
-  function load() {
-    setLoading(true);
+  function load(showSpinner = true) {
+    if (showSpinner) setLoading(true);
     setError("");
     Promise.all([
       apiFetch("/employer/jobs"),
@@ -50,16 +56,29 @@ export default function EmployerDashboard() {
       apiFetch("/employer/interviews"),
     ])
       .then(([jobsData, partnershipsData, applicantsData, interviewsData]) => {
-        setJobs(jobsData.jobs ?? []);
-        setPartnerships(partnershipsData.partnerships ?? []);
-        setApplicants(applicantsData.applicants ?? []);
-        setInterviews(interviewsData.interviews ?? []);
+        const next = {
+          jobs: jobsData.jobs ?? [],
+          partnerships: partnershipsData.partnerships ?? [],
+          applicants: applicantsData.applicants ?? [],
+          interviews: interviewsData.interviews ?? [],
+        };
+        cachedEmployerData = next;
+        setJobs(next.jobs);
+        setPartnerships(next.partnerships);
+        setApplicants(next.applicants);
+        setInterviews(next.interviews);
       })
       .catch(() => setError("Could not load your job posts right now."))
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, []);
+  useEffect(() => {
+    load(!cachedEmployerData);
+    // Keeps stat cards and the applicants/interviews counts live while the
+    // employer stays on this page, not just on next visit.
+    const interval = setInterval(() => load(false), 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const filtered = useMemo(() => jobs.filter((job) => {
     const statusMatch = status === "All" || statusLabel(job.status) === status;

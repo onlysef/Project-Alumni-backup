@@ -428,11 +428,17 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   </div>;
 }
 
+// Module-level, not state — survives this component unmounting when the
+// alumnus navigates away and back, so returning Home shows the last-known
+// summary instantly instead of flashing "…" again while a fresh copy loads
+// silently in the background.
+let cachedHomeSummary = null;
+
 function AlumniHome({ navigate }) {
   const { user, token } = useAuth();
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(" ") || user?.name || "Alumnus";
-  const [summary, setSummary] = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summary, setSummary] = useState(cachedHomeSummary);
+  const [summaryLoading, setSummaryLoading] = useState(!cachedHomeSummary);
   const [selectedAlumnus, setSelectedAlumnus] = useState(null);
 
   useEffect(() => {
@@ -442,6 +448,7 @@ function AlumniHome({ navigate }) {
         .then(async (r) => {
           const data = await r.json();
           if (!r.ok) throw new Error(data.message || "Failed to load.");
+          cachedHomeSummary = data;
           setSummary(data);
         })
         .catch((err) => console.error("AlumniHome: could not load home summary", err))

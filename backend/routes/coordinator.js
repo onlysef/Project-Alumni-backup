@@ -3,8 +3,10 @@ const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const {
   getEmploymentRecords, getEmploymentActivity, notifyAlumniToUpdate, getNotifyCandidates, getBatchYears,
-  getTracerResponses, getTracerResponseDetail,
+  getTracerResponses, getTracerResponseDetail, exportEmploymentRecords,
+  getDonutStats, getTracerAnalytics, getTracerFilterOptions, exportTracerAnalytics,
   getEmploymentRecord, updateEmploymentRecord, updateEmploymentRecordAvatar, logPrintActivity,
+  logActivity, resolveAdminName,
 } = require('../controllers/employmentController');
 const { updateAlumniTracerData } = require('../controllers/alumniController');
 const {
@@ -23,6 +25,7 @@ const TracerStudyResponse = require('../models/TracerStudyResponse');
 const Event = require('../models/Event');
 const AttendanceLog = require('../models/AttendanceLog');
 const EventFeedback = require('../models/EventFeedback');
+const EmploymentActivity = require('../models/EmploymentActivity');
 
 router.use(protect, authorize('admin', 'coordinator'));
 
@@ -39,11 +42,16 @@ router.get('/dashboard', async (req, res) => {
 
     const [
       totalAlumni,
+      activeAlumni,
       completedEvents,
     ] = await Promise.all([
       User.countDocuments(alumniFilter),
+      // 'inactive' has no dedicated status value — it's everything that isn't
+      // 'active' (i.e. 'pending' or 'suspended').
+      User.countDocuments({ ...alumniFilter, status: 'active' }),
       Event.countDocuments({ ...eventFilter, event_datetime: { $lt: now, $gte: startOfYear } }),
     ]);
+    const inactiveAlumni = totalAlumni - activeAlumni;
 
     // Get IDs of events scoped to this coordinator's college
     const scopedEvents = await Event.find(eventFilter, '_id').lean();
@@ -108,49 +116,88 @@ router.get('/dashboard', async (req, res) => {
       lowEvent = allAttendance.length > 1 ? (lowDoc?.title || '—') : '—';
     }
 
-    // Recent activity scoped to this college's events
-    const [recentLogs, recentFeedbackDocs] = await Promise.all([
-      AttendanceLog.find({ event_id: { $in: scopedEventIds } })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate('alumni_id', 'firstName lastName')
-        .populate('event_id', 'title')
-        .lean(),
-      EventFeedback.find({ event_id: { $in: scopedEventIds } })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .populate('alumni_id', 'firstName lastName')
-        .populate('event_id', 'title')
-        .lean(),
-    ]);
-
-    const activityItems = [
-      ...recentLogs.map(l => {
-        const name = l.alumni_id ? `${l.alumni_id.firstName} ${l.alumni_id.lastName}` : 'An alumni';
-        const detail = `was recorded ${l.status || 'Present'} at "${l.event_id?.title || 'an event'}"`;
-        return { name, detail, text: `${name} ${detail}`, time: l.createdAt, type: 'attendance', event_id: l.event_id?._id ?? null };
-      }),
-      ...recentFeedbackDocs.map(f => {
-        const name = f.alumni_id ? `${f.alumni_id.firstName} ${f.alumni_id.lastName}` : 'An alumni';
-        const detail = `submitted feedback for "${f.event_id?.title || 'an event'}"`;
-        return { name, detail, text: `${name} ${detail}`, time: f.createdAt, type: 'feedback', event_id: f.event_id?._id ?? null };
-      }),
-    ]
-      .sort((a, b) => new Date(b.time) - new Date(a.time))
-      .slice(0, 8);
-
     res.json({
       totalAlumni,
+      activeAlumni,
+      inactiveAlumni,
+      college: college || 'All Colleges',
       completedEvents,
       recentFeedbacks,
       avgRating,
       topEvent,
       lowEvent,
       chartEvents,
-      activity: activityItems,
     });
   } catch (err) {
     console.error('dashboard error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Dashboard activity feed — separate from /dashboard above so changing the
+// time-window filter doesn't require refetching every other stat tile too
+// (mirrors admin's own /announcements/activity for the same reason).
+router.get('/dashboard/activity', async (req, res) => {
+  try {
+    const college = req.user.college || '';
+    const eventFilter = college ? { college } : {};
+    const hours = req.query.hours;
+    const limit = Math.min(parseInt(req.query.limit, 10) || 8, 50);
+
+    const scopedEvents = await Event.find(eventFilter, '_id').lean();
+    const scopedEventIds = scopedEvents.map(e => e._id);
+
+    const dateFilter = (hours && hours !== 'all')
+      ? { createdAt: { $gte: new Date(Date.now() - Number(hours) * 60 * 60 * 1000) } }
+      : {};
+
+    // EmploymentActivity has no college field of its own, only `user_id`
+    // (the staff member who performed the action) — scope it the same way
+    // getEmploymentActivity already does, by joining to User.college.
+    const staffInCollege = college ? await User.find({ college }).select('_id').lean() : null;
+    const staffMatch = staffInCollege ? { user_id: { $in: staffInCollege.map(u => u._id) } } : {};
+
+    const [recentLogs, recentFeedbackDocs, recentStaffActivity] = await Promise.all([
+      AttendanceLog.find({ event_id: { $in: scopedEventIds }, ...dateFilter })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('alumni_id', 'firstName lastName')
+        .populate('event_id', 'title')
+        .lean(),
+      EventFeedback.find({ event_id: { $in: scopedEventIds }, ...dateFilter })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .populate('alumni_id', 'firstName lastName')
+        .populate('event_id', 'title')
+        .lean(),
+      EmploymentActivity.find({ ...staffMatch, ...dateFilter })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean(),
+    ]);
+
+    const activity = [
+      ...recentLogs.map(l => {
+        const name = l.alumni_id ? `${l.alumni_id.firstName} ${l.alumni_id.lastName}` : 'An alumni';
+        const detail = `was recorded ${l.status || 'Present'} at "${l.event_id?.title || 'an event'}"`;
+        return { _id: l._id, name, detail, text: `${name} ${detail}`, time: l.createdAt, type: 'attendance', event_id: l.event_id?._id ?? null };
+      }),
+      ...recentFeedbackDocs.map(f => {
+        const name = f.alumni_id ? `${f.alumni_id.firstName} ${f.alumni_id.lastName}` : 'An alumni';
+        const detail = `submitted feedback for "${f.event_id?.title || 'an event'}"`;
+        return { _id: f._id, name, detail, text: `${name} ${detail}`, time: f.createdAt, type: 'feedback', event_id: f.event_id?._id ?? null };
+      }),
+      ...recentStaffActivity.map(a => {
+        const detail = `${a.action}${a.target_name ? ` (${a.target_name})` : ''}${a.details ? `, ${a.details}` : ''}`;
+        return { _id: a._id, name: a.user_name, detail, text: `${a.user_name} ${detail}`, time: a.createdAt, type: 'staff', event_id: null };
+      }),
+    ]
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, limit);
+
+    res.json({ activity });
+  } catch (err) {
+    console.error('dashboard activity error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });
@@ -247,6 +294,15 @@ router.get('/reports/:type', async (req, res) => {
       return res.status(400).json({ message: 'Unknown report type.' });
     }
 
+    const REPORT_LABELS = {
+      'event-attendance':    'event attendance report',
+      'top-events':          'top events report',
+      'feedback-completion': 'feedback completion report',
+    };
+    resolveAdminName(req.user.id).then(staffName => {
+      logActivity(req.user.id, staffName, `exported ${REPORT_LABELS[type] || type}`, '', `${format}, ${rows.length} records`);
+    });
+
     if (format === 'xlsx') {
       const ws = xlsx.utils.json_to_sheet(rows);
       const wb = xlsx.utils.book_new();
@@ -267,6 +323,55 @@ router.get('/reports/:type', async (req, res) => {
     res.send(csv);
   } catch (err) {
     console.error('reports error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// Events dashboard — attendance + feedback completion per event, scoped to
+// the coordinator's college, filterable by year (unlike /dashboard's
+// chartEvents, which is capped to the 5 most recent events).
+router.get('/events-dashboard', async (req, res) => {
+  try {
+    const year = parseInt(req.query.year) || new Date().getFullYear();
+    const college = req.user.college || '';
+    const eventFilter = college ? { college } : {};
+    const start = new Date(year, 0, 1);
+    const end   = new Date(year + 1, 0, 1);
+
+    const events = await Event.find({ ...eventFilter, event_datetime: { $gte: start, $lt: end } })
+      .sort({ event_datetime: 1 }).lean();
+    const eventIds = events.map(e => e._id);
+
+    const [attendanceCounts, feedbackCounts] = await Promise.all([
+      AttendanceLog.aggregate([
+        { $match: { event_id: { $in: eventIds } } },
+        { $group: { _id: '$event_id', count: { $sum: 1 } } },
+      ]),
+      EventFeedback.aggregate([
+        { $match: { event_id: { $in: eventIds } } },
+        { $group: { _id: '$event_id', count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    const attMap = {};
+    attendanceCounts.forEach(a => { attMap[String(a._id)] = a.count; });
+    const fbMap = {};
+    feedbackCounts.forEach(f => { fbMap[String(f._id)] = f.count; });
+
+    const chartEvents = events.map(e => {
+      const attendance = attMap[String(e._id)] || 0;
+      const feedbacks  = fbMap[String(e._id)] || 0;
+      return {
+        label: e.title,
+        attendance,
+        feedbacks,
+        feedbackRate: attendance > 0 ? Math.round((feedbacks / attendance) * 100) : 0,
+      };
+    });
+
+    res.json({ year, chartEvents });
+  } catch (err) {
+    console.error('events-dashboard error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });
@@ -306,6 +411,30 @@ router.get('/employment', (req, res, next) => {
   if (req.user.college) req.query.college = req.user.college;
   next();
 }, getEmploymentRecords);
+router.get('/employment/export', (req, res, next) => {
+  // Force coordinator's college — cannot be overridden by query param
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, exportEmploymentRecords);
+// Tracer Dashboard — same analytics as the admin Tracer Dashboard, forced to
+// the coordinator's own college. getTracerFilterOptions takes no college
+// param (its dropdown vocabularies are deliberately global — see its own
+// comment in employmentController.js), so it's mounted unscoped. Must be
+// declared before /employment/:id below, or that wildcard route swallows
+// these literal paths (e.g. "donut-stats" gets read as an :id) first.
+router.get('/employment/donut-stats', (req, res, next) => {
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, getDonutStats);
+router.get('/employment/tracer-analytics', (req, res, next) => {
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, getTracerAnalytics);
+router.get('/employment/tracer-filter-options', getTracerFilterOptions);
+router.get('/employment/tracer-analytics/export', (req, res, next) => {
+  if (req.user.college) req.query.college = req.user.college;
+  next();
+}, exportTracerAnalytics);
 router.post('/employment/log-print', logPrintActivity);
 router.get('/employment/:id', (req, res, next) => {
   req.forcedCollege = req.user.college || '';

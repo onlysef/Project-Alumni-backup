@@ -13,7 +13,10 @@ const VIEW_TO_PATH = {
   dashboard:    "/coordinator/dashboard",
   events:       "/coordinator/events",
   participation:"/coordinator/participation",
+  "event-dashboard": "/coordinator/event-dashboard",
   employment:   "/coordinator/employment",
+  "export-employment": "/coordinator/export-employment",
+  "tracer-dashboard": "/coordinator/tracer-dashboard",
   "tracer-responses": "/coordinator/tracer-responses",
   "tracer-form-editor": "/coordinator/tracer-form-editor",
   "notify-alumni": "/coordinator/notify-alumni",
@@ -115,7 +118,7 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
         {items.map((item, index) => {
           const hasChildren = Array.isArray(item.children) && item.children.length > 0;
           const isOpen = openMenu === item.view;
-          const category = ({ 0: "Overview", 1: "Event management", 3: "Tracer Study", 5: "Alumni management", 8: "System" })[index];
+          const category = ({ 0: "Overview", 1: "Event management", 4: "Tracer Study", 7: "Alumni management", 11: "System" })[index];
 
           if (hasChildren) {
             return (

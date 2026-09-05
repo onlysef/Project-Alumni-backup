@@ -13,18 +13,27 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+// Module-level, not state — survives this component unmounting when the
+// admin navigates away and back, so returning to the Dashboard shows the
+// last-known numbers instantly instead of flashing "—" again while a fresh
+// copy loads silently in the background.
+let cachedTotalUsers = null;
+let cachedEmployedCount = null;
+let cachedTracerCount = null;
+const cachedPostActivities = new Map(); // keyed by activityWindow ("24"/"168"/"all")
+
 export default function DashboardView() {
   const { showToast } = useOutletContext();
   const navigate = useNavigate();
-  const [totalUsers, setTotalUsers] = useState(null);
-  const [employedCount, setEmployedCount] = useState(null);
-  const [tracerCount, setTracerCount]     = useState(null);
-  const [postActivities, setPostActivities] = useState([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [totalUsers, setTotalUsers] = useState(cachedTotalUsers);
+  const [employedCount, setEmployedCount] = useState(cachedEmployedCount);
+  const [tracerCount, setTracerCount]     = useState(cachedTracerCount);
+  const [postActivities, setPostActivities] = useState(() => cachedPostActivities.get("24") ?? []);
+  const [activitiesLoading, setActivitiesLoading] = useState(!cachedPostActivities.has("24"));
   const [activityWindow, setActivityWindow] = useState("24");
 
   useEffect(() => {
-  
+
     async function fetchTotalUsers() {
       try {
         const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
@@ -35,6 +44,7 @@ export default function DashboardView() {
         // active ones made the tile jump on every new registration or
         // suspension, neither of which reflects actual active usage.
         const activeCount = (data.users || []).filter(u => u.status === "active").length;
+        cachedTotalUsers = activeCount;
         setTotalUsers(activeCount);
       } catch {}
     }
@@ -44,8 +54,10 @@ export default function DashboardView() {
         const res = await fetch(`${API}/admin/employment/stats`, { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        setEmployedCount(data.employed ?? 0);
-        setTracerCount(data.tracerSubmissions ?? 0);
+        cachedEmployedCount = data.employed ?? 0;
+        cachedTracerCount = data.tracerSubmissions ?? 0;
+        setEmployedCount(cachedEmployedCount);
+        setTracerCount(cachedTracerCount);
       } catch {}
     }
 
@@ -61,8 +73,10 @@ export default function DashboardView() {
 
   useEffect(() => {
     let cancelled = false;
+    const cached = cachedPostActivities.get(activityWindow);
+    if (cached) { setPostActivities(cached); setActivitiesLoading(false); }
+    else setActivitiesLoading(true);
     async function fetchActivities() {
-      setActivitiesLoading(true);
       try {
         const limit = activityWindow === "all" ? 50 : 20;
         const res = await fetch(`${API}/admin/announcements/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() });
@@ -75,7 +89,9 @@ export default function DashboardView() {
           if (!previous || new Date(activity.createdAt) > new Date(previous.createdAt)) seen.set(key, activity);
         }
         if (!cancelled) {
-          setPostActivities([...seen.values()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+          const sorted = [...seen.values()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          cachedPostActivities.set(activityWindow, sorted);
+          setPostActivities(sorted);
         }
       } catch {} finally {
         if (!cancelled) setActivitiesLoading(false);
