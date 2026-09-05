@@ -30,9 +30,12 @@ const EmployerSignUpView      = lazy(() => import("../pages/shared/EmployerSignU
 const CoordinatorHome         = lazy(() => import("../pages/coordinator/CoordinatorHome"));
 const EventManagement         = lazy(() => import("../pages/coordinator/EventManagement"));
 const EventParticipation      = lazy(() => import("../pages/coordinator/EventParticipation"));
+const EventDashboard          = lazy(() => import("../pages/coordinator/EventDashboard"));
 const CoordinatorEmploymentView = lazy(() => import("../pages/coordinator/CoordinatorEmploymentView"));
+const CoordinatorExportEmploymentListView = lazy(() => import("../pages/coordinator/ExportEmploymentListView"));
 const CoordinatorNotifyAlumniView = lazy(() => import("../pages/coordinator/CoordinatorNotifyAlumniView"));
 const CoordinatorTracerResponsesView = lazy(() => import("../pages/coordinator/CoordinatorTracerResponsesView"));
+const CoordinatorTracerDashboardView = lazy(() => import("../pages/coordinator/CoordinatorTracerDashboardView"));
 const AlumniContacts          = lazy(() => import("../pages/coordinator/AlumniContacts"));
 const CoordinatorAiAssistantView = lazy(() => import("../pages/admin/AiAssistantView"));
 const CoordinatorAboutView    = lazy(() => import("../pages/admin/AboutView"));
@@ -125,7 +128,10 @@ export default function AppRoutes() {
             <Route path="dashboard"    element={<CoordinatorHome />} />
             <Route path="events"       element={<EventManagement />} />
             <Route path="participation"element={<EventParticipation />} />
+            <Route path="event-dashboard" element={<EventDashboard />} />
             <Route path="employment"   element={<CoordinatorEmploymentView />} />
+            <Route path="export-employment" element={<CoordinatorExportEmploymentListView />} />
+            <Route path="tracer-dashboard" element={<CoordinatorTracerDashboardView />} />
             <Route path="tracer-responses" element={<CoordinatorTracerResponsesView />} />
             <Route path="tracer-form-editor" element={<TracerFormEditorView />} />
             <Route path="notify-alumni" element={<CoordinatorNotifyAlumniView />} />

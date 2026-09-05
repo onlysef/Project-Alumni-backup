@@ -6,7 +6,8 @@ import { CHART_PALETTE, MiniDonut, DistributionBars, EmploymentChart } from "../
 import { renderChartImage } from "../../components/common/canvasCharts.js";
 import Icon from "../../components/common/Icon.jsx";
 import { API, authHeaders } from "../../services/api.js";
-import { COLLEGE_CODES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
+import { COURSES_BY_COLLEGE } from "../../constants/colleges.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 // ── Tracer Study Analytics (accordion) ────────────────────────────────────────
 // DistributionBars, MiniDonut, and CHART_PALETTE live in Charts.jsx so the
@@ -451,7 +452,7 @@ function TracerStudyAnalytics({ data }) {
 // ── Filter panel ───────────────────────────────────────────────────────────
 
 const EMPTY_TRACER_FILTERS = {
-  college: "", course: "", track: "",
+  course: "", track: "",
   graduationYearFrom: "", graduationYearTo: "",
   surveyYear: "", gender: "", employmentStatus: "",
   jobRelatedToDegree: "", furtherEducation: "",
@@ -462,11 +463,13 @@ const EMPTY_TRACER_FILTERS = {
 // account creation (AccountsView.jsx).
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 
-// College/course/batch filters live on User and can be validated against a
-// known vocabulary (COLLEGE_CODES/COURSES_BY_COLLEGE); the remaining 6
-// filters are free-text answers straight from TracerStudyResponse, so their
-// option lists come from the backend's tracer-filter-options endpoint
-// (real, deduped values already in the data) rather than a hardcoded guess.
+// Course/batch filters live on User and can be validated against a known
+// vocabulary (COURSES_BY_COLLEGE, scoped to the coordinator's own college —
+// there's no College filter here since every /coordinator/employment/*
+// endpoint already forces that server-side); the remaining 6 filters are
+// free-text answers straight from TracerStudyResponse, so their option lists
+// come from the backend's tracer-filter-options endpoint (real, deduped
+// values already in the data) rather than a hardcoded guess.
 function yearRange(min, max) {
   if (!min || !max) return [];
   const out = [];
@@ -474,15 +477,13 @@ function yearRange(min, max) {
   return out;
 }
 
-function TracerFilterPanel({ pending, onChange, options, onApply, onReset, hasActive, appliedFilters, tracerAnalytics }) {
-  const courseOptions = pending.college ? (COURSES_BY_COLLEGE[pending.college] || []) : [];
+function TracerFilterPanel({ pending, onChange, options, courseOptions, onApply, onReset, hasActive, appliedFilters, tracerAnalytics }) {
   const years = yearRange(options.graduationYearBounds?.min, options.graduationYearBounds?.max);
 
   function set(field, value) {
     onChange((p) => {
       const next = { ...p, [field]: value };
-      if (field === "college") next.course = "";
-      if (field === "college" || field === "course") next.track = "";
+      if (field === "course") next.track = "";
       return next;
     });
   }
@@ -494,14 +495,8 @@ function TracerFilterPanel({ pending, onChange, options, onApply, onReset, hasAc
         {hasActive && <span className="tracer-filters-badge">Filters Active</span>}
       </div>
       <div className="tracer-filter-grid">
-        <label>College
-          <select value={pending.college} onChange={(e) => set("college", e.target.value)}>
-            <option value="">All Colleges</option>
-            {COLLEGE_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
         <label>Course / Program
-          <select value={pending.course} onChange={(e) => set("course", e.target.value)} disabled={!pending.college}>
+          <select value={pending.course} onChange={(e) => set("course", e.target.value)}>
             <option value="">All Courses</option>
             {courseOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -590,9 +585,9 @@ function TracerFilterPanel({ pending, onChange, options, onApply, onReset, hasAc
 // ── KPI grid ─────────────────────────────────────────────────────────────
 
 // The tiles flagged `scopeNote: true` intentionally track only the
-// College/Course/Batch Year filters, not the tracer-only ones (gender,
-// employment status, etc.) — see the matching comment on
-// buildTracerFilterMatch in employmentController.js for why.
+// Course/Batch Year filters (plus the forced college scope), not the
+// tracer-only ones (gender, employment status, etc.) — see the matching
+// comment on buildTracerFilterMatch in employmentController.js for why.
 // Icon color doesn't matter here — the `.tracer-kpi-grid .admin-svg-icon`
 // filter rule in admin-mod.css force-recolors every icon (regardless of its
 // native stroke) to a uniform maroon, so these are picked purely for shape.
@@ -630,7 +625,7 @@ function TracerKpiGrid({ kpis }) {
         ))}
       </div>
       <p className="tracer-kpi-note">
-        * Not-Yet Tracer Response and Overall Response Rate track the College, Course, and Batch Year filters only.
+        * Not-Yet Tracer Response and Overall Response Rate track the Course and Batch Year filters only.
       </p>
     </section>
   );
@@ -647,7 +642,7 @@ function buildFilterQueryString(filters) {
 async function downloadTracerDataExport(format, filters) {
   const qs = buildFilterQueryString(filters);
   const res = await fetch(
-    `${API}/admin/employment/tracer-analytics/export?format=${format}${qs ? `&${qs}` : ""}`,
+    `${API}/coordinator/employment/tracer-analytics/export?format=${format}${qs ? `&${qs}` : ""}`,
     { headers: authHeaders() }
   );
   if (!res.ok) return;
@@ -661,7 +656,7 @@ async function downloadTracerDataExport(format, filters) {
 }
 
 const FILTER_LABELS = {
-  college: "College", course: "Course", track: "Track / Specialization",
+  course: "Course", track: "Track / Specialization",
   graduationYearFrom: "Batch Year From", graduationYearTo: "Batch Year To",
   surveyYear: "Survey Year", gender: "Gender",
   employmentStatus: "Employment Status", jobRelatedToDegree: "Job Related to Degree",
@@ -925,16 +920,18 @@ function downloadTracerAnalyticsPdf(data, filters) {
 // ── Page ─────────────────────────────────────────────────────────────────
 
 // Module-level, not state — survives this component unmounting when the
-// admin navigates away and back, so returning to the Tracer Dashboard shows
-// the last-known charts instantly instead of flashing "Loading…" again
-// while a fresh copy loads silently in the background. Keyed by the applied
-// filter set, since different filters have different cached results.
+// coordinator navigates away and back, so returning to the Tracer Dashboard
+// shows the last-known charts instantly instead of flashing "Loading…"
+// again while a fresh copy loads silently in the background. Keyed by the
+// applied filter set, since different filters have different cached results.
 const cachedDonutData = new Map();
 const cachedTracerAnalytics = new Map();
 let cachedTracerFilterOptions = null;
 
-export default function TracerDashboardView() {
+export default function CoordinatorTracerDashboardView() {
   const { showToast } = useOutletContext();
+  const { user } = useAuth();
+  const courseOptions = COURSES_BY_COLLEGE[user?.college] || [];
   const [pendingFilters, setPendingFilters] = useState(EMPTY_TRACER_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(EMPTY_TRACER_FILTERS);
   const [filterOptions, setFilterOptions] = useState(cachedTracerFilterOptions ?? {});
@@ -954,7 +951,7 @@ export default function TracerDashboardView() {
     if (cached) setDonutData(cached);
     async function fetchDonutStats() {
       try {
-        const res = await fetch(`${API}/admin/employment/donut-stats${qs ? `?${qs}` : ""}`, { headers: authHeaders() });
+        const res = await fetch(`${API}/coordinator/employment/donut-stats${qs ? `?${qs}` : ""}`, { headers: authHeaders() });
         if (!res.ok || cancelled) return;
         const json = await res.json();
         if (!cancelled) { cachedDonutData.set(qs, json); setDonutData(json); }
@@ -972,7 +969,7 @@ export default function TracerDashboardView() {
   useEffect(() => {
     async function fetchFilterOptions() {
       try {
-        const res = await fetch(`${API}/admin/employment/tracer-filter-options`, { headers: authHeaders() });
+        const res = await fetch(`${API}/coordinator/employment/tracer-filter-options`, { headers: authHeaders() });
         if (!res.ok) return;
         const json = await res.json();
         cachedTracerFilterOptions = json;
@@ -995,7 +992,7 @@ export default function TracerDashboardView() {
     if (cached) setTracerAnalytics(cached);
     async function fetchTracerAnalytics() {
       try {
-        const res = await fetch(`${API}/admin/employment/tracer-analytics${qs ? `?${qs}` : ""}`, { headers: authHeaders() });
+        const res = await fetch(`${API}/coordinator/employment/tracer-analytics${qs ? `?${qs}` : ""}`, { headers: authHeaders() });
         if (!res.ok || cancelled) return;
         const json = await res.json();
         if (!cancelled) { cachedTracerAnalytics.set(qs, json); setTracerAnalytics(json); }
@@ -1025,12 +1022,12 @@ export default function TracerDashboardView() {
   const hasActiveFilters = Object.values(appliedFilters).some(Boolean);
 
   return (
-    <section className="content tracer-dashboard-view view active-view">
+    <section className="content coordinator-content tracer-dashboard-view view active-view">
       <div className="admin-hero" aria-label="Tracer dashboard header">
         <h1 className="admin-hero-title">Tracer Study Analytics Dashboard</h1>
         <p className="admin-hero-subtitle">
           Explore respondent profile, employment outcomes, personal growth, further education, and
-          recognition — filter by batch year, college, course, and survey responses.
+          recognition for {user?.college || "your college"}, filtered by batch year, course, and survey responses.
         </p>
       </div>
 
@@ -1038,6 +1035,7 @@ export default function TracerDashboardView() {
         pending={pendingFilters}
         onChange={setPendingFilters}
         options={filterOptions}
+        courseOptions={courseOptions}
         onApply={applyFilters}
         onReset={resetFilters}
         hasActive={hasActiveFilters}

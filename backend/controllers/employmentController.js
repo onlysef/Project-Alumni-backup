@@ -71,6 +71,9 @@ function logActivity(userId, userName, action, targetName = '', details = '') {
   }).catch(() => {});
 }
 
+// Despite the name, this resolves any staff member's display name (admin
+// or coordinator) — used everywhere logActivity needs a human-readable
+// actor name from just a user id.
 async function resolveAdminName(userId) {
   try {
     const u = await User.findById(userId).select('firstName lastName');
@@ -2114,4 +2117,6 @@ module.exports = {
   getTracerResponseColleges,
   getTracerResponses,
   getTracerResponseDetail,
+  logActivity,
+  resolveAdminName,
 };
