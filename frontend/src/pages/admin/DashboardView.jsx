@@ -18,16 +18,16 @@ function timeAgo(dateStr) {
 // last-known numbers instantly instead of flashing "—" again while a fresh
 // copy loads silently in the background.
 let cachedTotalUsers = null;
-let cachedEmployedCount = null;
-let cachedTracerCount = null;
+let cachedActiveCount = null;
+let cachedInactiveCount = null;
 const cachedPostActivities = new Map(); // keyed by activityWindow ("24"/"168"/"all")
 
 export default function DashboardView() {
   const { showToast } = useOutletContext();
   const navigate = useNavigate();
-  const [totalUsers, setTotalUsers] = useState(cachedTotalUsers);
-  const [employedCount, setEmployedCount] = useState(cachedEmployedCount);
-  const [tracerCount, setTracerCount]     = useState(cachedTracerCount);
+  const [totalUsers, setTotalUsers]   = useState(cachedTotalUsers);
+  const [activeCount, setActiveCount] = useState(cachedActiveCount);
+  const [inactiveCount, setInactiveCount] = useState(cachedInactiveCount);
   const [postActivities, setPostActivities] = useState(() => cachedPostActivities.get("24") ?? []);
   const [activitiesLoading, setActivitiesLoading] = useState(!cachedPostActivities.has("24"));
   const [activityWindow, setActivityWindow] = useState("24");
@@ -39,35 +39,28 @@ export default function DashboardView() {
         const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        // "Total Users" should read as portal health (real, active accounts) —
-        // counting pending (never-activated) and suspended accounts alongside
-        // active ones made the tile jump on every new registration or
-        // suspension, neither of which reflects actual active usage.
-        const activeCount = (data.users || []).filter(u => u.status === "active").length;
-        cachedTotalUsers = activeCount;
-        setTotalUsers(activeCount);
-      } catch {}
-    }
-
-    async function fetchEmploymentStats() {
-      try {
-        const res = await fetch(`${API}/admin/employment/stats`, { headers: authHeaders() });
-        if (!res.ok) return;
-        const data = await res.json();
-        cachedEmployedCount = data.employed ?? 0;
-        cachedTracerCount = data.tracerSubmissions ?? 0;
-        setEmployedCount(cachedEmployedCount);
-        setTracerCount(cachedTracerCount);
+        const users = data.users || [];
+        // "Total Users" is every account regardless of status — the
+        // Active/Inactive tiles right next to it are the meaningful
+        // breakdown of that same total, so this must include everyone they
+        // add up to, not just the active subset (an earlier version of this
+        // tile only counted active accounts on its own, which made it
+        // silently equal the Active tile once that was added).
+        // "Inactive" = anything that isn't 'active' (pending activation OR
+        // suspended) — the User model only has these 3 statuses.
+        const active = users.filter(u => u.status === "active").length;
+        cachedTotalUsers    = users.length;
+        cachedActiveCount   = active;
+        cachedInactiveCount = users.length - active;
+        setTotalUsers(cachedTotalUsers);
+        setActiveCount(cachedActiveCount);
+        setInactiveCount(cachedInactiveCount);
       } catch {}
     }
 
     fetchTotalUsers();
-    fetchEmploymentStats();
 
-    const interval = setInterval(() => {
-      fetchTotalUsers();
-      fetchEmploymentStats();
-    }, 30000);
+    const interval = setInterval(fetchTotalUsers, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -140,14 +133,17 @@ export default function DashboardView() {
         </article>
         <article className="stat-card">
           <div>
-            <p className="stat-value">{employedCount === null ? "—" : employedCount}</p>
-            <p className="stat-label">Employed Alumni</p>
+            <p className="stat-value">{activeCount === null ? "—" : activeCount}</p>
+            <p className="stat-label">Total Active</p>
           </div>
-          <span><Icon name="icon-12" /></span>
+          <span><Icon name="icon-active" /></span>
         </article>
         <article className="stat-card">
-          <div><p className="stat-value">{tracerCount === null ? "—" : tracerCount}</p><p className="stat-label">Tracer Submissions</p></div>
-          <span><Icon name="icon-13" /></span>
+          <div>
+            <p className="stat-value">{inactiveCount === null ? "—" : inactiveCount}</p>
+            <p className="stat-label">Total Inactive</p>
+          </div>
+          <span><Icon name="icon-inactive" /></span>
         </article>
       </div>
 

@@ -240,7 +240,14 @@ STRICT RULES:
 // provided for the number of BSIT graduates... however, 149..." — the model
 // contradicts its own refusal but still opens with one, which the original
 // narrow pattern didn't catch at all).
-const REFUSAL_PATTERN = /don'?t have (enough )?(data|information)|no data (is |was )?(provided|available)|not (provided|available)\b|couldn'?t find (relevant )?(data|information)|unable to (provide|find|answer)|cannot (provide|find|answer)|there (is|are)n'?t? (any )?data|no (specific )?(data|information) (on|for|about)|does\s*n'?t\s+(specify|mention|provide|include|indicate|state)|does\s+not\s+(specify|mention|provide|include|indicate|state)|^unfortunately\b|\bonly\s+(mentions?|states?|tells?|says?)\b|(?:is|are|was|were)\s+not\s+(?:explicitly\s+|clearly\s+|specifically\s+)?(?:stated|specified|mentioned|indicated|provided|available)\b|no\s+information\s+(?:about|on|regarding)\b/i;
+// cannot/can't/unable to (create|generate|write|produce|discuss) — added
+// after a live miss: a plain "alumni over the past 3 years" query returned
+// "I cannot create content about the employment of alumni" (the small model
+// misfiring into a content-safety-style refusal for an ordinary stats
+// question), which "cannot (provide|find|answer)" alone didn't cover, so
+// useNarration stayed true and the bogus refusal was shown to the user
+// instead of falling back to the correct deterministic aggText/chart.
+const REFUSAL_PATTERN = /don'?t have (enough )?(data|information)|no data (is |was )?(provided|available)|not (provided|available)\b|couldn'?t find (relevant )?(data|information)|unable to (provide|find|answer|create|generate|write|produce|discuss)|cannot (provide|find|answer|create|generate|write|produce|discuss)|can'?t (provide|find|answer|create|generate|write|produce|discuss)|there (is|are)n'?t? (any )?data|no (specific )?(data|information) (on|for|about)|does\s*n'?t\s+(specify|mention|provide|include|indicate|state)|does\s+not\s+(specify|mention|provide|include|indicate|state)|^unfortunately\b|\bonly\s+(mentions?|states?|tells?|says?)\b|(?:is|are|was|were)\s+not\s+(?:explicitly\s+|clearly\s+|specifically\s+)?(?:stated|specified|mentioned|indicated|provided|available)\b|no\s+information\s+(?:about|on|regarding)\b/i;
 
 // Multi-word Capitalized sequences only (2+ words), not single capitalized
 // words — those are common false positives (sentence-initial capitals,
@@ -477,6 +484,25 @@ function isGroupReferentFollowUp(question) {
 const EXPLICIT_SUBJECT_PATTERN = /\b(alumni|alumnus|alumna|graduates?|gradweyt|students?|respondents?|batch\s*\d{4}|\d{4}\s*batch|database|datos|records?)\b/i;
 const RESET_PHRASE_PATTERN = /\b(forget|never\s*mind|nevermind|let'?s\s+talk\s+about|now\s+i\s+want|different\s+topic|new\s+topic|switch(?:ing)?\s+topics?|kalimutan|bagong\s+tanong|iba\s+na\s+(?:ang\s+)?(?:usapan|tanong|topic))\b/i;
 
+// A BARE "batch <year>" mention — nothing else but an optional filler word
+// ("yung"/"ang"/"what about") plus the year, no verb, no noun of its own
+// ("yung batch 2020?", "what about batch 2020?", "batch 2020?") — is the
+// same kind of ellipsis the bare "how many/ilan" check below already
+// recognizes: it narrows whatever was JUST being discussed down to one
+// batch, not a fresh self-contained question. EXPLICIT_SUBJECT_PATTERN's own
+// batch\d{4} clause exists to stop a question that independently
+// ESTABLISHES its own topic alongside naming a batch ("What is the
+// employment rate of the 2024 batch?") from wrongly inheriting a stale
+// filter — but a batch mention with nothing else never establishes anything
+// of its own, so it should still inherit. Checked BEFORE the
+// EXPLICIT_SUBJECT_PATTERN gate below, which otherwise treats every
+// batch-year mention alike regardless of how much (or how little) else the
+// question says. Caught live: "yung batch 2020?" right after "ilan na yung
+// alumni na employed?" was wrongly treated as a fresh, unfiltered "list
+// every batch 2020 alumnus" question instead of "how many of the employed
+// ones are batch 2020?".
+const BARE_BATCH_MENTION_PATTERN = /^[\s?.!,]*(?:yung|ang|yun|iyong|what\s+about|how\s+about|and)?[\s?.!,]*(?:batch\s*\d{4}|\d{4}\s*batch)[\s?.!,]*$/i;
+
 // A SINGULAR person-referring pronoun ("siya"/"niya"/"she"/"he"/"her"/"him")
 // names a PERSON from earlier in the conversation, not a filter to inherit —
 // resolving it needs that person's actual NAME substituted in, which only
@@ -491,6 +517,10 @@ const PLURAL_PRONOUN_PATTERN = /\b(their|theirs|them|they|those|nila|sila|kanila
 
 function isEllipticalContinuation(question) {
   if (RESET_PHRASE_PATTERN.test(question)) return false;
+  // Checked BEFORE the EXPLICIT_SUBJECT_PATTERN gate just below — see
+  // BARE_BATCH_MENTION_PATTERN's own comment above for why a bare batch
+  // mention needs to be carved out from that gate's broader batch\d{4} clause.
+  if (BARE_BATCH_MENTION_PATTERN.test(question)) return true;
   // Checked BEFORE any trigger below (not just the "how many" one) — "who
   // are those ALUMNI working in IT industry?" contains a referent word
   // ("those") and would otherwise short-circuit true via
@@ -540,13 +570,42 @@ function isEllipticalContinuation(question) {
 // further back — every group-referent follow-up silently failed to find its
 // own prior turn and fell to the "not sure which group" clarify message even
 // with a perfectly good company count one real turn back.
+// A "show more"/"show 50" turn (see aggregationService.js's filters.showAll/
+// showLimit) carries NO topic content of its own — it only means "same
+// group, bigger preview." Re-deriving filters from a turn like that ALONE
+// (as the one-hop rule above does for everything else) loses whatever real
+// filter (e.g. employmentStatus) the group was actually scoped to, the
+// moment there are TWO such turns in a row: "who is working?" -> "show 50"
+// -> "show more" — the immediately-preceding "show 50" turn has no
+// "employed" in its own text, so treating IT as the sole context source
+// drops the status filter the whole chain was actually about, and the
+// second "show more" silently re-lists the entire unfiltered roster.
+function isShowMoreOnlyContinuation(text) {
+  const filters = aggregationService.extractFilters(text);
+  const keys = Object.keys(filters);
+  return keys.length > 0 && keys.every(k => k === 'showAll' || k === 'showLimit');
+}
+
 function buildContextQuestions(chatHistory, currentQuestion) {
   const userTurns = chatHistory.filter(m => m.role === 'user');
   const normalize = s => (s || '').trim().toLowerCase();
   let idx = userTurns.length - 1;
   while (idx >= 0 && normalize(userTurns[idx].content) === normalize(currentQuestion)) idx--;
   if (idx < 0) return [];
-  return [correctTypos(userTurns[idx].content || '')];
+
+  const collected = [correctTypos(userTurns[idx].content || '')];
+  // Keep walking back through consecutive show-more-only turns until one
+  // with real content is found (or history runs out) — buildSeedFilters()
+  // in aggregationService.js already merges a whole array of context
+  // questions in order, so collecting the real turn alongside the show-more
+  // turn(s) on top of it resolves correctly without changing that merge logic.
+  while (idx > 0 && isShowMoreOnlyContinuation(collected[0])) {
+    idx--;
+    while (idx >= 0 && normalize(userTurns[idx].content) === normalize(currentQuestion)) idx--;
+    if (idx < 0) break;
+    collected.unshift(correctTypos(userTurns[idx].content || ''));
+  }
+  return collected;
 }
 
 // True when chatHistory contains a REAL prior exchange, not just the current
@@ -577,7 +636,16 @@ function hasPriorConversation(chatHistory, currentQuestion) {
 // false-positive on complete standalone questions the way single words like
 // "also"/"and"/"plus" would (e.g. "employed and unemployed" is already a
 // complete compound question on its own).
-const CONTINUATION_PATTERN = /\b(together with|along with|combined? with|what about|how about|same for)\b/i;
+// "show all"/"see the full list"/"show more"/"show 50" — the explicit
+// request to lift (or resize) queryNames()'s NAMES_PREVIEW_LIMIT cap (see
+// aggregationService.js's filters.showAll/filters.showLimit) for the SAME
+// group just listed — needs to be recognized as a continuation here too, or
+// it would seed no filters at all and re-list the entire unfiltered roster
+// instead of the same (e.g. "employed") subset the truncated list was
+// actually showing. "show\s+\d{1,3}" (not \d{1,4}) mirrors
+// aggregationService's own showLimit regex — deliberately excludes 4-digit
+// numbers so this never collides with a genuine "batch 2020"-shaped mention.
+const CONTINUATION_PATTERN = /\b(together with|along with|combined? with|what about|how about|same for|show\s+(?:all|everyone|more|the\s+rest|\d{1,3})|see\s+(?:all|everyone|more|the\s+rest|\d{1,3})|top\s+\d{1,3}|full\s+list|complete\s+list|all\s+of\s+them)\b/i;
 
 // Cheap Tagalog/Taglish detector — common Filipino function words that
 // essentially never appear in an ordinary English sentence. Deliberately a
@@ -1595,8 +1663,14 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     if (aggResult) {
       const aggText     = typeof aggResult === 'string' ? aggResult : aggResult.text;
       // Context-aware, guaranteed-answerable suggestions — built from the same
-      // topic dispatch table aggregationService just used to answer this question.
-      const suggestions = aggregationService.suggestFollowUps(aggResult.topic, aggResult.filters);
+      // topic dispatch table aggregationService just used to answer this
+      // question. A clarify-style answer (see queryInner()'s bare-year-
+      // narrowing branch) supplies its OWN tailored suggestions instead —
+      // those are self-contained ("How many employed alumni are there in
+      // Batch 2020?") on purpose, so clicking one still resolves correctly
+      // even though isEllipticalContinuation() would otherwise reject a
+      // batch-year-naming follow-up as a fresh, non-inheriting question.
+      const suggestions = aggResult.suggestions || aggregationService.suggestFollowUps(aggResult.topic, aggResult.filters);
 
       // A single-fact answer ("There are **149** graduates...") is already
       // one readable sentence — sending it to the LLM just to get the same

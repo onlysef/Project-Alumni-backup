@@ -50,7 +50,23 @@ function readableParagraphs(text = "") {
     });
 }
 
-function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }) {
+// The per-word reveal used a FIXED 24ms step with a flat 1800ms cap — fine
+// for a short sentence (a couple dozen words), but a names list or a long
+// breakdown easily runs past 75 words (75 * 24ms = 1800ms), and every word
+// after that shared the exact same capped delay — instead of continuing to
+// stagger in, the whole tail of the list popped in simultaneously the
+// moment the cap was hit, which is exactly the "not smooth" jump reported
+// for list/bullet answers. WORD_REVEAL_TARGET_MS is the total time the
+// animation now aims to finish within regardless of length; the actual
+// per-word step scales down for longer text so nothing hits a hard wall,
+// bounded by a floor (still visibly sequential, just fast) and a ceiling
+// (keeps a short answer's original, more leisurely pace).
+const WORD_REVEAL_TARGET_MS = 1800;
+const WORD_REVEAL_MIN_STEP  = 3;
+const WORD_REVEAL_MAX_STEP  = 24;
+const WORD_REVEAL_HARD_CAP  = 3000;
+
+function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }, stepMs = WORD_REVEAL_MAX_STEP) {
   return String(text).split(/(\s+)/).filter(Boolean).map((part, index) => {
     const key = `${keyPrefix}-${index}`;
     if (/^\s+$/.test(part)) return <React.Fragment key={key}>{part}</React.Fragment>;
@@ -61,7 +77,7 @@ function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }) {
       <span
         key={key}
         className="ac-word"
-        style={{ "--ac-word-delay": `${Math.min(wordIndex * 24, 1800)}ms` }}
+        style={{ "--ac-word-delay": `${Math.min(wordIndex * stepMs, WORD_REVEAL_HARD_CAP)}ms` }}
       >
         {part}
       </span>
@@ -69,22 +85,22 @@ function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }) {
   });
 }
 
-function renderInlineText(text = "", keyPrefix = "inline", cursor = { value: 0 }) {
+function renderInlineText(text = "", keyPrefix = "inline", cursor = { value: 0 }, stepMs = WORD_REVEAL_MAX_STEP) {
   const parts = String(text).split(/(\*\*[^*\n]+?\*\*|__[^_\n]+?__|`[^`\n]+?`|\*[^*\n]+?\*)/g);
 
   return parts.filter(Boolean).map((part, index) => {
     const key = `${keyPrefix}-${index}`;
     if ((part.startsWith("**") && part.endsWith("**")) ||
         (part.startsWith("__") && part.endsWith("__"))) {
-      return <strong key={key}>{animatedWords(part.slice(2, -2), key, cursor)}</strong>;
+      return <strong key={key}>{animatedWords(part.slice(2, -2), key, cursor, stepMs)}</strong>;
     }
     if (part.startsWith("`") && part.endsWith("`")) {
-      return <code key={key}>{animatedWords(part.slice(1, -1), key, cursor)}</code>;
+      return <code key={key}>{animatedWords(part.slice(1, -1), key, cursor, stepMs)}</code>;
     }
     if (part.startsWith("*") && part.endsWith("*")) {
-      return <em key={key}>{animatedWords(part.slice(1, -1), key, cursor)}</em>;
+      return <em key={key}>{animatedWords(part.slice(1, -1), key, cursor, stepMs)}</em>;
     }
-    return <React.Fragment key={key}>{animatedWords(part, key, cursor)}</React.Fragment>;
+    return <React.Fragment key={key}>{animatedWords(part, key, cursor, stepMs)}</React.Fragment>;
   });
 }
 
@@ -209,6 +225,13 @@ function parseAssistantBlocks(text = "") {
 function AssistantResponse({ text, messageId }) {
   const blocks = parseAssistantBlocks(text);
   const wordCursor = { value: 0 };
+  // See WORD_REVEAL_TARGET_MS's comment above — a long list needs a smaller
+  // per-word step than a short answer so the whole thing keeps staggering
+  // smoothly instead of hitting a flat delay cap partway through.
+  const totalWords = (text.match(/\S+/g) || []).length;
+  const wordStepMs = totalWords > 0
+    ? Math.max(WORD_REVEAL_MIN_STEP, Math.min(WORD_REVEAL_MAX_STEP, WORD_REVEAL_TARGET_MS / totalWords))
+    : WORD_REVEAL_MAX_STEP;
 
   return (
     <div className="ac-response-content">
@@ -217,7 +240,7 @@ function AssistantResponse({ text, messageId }) {
 
         if (block.type === "heading") {
           const Heading = block.level <= 2 ? "h3" : "h4";
-          return <Heading key={key}>{renderInlineText(block.text, key, wordCursor)}</Heading>;
+          return <Heading key={key}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</Heading>;
         }
 
         if (block.type === "list") {
@@ -225,7 +248,7 @@ function AssistantResponse({ text, messageId }) {
           return (
             <List key={key} start={block.ordered ? block.start : undefined}>
               {block.items.map((item, itemIndex) => (
-                <li key={`${key}-item-${itemIndex}`}>{renderInlineText(item, `${key}-item-${itemIndex}`, wordCursor)}</li>
+                <li key={`${key}-item-${itemIndex}`}>{renderInlineText(item, `${key}-item-${itemIndex}`, wordCursor, wordStepMs)}</li>
               ))}
             </List>
           );
@@ -239,7 +262,7 @@ function AssistantResponse({ text, messageId }) {
                   <tr>
                     {block.header.map((cell, cellIndex) => (
                       <th key={`${key}-head-${cellIndex}`} scope="col" style={{ textAlign: block.alignments[cellIndex] || "left" }}>
-                        {renderInlineText(cell, `${key}-head-${cellIndex}`, wordCursor)}
+                        {renderInlineText(cell, `${key}-head-${cellIndex}`, wordCursor, wordStepMs)}
                       </th>
                     ))}
                   </tr>
@@ -249,7 +272,7 @@ function AssistantResponse({ text, messageId }) {
                     <tr key={`${key}-row-${rowIndex}`}>
                       {block.header.map((_, cellIndex) => (
                         <td key={`${key}-cell-${rowIndex}-${cellIndex}`} style={{ textAlign: block.alignments[cellIndex] || "left" }}>
-                          {renderInlineText(row[cellIndex] || "", `${key}-cell-${rowIndex}-${cellIndex}`, wordCursor)}
+                          {renderInlineText(row[cellIndex] || "", `${key}-cell-${rowIndex}-${cellIndex}`, wordCursor, wordStepMs)}
                         </td>
                       ))}
                     </tr>
@@ -261,14 +284,14 @@ function AssistantResponse({ text, messageId }) {
         }
 
         if (block.type === "quote") {
-          return <blockquote key={key}>{renderInlineText(block.text, key, wordCursor)}</blockquote>;
+          return <blockquote key={key}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</blockquote>;
         }
 
         if (block.type === "divider") return <hr key={key} />;
 
         const plainText = block.text.replace(/[*_`]/g, "");
         const className = /^The Bachelor|^Bachelor/i.test(plainText) ? "ac-answer-program" : undefined;
-        return <p key={key} className={className}>{renderInlineText(block.text, key, wordCursor)}</p>;
+        return <p key={key} className={className}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</p>;
       })}
     </div>
   );

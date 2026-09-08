@@ -14,6 +14,32 @@ function escapeRegex(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Default preview size for a names-list answer, and the raised cap used once
+// filters.showAll is set (an explicit "show all"/"see the full list"
+// follow-up) or filters.showLimit exceeds it — the dataset is currently a
+// few hundred records at most, so this still isn't truly unbounded, just
+// generous enough to cover it. Declared here (not just above queryNames())
+// so extractFilters() can also reference NAMES_FULL_LIMIT as the cap for an
+// explicit "show 50" request.
+const NAMES_PREVIEW_LIMIT = 15;
+const NAMES_FULL_LIMIT = 500;
+
+// Builds the $regex pattern for matching (or, via the exclude call sites,
+// negating) an employmentStatus filter value. Bare "Yes" folds in
+// "Self-Employed" — every OTHER employment-count surface in this app
+// (queryEmployment()'s summary, the Admin Dashboard's "Employed Alumni" tile,
+// employmentController.getEmploymentStats()) already treats Self-Employed as
+// a form of "employed," but this file's own count/names/industry queries only
+// matched the literal "Yes" status, silently excluding the self-employed
+// group. Caught live: the chatbot answered 172 for "how many alumni are
+// employed" while the Admin Dashboard's tile (built from the same underlying
+// data) showed 177 — a 5-record gap partly caused by this alone. Every OTHER
+// status (No/Never Employed/Self-Employed itself when explicitly asked) is
+// unaffected — only the bare "Yes" case folds in the extra alternative.
+function employedStatusPattern(status) {
+  return status === 'Yes' ? '^(yes|self[- ]?employed)' : `^${status}`;
+}
+
 // workLocation is a free-text field, not a real two-value enum — the tracer
 // form's own radio options are "Local (within your home country)"/"Abroad
 // (outside your home country)", but bulk-migrated records often carry a
@@ -162,7 +188,16 @@ const TOPIC_PATTERNS = {
   // ever got a chance to be used — answering an unrelated "0 employed
   // alumni at Accenture" COUNT sentence instead of the names list a "sino"
   // (who) question asks for.
-  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b|\bsino[\s-]*sino\s+ang\b|\bsino\s+ang\s+mga\b|\bsaan\s+(?:sila|sina|nila|silang)\b.{0,20}\b(?:nagtatrabaho|nagwowork|naninirahan|nakatira)\b|\bwhere\s+(?:do|does)\s+they\s+work\b|\bano\s+ang\s+(?:trabaho|posisyon|position)\s+(?:nila|niya)\b|\bwhat\s+(?:is|are)\s+their\s+(?:job\s+title|position|occupation)s?\b|\bkailan\s+(?:sila|silang)\b.{0,15}\b(?:nagtapos|natapos|nag-?graduate|nagsi-?graduate)\b|\bwhen\s+did\s+they\s+graduate\b|\bsino\b.{0,15}\b(?:nagtatrabaho|nagwowork|empleyado)\s+sa\b/i,
+  // "who is/are (currently/still) working/employed/unemployed" — present-
+  // continuous/adjectival employment-status phrasing the verb-list
+  // alternative just above can't reach (that one requires "who" directly
+  // followed by the verb, e.g. "who works", not "who IS working"). Missing
+  // this meant "Who is working?" matched no TOPIC_PATTERNS entry at all
+  // (see WHO_IS_EXCLUDE_WORDS's own comment for the OTHER half of this same
+  // live bug — it also got wrongly captured as a person-name lookup), so
+  // detectTopic() fell all the way to the generic EMPLOYMENT_SIGNAL fallback
+  // instead of correctly resolving to a names list.
+  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|who\s+(?:is|are)\s+(?:currently\s+|now\s+|still\s+)?(?:working|employed|unemployed|self-employed)\b|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b|\bsino[\s-]*sino\s+ang\b|\bsino\s+ang\s+mga\b|\bsaan\s+(?:sila|sina|nila|silang)\b.{0,20}\b(?:nagtatrabaho|nagwowork|naninirahan|nakatira)\b|\bwhere\s+(?:do|does)\s+they\s+work\b|\bano\s+ang\s+(?:trabaho|posisyon|position)\s+(?:nila|niya)\b|\bwhat\s+(?:is|are)\s+their\s+(?:job\s+title|position|occupation)s?\b|\bkailan\s+(?:sila|silang)\b.{0,15}\b(?:nagtapos|natapos|nag-?graduate|nagsi-?graduate)\b|\bwhen\s+did\s+they\s+graduate\b|\bsino\b.{0,15}\b(?:nagtatrabaho|nagwowork|empleyado)\s+sa\b/i,
   // "ilan"/"ilang" (Tagalog "how many") — requires an alumni-referring noun
   // nearby, same as the English alternatives above, and NOT bare — bare
   // "ilan" is common enough in casual Tagalog phrasing of every other topic
@@ -412,9 +447,25 @@ function extractFilters(question) {
     if (keyword) filters.program = keyword;
   }
 
-  // Graduation year: "batch 2001", "2023 graduates", etc. — covers 1990–2039
-  const yearMatch = question.match(/\b((?:199\d|20[0-3]\d))\b/);
-  if (yearMatch) filters.yearGraduated = parseInt(yearMatch[1]);
+  // Graduation year RANGE: "batch 2020 to 2022", "2020-2022", "2020 hanggang
+  // 2022" — a closed range, distinct from the yearFrom-only "past N years"
+  // case below (which the 'trend' bypass in queryInner() deliberately treats
+  // as an open-ended multi-year window rather than a single count/list).
+  // Checked BEFORE the single-year match just below — that regex has no `g`
+  // flag and returns only the FIRST year found in the whole question, so
+  // without this, "batch 2020 to 2022" silently dropped the "to 2022" half
+  // and matched only 2020.
+  const yearRangeMatch = question.match(/\b(199\d|20[0-3]\d)\s*(?:to|through|-|–|—|until|hanggang)\s*(199\d|20[0-3]\d)\b/i);
+  if (yearRangeMatch) {
+    const y1 = parseInt(yearRangeMatch[1], 10);
+    const y2 = parseInt(yearRangeMatch[2], 10);
+    filters.yearFrom = Math.min(y1, y2);
+    filters.yearTo   = Math.max(y1, y2);
+  } else {
+    // Graduation year: "batch 2001", "2023 graduates", etc. — covers 1990–2039
+    const yearMatch = question.match(/\b((?:199\d|20[0-3]\d))\b/);
+    if (yearMatch) filters.yearGraduated = parseInt(yearMatch[1]);
+  }
 
   // "the past/last N years" — a MINIMUM year (inclusive range), not a single
   // exact year. Without this, "over the past three years" was silently
@@ -422,7 +473,7 @@ function extractFilters(question) {
   // trend question ended up answered with the ALL-TIME aggregate across
   // every batch ever recorded instead of the recent window actually asked
   // about — a materially different, misleading number.
-  if (!filters.yearGraduated) {
+  if (!filters.yearGraduated && !filters.yearFrom) {
     const NUMBER_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
     const pastYearsMatch = question.match(/\b(?:past|last)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+years?\b/i);
     if (pastYearsMatch) {
@@ -678,7 +729,17 @@ function extractFilters(question) {
     // headcount (256) instead of the employed count (169) — the literal
     // English "how many are employed" answered correctly, so the same
     // question asked in Tagalog silently gave a different number.
-    || /\bmay\s+trabaho\b|\bempleyado\b|\bnakakuha\s+ng\s+trabaho\b|\bnagta+trabaho\b|\bnagtrabaho\b|\bgumagawa\b/i.test(question);
+    || /\bmay\s+trabaho\b|\bempleyado\b|\bnakakuha\s+ng\s+trabaho\b|\bnagta+trabaho\b|\bnagtrabaho\b|\bgumagawa\b/i.test(question)
+    // "working" (English "-ing" verb form) — the exact English counterpart
+    // of nagtatrabaho/nagtrabaho just above, missing on the English side of
+    // the very same gap: "Who is working?" set no employmentStatus filter at
+    // all (only the literal noun "employed" was recognized), so it answered
+    // with the full unfiltered 50-alumni roster instead of just the employed
+    // ones. "self-employed" is excluded (that's its own distinct status,
+    // matched separately by hasSelfEmployed above) via the negative
+    // lookbehind, same guard the "employed" counting logic above already
+    // uses for the same reason.
+    || /(?<!self[- ])\bworking\b/i.test(question);
 
   // "employed locally/abroad" is a location descriptor ("works locally"), not
   // an independent status claim on top of the location. Treating "employed"
@@ -776,6 +837,32 @@ function extractFilters(question) {
     filters.showAllIndustries = true;
   }
 
+  // "show all"/"see the full list"/"show more" — a names-list answer now
+  // previews only NAMES_PREVIEW_LIMIT results by default (see queryNames())
+  // instead of dumping up to 50 immediately; this is the explicit request to
+  // lift that cap for the SAME already-established filters. Deliberately
+  // broad (matches on its own, no "alumni"/"names" noun required) since this
+  // is meant to be typed as a short follow-up right after a truncated list
+  // ("show the full list", "see more", "show everyone") — see
+  // CONTINUATION_PATTERN in ragService.js for the matching change that lets
+  // this bare phrasing inherit the prior turn's filters as a continuation.
+  if (/\b(?:show|see)\s+(?:all|everyone|more|the\s+rest)\b|\bfull\s+list\b|\bcomplete\s+list\b|\ball\s+of\s+them\b/i.test(question)) {
+    filters.showAll = true;
+  }
+
+  // "show 50"/"show the first 20"/"see 30"/"top 10" — an explicit request
+  // for a SPECIFIC-sized preview, not just the binary showAll flag above.
+  // \d{1,3} (not \d{1,4}) deliberately excludes 4-digit numbers so "batch
+  // 2020"-style phrasing is never misread as a limit of 2020 — a real
+  // requested preview size is realistically always under 1000. Capped at
+  // NAMES_FULL_LIMIT so a wildly large typed number can't force an
+  // effectively unbounded query.
+  const showLimitMatch = question.match(/\b(?:show|see|list|display)\s+(?:the\s+)?(?:first\s+|top\s+)?(\d{1,3})\b|\btop\s+(\d{1,3})\b/i);
+  if (showLimitMatch) {
+    const n = parseInt(showLimitMatch[1] || showLimitMatch[2], 10);
+    if (n > 0) filters.showLimit = Math.min(n, NAMES_FULL_LIMIT);
+  }
+
   // Further education filter — check negation FIRST, use \w* to match full verb ("pursue/pursued").
   // "nagpatuloy/magpapatuloy...pag-aaral" — TOPIC_PATTERNS.further_studies
   // already recognizes this Tagalog phrase for TOPIC detection, but the
@@ -864,6 +951,7 @@ function filterLabel(filters) {
   if (filters.programLabel)  parts.push(filters.programLabel);
   else if (filters.program)  parts.push(filters.program);
   if (filters.yearGraduated) parts.push(`Batch ${filters.yearGraduated}`);
+  else if (filters.yearFrom && filters.yearTo) parts.push(`Batch ${filters.yearFrom} to ${filters.yearTo}`);
   else if (filters.yearFrom) parts.push(`${filters.yearFrom} onward`);
   return parts.length ? ` (${parts.join(', ')})` : '';
 }
@@ -926,13 +1014,35 @@ const DEDUP = [
   { $replaceRoot: { newRoot: '$doc' } },
 ];
 
+// Resolves filters.yearFrom/yearTo (a closed range from "batch 2020 to 2022",
+// or an open-ended lower bound from "past N years") into the $gte/$lte
+// MongoDB condition every by-year-range function below needs. Returns null
+// when neither bound is set.
+function yearRangeCondition(filters) {
+  if (!filters.yearFrom && !filters.yearTo) return null;
+  const range = {};
+  if (filters.yearFrom) range.$gte = filters.yearFrom;
+  if (filters.yearTo)   range.$lte = filters.yearTo;
+  return range;
+}
+
+// Resolves filters.yearGraduated/yearFrom/yearTo into the single $match value
+// every exact-or-ranged year filter below needs. Centralized so the range fix
+// only had to land once instead of separately in each call site that used to
+// hardcode `filters.yearGraduated` alone and silently ignore a range.
+function yearMatchCondition(filters) {
+  if (filters.yearGraduated) return filters.yearGraduated;
+  return yearRangeCondition(filters);
+}
+
 // Returns a pipeline prefix: filter by stable fields (program, year) then DEDUP.
 // Variable fields (employmentStatus, industry, etc.) must be applied AFTER this
 // so deduplication uses each person's newest record value.
 function stablePipeline(filters) {
   const match = {};
-  if (filters.program)       match.program       = { $regex: filters.program, $options: 'i' };
-  if (filters.yearGraduated) match.yearGraduated = filters.yearGraduated;
+  if (filters.program) match.program = { $regex: filters.program, $options: 'i' };
+  const yearCond = yearMatchCondition(filters);
+  if (yearCond !== null) match.yearGraduated = yearCond;
   // Was missing: filters.gender was extracted by extractFilters() but never
   // applied anywhere except queryGender() itself — every other function
   // (queryCount, queryEmployment, queryIndustry, etc.) silently ignored a
@@ -1019,9 +1129,9 @@ async function queryIndustry(filters) {
   // "self-employed", "employed", and unfiltered all returned the exact same
   // top-10 list. Mirrors the same postDedup-style filters queryCount()/
   // queryNames() already apply.
-  if (filters.employmentStatus) pipeline.push({ $match: { employmentStatus: { $regex: `^${filters.employmentStatus}`, $options: 'i' } } });
+  if (filters.employmentStatus) pipeline.push({ $match: { employmentStatus: { $regex: employedStatusPattern(filters.employmentStatus), $options: 'i' } } });
   if (filters.excludeEmploymentStatus) {
-    pipeline.push({ $match: { employmentStatus: { $nin: [null, ''], $not: { $regex: `^${filters.excludeEmploymentStatus}`, $options: 'i' } } } });
+    pipeline.push({ $match: { employmentStatus: { $nin: [null, ''], $not: { $regex: employedStatusPattern(filters.excludeEmploymentStatus), $options: 'i' } } } });
   }
   if (filters.workLocation) {
     pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
@@ -1090,8 +1200,9 @@ async function queryGender(filters) {
   // one gender asked about, breaking the "X% of Y total" denominator (it
   // would always show 100%). Only program/year make sense as pre-filters here.
   const stableMatch = {};
-  if (filters.program)       stableMatch.program       = { $regex: filters.program, $options: 'i' };
-  if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
+  if (filters.program) stableMatch.program = { $regex: filters.program, $options: 'i' };
+  const genderYearCond = yearMatchCondition(filters);
+  if (genderYearCond !== null) stableMatch.yearGraduated = genderYearCond;
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1195,7 +1306,8 @@ async function queryJobRelevance(filters) {
 // lucky/unlucky record can't swing the "highest" result.
 async function queryJobAlignmentByProgram(filters) {
   const stableMatch = {};
-  if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
+  const yearCond = yearMatchCondition(filters);
+  if (yearCond !== null) stableMatch.yearGraduated = yearCond;
   if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
@@ -1408,7 +1520,8 @@ async function queryWorkLocation(filters) {
 
 async function queryByProgram(filters) {
   const stableMatch = {};
-  if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
+  const yearCond = yearMatchCondition(filters);
+  if (yearCond !== null) stableMatch.yearGraduated = yearCond;
   if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
@@ -1448,7 +1561,8 @@ async function queryByProgram(filters) {
 // lucky/unlucky record can't swing the "highest" result.
 async function queryEmploymentRateByProgram(filters) {
   const stableMatch = {};
-  if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
+  const yearCond = yearMatchCondition(filters);
+  if (yearCond !== null) stableMatch.yearGraduated = yearCond;
   if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
@@ -1498,7 +1612,8 @@ async function queryEmploymentRateByProgram(filters) {
 // is handled.
 async function queryProgramRateExtreme(filters, direction, metric) {
   const stableMatch = {};
-  if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
+  const yearCond = yearMatchCondition(filters);
+  if (yearCond !== null) stableMatch.yearGraduated = yearCond;
   if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
@@ -1551,7 +1666,8 @@ async function queryProgramRateExtreme(filters, direction, metric) {
 // than 3 respondents are excluded so a single record can't swing "the most."
 async function queryWorkLocationByProgram(filters, location) {
   const stableMatch = {};
-  if (filters.yearGraduated) stableMatch.yearGraduated = filters.yearGraduated;
+  const yearCond = yearMatchCondition(filters);
+  if (yearCond !== null) stableMatch.yearGraduated = yearCond;
   if (filters.gender)        stableMatch.gender        = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
 
   const rows = await Graduate.aggregate([
@@ -1592,7 +1708,8 @@ async function queryByYear(filters) {
   const stableMatch = {};
   if (filters.program)  stableMatch.program       = { $regex: filters.program, $options: 'i' };
   if (filters.gender)   stableMatch.gender         = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
-  if (filters.yearFrom) stableMatch.yearGraduated  = { $gte: filters.yearFrom };
+  const yearRange = yearRangeCondition(filters);
+  if (yearRange) stableMatch.yearGraduated = yearRange;
 
   const rows = await Graduate.aggregate([
     { $match: stableMatch },
@@ -1610,14 +1727,37 @@ async function queryByYear(filters) {
   ]);
   if (!rows.length) return null;
 
+  // When the question named an explicit year window (a "batch A to B" range,
+  // or the "past N years" open-ended case sets yearFrom alone), fill in every
+  // year in that window with zero — a batch with no submitted tracer
+  // responses yet is a real, meaningful "0" data point for a trend view, not
+  // something to silently omit. Without this, "employment trend over the past
+  // 3 years" with only one reporting batch so far rendered a single bar
+  // holding 100% of the (trivial, one-row) total — a share number that's
+  // mathematically correct but reads as broken/meaningless, and hides the
+  // very fact (no data yet for the newer years) the trend question was
+  // actually asking about.
+  let displayRows = rows;
+  if (filters.yearFrom) {
+    const from = filters.yearFrom;
+    const to   = filters.yearTo || new Date().getFullYear();
+    const byYear = new Map(rows.map(r => [r._id, r]));
+    displayRows = [];
+    for (let y = to; y >= from; y--) {
+      displayRows.push(byYear.get(y) || { _id: y, total: 0, employed: 0, selfEmp: 0 });
+    }
+  }
+
   const lbl = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
   let out = `**${gPrefix ? `${gPrefix.charAt(0).toUpperCase() + gPrefix.slice(1)}employment` : 'Employment'} by graduation year${lbl}:**\n\n`;
-  rows.forEach(r => {
+  displayRows.forEach(r => {
     const emp = r.employed + r.selfEmp;
-    out += `- **Batch ${r._id}**: ${emp}/${r.total} employed (${pct(emp, r.total)})\n`;
+    out += r.total > 0
+      ? `- **Batch ${r._id}**: ${emp}/${r.total} employed (${pct(emp, r.total)})\n`
+      : `- **Batch ${r._id}**: no tracer study responses on file yet\n`;
   });
-  const chartRows = rows.map(r => ({ _id: `Batch ${r._id}`, count: r.total })).reverse();
+  const chartRows = displayRows.map(r => ({ _id: `Batch ${r._id}`, count: r.total })).reverse();
   return withChart(out, { type: 'bars', title: 'Respondents by Batch Year', rows: chartRows });
 }
 
@@ -1822,7 +1962,17 @@ const NAMED_LOOKUP_PATTERN = /\b(?:alumni|alumnus|alumna|graduates?)\s+(?:named|
 // best program") — excluding their common leading words (same
 // STATUS_EXCLUDE_WORDS/STATUS_NAME_WORD approach as below) keeps those from
 // misfiring into a Graduate-name search that can never match.
-const WHO_IS_EXCLUDE_WORDS = 'the|a|an|this|that|these|those|available|going|responsible|eligible|allowed|able|qualified|assigned|in|charge|best|worst|good|great|new|old|it|he|she|they|we|you|i|there|here';
+// working|employed|unemployed|self-employed|graduating|hired|hiring|retired
+// added after a live bug: "Who is working?" (a legitimate employment-status
+// question, meaning "which alumni are working") matched WHO_IS_PATTERN with
+// "working" captured as the "name" (it satisfied WHO_IS_NAME_WORD and was
+// immediately followed by "?", which the pattern's own lookahead accepts),
+// so it searched Graduate for someone literally named "working", found no
+// one, and the question fell all the way through to the generic "I can't
+// answer unrelated questions" refusal instead of ever reaching detectTopic()/
+// EMPLOYMENT_SIGNAL — a confident wrong refusal to a perfectly answerable
+// question, not just a missed match.
+const WHO_IS_EXCLUDE_WORDS = 'the|a|an|this|that|these|those|available|going|responsible|eligible|allowed|able|qualified|assigned|in|charge|best|worst|good|great|new|old|it|he|she|they|we|you|i|there|here|working|employed|unemployed|self-employed|graduating|hired|hiring|retired';
 const WHO_IS_NAME_WORD = String.raw`(?!(?:${WHO_IS_EXCLUDE_WORDS})\b)[a-zA-Z][a-zA-Z.'-]*`;
 // The optional filler-adverb group before "working" stops a word like
 // "currently"/"still" sitting between the name and the working-clause from
@@ -2172,9 +2322,9 @@ async function queryNames(filters, question = '') {
   if (filters.excludeIndustry) {
     pipeline.push({ $match: { industry: { $nin: [null, ''], $not: { $regex: filters.excludeIndustry, $options: 'i' } } } });
   }
-  if (filters.employmentStatus) pipeline.push({ $match: { employmentStatus: { $regex: `^${filters.employmentStatus}`, $options: 'i' } } });
+  if (filters.employmentStatus) pipeline.push({ $match: { employmentStatus: { $regex: employedStatusPattern(filters.employmentStatus), $options: 'i' } } });
   if (filters.excludeEmploymentStatus) {
-    pipeline.push({ $match: { employmentStatus: { $nin: [null, ''], $not: { $regex: `^${filters.excludeEmploymentStatus}`, $options: 'i' } } } });
+    pipeline.push({ $match: { employmentStatus: { $nin: [null, ''], $not: { $regex: employedStatusPattern(filters.excludeEmploymentStatus), $options: 'i' } } } });
   }
   if (filters.workLocation) {
     pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
@@ -2202,9 +2352,21 @@ async function queryNames(filters, question = '') {
     pipeline.push({ $match: tookExamMatch(filters.tookExam) });
   }
 
-  pipeline.push({ $sort: { name: 1 } }, { $limit: 50 });
-
-  const docs = await Graduate.aggregate(pipeline);
+  // Was a flat 50 always — a bare "who is working?"-style question dumped up
+  // to 50 names on the very first answer, before the user had any chance to
+  // say whether they actually wanted the full roster. Now previews a much
+  // shorter list by default and asks explicitly (see the suffix message
+  // below) — filters.showAll ("show all"/"see the full list") lifts the cap
+  // all the way, filters.showLimit ("show 50") sets an exact requested size;
+  // both are recognized continuations (see CONTINUATION_PATTERN in
+  // ragService.js) so either still applies on top of the SAME filters
+  // (e.g. "employed") the truncated list was already scoped to.
+  const limit = filters.showLimit || (filters.showAll ? NAMES_FULL_LIMIT : NAMES_PREVIEW_LIMIT);
+  const [docs, totalRows] = await Promise.all([
+    Graduate.aggregate([...pipeline, { $sort: { name: 1 } }, { $limit: limit }]),
+    Graduate.aggregate([...pipeline, { $count: 'total' }]),
+  ]);
+  const total = totalRows[0]?.total ?? docs.length;
 
   // Built BEFORE the zero-match check below (not just for the found-results
   // case further down) — a "no alumni found" answer needs to name exactly
@@ -2217,7 +2379,8 @@ async function queryNames(filters, question = '') {
     filters.industry          && `in ${filters.industry}`,
     filters.excludeIndustry   && `NOT in ${filters.excludeIndustry}`,
     filters.program           && `from ${filters.programLabel || filters.program}`,
-    filters.yearGraduated     && `Batch ${filters.yearGraduated}`,
+    filters.yearGraduated ? `Batch ${filters.yearGraduated}`
+      : (filters.yearFrom && filters.yearTo) ? `Batch ${filters.yearFrom} to ${filters.yearTo}` : null,
     // Same LGBTQIA+ special-case genderPrefix() already applies elsewhere —
     // a blanket .toLowerCase() reads fine for "male"/"female" but flattens
     // the acronym into "lgbtqia+".
@@ -2269,7 +2432,7 @@ async function queryNames(filters, question = '') {
   const showLocation = /\b(saan|where)\b.{0,25}\b(nagtatrabaho|nagwowork|naninirahan|nakatira|work(?:ing)?)\b/i.test(question);
   const showYear = /\b(kailan|when)\b.{0,20}\b(nagtapos|natapos|graduate)\b/i.test(question);
 
-  const suffix = docs.length === 50 ? ` (showing first 50)` : ` (${docs.length} total)`;
+  const suffix = docs.length < total ? ` (showing ${docs.length} of ${total} — say "show all" or "show 50" to see more)` : ` (${total} total)`;
   let out = `**Alumni${label ? ` ${label}` : ''}${suffix}:**\n\n`;
   docs.forEach((d, i) => {
     out += `${i + 1}. **${toTitleCase(cleanText(d.name))}**`;
@@ -2704,7 +2867,7 @@ async function queryCount(filters) {
 
   // Variable filters applied after dedup
   const postDedup = {};
-  if (filters.employmentStatus) postDedup.employmentStatus = { $regex: `^${filters.employmentStatus}`, $options: 'i' };
+  if (filters.employmentStatus) postDedup.employmentStatus = { $regex: employedStatusPattern(filters.employmentStatus), $options: 'i' };
   // $not/$regex never matches a null/missing field, which would otherwise
   // make "not self-employed" silently include people with no status
   // recorded at all — $nin excludes those explicitly so the count only
@@ -2712,7 +2875,7 @@ async function queryCount(filters) {
   if (filters.excludeEmploymentStatus) {
     postDedup.employmentStatus = {
       $nin: [null, ''],
-      $not: { $regex: `^${filters.excludeEmploymentStatus}`, $options: 'i' },
+      $not: { $regex: employedStatusPattern(filters.excludeEmploymentStatus), $options: 'i' },
     };
   }
   if (filters.jobTitleRegex)    postDedup.jobTitle         = { $regex: filters.jobTitleRegex, $options: 'i' };
@@ -3102,7 +3265,20 @@ async function queryInner(question, seedFilters = {}) {
   // the seeded value, so "who are they?" (resolves nothing itself) inherits
   // the seed entirely, while "how many are from BSIT?" (resolves its own
   // program) keeps BSIT even if an older, different program was seeded.
-  const filters = { ...seedFilters, ...extractFilters(question) };
+  const ownFilters = extractFilters(question);
+  const filters = { ...seedFilters, ...ownFilters };
+  // showAll/showLimit are mutually exclusive "how much of a names list to
+  // show" signals — whichever one THIS turn's own text set (if either)
+  // must replace, not combine with, whichever the OTHER one seedFilters
+  // carried in from an earlier turn's answer. Without this: "show 50" right
+  // after an earlier "show all" stayed unbounded (inherited showAll never
+  // got cleared), and "show more" right after an earlier "show 50" stayed
+  // capped at that old fixed number (inherited showLimit outranked the
+  // fresh showAll in queryNames()'s own `filters.showLimit || ...` check)
+  // instead of actually expanding — caught live on a 3-hop chain: "who is
+  // working?" -> "show 50" -> "show more" silently kept re-showing 50.
+  if ('showLimit' in ownFilters) delete filters.showAll;
+  if ('showAll' in ownFilters) delete filters.showLimit;
 
   // "Who are Software Engineers?" / "who is a Nurse?" — extractFilters()
   // above already parses a job title out of the bare "who is/are X" fallback
@@ -3133,13 +3309,61 @@ async function queryInner(question, seedFilters = {}) {
   // never itself a real filter.
   //
   // Defaults to 'count' instead when the question itself asks "how many"/
-  // "ilan" — "how many are from BSCS?" (elliptical, no "alumni" noun for
-  // TOPIC_PATTERNS.count to key off) inheriting a companyRegex from
-  // conversation-context accumulation must still answer with a NUMBER, not
-  // silently switch into a names list just because a strong filter happens
-  // to be present.
+  // "ilan"/"number of"/"total"/"count" — "how many are from BSCS?"
+  // (elliptical, no "alumni" noun for TOPIC_PATTERNS.count to key off) and
+  // "number of batch 2022" (no "alumni/records/graduates" noun right after
+  // "number of" for TOPIC_PATTERNS.count's own regex to match) both need to
+  // answer with a NUMBER, not silently switch into a names list just because
+  // a strong filter (here, yearGraduated) happens to be present. Previously
+  // only recognized literal "how many"/"ilan", so "number of batch 2022"
+  // fell through to 'names' and printed a 50-alumni roster instead of a count.
+  // A bare "yung batch 2020?"-style continuation (see BARE_BATCH_MENTION_PATTERN
+  // in ragService.js's isEllipticalContinuation()) correctly inherits real
+  // context via seedFilters now, but the question's OWN text says nothing
+  // about what it actually wants to know about that batch (a count? the
+  // names? the rate?) — silently guessing between 'count'/'names' below used
+  // to answer with a full, possibly-unwanted name dump. Ask instead of
+  // guessing, same "clarify, don't guess" convention as the ambiguous-
+  // person-lookup and "not sure which group" messages elsewhere. Only fires
+  // when BOTH (a) real context was actually inherited from a prior turn
+  // (seedFilters non-empty — a standalone "batch 2020?" with nothing
+  // established yet has nothing to clarify against and still needs a normal
+  // answer, not a clarify loop) AND (b) this turn's OWN extraction resolved
+  // NOTHING but the bare year itself (a question that also names its own
+  // real content, e.g. "who is from batch 2020?", already has a topic or a
+  // real filter of its own and never reaches this branch).
+  if (topic === null && Object.keys(seedFilters).length > 0) {
+    const ownKeys = Object.keys(ownFilters);
+    const isBareYearNarrowing = ownKeys.length > 0
+      && ownKeys.every(k => k === 'yearGraduated' || k === 'yearFrom' || k === 'yearTo');
+    if (isBareYearNarrowing) {
+      const yearLabel = filters.yearGraduated ? `Batch ${filters.yearGraduated}`
+        : (filters.yearFrom && filters.yearTo) ? `Batch ${filters.yearFrom} to ${filters.yearTo}`
+        : filters.yearFrom ? `${filters.yearFrom} onward`
+        : 'that batch';
+      const statusWord = filters.employmentStatus === 'Yes'            ? 'employed'
+                        : filters.employmentStatus === 'No'             ? 'unemployed'
+                        : filters.employmentStatus === 'Self-Employed'  ? 'self-employed'
+                        : filters.employmentStatus === 'Never Employed' ? 'never-employed'
+                        : '';
+      const subject = statusWord ? `${statusWord} alumni in ${yearLabel}` : `alumni in ${yearLabel}`;
+      return {
+        text: `What would you like to know about ${subject}? For example, how many there are, the full list of names, or the employment rate.`,
+        direct: true,
+        topic: 'clarify',
+        filters,
+        chart: null,
+        suggestions: [
+          `How many ${subject} are there?`,
+          `Show me the list of ${subject}.`,
+          `What is the employment rate for ${yearLabel}?`,
+        ],
+      };
+    }
+  }
+
   if (topic === null && Object.keys(filters).some(k => k !== 'programLabel')) {
-    topic = /\b(?:how\s+many|ilan(?:g)?)\b/i.test(question) ? 'count' : 'names';
+    topic = /\b(?:how\s+many|ilan(?:g)?|number\s+of|total|count)\b/i.test(question) ? 'count' : 'names';
   }
 
   // Detect government/private SECTOR questions (no dedicated field in data)
@@ -3188,7 +3412,14 @@ async function queryInner(question, seedFilters = {}) {
   // at all, so it silently presented one static snapshot as if it answered
   // whether things are getting better or worse, which it structurally
   // cannot do.
-  if (/\btrend\b|\byear[\s-]over[\s-]year\b|\bover\s+time\b|\b(improv|declin|increas|decreas|grow(?:ing|th)?|worsen|drop(?:ping|ped)?)\w*\b/i.test(question) || filters.yearFrom) {
+  // filters.yearFrom && !filters.yearTo (not a bare filters.yearFrom check) —
+  // an open-ended lower bound only ever comes from "past N years" phrasing,
+  // which really does imply a by-year trend view. A CLOSED range ("batch 2020
+  // to 2022") sets both yearFrom and yearTo and is just a filter for whatever
+  // was actually asked (e.g. a single total count) — forcing it through the
+  // by-year breakdown here would silently replace a plain "number of alumni
+  // batch 2020 to 2022" count answer with an unrelated per-year chart.
+  if (/\btrend\b|\byear[\s-]over[\s-]year\b|\bover\s+time\b|\b(improv|declin|increas|decreas|grow(?:ing|th)?|worsen|drop(?:ping|ped)?)\w*\b/i.test(question) || (filters.yearFrom && !filters.yearTo)) {
     // queryByYear() may return { text, chart } now — normalize the same way
     // the generic dispatch wrapper below does, since this early-return
     // bypasses that wrapper entirely.
