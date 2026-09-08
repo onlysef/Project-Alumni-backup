@@ -3620,6 +3620,31 @@
             gap: 10px;
         }
 
+        /* .admin-card-head-inline — opt-out for a card head that's just a
+           title + ONE small action button ("Employer Invites" / "Send
+           Invite"), unlike the search-box + filters + button combos the
+           several @media (max-width: 760/600/420/360px) rules further down
+           stack into a column for — this stays side-by-side at every width.
+           Doubled class + !important on each rule so it beats those (some
+           of which already use !important themselves) regardless of source
+           order or specificity. */
+        .admin-card-head.admin-card-head-inline {
+            flex-direction: row !important;
+            align-items: center !important;
+        }
+
+        .admin-card-head.admin-card-head-inline > div {
+            display: flex !important;
+            width: auto !important;
+            grid-template-columns: none !important;
+        }
+
+        .admin-card-head.admin-card-head-inline .add-button,
+        .admin-card-head.admin-card-head-inline .admin-choice {
+            width: auto !important;
+            margin: 0 !important;
+        }
+
         .admin-choice,
         .admin-search,
         .post-submit {
@@ -7251,7 +7276,15 @@
 
         .emp-filter-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            /* minmax(0, 1fr), not a bare 1fr — a grid item's default
+               min-width is auto, which for a <select> resolves to its
+               widest <option> text (a long college/course name). Without
+               the 0 floor, a select that's intrinsically wider than half
+               the card refuses to shrink to its track and overflows the
+               card into the page background instead of wrapping its text
+               or truncating — exactly the "College"/"Batch Year" controls
+               spilling out on a narrow phone screen. */
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: 14px;
             padding: 18px 20px;
         }
@@ -7262,11 +7295,18 @@
             font-size: 13px;
             font-weight: 700;
             color: #2d2024;
+            min-width: 0;
         }
 
         .emp-filter-grid select,
         .emp-filter-grid input {
             min-height: 36px;
+            /* width: 100% + min-width: 0 — fills (and is capped by) its
+               grid track instead of sizing to its content, the other half
+               of the overflow fix alongside minmax(0, 1fr) above. */
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             border: 1px solid #cba0a6;
             border-radius: 6px;
             padding: 0 10px;
@@ -7277,6 +7317,21 @@
 
         .emp-filter-grid label.full-col {
             grid-column: span 2;
+        }
+
+        @media (max-width: 600px) {
+            /* Same collapse-to-one-column pattern .record-fields-grid
+               already uses at this breakpoint — a single column always has
+               the full card width to work with, so this is also a second,
+               independent safety net against the overflow above even if a
+               future option value is unusually long. */
+            .emp-filter-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .emp-filter-grid label.full-col {
+                grid-column: span 1;
+            }
         }
 
         .tracer-modal-body {

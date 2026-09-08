@@ -262,6 +262,13 @@ export function DistributionBars({ rows, limit }) {
   const shown = limit ? rows.slice(0, limit) : rows;
   const total = rows.reduce((a, r) => a + r.count, 0);
   const max   = Math.max(...shown.map((r) => r.count), 1);
+  // A "share of total" percentage is only meaningful when there's something
+  // to compare against — with a single category shown, it's mathematically
+  // always 100% regardless of the actual count, which reads as a misleading
+  // rate (e.g. "111 (100%)" can look like "100% employed") rather than the
+  // trivial fact it actually is. Suppressed for exactly that one-row case;
+  // 2+ rows still show a real, informative share.
+  const showPct = shown.length > 1;
   return (
     <div className="tracer-bars">
       {shown.map((r) => {
@@ -273,7 +280,7 @@ export function DistributionBars({ rows, limit }) {
               <div className="tracer-bar-track">
                 <div className="tracer-bar-fill" style={{ width: `${Math.max((r.count / max) * 100, 4)}%` }} />
               </div>
-              <span className="tracer-bar-count">{r.count} <em>({pct}%)</em></span>
+              <span className="tracer-bar-count">{r.count}{showPct && <em> ({pct}%)</em>}</span>
             </div>
           </div>
         );

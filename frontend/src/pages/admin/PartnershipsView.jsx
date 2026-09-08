@@ -173,7 +173,6 @@ export default function PartnershipsView() {
     <section className={`content admin-view view active-view`}>
       <div className="admin-kpis">
         <article><strong>{stats.active}</strong><span>Active Partners</span></article>
-        <article><strong>{stats.pending}</strong><span>Pending MOUs</span></article>
         <article><strong>{stats.jobOpportunities}</strong><span>Job Opportunities</span></article>
       </div>
       <section className="admin-card">
@@ -212,7 +211,7 @@ export default function PartnershipsView() {
       </section>
 
       <section className="admin-card">
-        <div className="admin-card-head">
+        <div className="admin-card-head admin-card-head-inline">
           <h3>Employer Invites</h3>
           <div>
             <button type="button" className="add-button" onClick={() => setInviteModalOpen(true)}>Send Invite</button>
