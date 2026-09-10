@@ -2156,6 +2156,63 @@
             color: var(--muted);
         }
 
+        .tracer-trend-line svg {
+            display: block;
+            overflow: visible;
+        }
+
+        .trend-gridline {
+            stroke: #f0e2e2;
+            stroke-width: 1;
+        }
+
+        body.dark-mode .trend-gridline {
+            stroke: rgba(255, 255, 255, 0.1);
+        }
+
+        .trend-axis-label {
+            font-size: 9px;
+            fill: var(--muted, #76656a);
+        }
+
+        .trend-line-path {
+            stroke: var(--maroon);
+            stroke-width: 2.5;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+        }
+
+        body.dark-mode .trend-line-path {
+            stroke: #fac853;
+        }
+
+        .trend-line-point {
+            fill: var(--maroon);
+            stroke: #fff;
+            stroke-width: 1.5;
+            cursor: pointer;
+            transition: r 120ms ease;
+        }
+        .trend-line-point:hover {
+            r: 6;
+        }
+
+        body.dark-mode .trend-line-point {
+            fill: #fac853;
+            stroke: #241116;
+        }
+
+        .trend-tooltip {
+            transform: translate(-50%, -100%);
+            background: var(--maroon);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+
         .tracer-donut-layout {
             display: grid;
             grid-template-columns: 132px 1fr;
@@ -8927,8 +8984,14 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             background: #241116;
         }
 
-        .ac-chart-title {
+        .ac-chart-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
             margin-bottom: 10px;
+        }
+
+        .ac-chart-title {
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
@@ -8938,6 +9001,36 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 
         body.dark-mode .ac-chart-title {
             color: var(--gold);
+        }
+
+        .ac-chart-copy-btn {
+            display: inline-grid;
+            place-items: center;
+            flex-shrink: 0;
+            margin-left: auto;
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #fff;
+            color: var(--muted);
+            cursor: pointer;
+            transition: background 120ms ease, color 120ms ease;
+        }
+        .ac-chart-copy-btn:hover {
+            background: var(--maroon);
+            border-color: var(--maroon);
+            color: #fff;
+        }
+        body.dark-mode .ac-chart-copy-btn {
+            background: transparent;
+            border-color: rgba(250, 200, 83, 0.22);
+            color: var(--gold);
+        }
+        body.dark-mode .ac-chart-copy-btn:hover {
+            background: var(--maroon);
+            border-color: var(--maroon);
+            color: #fff;
         }
 
         /* Markdown rendered output */

@@ -1,18 +1,62 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { toBlob } from "html-to-image";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
-import { MiniDonut, DistributionBars } from "../../components/common/Charts.jsx";
+import { MiniDonut, DistributionBars, TrendLine } from "../../components/common/Charts.jsx";
 
 // Renders the chart data the backend attaches to breakdown-style answers
 // ("how many are male?", employment status, industry, etc.) — dispatches by
 // chart.type onto the same chart primitives the admin Dashboard uses, so a
 // chatbot answer and the dashboard read as one consistent visual system.
-function AcChart({ chart }) {
+// "line" (added for trend-over-time answers like "employment by graduation
+// year") renders as an actual line chart instead of ranked bars — a bar
+// list of batch years reads as a categorical comparison, not the shape of
+// change over time the question actually asks about.
+//
+// The whole block (title + chart + legend) is rasterized on copy, not just
+// the bars/donut — a screenshot of bare bars with no labels is useless once
+// pasted into a report; capturing the labeled block keeps it self-explanatory.
+function AcChart({ chart, id, copiedChartId, onCopy }) {
+  const blockRef = useRef(null);
   if (!chart || !chart.rows?.length) return null;
-  const Chart = chart.type === "bars" ? DistributionBars : MiniDonut;
+  const Chart = chart.type === "bars" ? DistributionBars : chart.type === "line" ? TrendLine : MiniDonut;
+
+  async function handleCopy() {
+    if (!blockRef.current) return;
+    try {
+      // Background is set explicitly (not left to the node's own CSS
+      // background) because toBlob() rasterizes onto a transparent canvas by
+      // default — without this, a copied chart pasted onto a light surface
+      // (Word/Slack/etc, usually white) would show whatever was BEHIND the
+      // chat panel, not the chart's own maroon-tinted card background.
+      const isDark = document.body.classList.contains("dark-mode");
+      const blob = await toBlob(blockRef.current, {
+        backgroundColor: isDark ? "#241116" : "#fdf8f8",
+        pixelRatio: 2,
+        // The copy button itself shouldn't appear baked into the shared
+        // image — it's a UI control for THIS page, not part of the chart.
+        filter: (node) => !node.classList?.contains("ac-chart-copy-btn"),
+      });
+      if (!blob) return;
+      await navigator.clipboard.write([new window.ClipboardItem({ [blob.type]: blob })]);
+      onCopy(id);
+    } catch { /* ignore — e.g. Clipboard API unsupported/blocked */ }
+  }
+
   return (
-    <div className="ac-chart-block">
-      {chart.title && <div className="ac-chart-title">{chart.title}</div>}
+    <div className="ac-chart-block" ref={blockRef}>
+      <div className="ac-chart-header">
+        {chart.title && <div className="ac-chart-title">{chart.title}</div>}
+        <button
+          type="button"
+          className="ac-chart-copy-btn"
+          onClick={handleCopy}
+          title={copiedChartId === id ? "Copied" : "Copy chart as image"}
+          aria-label="Copy chart as image"
+        >
+          {copiedChartId === id ? <CheckIcon /> : <CopyIcon />}
+        </button>
+      </div>
       <Chart rows={chart.rows} />
     </div>
   );
@@ -375,6 +419,7 @@ export default function AiAssistantView() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [copiedId, setCopiedId] = useState(null);
+  const [copiedChartId, setCopiedChartId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1070,7 +1115,15 @@ export default function AiAssistantView() {
                     <div className="ac-ac-text">
                       <AssistantResponse text={m.text} messageId={m.id} />
                     </div>
-                    <AcChart chart={m.chart} />
+                    <AcChart
+                      chart={m.chart}
+                      id={m.id}
+                      copiedChartId={copiedChartId}
+                      onCopy={(id) => {
+                        setCopiedChartId(id);
+                        setTimeout(() => setCopiedChartId((c) => (c === id ? null : c)), 1400);
+                      }}
+                    />
                     <div className="ac-msg-tools ac-msg-tools-ac">
                       <button
                         type="button"

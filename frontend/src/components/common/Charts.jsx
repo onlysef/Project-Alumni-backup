@@ -288,3 +288,101 @@ export function DistributionBars({ rows, limit }) {
     </div>
   );
 }
+
+// Line/trend chart — best for a metric tracked ACROSS an ordered sequence
+// (batch year, month, etc.), where the shape of change over time is the
+// actual point, not a ranked comparison DistributionBars' bars suit. `rows`
+// is already in the sequence's natural order (oldest -> newest) by the time
+// it gets here — see queryByYear()'s own comment on why. A row's `count`
+// may be `null` (no data for that point, e.g. a batch with zero tracer
+// responses yet) — rendered as a genuine GAP in the line rather than a
+// misleading 0, since "no data" and "confirmed zero" are different facts.
+export function TrendLine({ rows, unit = '%', max = 100 }) {
+  const [tip, setTip] = useState(null);
+  const wrapRef = useRef(null);
+  if (!rows || rows.length === 0) {
+    return <p className="tracer-empty">No responses yet.</p>;
+  }
+
+  const W = 600, H = 220, PAD_L = 36, PAD_R = 16, PAD_T = 16, PAD_B = 32;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const n = rows.length;
+  const xFor = (i) => PAD_L + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const yFor = (v) => PAD_T + plotH - (Math.max(0, Math.min(v, max)) / max) * plotH;
+
+  const points = rows.map((r, i) => ({ ...r, x: xFor(i), y: r.count == null ? null : yFor(r.count) }));
+
+  // Break the polyline into separate contiguous segments wherever a null
+  // (no-data) point interrupts the sequence, instead of drawing a straight
+  // line across the gap as if that value were actually known.
+  const segments = [];
+  let current = [];
+  points.forEach((p) => {
+    if (p.y == null) { if (current.length) { segments.push(current); current = []; } }
+    else current.push(p);
+  });
+  if (current.length) segments.push(current);
+
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ y: PAD_T + plotH * (1 - f), label: Math.round(max * f) }));
+
+  function handleMove(e, p) {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect || p.y == null) return;
+    const scale = rect.width / W;
+    setTip({
+      x: p.x * scale,
+      y: p.y * scale - 14,
+      text: `${p.label}: ${p.count}${unit}`,
+    });
+  }
+
+  return (
+    <div className="tracer-trend-line" ref={wrapRef} style={{ position: 'relative' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="auto" role="img" aria-label="Trend over time">
+        {gridLines.map((g) => (
+          <g key={g.y}>
+            <line x1={PAD_L} y1={g.y} x2={W - PAD_R} y2={g.y} className="trend-gridline" />
+            <text x={PAD_L - 8} y={g.y} className="trend-axis-label" textAnchor="end" dominantBaseline="middle">{g.label}</text>
+          </g>
+        ))}
+        {segments.map((seg, i) => (
+          <polyline
+            key={i}
+            className="trend-line-path"
+            points={seg.map((p) => `${p.x},${p.y}`).join(' ')}
+            fill="none"
+          />
+        ))}
+        {points.map((p) => p.y == null ? null : (
+          <circle
+            key={p.label}
+            cx={p.x}
+            cy={p.y}
+            r={4}
+            className="trend-line-point"
+            onMouseMove={(e) => handleMove(e, p)}
+            onMouseLeave={() => setTip(null)}
+          />
+        ))}
+        {points.map((p, i) => {
+          // Thinning long label sequences — a batch-year axis with 15+ points
+          // renders every label overlapping and unreadable at this width, so
+          // only every Nth label is drawn once there are more than ~10 points.
+          const stride = n > 10 ? Math.ceil(n / 8) : 1;
+          if (i % stride !== 0 && i !== n - 1) return null;
+          return (
+            <text key={p.label} x={p.x} y={H - PAD_B + 16} className="trend-axis-label" textAnchor="middle">
+              {String(p.label).replace(/^Batch\s+/i, '')}
+            </text>
+          );
+        })}
+      </svg>
+      {tip && (
+        <div className="chart-tooltip trend-tooltip" style={{ position: 'absolute', left: tip.x, top: tip.y, pointerEvents: 'none', zIndex: 9999 }}>
+          {tip.text}
+        </div>
+      )}
+    </div>
+  );
+}
