@@ -2171,7 +2171,16 @@
         }
 
         .trend-axis-label {
-            font-size: 9px;
+            /* This is an SVG user-space size inside a 600x220 viewBox that
+               gets scaled down to fit .ac-chart-block's max-width: 88% of
+               the chat bubble — in practice often rendered well under
+               600px wide, so the effective on-screen size ends up smaller
+               than this number, not equal to it. 9px scaled by a realistic
+               ~0.6-0.75x factor lands at roughly 5.5-6.5 actual pixels —
+               illegible, reading as a fuzzy dash instead of a number/year.
+               13px leaves enough headroom to still land in a readable
+               ~8-10px range after that same scaling. */
+            font-size: 13px;
             fill: var(--muted, #76656a);
         }
 
@@ -2184,6 +2193,43 @@
 
         body.dark-mode .trend-line-path {
             stroke: #fac853;
+        }
+
+        /* Dashed bridge across an interior no-data gap (see TrendLine's own
+           comment) — deliberately lighter/dashed, never the same solid style
+           as trend-line-path, so it never reads as "we know the trend really
+           went this way through the gap," only "here's the overall shape
+           with a gap in it." Kept subtle on purpose — the vertical guide
+           line + "no data" label below carry the actual "this point isn't
+           real" signal now, since a style-only difference on the line/point
+           itself was found to be too subtle to notice at chat-message
+           rendering size (read as a real third data point instead). */
+        .trend-line-bridge {
+            stroke: var(--muted, #76656a);
+            stroke-width: 1.5;
+            stroke-dasharray: 4 4;
+            opacity: 0.35;
+        }
+
+        /* Full-height vertical guide marking exactly where a no-data gap
+           sits — unlike a dot placed ON the trend line, a vertical line
+           crossing the WHOLE plot area can't be mistaken for a plotted
+           value at any render size. Paired with .trend-gap-label below. */
+        .trend-gap-guide {
+            stroke: var(--muted, #76656a);
+            stroke-width: 1;
+            stroke-dasharray: 3 3;
+            opacity: 0.5;
+        }
+
+        /* Always-visible (no hover required) sub-label under a gap point's
+           year — a static screenshot or touch-screen viewer never triggers a
+           hover tooltip, so this is the ONLY thing that actually needs to
+           communicate "no data" to every viewer, not just mouse users. */
+        .trend-gap-label {
+            font-size: 9px;
+            font-style: italic;
+            opacity: 0.75;
         }
 
         .trend-line-point {
@@ -9105,7 +9151,19 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             display: grid;
             gap: 7px;
             margin: 4px 0 18px;
-            padding-left: 26px;
+            /* Was a fixed 26px, only ever room for a 1-2 digit marker
+               ("1."-"99.") — a list past 99 items (this app's alumni-name
+               lists routinely run into the hundreds, and are asked to scale
+               to 1000+) needs room for "100."-"9999." too, or the extra
+               digits get visually clipped against the text that follows.
+               `ch` (not a fixed px) scales with THIS element's own
+               font-size/font — same reason it also auto-adapts for the
+               14px mobile override below with no separate mobile rule
+               needed. 5ch comfortably fits a 4-digit marker + the period,
+               with tabular-nums (set on .ac-ac-text above) keeping every
+               digit's width identical so this doesn't get tighter for
+               "0000"-heavy numbers vs "1111"-heavy ones. */
+            padding-left: 5ch;
         }
         .ac-ac-text li {
             padding-left: 3px;
@@ -9830,8 +9888,10 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             .ac-bubble { max-width: 85%; }
             .ac-ac-text { max-width: 100%; font-size: 14px; line-height: 1.7; }
             .ac-ac-text h3 { font-size: 16px; }
-            .ac-ac-text ul,
-            .ac-ac-text ol { padding-left: 23px; }
+            /* No separate ul/ol padding-left override needed here anymore —
+               the base rule now uses `ch` (see its own comment), which
+               already scales down correctly for this smaller 14px
+               font-size on its own. */
             .ac-ac-text table { min-width: 390px; font-size: 13px; }
             .ac-ac-text th,
             .ac-ac-text td { padding: 9px 10px; }

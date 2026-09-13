@@ -215,7 +215,9 @@ const UNKNOWN_PATTERNS = [
   // arithmetic pattern: "2020-2023" (a year range) would otherwise false-
   // positive as a subtraction expression.
   /\bcalculate\b|\bcalculator\b|\bkalkulahin\b/i,
-  /\d+\s*[\+*x×\/÷]\s*\d+/,
+  // Arithmetic pattern moved out of this array — see ARITHMETIC_PATTERN and
+  // classify()'s own use of it below (needs to run against a date-stripped
+  // copy of the question, not `q` directly).
   /\bwhat\s+is\s+\d+.{0,15}(plus|minus|times|multiplied|divided)\b/i,
   // Current events / news — same issue as above, same fix.
   /\b(trending|breaking)\s+news\b|\bnews\b.{0,20}\btoday\b|\bcurrent\s+events\b|\btop\s+headlines\b|\bbalita\s+(ngayon|ngayong\s+araw)\b/i,
@@ -431,6 +433,27 @@ const QUALITATIVE_PATTERNS = [
   /\bpuna\b/i,
 ];
 
+// Arithmetic off-topic detector ("what is 2+2", "calculate 10/2") — kept
+// OUTSIDE UNKNOWN_PATTERNS and tested separately (see classify() below)
+// against a DATE-STRIPPED copy of the question, not the raw string. A
+// combined single regex with lookaround guards was tried first to exclude
+// calendar dates ("9/11/2026") from the "/" division branch, but failed
+// empirically: the generic \d+/\d+ match backtracks its greedy \d+ to dodge
+// a failing lookahead, which still carves "9/1" + "1/2026" out of
+// "9/11/2026" as two separate bogus matches even with lookbehind/lookahead
+// exclusions in place. Stripping the whole date substring first sidesteps
+// that backtracking pitfall entirely instead of trying to out-clever it
+// with more lookaround. Caught live: an event-disambiguation reply copying
+// a date straight back from a list this app itself rendered ("Alumni
+// Reunion (9/11/2026)") misclassified as off-topic arithmetic ("9 divided
+// by 11"), triggering the generic "I can't answer unrelated questions"
+// refusal for what was actually a perfectly answerable follow-up. The `-`
+// operator is still deliberately excluded here too, same reasoning as
+// UNKNOWN_PATTERNS' own comment: "2020-2023" (a year range) would otherwise
+// false-positive as subtraction.
+const ARITHMETIC_PATTERN = /\d+\s*[\+*x×÷\/]\s*\d+/;
+const INLINE_DATE_PATTERN = /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g;
+
 /**
  * Classify a question as 'offensive', 'unclear', 'greeting', 'acknowledgment', 'who_am_i', 'identity', 'help', 'unknown', 'statistical', 'qualitative', or 'mixed'.
  * Defaults to 'statistical' for ambiguous questions so MongoDB is tried first.
@@ -446,6 +469,7 @@ function classify(question) {
   if (IDENTITY_PATTERNS.some(p => p.test(q))) return 'identity';
   if (HELP_PATTERNS.some(p => p.test(q))) return 'help';
   if (UNKNOWN_PATTERNS.some(p => p.test(q))) return 'unknown';
+  if (ARITHMETIC_PATTERN.test(q.replace(INLINE_DATE_PATTERN, ''))) return 'unknown';
 
   const isStat = STATISTICAL_PATTERNS.some(p => p.test(q));
   const isQual = QUALITATIVE_PATTERNS.some(p => p.test(q));

@@ -842,6 +842,43 @@ function resolveCollegeClarification(question, chatHistory) {
   return question;
 }
 
+// aggregationService.resolveEvent() asks "Multiple events match ... please
+// be more specific" (a dynamic message, not a fixed constant like
+// CLARIFY_COLLEGE_QUESTION above — hence the prefix check instead of an
+// exact-equality one) when an event name matches 2+ real events. The reply
+// is one of that list's own rendered bullets copied back verbatim — "Alumni
+// Reunion (9/11/2026)" — which names no action verb of its own ("attended",
+// "how many") and contains the word "Alumni", so it satisfied
+// EXPLICIT_SUBJECT_PATTERN and was treated as a fresh, self-contained
+// question with its own explicit subject rather than a continuation (see
+// isEllipticalContinuation()'s own comment on that exact guard) — losing
+// all context that this was ever about EVENT ATTENDANCE at all. It then
+// matched no TOPIC_PATTERNS/EVENT_OR_FEEDBACK_HINT trigger by itself and
+// fell all the way through to the generic "I can't answer unrelated
+// questions" refusal instead of ever reaching resolveEvent() a second time.
+// Deterministic merge (not an LLM rewrite) for the same reason
+// resolveCollegeClarification() above is: this only ever fires immediately
+// after the assistant's own disambiguation list, a narrow enough trigger
+// that a wrong guess costs nothing (falls through to classify() as normal).
+const EVENT_CLARIFY_PREFIX = 'Multiple events match "';
+function resolveEventDisambiguation(question, chatHistory) {
+  if (chatHistory.length < 2) return question;
+  const lastTurn = chatHistory[chatHistory.length - 2];
+  if (!(lastTurn && lastTurn.role === 'assistant' && lastTurn.content.startsWith(EVENT_CLARIFY_PREFIX))) return question;
+  const priorUserTurn = chatHistory[chatHistory.length - 3];
+  if (!(priorUserTurn && priorUserTurn.role === 'user')) return question;
+  // Swaps the ORIGINAL ambiguous name ("Alumni Reunion") out for this
+  // reply's specific title+date, keeping everything else about the original
+  // question ("How many alumni attended the ___?") intact — rather than
+  // just appending the reply, which would leave the ambiguous name AND the
+  // new one both sitting in the same sentence, confusing extractEventName()'s
+  // own end-of-string capture all over again.
+  const originalName = aggregationService.extractEventName(priorUserTurn.content);
+  if (!originalName) return question;
+  const reply = question.replace(/\*\*/g, '').trim();
+  return priorUserTurn.content.replace(originalName, reply);
+}
+
 // A short reply naming only a college — "COE", "how about COE", "what about
 // COE?" — with nothing else worth parsing as its own question. Deliberately
 // requires the WHOLE message to reduce to just a college code after
@@ -1398,6 +1435,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // combined question is a normal sentence and flows through typo-correction
   // and pronoun resolution exactly like any other question.
   question = resolveCollegeClarification(question, chatHistory);
+  question = resolveEventDisambiguation(question, chatHistory);
   question = correctTypos(question);
 
   // Kept (typo-corrected, still-Tagalog-if-it-was) alongside the translated
@@ -1472,8 +1510,26 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // and the LLM improvised an off-persona "I'm functioning within normal
   // parameters" instead of the intended greeting reply.
   const preTranslateType = classify(preTranslateQuestion);
+  // A bare "show all"/"show more"-only message (see
+  // isShowMoreOnlyContinuation()'s own comment) carries no topic of its own —
+  // it only means "same list, no cap." Routing it through condenseQuestion()'s
+  // generic LLM rewrite has no real instruction covering this shape, and was
+  // caught live improvising a generic "show all ALUMNI" rewrite instead of
+  // preserving whatever list was actually just truncated (e.g. "show all"
+  // right after a least-common-INDUSTRIES breakdown silently turned into a
+  // full alumni roster instead of the remaining industries). contextQuestions
+  // has already deterministically resolved the real prior turn's own text
+  // (see buildContextQuestions() above) — reusing it verbatim keeps the
+  // original topic words intact; appending the ORIGINAL bare phrase itself
+  // (not a hardcoded "(show all)") re-adds the same lift-the-cap signal
+  // aggregationService.extractFilters() already recognizes
+  // (filters.showAll/showAllIndustries/showLimit) while preserving a
+  // SIZED request ("show 50") as its own requested number instead of
+  // silently forcing an unbounded show-all.
   question = ['greeting', 'acknowledgment', 'offensive'].includes(preTranslateType)
     ? preTranslateQuestion
+    : isShowMoreOnlyContinuation(preTranslateQuestion) && contextQuestions.length
+    ? `${contextQuestions[contextQuestions.length - 1]} (${preTranslateQuestion})`
     : await condenseQuestion(question, chatHistory);
 
   // Cache lookup on the fully-resolved, self-contained question (after typo

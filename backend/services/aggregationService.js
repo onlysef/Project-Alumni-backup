@@ -589,23 +589,40 @@ function extractFilters(question) {
   }
 
   // Graduation year RANGE: "batch 2020 to 2022", "2020-2022", "2020 hanggang
-  // 2022" — a closed range, distinct from the yearFrom-only "past N years"
-  // case below (which the 'trend' bypass in queryInner() deliberately treats
-  // as an open-ended multi-year window rather than a single count/list).
-  // Checked BEFORE the single-year match just below — that regex has no `g`
-  // flag and returns only the FIRST year found in the whole question, so
-  // without this, "batch 2020 to 2022" silently dropped the "to 2022" half
-  // and matched only 2020.
-  const yearRangeMatch = question.match(/\b(199\d|20[0-3]\d)\s*(?:to|through|-|–|—|until|hanggang)\s*(199\d|20[0-3]\d)\b/i);
+  // 2022", "between 2020 and 2022" — a closed, INCLUSIVE range (2020, 2021,
+  // AND 2022), distinct from the yearFrom-only "past N years" case below
+  // (which the 'trend' bypass in queryInner() deliberately treats as an
+  // open-ended multi-year window rather than a single count/list). Checked
+  // BEFORE the single-year match just below — that regex has no `g` flag and
+  // returns only the FIRST year found in the whole question, so without this,
+  // "batch 2020 to 2022" silently dropped the "to 2022" half and matched only
+  // 2020. "between X and Y" needs its OWN alternative (not just adding "and"
+  // to the connector list below) — a bare "X and Y" with no "between" is a
+  // DISCRETE two-value list (see the multi-year branch further down: "how
+  // many graduated in 2022 and 2008" means those two specific years, NOT
+  // every year from 2008 through 2022 inclusive), so "and" can only mean a
+  // RANGE connector when "between" is the word that introduced it.
+  const yearRangeMatch = question.match(/\bbetween\s+(199\d|20[0-3]\d)\s+and\s+(199\d|20[0-3]\d)\b/i)
+    || question.match(/\b(199\d|20[0-3]\d)\s*(?:to|through|-|–|—|until|hanggang)\s*(199\d|20[0-3]\d)\b/i);
   if (yearRangeMatch) {
     const y1 = parseInt(yearRangeMatch[1], 10);
     const y2 = parseInt(yearRangeMatch[2], 10);
     filters.yearFrom = Math.min(y1, y2);
     filters.yearTo   = Math.max(y1, y2);
   } else {
-    // Graduation year: "batch 2001", "2023 graduates", etc. — covers 1990–2039
-    const yearMatch = question.match(/\b((?:199\d|20[0-3]\d))\b/);
-    if (yearMatch) filters.yearGraduated = parseInt(yearMatch[1]);
+    // Graduation year(s): "batch 2001", "2023 graduates", "2022 and 2008",
+    // "2020, 2021 and 2022", etc. — covers 1990–2039. Scanned globally (not
+    // just the first match) so a DISCRETE list of years (joined by "and"/","/
+    // "&", not a "to"/"through"/hanggang" RANGE connector — already handled
+    // above) is recognized as such instead of silently keeping only the
+    // first year found and dropping every other one. Caught live: "How many
+    // alumni graduated in 2022 and 2008?" answered with the exact same
+    // Batch-2022-only count as a bare "2022" question, as if "2008" had never
+    // been typed at all.
+    const allYears = [...question.matchAll(/\b(199\d|20[0-3]\d)\b/g)].map(m => parseInt(m[1], 10));
+    const distinctYears = [...new Set(allYears)];
+    if (distinctYears.length > 1) filters.yearsGraduated = distinctYears;
+    else if (distinctYears.length === 1) filters.yearGraduated = distinctYears[0];
   }
 
   // "the past/last N years" — a MINIMUM year (inclusive range), not a single
@@ -1012,6 +1029,41 @@ function extractFilters(question) {
     if (n > 0) filters.showLimit = Math.min(n, NAMES_FULL_LIMIT);
   }
 
+  // Superlative ranking direction ("least common"/"most common", "lowest"/
+  // "top") for the ranked-list topics below (industry, job_positions,
+  // top_companies, skills_list, competencies) — extracted as its own filter,
+  // not just re-scanned from `question` at each dispatch call site, so a bare
+  // follow-up that doesn't repeat the direction word itself ("show all the 15
+  // industries", right after an already-established "least common
+  // industries" breakdown) still INHERITS the right direction via seedFilters
+  // the same way any other filter carries across turns. Without this, the
+  // dispatch sites' own inline "does THIS turn's text say least/lowest/
+  // fewest" checks only ever saw the current turn in isolation — caught live:
+  // that follow-up silently flipped back to the "most common" default (and,
+  // combined with filters.showAllIndustries still being set, printed ALL 27
+  // industries top-down) the moment the reply stopped repeating "least"
+  // verbatim. "least" checked first — a (currently unrealistic) phrase
+  // combining both words is treated as "least" on the same "lowest wins
+  // outright" convention wantsHighestDirection() above already uses.
+  if (/\b(least|lowest|fewest)\b/i.test(question)) filters.rankDirection = 'least';
+  else if (/\b(most|highest|top)\b/i.test(question)) filters.rankDirection = 'most';
+
+  // Same carry-across-turns problem as rankDirection just above, for the
+  // null-topic count-vs-names fallback further down (queryInner()): "how
+  // many"/"ilan" signals the user wants a single NUMBER back, "who"/"list"/
+  // "name(s)" signals a NAMES list — captured here as its own filter so a
+  // bare narrowing continuation that repeats NEITHER wording ("how about
+  // last month", right after an established "How many alumni are working in
+  // IT-related jobs?" count question) still inherits which SHAPE of answer
+  // was actually established via seedFilters, instead of that fallback
+  // re-guessing from the continuation's OWN text alone. Caught live: that
+  // exact "how about last month" follow-up silently flipped a 49-graduate
+  // COUNT into an unrelated full NAMES dump of all 49, because "how about
+  // last month" contains neither "how many" nor "who" for the fallback's own
+  // inline check to key off.
+  if (/\b(how\s+many|ilan(?:g)?|number\s+of|total|count)\b/i.test(question)) filters.answerShape = 'count';
+  else if (/\b(who|sino|list|name(?:s)?)\b/i.test(question)) filters.answerShape = 'names';
+
   // Further education filter — check negation FIRST, use \w* to match full verb ("pursue/pursued").
   // "nagpatuloy/magpapatuloy...pag-aaral" — TOPIC_PATTERNS.further_studies
   // already recognizes this Tagalog phrase for TOPIC detection, but the
@@ -1129,6 +1181,32 @@ function extractFilters(question) {
     filters.tracerActivityAction = isAdded ? 'added' : isNegated ? 'not_updated' : 'updated';
   }
 
+  // A bare ALL-CAPS token immediately followed by "graduates/alumni/students"
+  // ("What percentage of MIT graduates are employed?") that nothing above
+  // resolved to any real program/industry/company/gender reads as an
+  // ATTEMPTED program reference, even though "MIT" isn't one of the courses
+  // this school actually offers. Left unset, the question silently fell
+  // through with NO program filter at all, and queryRate() (etc.) just
+  // answered for the ENTIRE unfiltered cohort instead — the answer never
+  // mentioned "MIT" was unrecognized, reading as if it had correctly
+  // answered the actual question asked. Setting filters.program to the raw
+  // token instead lets it flow through the exact same regex $match every
+  // other program filter already uses, which naturally matches ZERO real
+  // records for a program that doesn't exist — producing the same honest
+  // "no data" decline every other genuinely-empty scope already gets,
+  // instead of a confident but completely unrelated whole-cohort number.
+  // Gated behind every filter above being unset so this never overrides an
+  // already-correctly-resolved filter of any kind (in particular, a REAL
+  // recognized program/abbreviation like "BSIT"/"IT" already set
+  // filters.program earlier and is never reached here).
+  if (!filters.program && !filters.industry && !filters.excludeIndustry && !filters.company && !filters.gender) {
+    const unknownProgramMatch = question.match(/\b([A-Z]{2,8})\s+(?:graduates?|alumni|alumnus|alumna|students?)\b/);
+    if (unknownProgramMatch) {
+      filters.program = unknownProgramMatch[1];
+      filters.programLabel = unknownProgramMatch[1];
+    }
+  }
+
   return filters;
 }
 
@@ -1136,7 +1214,8 @@ function filterLabel(filters) {
   const parts = [];
   if (filters.programLabel)  parts.push(filters.programLabel);
   else if (filters.program)  parts.push(filters.program);
-  if (filters.yearGraduated) parts.push(`Batch ${filters.yearGraduated}`);
+  if (filters.yearsGraduated) parts.push(`Batches ${filters.yearsGraduated.slice().sort((a, b) => a - b).join(', ')}`);
+  else if (filters.yearGraduated) parts.push(`Batch ${filters.yearGraduated}`);
   else if (filters.yearFrom && filters.yearTo) parts.push(`Batch ${filters.yearFrom} to ${filters.yearTo}`);
   else if (filters.yearFrom) parts.push(`${filters.yearFrom} onward`);
   return parts.length ? ` (${parts.join(', ')})` : '';
@@ -1217,6 +1296,7 @@ function yearRangeCondition(filters) {
 // only had to land once instead of separately in each call site that used to
 // hardcode `filters.yearGraduated` alone and silently ignore a range.
 function yearMatchCondition(filters) {
+  if (filters.yearsGraduated) return { $in: filters.yearsGraduated };
   if (filters.yearGraduated) return filters.yearGraduated;
   return yearRangeCondition(filters);
 }
@@ -1400,22 +1480,43 @@ async function queryIndustry(filters, wantsHighest = true, wantsSummarySentence 
 
   const headerVerb = wantsHighest ? 'Top' : 'Least common';
   let out = `**${headerVerb} industries where ${gPrefix}${statusAdj}graduates${locLabel}${lbl} are working:**\n\n`;
-  rows.forEach((r, i) => { out += `${i + 1}. **${r._id}** with ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
 
+  // "show all"/"show all N industries" right after a superlative answer
+  // ("15 industries are tied for fewest... showing the first 10 above")
+  // means "show the complete TIED group" — displaying every one of the 28
+  // industries top-to-bottom (most of which aren't part of the tie at all)
+  // isn't what was actually asked to expand. Computed BEFORE the display
+  // loop below (not just for the summary sentence further down) so
+  // filters.showAllIndustries can swap the display list itself, not just
+  // widen the count used in the sentence. Only narrows the display when this
+  // IS a superlative question (wantsSummarySentence) — a plain "what
+  // industries do alumni work in, show all" with no most/least direction has
+  // no "tied group" concept to narrow to, so it keeps showing the full
+  // ranked list (`rows`, already unlimited via the $limit skip above).
+  let displayRows = rows;
+  let tiedRows = null;
   if (wantsSummarySentence) {
     const extremeCount = rows[0].count;
     // Re-run the grouping WITHOUT $limit/$sort to find every industry tied
-    // at the extreme value — the displayed `rows` above is capped at 10, so
-    // counting ties within it alone undercounts whenever the tie extends
-    // past that cap. Caught live: 15 industries genuinely tied at 1
-    // graduate each, but only 10 made the display list — naming just the
-    // first one ("Retail employs the fewest") implied a false uniqueness,
-    // and even a "10 industries are tied" sentence derived from the
-    // truncated list would still have understated the real number (15).
-    const tiedRows = await Graduate.aggregate([...groupedPipeline, { $match: { count: extremeCount } }]);
+    // at the extreme value — the displayed `rows` above is capped at 10 (or,
+    // once filters.showAllIndustries lifts that cap, at the true remaining
+    // count), so counting ties within it alone undercounts whenever the tie
+    // extends past whatever cap is in effect. Caught live: 15 industries
+    // genuinely tied at 1 graduate each, but only 10 made the display list —
+    // naming just the first one ("Retail employs the fewest") implied a
+    // false uniqueness, and even a "10 industries are tied" sentence derived
+    // from the truncated list would still have understated the real number
+    // (15).
+    tiedRows = await Graduate.aggregate([...groupedPipeline, { $match: { count: extremeCount } }]);
+    if (filters.showAllIndustries) displayRows = tiedRows;
+  }
+  displayRows.forEach((r, i) => { out += `${i + 1}. **${r._id}** with ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
+
+  if (wantsSummarySentence) {
+    const extremeCount = rows[0].count;
     const graduateWord = extremeCount === 1 ? 'graduate' : 'graduates';
     const sentence = tiedRows.length > 1
-      ? `**${tiedRows.length} industries** are tied for ${wantsHighest ? 'most' : 'fewest'} alumni, each with **${extremeCount}** ${graduateWord}${tiedRows.length > rows.length ? ` (showing the first ${rows.length} above)` : ''}.`
+      ? `**${tiedRows.length} industries** are tied for ${wantsHighest ? 'most' : 'fewest'} alumni, each with **${extremeCount}** ${graduateWord}${(!filters.showAllIndustries && tiedRows.length > rows.length) ? ` (showing the first ${rows.length} above)` : ''}.`
       : `**${rows[0]._id}** ${wantsHighest ? 'employs the most' : 'employs the fewest'} alumni, with **${extremeCount}** ${graduateWord}.`;
     out += `\n${sentence}`;
   }
@@ -1563,6 +1664,52 @@ const TRACK_FULL_TO_ABBR = {
   'Network Administration':       'NA',
 };
 
+// Some free-text skill entries are genuine synonyms of each other typed out
+// differently ("OOP" vs "Object Oriented Programming", "JS" vs
+// "JavaScript") — the $toLower grouping in querySkillsList() below only
+// merges CASE variants of the exact same string, so these still split into
+// separate rows and each one undercounts the real total for the single
+// skill actually being reported. Keyed by the exact lowercase/trimmed form
+// $toLower produces, mapped to one canonical key + a preferred display
+// spelling. toTitleCase() (see its own definition) would mangle either
+// spelling anyway (turns "OOP" into "Oop", "JavaScript" into "Javascript",
+// losing the intentional internal capitalization), so any skill matching an
+// entry here skips toTitleCase entirely and uses this exact display string.
+//
+// Also covers standalone initialisms/proper nouns that have no spelled-out
+// duplicate in the real data (so `key` just maps to itself — no merging
+// needed, only the display override) but that toTitleCase() still mangles
+// the exact same way: "HTML" -> "Html", "CSS" -> "Css", "SQL" -> "Sql",
+// "PHP" -> "Php" (toTitleCase caps only the first letter, lowercasing the
+// rest — correct for an ordinary word, wrong for an initialism where every
+// letter is meaningful), and "Github" -> stays "Github" instead of the
+// correctly mid-capitalized "GitHub" (toTitleCase has no way to know about
+// a brand name's internal capital). Grounded in the actual distinct skill
+// values present in AlumniEmployment at the time this was written — add
+// more entries here as new acronym-shaped skills actually show up live,
+// rather than speculatively pre-listing every tech acronym that could ever
+// be typed in.
+const SKILL_ALIASES = {
+  'oop':                          { key: 'object oriented programming', display: 'Object-Oriented Programming (OOP)' },
+  'object oriented programming':  { key: 'object oriented programming', display: 'Object-Oriented Programming (OOP)' },
+  'object-oriented programming':  { key: 'object oriented programming', display: 'Object-Oriented Programming (OOP)' },
+  'js':                           { key: 'javascript', display: 'JavaScript' },
+  'javascript':                   { key: 'javascript', display: 'JavaScript' },
+  'java script':                  { key: 'javascript', display: 'JavaScript' },
+  'html':                         { key: 'html', display: 'HTML' },
+  'css':                          { key: 'css', display: 'CSS' },
+  'sql':                          { key: 'sql', display: 'SQL' },
+  'php':                          { key: 'php', display: 'PHP' },
+  'github':                       { key: 'github', display: 'GitHub' },
+  // Not an acronym/casing issue like the others above — "Viu.js" is a plain
+  // misspelling of "Vue.js" (one-letter typo), confirmed present as its own
+  // distinct raw value in AlumniEmployment. Merged here on the same
+  // mechanism since the effect is identical (one real skill undercounted by
+  // splitting across two spellings).
+  'viu.js':                       { key: 'vue.js', display: 'Vue.js' },
+  'vue.js':                       { key: 'vue.js', display: 'Vue.js' },
+};
+
 async function querySkillsList(filters, wantsHighest = true) {
   // Was silently ignoring filters.program entirely — "What skills do BSCS
   // alumni have?" answered with the exact same unfiltered top-10 list as a
@@ -1604,7 +1751,7 @@ async function querySkillsList(filters, wantsHighest = true) {
   const statusMatch = filters.employmentStatus ? alumniEmploymentStatusMatch(filters.employmentStatus) : null;
   if (statusMatch) Object.assign(match, statusMatch);
 
-  const [rows, respondentRows] = await Promise.all([
+  const [rawRows, respondentRows] = await Promise.all([
     AlumniEmployment.aggregate([
       { $match: match },
       { $project: { skillsArr: { $split: ['$skills', ','] } } },
@@ -1615,17 +1762,35 @@ async function querySkillsList(filters, wantsHighest = true) {
       // merge into one entry instead of splitting the same skill across
       // several near-duplicate rows — `display` keeps one actual-cased
       // spelling (from whichever document $unwind visits first) to show.
+      // No $sort/$limit here (unlike before) — SKILL_ALIASES below still
+      // needs to merge synonym rows (e.g. "oop" + "object oriented
+      // programming") together BEFORE ranking/limiting, or a skill's real
+      // combined count could rank lower than it should (or a synonym could
+      // wrongly get cut by the $limit while its counterpart survives).
       { $group: { _id: { $toLower: '$skill' }, count: { $sum: 1 }, display: { $first: '$skill' } } },
-      { $sort: { count: wantsHighest ? -1 : 1 } },
-      { $limit: 10 },
     ]),
     AlumniEmployment.aggregate([{ $match: match }, { $count: 'total' }]),
   ]);
-  if (!rows.length) {
+  if (!rawRows.length) {
     if (!scopedUsers.length) return null;
     const lbl = filterLabel(filters);
     return `None of the **${scopedUsers.length}** alumni${lbl} have added skills to their profile yet — this is an optional field on the Employment Details/Job Connect profile, separate from the tracer study survey.`;
   }
+
+  // Merge SKILL_ALIASES synonyms together (see its own comment above), then
+  // sort/limit in JS now that the merge can no longer happen inside the
+  // Mongo $group stage (it needs the alias table, not just $toLower).
+  const merged = new Map();
+  for (const r of rawRows) {
+    const alias = SKILL_ALIASES[r._id];
+    const key = alias ? alias.key : r._id;
+    const existing = merged.get(key);
+    if (existing) existing.count += r.count;
+    else merged.set(key, { count: r.count, display: alias ? alias.display : r.display, isAlias: !!alias });
+  }
+  const rows = [...merged.values()]
+    .sort((a, b) => wantsHighest ? b.count - a.count : a.count - b.count)
+    .slice(0, 10);
   const respondentCount = respondentRows[0]?.total ?? 0;
 
   const headerVerb  = wantsHighest ? 'Most' : 'Least';
@@ -1635,8 +1800,8 @@ async function querySkillsList(filters, wantsHighest = true) {
                      : '';
   const lbl = filterLabel(filters);
   let out = `**${headerVerb} common skills reported by${statusLabel} alumni${lbl}:**\n\n`;
-  rows.forEach((r, i) => { out += `${i + 1}. **${toTitleCase(r.display)}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
-  out += `\n_Based on ${respondentCount} alumni who have listed skills on their profile — this is an optional profile field, separate from the tracer study survey, so coverage is still small._`;
+  rows.forEach((r, i) => { out += `${i + 1}. **${r.isAlias ? r.display : toTitleCase(r.display)}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
+  out += `\n*Based on ${respondentCount} alumni who have listed skills on their profile — this is an optional profile field, separate from the tracer study survey, so coverage is still small.*`;
   return out;
 }
 
@@ -1724,7 +1889,7 @@ async function querySector(filters) {
   out += `The employment type breakdown below is the closest available data${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}.\n\n`;
   out += `**Employment Type Breakdown:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
-  out += `\n_For accurate sector data, the survey would need a dedicated "employer type" (government/private) question._`;
+  out += `\n*For accurate sector data, the survey would need a dedicated "employer type" (government/private) question.*`;
   return withChart(out, { type: 'donut', title: 'Employment Type', rows });
 }
 
@@ -2862,7 +3027,8 @@ async function queryNames(filters, question = '') {
     filters.industry          && `in ${filters.industry}`,
     filters.excludeIndustry   && `NOT in ${filters.excludeIndustry}`,
     filters.program           && `from ${filters.programLabel || filters.program}`,
-    filters.yearGraduated ? `Batch ${filters.yearGraduated}`
+    filters.yearsGraduated ? `Batches ${filters.yearsGraduated.slice().sort((a, b) => a - b).join(', ')}`
+      : filters.yearGraduated ? `Batch ${filters.yearGraduated}`
       : (filters.yearFrom && filters.yearTo) ? `Batch ${filters.yearFrom} to ${filters.yearTo}` : null,
     // Same LGBTQIA+ special-case genderPrefix() already applies elsewhere —
     // a blanket .toLowerCase() reads fine for "male"/"female" but flattens
@@ -2991,7 +3157,28 @@ function extractEventName(question) {
 // must appear somewhere in the title, in any order, rather than requiring an
 // exact substring match.
 async function resolveEvent(question) {
-  const name = extractEventName(question);
+  let name = extractEventName(question);
+  if (!name) return { none: true };
+
+  // A reply to this function's OWN "Multiple events match ... please be
+  // more specific" list (below) is one of the rendered bullets copied back
+  // verbatim — "Title (M/D/YYYY)", the exact `toLocaleDateString()` format
+  // the list itself prints. The trailing date is NOT part of the event's
+  // title, so leaving it in the token-matching below required every token
+  // (including the literal date string) to appear in the title text, which
+  // no real title ever contains — silently matching ZERO events instead of
+  // using the date to pick the one specific event out of several
+  // same-named candidates the user was actually trying to disambiguate.
+  // ragService.js's resolveEventDisambiguation() is what actually re-merges
+  // a bare "Title (date)" reply with the ORIGINAL "how many attended"
+  // question — this just needs to not choke on the date once that merge
+  // hands it back here.
+  let dateFilter = null;
+  const dateMatch = name.match(/\(?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})\s*\)?\s*$/);
+  if (dateMatch) {
+    dateFilter = { month: parseInt(dateMatch[1], 10), day: parseInt(dateMatch[2], 10), year: parseInt(dateMatch[3], 10) };
+    name = name.slice(0, dateMatch.index).trim();
+  }
   if (!name) return { none: true };
 
   const tokens = name.split(/\s+/).filter(Boolean);
@@ -3000,7 +3187,21 @@ async function resolveEvent(question) {
 
   const college = getCollegeScope();
   const events = await Event.find(college ? { college } : {}).select('title event_datetime').lean();
-  const matches = events.filter(e => tokenPatterns.every(re => re.test(e.title)));
+  let matches = events.filter(e => tokenPatterns.every(re => re.test(e.title)));
+
+  // Narrow by the disambiguating date, if the reply carried one — matched on
+  // CALENDAR DAY (not exact timestamp) since the date came from a
+  // human-readable "M/D/YYYY" the clarify list rendered, not the event's
+  // stored time-of-day. Only applied when it actually narrows to at least
+  // one match — an unparseable/stale date should fall back to the plain
+  // title-token matches rather than wiping out real candidates.
+  if (dateFilter && matches.length > 1) {
+    const dateMatches = matches.filter(e => {
+      const d = new Date(e.event_datetime);
+      return d.getMonth() + 1 === dateFilter.month && d.getDate() === dateFilter.day && d.getFullYear() === dateFilter.year;
+    });
+    if (dateMatches.length) matches = dateMatches;
+  }
 
   if (!matches.length) {
     return { error: `No event matching "${name}" found${college ? ` in ${college}'s events` : ''}.` };
@@ -3837,8 +4038,8 @@ async function queryInner(question, seedFilters = {}) {
       const lines = [results[ambiguousIdx].text];
       results.forEach((r, i) => {
         if (i === ambiguousIdx) return;
-        if (!r) lines.push(`\n_No record found for ${personNames[i]}._`);
-        else if (!r.ambiguous) lines.push(`\n_${personNames[i]} was also found — ask about them separately for details._`);
+        if (!r) lines.push(`\n*No record found for ${personNames[i]}.*`);
+        else if (!r.ambiguous) lines.push(`\n*${personNames[i]} was also found — ask about them separately for details.*`);
       });
       return { text: lines.join('\n'), direct: true, topic: 'person_lookup_ambiguous', filters: {} };
     }
@@ -3988,9 +4189,10 @@ async function queryInner(question, seedFilters = {}) {
   if (topic === null && Object.keys(seedFilters).length > 0) {
     const ownKeys = Object.keys(ownFilters);
     const isBareYearNarrowing = ownKeys.length > 0
-      && ownKeys.every(k => k === 'yearGraduated' || k === 'yearFrom' || k === 'yearTo');
+      && ownKeys.every(k => k === 'yearGraduated' || k === 'yearsGraduated' || k === 'yearFrom' || k === 'yearTo');
     if (isBareYearNarrowing) {
-      const yearLabel = filters.yearGraduated ? `Batch ${filters.yearGraduated}`
+      const yearLabel = filters.yearsGraduated ? `Batches ${filters.yearsGraduated.slice().sort((a, b) => a - b).join(', ')}`
+        : filters.yearGraduated ? `Batch ${filters.yearGraduated}`
         : (filters.yearFrom && filters.yearTo) ? `Batch ${filters.yearFrom} to ${filters.yearTo}`
         : filters.yearFrom ? `${filters.yearFrom} onward`
         : 'that batch';
@@ -4052,8 +4254,35 @@ async function queryInner(question, seedFilters = {}) {
     return { text: result, direct: true, topic: 'tracer_activity', filters };
   }
 
-  if (topic === null && Object.keys(filters).some(k => k !== 'programLabel')) {
-    topic = /\b(?:how\s+many|ilan(?:g)?|number\s+of|total|count)\b/i.test(question) ? 'count' : 'names';
+  // 'showAll'/'showLimit'/'rankDirection'/'showAllIndustries'/'answerShape'
+  // excluded from the "do we have enough to guess a topic" check — same
+  // "carries no topic content of its own" principle as ragService.js's
+  // isShowMoreOnlyContinuation() (see NAMES_PREVIEW_LIMIT's own comment
+  // above). All five only ever MODIFY an already-established ranked/list
+  // topic (how much to show, which direction to sort, count-vs-names shape)
+  // — none of them imply "this is a names question" on their own. Without
+  // this exclusion, a bare "show all" continuing a topic that itself named no
+  // other filter (e.g. an open "least common INDUSTRIES" breakdown — no
+  // specific industry named, so seedFilters contributes only rankDirection)
+  // left `filters` holding just {rankDirection:'least', showAll:true}, which
+  // this fallback wrongly read as "real content is present" and defaulted to
+  // a full unfiltered ALUMNI NAMES dump — completely dropping the industries
+  // topic the "show all" was actually asking to expand. Caught live
+  // repeatedly: a bare {showAll:true} (before rankDirection existed),
+  // rankDirection itself right after being added for a different bug (see
+  // wantsRankHighest() above), and now answerShape right after being added
+  // for the count-vs-names bug below — same fallback, same fix shape, one
+  // more key to exclude each time a new turn-carrying filter with no real
+  // topic content of its own gets introduced.
+  if (topic === null && Object.keys(filters).some(k => !['programLabel', 'showAll', 'showLimit', 'rankDirection', 'showAllIndustries', 'answerShape'].includes(k))) {
+    // filters.answerShape (extractFilters() above) wins over re-scanning
+    // `question` here — it carries which SHAPE of answer (a count vs. a
+    // names list) was actually established across a bare narrowing
+    // continuation ("how about last month") that repeats neither "how many"
+    // nor "who"/"list" itself. See answerShape's own comment for the live
+    // failure this fixes: that follow-up silently turned an established
+    // 49-graduate COUNT into an unrelated full NAMES dump.
+    topic = filters.answerShape || (/\b(?:how\s+many|ilan(?:g)?|number\s+of|total|count)\b/i.test(question) ? 'count' : 'names');
   }
 
   // Detect government/private SECTOR questions (no dedicated field in data)
@@ -4197,6 +4426,15 @@ async function queryInner(question, seedFilters = {}) {
   // The caller (ragService) falls through to RAG / vector search from here.
   if (topic === null) return null;
 
+  // Shared by industry/competencies/job_positions/top_companies/skills_list
+  // below — all five default to "most/highest" unless "least/lowest/fewest"
+  // is stated. filters.rankDirection (extractFilters() above) wins when
+  // present so a bare follow-up that inherited the direction via seedFilters,
+  // but doesn't repeat the word itself in ITS OWN text, keeps the direction
+  // the group was actually established with instead of silently flipping
+  // back to the "most common" default.
+  const wantsRankHighest = () => filters.rankDirection ? filters.rankDirection !== 'least' : !/\b(least|lowest|fewest)\b/i.test(question);
+
   const fn = {
     event_feedback:  () => queryEventFeedback(question),
     events:          () => /who\s+attended|attendees?|sino.{0,15}dumalo/i.test(question)
@@ -4280,8 +4518,9 @@ async function queryInner(question, seedFilters = {}) {
       // top-10 list as "most common industries" — queryIndustry() had no
       // direction parameter at all and always sorted highest-first. Same
       // fix shape as job_positions/top_companies: default to highest unless
-      // "least/lowest/fewest" is explicitly stated.
-      const wantsHighest = !/\b(least|lowest|fewest)\b/i.test(question);
+      // "least/lowest/fewest" is explicitly stated (see wantsRankHighest()
+      // above for why filters.rankDirection takes precedence).
+      const wantsHighest = wantsRankHighest();
       // "Which industry employs the most/fewest alumni?" — without asking
       // queryIndustry() for the summary sentence too, the response was just
       // a ranked list with no sentence directly naming the most/fewest
@@ -4292,7 +4531,7 @@ async function queryInner(question, seedFilters = {}) {
       // "X employs the most" sentence it never asked for. queryIndustry()
       // itself handles tie detection (see its own comment) since only it
       // has the pipeline context to check ties beyond the display $limit.
-      const isSuperlativeQuestion = /\b(most|least|highest|lowest|fewest|top)\b/i.test(question);
+      const isSuperlativeQuestion = !!filters.rankDirection || /\b(most|least|highest|lowest|fewest|top)\b/i.test(question);
       return queryIndustry(filters, wantsHighest, isSuperlativeQuestion && !filters.industry && !filters.excludeIndustry);
     },
     // "gobyerno"/"pribado" alone (no other Tagalog verb cue) match this
@@ -4318,7 +4557,7 @@ async function queryInner(question, seedFilters = {}) {
     // of the same single-count shape the English phrasing got.
     further_studies: () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.furtherEducation ? queryCount(filters) : queryFurtherStudies(filters),
     licensure:       () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.tookExam ? queryCount(filters) : queryLicensure(filters),
-    competencies:    () => queryCompetencies(filters, !/\b(least|lowest|fewest)\b/i.test(question)),
+    competencies:    () => queryCompetencies(filters, wantsRankHighest()),
     work_location:   () => /\b(which|what)\s+(program|course|degree)\b/i.test(question)
       ? queryWorkLocationByProgram(filters, filters.workLocation || 'abroad')
       : /\bwho\b/i.test(question) ? queryNames(filters) : queryWorkLocation(filters),
@@ -4366,10 +4605,10 @@ async function queryInner(question, seedFilters = {}) {
     // for superlative-rate questions but wrong here: a bare "top job titles"
     // or "common job positions" (no explicit qualifier at all) should still
     // default to MOST common, only flipping to ascending when "least/
-    // lowest/fewest" is explicitly stated.
-    job_positions:   () => queryJobPositions(filters, !/\b(least|lowest|fewest)\b/i.test(question)),
-    top_companies:   () => queryTopCompanies(filters, !/\b(least|lowest|fewest)\b/i.test(question)),
-    skills_list:     () => querySkillsList(filters, !/\b(least|lowest|fewest)\b/i.test(question)),
+    // lowest/fewest" is explicitly stated (see wantsRankHighest() above).
+    job_positions:   () => queryJobPositions(filters, wantsRankHighest()),
+    top_companies:   () => queryTopCompanies(filters, wantsRankHighest()),
+    skills_list:     () => querySkillsList(filters, wantsRankHighest()),
   }[topic] ?? (() => queryEmployment(filters));
 
   // Most query functions still return a plain string; a growing set (starting
@@ -4419,6 +4658,27 @@ async function query(question, options = {}) {
 
   const alumni = await User.find({ role: 'alumni', college }).select('email').lean();
   const emails = alumni.map(u => (u.email || '').toLowerCase()).filter(Boolean);
+  // A coordinator's college resolving to ZERO alumni is different from "this
+  // one question found no match" — it means EVERY question this coordinator
+  // ever asks will fail identically, because the scope itself (not the
+  // question) has nothing to search. Left unchecked, that surfaced as the
+  // exact same generic "I can't answer unrelated questions" refusal a truly
+  // out-of-scope question gets — reading as if the QUESTION were the
+  // problem, when the real cause is almost always a misconfigured account
+  // (a college value that doesn't match how any real alumni are labeled,
+  // e.g. a typo like "COS" when every alumnus is actually under "CCS").
+  // Caught live: a coordinator scoped to "COS" (0 real matches, the only
+  // real college in the system is "CCS") got refused as "unrelated" for
+  // "who is Liam Miranda" — a real, correctly-answerable person lookup for
+  // every OTHER account, just not this one.
+  if (!emails.length) {
+    return {
+      text: `Your coordinator account is scoped to college "${college}", but there are no alumni records under that college in the system. Every question will come up empty until this is fixed — please ask an admin to check that your account's college matches how alumni records are actually labeled.`,
+      direct: true,
+      topic: 'scope_misconfigured',
+      filters: {},
+    };
+  }
   return runWithCollegeScope(emails, college, () => queryInner(question, seedFilters));
 }
 
@@ -4508,4 +4768,4 @@ function suggestFollowUps(topic, filters = {}) {
 // layer be verified directly, without needing a live MongoDB connection the
 // way calling query() end-to-end would. Not used by any other module; the
 // real request path still only ever calls query() from ragService.js.
-module.exports = { query, hasData, suggestFollowUps, extractPersonName, extractPersonNames, detectTopic, extractFilters, CLARIFY_COLLEGE_QUESTION };
+module.exports = { query, hasData, suggestFollowUps, extractPersonName, extractPersonNames, detectTopic, extractFilters, CLARIFY_COLLEGE_QUESTION, extractEventName };
