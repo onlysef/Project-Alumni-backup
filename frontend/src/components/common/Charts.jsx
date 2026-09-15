@@ -304,7 +304,11 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
     return <p className="tracer-empty">No responses yet.</p>;
   }
 
-  const W = 600, H = 220, PAD_L = 36, PAD_R = 16, PAD_T = 16, PAD_B = 32;
+  // PAD_B (42, was 32) leaves room for the two-line axis label a gap point
+  // now gets — the year plus an explicit "no data" sub-label (see the
+  // x-axis label loop below) — without the second line clipping against the
+  // bottom edge.
+  const W = 600, H = 220, PAD_L = 36, PAD_R = 16, PAD_T = 16, PAD_B = 42;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const n = rows.length;
@@ -324,17 +328,54 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
   });
   if (current.length) segments.push(current);
 
+  // A gap sitting BETWEEN two known points (e.g. 3 batches where only the
+  // middle one has zero tracer responses) used to render as nothing at all —
+  // both neighbors ended up as their own 1-point "segment" (a polyline needs
+  // 2+ points to draw anything), so a short series with one interior gap
+  // showed two disconnected dots and looked completely empty/broken rather
+  // than like a real chart with one missing point. A dashed bridge across the
+  // gap shows the overall shape without a dead-looking hole in the line.
+  //
+  // Deliberately NOT a circle/dot on that bridge (an earlier version placed
+  // one, interpolated to sit visually on the dashed line) — caught live: at
+  // chat-message rendering size, a dashed-vs-solid line and a hollow-vs-
+  // filled dot are both too subtle a difference to actually notice, so that
+  // interpolated marker read as a THIRD REAL DATA POINT sitting right on the
+  // trend line, exactly the "why does 2025 have a number when there were no
+  // responses" confusion this is meant to prevent. A vertical dashed guide
+  // line (drawn further down, spanning the full plot height at the gap's x)
+  // plus an explicit "no data" sub-label under that point's year (see the
+  // x-axis label loop below) are both unambiguous regardless of render size —
+  // neither can be mistaken for a plotted value. Only bridges INTERIOR gaps
+  // (a known point on BOTH sides) — a gap at the very start or end of the
+  // series has no second known point to interpolate a bridge position from
+  // and is left as genuinely empty, same as before.
+  const bridges = [];
+  {
+    let i = 0;
+    while (i < points.length) {
+      if (points[i].y != null) { i++; continue; }
+      let j = i;
+      while (j < points.length && points[j].y == null) j++;
+      const before = points[i - 1];
+      const after = points[j];
+      if (before && after) bridges.push({ before, after, gaps: points.slice(i, j) });
+      i = j;
+    }
+  }
+
   const gridLines = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ y: PAD_T + plotH * (1 - f), label: Math.round(max * f) }));
 
-  function handleMove(e, p) {
+  function showTip(x, y, text) {
     const rect = wrapRef.current?.getBoundingClientRect();
-    if (!rect || p.y == null) return;
+    if (!rect) return;
     const scale = rect.width / W;
-    setTip({
-      x: p.x * scale,
-      y: p.y * scale - 14,
-      text: `${p.label}: ${p.count}${unit}`,
-    });
+    setTip({ x: x * scale, y: y * scale - 14, text });
+  }
+
+  function handleMove(e, p) {
+    if (p.y == null) return;
+    showTip(p.x, p.y, `${p.label}: ${p.count}${unit}`);
   }
 
   return (
@@ -345,6 +386,14 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
             <line x1={PAD_L} y1={g.y} x2={W - PAD_R} y2={g.y} className="trend-gridline" />
             <text x={PAD_L - 8} y={g.y} className="trend-axis-label" textAnchor="end" dominantBaseline="middle">{g.label}</text>
           </g>
+        ))}
+        {bridges.map((b, i) => (
+          <polyline
+            key={`bridge-${i}`}
+            className="trend-line-bridge"
+            points={`${b.before.x},${b.before.y} ${b.after.x},${b.after.y}`}
+            fill="none"
+          />
         ))}
         {segments.map((seg, i) => (
           <polyline
@@ -365,16 +414,40 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
             onMouseLeave={() => setTip(null)}
           />
         ))}
+        {bridges.flatMap((b) => b.gaps.map((g) => (
+          // Full-height dashed vertical guide at the gap's x — unlike a dot
+          // ON the line, this can't be mistaken for a plotted value; it
+          // reads unambiguously as "something is marked at this position,"
+          // and the "no data" sub-label below (in the axis-label loop)
+          // explains what.
+          <line
+            key={`gap-guide-${g.label}`}
+            x1={g.x} y1={PAD_T} x2={g.x} y2={PAD_T + plotH}
+            className="trend-gap-guide"
+          />
+        )))}
         {points.map((p, i) => {
           // Thinning long label sequences — a batch-year axis with 15+ points
           // renders every label overlapping and unreadable at this width, so
           // only every Nth label is drawn once there are more than ~10 points.
           const stride = n > 10 ? Math.ceil(n / 8) : 1;
           if (i % stride !== 0 && i !== n - 1) return null;
+          const labelY = H - PAD_B + 14;
           return (
-            <text key={p.label} x={p.x} y={H - PAD_B + 16} className="trend-axis-label" textAnchor="middle">
-              {String(p.label).replace(/^Batch\s+/i, '')}
-            </text>
+            <g key={p.label}>
+              <text x={p.x} y={labelY} className="trend-axis-label" textAnchor="middle">
+                {String(p.label).replace(/^Batch\s+/i, '')}
+              </text>
+              {/* Explicit, always-visible (no hover needed) call-out for a
+                  gap point — a static screenshot or a touch-screen viewer
+                  never sees a hover tooltip, so the missing-data fact has to
+                  be readable in the chart itself, not just on mouseover. */}
+              {p.y == null && (
+                <text x={p.x} y={labelY + 12} className="trend-axis-label trend-gap-label" textAnchor="middle">
+                  no data
+                </text>
+              )}
+            </g>
           );
         })}
       </svg>
