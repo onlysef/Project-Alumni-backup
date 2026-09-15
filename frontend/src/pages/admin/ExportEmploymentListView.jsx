@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { API, authHeaders } from "../../services/api.js";
-import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
+import { COLLEGE_CODES as COLLEGES, COLLEGE_NAMES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
 const STATUSES = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
 
@@ -124,7 +124,7 @@ export default function ExportEmploymentListView() {
             College
             <select value={filters.college} onChange={e => setFilters(f => ({ ...f, college: e.target.value, course: "" }))}>
               <option value="">All colleges</option>
-              {COLLEGES.map(c => <option key={c} value={c}>{c}</option>)}
+              {COLLEGES.map(c => <option key={c} value={c}>{COLLEGE_NAMES[c]}</option>)}
             </select>
           </label>
           <label>
