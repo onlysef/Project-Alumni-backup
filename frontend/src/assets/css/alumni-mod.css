@@ -12,6 +12,7 @@
 
 .alumni-app .main {
   height: 100vh;
+  height: 100dvh;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -289,7 +290,7 @@
    rows stacked in a row — label sits above its stars (not beside) since a
    2-column grid leaves too little width for "Content / program" next to
    5 stars on one line. */
-.event-feedback-subratings { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 20px; padding: 14px 16px; border: 1px solid #eee2e5; border-radius: 8px; background: #faf6f2; }
+.event-feedback-subratings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 14px 20px; padding: 14px 16px; border: 1px solid #eee2e5; border-radius: 8px; background: #faf6f2; }
 .event-feedback-subratings .star-rating { flex-direction: column; align-items: flex-start; gap: 6px; }
 .event-feedback-subratings .star-rating-label { flex: none; }
 .event-feedback-error { margin: 10px 0 0; color: #b3261e; font-size: 12px; font-weight: 600; }
@@ -3037,4 +3038,9 @@ body.dark-mode .network-profile-modal .coord-profile-details a { color: #fac853;
 
 @media (max-width: 1120px) and (min-width: 621px) {
   .alumni-app .job-search-bar { grid-template-columns: 1fr 1fr 1fr; }
+}
+/* Needs .alumni-app specificity to beat the 6-column base rule above — the
+   plain `.job-search-bar{grid-template-columns:1fr}` in the ~600px block loses. */
+@media (max-width: 620px) {
+  .alumni-app .job-search-bar { grid-template-columns: 1fr; }
 }

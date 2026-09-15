@@ -7,6 +7,7 @@ import tsuLogo from "../assets/images/tsu_logo-removebg.png";
 import toptsuLogo from "../assets/images/tsu-top-header.webp";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../services/api.js";
+import { isDrawerViewport, watchDrawerBoundary } from "../constants/layout.js";
 import "../assets/css/employer-module.css";
 
 const navItems = [
@@ -22,7 +23,7 @@ const pageTitles = {
 };
 
 export default function EmployerLayout() {
-  const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
+  const [collapsed, setCollapsed] = useState(isDrawerViewport());
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
@@ -79,14 +80,10 @@ export default function EmployerLayout() {
 
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  useEffect(() => {
-    const handleResize = () => { if (window.innerWidth <= 600) setCollapsed(true); };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  useEffect(() => watchDrawerBoundary(setCollapsed), []);
 
   function closeOnMobile() {
-    if (window.innerWidth <= 600) setCollapsed(true);
+    if (isDrawerViewport()) setCollapsed(true);
   }
 
   return (

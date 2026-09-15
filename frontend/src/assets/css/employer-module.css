@@ -15,33 +15,11 @@
 .employer-glyph { display: block; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 
-.employer-sidebar {
-  position: fixed; z-index: 60; inset: 0 auto 0 0; display: flex; flex-direction: column; width: 236px; overflow: hidden;
-  background: linear-gradient(180deg, #630018 0%, #560016 67%, #8b321d 87%, #d4a63d 100%); color: #fff;
-  box-shadow: 8px 0 28px rgba(72,0,17,.12);
-}
-.employer-sidebar::before { position: absolute; right: -82px; bottom: 58px; width: 210px; height: 210px; border: 1px solid rgba(255,218,116,.14); border-radius: 50%; box-shadow: 0 0 0 28px rgba(255,218,116,.035), 0 0 0 58px rgba(255,218,116,.025); content: ""; pointer-events: none; }
-.employer-sidebar > * { position: relative; z-index: 1; }
-.employer-brand { display: flex; align-items: center; gap: 12px; min-height: 122px; padding: 24px 20px; border-bottom: 1px solid rgba(255,255,255,.12); }
-.employer-brand-mark { display: grid; place-items: center; width: 48px; height: 48px; border: 1px solid rgba(229,190,84,.65); border-radius: 50%; outline: 1px solid rgba(229,190,84,.16); outline-offset: 4px; color: var(--employer-gold); background: rgba(58,0,14,.2); font-family: 'Noto Serif', serif; font-size: 13px; }
-.employer-brand strong { display: block; color: #f2ca62; font-family: 'Noto Serif', serif; font-size: 17px; line-height: 1.28; }
-.employer-brand span { display: block; margin-top: 7px; color: rgba(255,255,255,.56); font-size: 7px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.employer-sidebar nav { display: grid; gap: 7px; padding: 24px 14px; }
-.employer-sidebar nav a { display: flex; align-items: center; gap: 13px; min-height: 46px; padding: 0 17px; border-radius: 12px; color: rgba(255,255,255,.7); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-decoration: none; text-transform: uppercase; transition: background .18s, color .18s, transform .18s; }
-.employer-sidebar nav a:hover { background: rgba(255,255,255,.1); color: #fff; transform: translateX(2px); }
-.employer-sidebar nav a.active { position: relative; background: #fff; color: var(--employer-maroon); box-shadow: 0 8px 18px rgba(44,0,10,.18); }
-.employer-sidebar nav a.active::after { position: absolute; right: 11px; width: 5px; height: 5px; border-radius: 50%; background: var(--employer-gold); box-shadow: 0 0 0 3px rgba(227,185,79,.18); content: ""; }
-.employer-logout { display: flex; align-items: center; gap: 13px; width: calc(100% - 28px); min-height: 44px; margin: auto 14px 18px; padding: 0 17px; border: 0; border-radius: 12px; background: rgba(255,255,255,.08); color: rgba(255,255,255,.72); font: 700 11px 'Manrope'; text-transform: uppercase; cursor: pointer; }
-.employer-logout:hover { background: rgba(255,255,255,.16); color: #fff; }
-
-.employer-shell { min-height: 100vh; margin-left: 236px; }
-.employer-topbar { position: sticky; z-index: 40; top: 0; display: flex; align-items: center; height: 64px; padding: 0 28px; border-bottom: 1px solid rgba(239,199,93,.26); background: linear-gradient(90deg,#650018,#74001d 64%,#650018); color: #fff; box-shadow: 0 3px 15px rgba(76,0,18,.16); }
-.employer-topbar h1 { margin: 0; color: #efc75d; font-family: 'Noto Serif', serif; font-size: 18px; }
-.employer-top-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
-.employer-top-actions > button, .employer-menu-btn { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; color: rgba(255,255,255,.8); cursor: pointer; }
-.employer-top-actions > button:hover, .employer-menu-btn:hover { background: rgba(255,255,255,.1); color: #fff; }
-.employer-profile { display: grid; place-items: center; width: 36px; height: 36px; margin-left: 8px; border: 1px solid rgba(255,255,255,.24); border-radius: 10px; background: linear-gradient(145deg,#333,#111); color: #fff; font-size: 12px; font-weight: 800; }
-.employer-menu-btn { display: none; margin-right: 8px; }
+/* NOTE: the employer module renders the SHARED app shell
+   (`.app.employer-app` > `.sidebar.employer-shared-sidebar` + `.main.employer-main`
+   + `.topbar.employer-shared-topbar`), so the sidebar/topbar/drawer behaviour
+   all comes from admin-mod.css. The old bespoke `.employer-sidebar` /
+   `.employer-shell` / `.employer-topbar` styles were dead code and were removed. */
 .employer-main .employer-content { height: calc(100vh - 70px); height: calc(100dvh - 70px); min-height: 0; overflow-y: auto; padding: 28px clamp(22px,3vw,46px) 56px; }
 .employer-shared-sidebar, .employer-shared-topbar { font-family: Arial, Helvetica, sans-serif; }
 .employer-shared-sidebar .alumni-brand { cursor: default; }
@@ -282,12 +260,9 @@ body.dark-mode .applicant-resume-document li,
 body.dark-mode .applicant-resume-document span,
 body.dark-mode .applicant-resume-document b { color: #201c1e; }
 
-@media (max-width: 1050px) {
-  .employer-sidebar { transform: translateX(-105%); transition: transform .22s ease; }
-  .employer-sidebar.is-open { transform: translateX(0); }
-  .employer-sidebar-backdrop { position: fixed; z-index: 55; inset: 0; border: 0; background: rgba(28,5,12,.42); }
-  .employer-shell { margin-left: 0; }
-  .employer-menu-btn { display: grid; }
+/* Tablet — sidebar is a drawer at this width (shared shell), so page grids
+   get the full content width but still collapse to fewer columns. */
+@media (max-width: 1024px) {
   .appointment-composer { grid-template-columns: 1fr; }
   .appointment-form-row { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .employer-dashboard-lower { grid-template-columns: 1fr; }
@@ -305,9 +280,6 @@ body.dark-mode .applicant-resume-document b { color: #201c1e; }
 
 @media (max-width: 760px) {
   .employer-main .employer-content { padding: 18px 14px 42px; }
-  .employer-topbar { height: 58px; padding: 0 14px; }
-  .employer-topbar h1 { font-size: 16px; }
-  .employer-top-actions > button { display: none; }
   .employer-stats { grid-template-columns: 1fr; }
   .employer-stats article { min-height: 84px; padding: 17px 20px; }
   .employer-stats article + article::before { inset: 0 20px auto; width: auto; height: 1px; }
@@ -332,6 +304,36 @@ body.dark-mode .applicant-resume-document b { color: #201c1e; }
   .employer-shared-topbar .title-wrap h2 { flex: 0 1 auto; min-width: 0; max-width: none; font-size: 14px; line-height: 1.2; white-space: nowrap; overflow: visible; text-overflow: clip; }
   .employer-shared-topbar .top-actions { flex: 0 0 auto; gap: 7px; margin-left: 8px; }
   .employer-shared-topbar .divider { height: 18px; }
+
+  /* Data tables → stacked cards (matches the admin/coordinator modules).
+     Each <td> needs a data-label attribute for its row heading. */
+  .employer-table-wrap { overflow-x: visible; }
+  .employer-table, .employer-jobs-page .employer-table, .applicant-table, .appointment-table {
+    min-width: 0; display: block;
+  }
+  .employer-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .employer-table tbody { display: block; }
+  .employer-table tbody tr {
+    display: block; margin-bottom: 12px; padding: 6px 4px;
+    border: 1px solid #ece5e7; border-radius: 10px; background: #fff;
+  }
+  .employer-table tbody tr:nth-child(even) { background: #fff; }
+  .employer-table td {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+    height: auto; min-height: 0; padding: 8px 12px; border-bottom: 1px solid #f1eaec;
+    text-align: right;
+  }
+  .employer-table tbody tr td:last-child { border-bottom: 0; }
+  .employer-table td::before {
+    content: attr(data-label); flex: 0 0 40%;
+    color: #8b7e82; font-size: 9px; font-weight: 800; letter-spacing: .04em;
+    text-align: left; text-transform: uppercase;
+  }
+  .employer-table td:not([data-label]) { display: block; text-align: center; }
+  .employer-table td:not([data-label])::before { content: none; }
+  .employer-table td small { text-align: right; }
+  .employer-row-actions { justify-content: flex-end; }
+  .employer-empty { padding: 22px; }
 }
 
 @media (max-width: 360px) {
@@ -341,7 +343,6 @@ body.dark-mode .applicant-resume-document b { color: #201c1e; }
 }
 
 @media (max-width: 520px) {
-  .employer-sidebar { width: min(84vw,280px); }
   .employer-toolbar, .applicants-toolbar, .appointments-toolbar, .employer-form-grid, .employer-detail-grid { grid-template-columns: 1fr; }
   .employer-toolbar > *, .employer-search { grid-column: 1; }
   .applicant-overview { display: grid; }
