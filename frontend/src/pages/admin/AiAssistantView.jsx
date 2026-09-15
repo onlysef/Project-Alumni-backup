@@ -1,18 +1,62 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { toBlob } from "html-to-image";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
-import { MiniDonut, DistributionBars } from "../../components/common/Charts.jsx";
+import { MiniDonut, DistributionBars, TrendLine } from "../../components/common/Charts.jsx";
 
 // Renders the chart data the backend attaches to breakdown-style answers
 // ("how many are male?", employment status, industry, etc.) — dispatches by
 // chart.type onto the same chart primitives the admin Dashboard uses, so a
 // chatbot answer and the dashboard read as one consistent visual system.
-function AcChart({ chart }) {
+// "line" (added for trend-over-time answers like "employment by graduation
+// year") renders as an actual line chart instead of ranked bars — a bar
+// list of batch years reads as a categorical comparison, not the shape of
+// change over time the question actually asks about.
+//
+// The whole block (title + chart + legend) is rasterized on copy, not just
+// the bars/donut — a screenshot of bare bars with no labels is useless once
+// pasted into a report; capturing the labeled block keeps it self-explanatory.
+function AcChart({ chart, id, copiedChartId, onCopy }) {
+  const blockRef = useRef(null);
   if (!chart || !chart.rows?.length) return null;
-  const Chart = chart.type === "bars" ? DistributionBars : MiniDonut;
+  const Chart = chart.type === "bars" ? DistributionBars : chart.type === "line" ? TrendLine : MiniDonut;
+
+  async function handleCopy() {
+    if (!blockRef.current) return;
+    try {
+      // Background is set explicitly (not left to the node's own CSS
+      // background) because toBlob() rasterizes onto a transparent canvas by
+      // default — without this, a copied chart pasted onto a light surface
+      // (Word/Slack/etc, usually white) would show whatever was BEHIND the
+      // chat panel, not the chart's own maroon-tinted card background.
+      const isDark = document.body.classList.contains("dark-mode");
+      const blob = await toBlob(blockRef.current, {
+        backgroundColor: isDark ? "#241116" : "#fdf8f8",
+        pixelRatio: 2,
+        // The copy button itself shouldn't appear baked into the shared
+        // image — it's a UI control for THIS page, not part of the chart.
+        filter: (node) => !node.classList?.contains("ac-chart-copy-btn"),
+      });
+      if (!blob) return;
+      await navigator.clipboard.write([new window.ClipboardItem({ [blob.type]: blob })]);
+      onCopy(id);
+    } catch { /* ignore — e.g. Clipboard API unsupported/blocked */ }
+  }
+
   return (
-    <div className="ac-chart-block">
-      {chart.title && <div className="ac-chart-title">{chart.title}</div>}
+    <div className="ac-chart-block" ref={blockRef}>
+      <div className="ac-chart-header">
+        {chart.title && <div className="ac-chart-title">{chart.title}</div>}
+        <button
+          type="button"
+          className="ac-chart-copy-btn"
+          onClick={handleCopy}
+          title={copiedChartId === id ? "Copied" : "Copy chart as image"}
+          aria-label="Copy chart as image"
+        >
+          {copiedChartId === id ? <CheckIcon /> : <CopyIcon />}
+        </button>
+      </div>
       <Chart rows={chart.rows} />
     </div>
   );
@@ -50,7 +94,23 @@ function readableParagraphs(text = "") {
     });
 }
 
-function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }) {
+// The per-word reveal used a FIXED 24ms step with a flat 1800ms cap — fine
+// for a short sentence (a couple dozen words), but a names list or a long
+// breakdown easily runs past 75 words (75 * 24ms = 1800ms), and every word
+// after that shared the exact same capped delay — instead of continuing to
+// stagger in, the whole tail of the list popped in simultaneously the
+// moment the cap was hit, which is exactly the "not smooth" jump reported
+// for list/bullet answers. WORD_REVEAL_TARGET_MS is the total time the
+// animation now aims to finish within regardless of length; the actual
+// per-word step scales down for longer text so nothing hits a hard wall,
+// bounded by a floor (still visibly sequential, just fast) and a ceiling
+// (keeps a short answer's original, more leisurely pace).
+const WORD_REVEAL_TARGET_MS = 1800;
+const WORD_REVEAL_MIN_STEP  = 3;
+const WORD_REVEAL_MAX_STEP  = 24;
+const WORD_REVEAL_HARD_CAP  = 3000;
+
+function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }, stepMs = WORD_REVEAL_MAX_STEP) {
   return String(text).split(/(\s+)/).filter(Boolean).map((part, index) => {
     const key = `${keyPrefix}-${index}`;
     if (/^\s+$/.test(part)) return <React.Fragment key={key}>{part}</React.Fragment>;
@@ -61,7 +121,7 @@ function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }) {
       <span
         key={key}
         className="ac-word"
-        style={{ "--ac-word-delay": `${Math.min(wordIndex * 24, 1800)}ms` }}
+        style={{ "--ac-word-delay": `${Math.min(wordIndex * stepMs, WORD_REVEAL_HARD_CAP)}ms` }}
       >
         {part}
       </span>
@@ -69,22 +129,22 @@ function animatedWords(text = "", keyPrefix = "word", cursor = { value: 0 }) {
   });
 }
 
-function renderInlineText(text = "", keyPrefix = "inline", cursor = { value: 0 }) {
+function renderInlineText(text = "", keyPrefix = "inline", cursor = { value: 0 }, stepMs = WORD_REVEAL_MAX_STEP) {
   const parts = String(text).split(/(\*\*[^*\n]+?\*\*|__[^_\n]+?__|`[^`\n]+?`|\*[^*\n]+?\*)/g);
 
   return parts.filter(Boolean).map((part, index) => {
     const key = `${keyPrefix}-${index}`;
     if ((part.startsWith("**") && part.endsWith("**")) ||
         (part.startsWith("__") && part.endsWith("__"))) {
-      return <strong key={key}>{animatedWords(part.slice(2, -2), key, cursor)}</strong>;
+      return <strong key={key}>{animatedWords(part.slice(2, -2), key, cursor, stepMs)}</strong>;
     }
     if (part.startsWith("`") && part.endsWith("`")) {
-      return <code key={key}>{animatedWords(part.slice(1, -1), key, cursor)}</code>;
+      return <code key={key}>{animatedWords(part.slice(1, -1), key, cursor, stepMs)}</code>;
     }
     if (part.startsWith("*") && part.endsWith("*")) {
-      return <em key={key}>{animatedWords(part.slice(1, -1), key, cursor)}</em>;
+      return <em key={key}>{animatedWords(part.slice(1, -1), key, cursor, stepMs)}</em>;
     }
-    return <React.Fragment key={key}>{animatedWords(part, key, cursor)}</React.Fragment>;
+    return <React.Fragment key={key}>{animatedWords(part, key, cursor, stepMs)}</React.Fragment>;
   });
 }
 
@@ -209,6 +269,13 @@ function parseAssistantBlocks(text = "") {
 function AssistantResponse({ text, messageId }) {
   const blocks = parseAssistantBlocks(text);
   const wordCursor = { value: 0 };
+  // See WORD_REVEAL_TARGET_MS's comment above — a long list needs a smaller
+  // per-word step than a short answer so the whole thing keeps staggering
+  // smoothly instead of hitting a flat delay cap partway through.
+  const totalWords = (text.match(/\S+/g) || []).length;
+  const wordStepMs = totalWords > 0
+    ? Math.max(WORD_REVEAL_MIN_STEP, Math.min(WORD_REVEAL_MAX_STEP, WORD_REVEAL_TARGET_MS / totalWords))
+    : WORD_REVEAL_MAX_STEP;
 
   return (
     <div className="ac-response-content">
@@ -217,7 +284,7 @@ function AssistantResponse({ text, messageId }) {
 
         if (block.type === "heading") {
           const Heading = block.level <= 2 ? "h3" : "h4";
-          return <Heading key={key}>{renderInlineText(block.text, key, wordCursor)}</Heading>;
+          return <Heading key={key}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</Heading>;
         }
 
         if (block.type === "list") {
@@ -225,7 +292,7 @@ function AssistantResponse({ text, messageId }) {
           return (
             <List key={key} start={block.ordered ? block.start : undefined}>
               {block.items.map((item, itemIndex) => (
-                <li key={`${key}-item-${itemIndex}`}>{renderInlineText(item, `${key}-item-${itemIndex}`, wordCursor)}</li>
+                <li key={`${key}-item-${itemIndex}`}>{renderInlineText(item, `${key}-item-${itemIndex}`, wordCursor, wordStepMs)}</li>
               ))}
             </List>
           );
@@ -239,7 +306,7 @@ function AssistantResponse({ text, messageId }) {
                   <tr>
                     {block.header.map((cell, cellIndex) => (
                       <th key={`${key}-head-${cellIndex}`} scope="col" style={{ textAlign: block.alignments[cellIndex] || "left" }}>
-                        {renderInlineText(cell, `${key}-head-${cellIndex}`, wordCursor)}
+                        {renderInlineText(cell, `${key}-head-${cellIndex}`, wordCursor, wordStepMs)}
                       </th>
                     ))}
                   </tr>
@@ -249,7 +316,7 @@ function AssistantResponse({ text, messageId }) {
                     <tr key={`${key}-row-${rowIndex}`}>
                       {block.header.map((_, cellIndex) => (
                         <td key={`${key}-cell-${rowIndex}-${cellIndex}`} style={{ textAlign: block.alignments[cellIndex] || "left" }}>
-                          {renderInlineText(row[cellIndex] || "", `${key}-cell-${rowIndex}-${cellIndex}`, wordCursor)}
+                          {renderInlineText(row[cellIndex] || "", `${key}-cell-${rowIndex}-${cellIndex}`, wordCursor, wordStepMs)}
                         </td>
                       ))}
                     </tr>
@@ -261,14 +328,14 @@ function AssistantResponse({ text, messageId }) {
         }
 
         if (block.type === "quote") {
-          return <blockquote key={key}>{renderInlineText(block.text, key, wordCursor)}</blockquote>;
+          return <blockquote key={key}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</blockquote>;
         }
 
         if (block.type === "divider") return <hr key={key} />;
 
         const plainText = block.text.replace(/[*_`]/g, "");
         const className = /^The Bachelor|^Bachelor/i.test(plainText) ? "ac-answer-program" : undefined;
-        return <p key={key} className={className}>{renderInlineText(block.text, key, wordCursor)}</p>;
+        return <p key={key} className={className}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</p>;
       })}
     </div>
   );
@@ -352,6 +419,7 @@ export default function AiAssistantView() {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [copiedId, setCopiedId] = useState(null);
+  const [copiedChartId, setCopiedChartId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1047,7 +1115,15 @@ export default function AiAssistantView() {
                     <div className="ac-ac-text">
                       <AssistantResponse text={m.text} messageId={m.id} />
                     </div>
-                    <AcChart chart={m.chart} />
+                    <AcChart
+                      chart={m.chart}
+                      id={m.id}
+                      copiedChartId={copiedChartId}
+                      onCopy={(id) => {
+                        setCopiedChartId(id);
+                        setTimeout(() => setCopiedChartId((c) => (c === id ? null : c)), 1400);
+                      }}
+                    />
                     <div className="ac-msg-tools ac-msg-tools-ac">
                       <button
                         type="button"

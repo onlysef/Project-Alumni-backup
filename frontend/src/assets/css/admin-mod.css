@@ -2162,6 +2162,109 @@
             color: var(--muted);
         }
 
+        .tracer-trend-line svg {
+            display: block;
+            overflow: visible;
+        }
+
+        .trend-gridline {
+            stroke: #f0e2e2;
+            stroke-width: 1;
+        }
+
+        body.dark-mode .trend-gridline {
+            stroke: rgba(255, 255, 255, 0.1);
+        }
+
+        .trend-axis-label {
+            /* This is an SVG user-space size inside a 600x220 viewBox that
+               gets scaled down to fit .ac-chart-block's max-width: 88% of
+               the chat bubble — in practice often rendered well under
+               600px wide, so the effective on-screen size ends up smaller
+               than this number, not equal to it. 9px scaled by a realistic
+               ~0.6-0.75x factor lands at roughly 5.5-6.5 actual pixels —
+               illegible, reading as a fuzzy dash instead of a number/year.
+               13px leaves enough headroom to still land in a readable
+               ~8-10px range after that same scaling. */
+            font-size: 13px;
+            fill: var(--muted, #76656a);
+        }
+
+        .trend-line-path {
+            stroke: var(--maroon);
+            stroke-width: 2.5;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+        }
+
+        body.dark-mode .trend-line-path {
+            stroke: #fac853;
+        }
+
+        /* Dashed bridge across an interior no-data gap (see TrendLine's own
+           comment) — deliberately lighter/dashed, never the same solid style
+           as trend-line-path, so it never reads as "we know the trend really
+           went this way through the gap," only "here's the overall shape
+           with a gap in it." Kept subtle on purpose — the vertical guide
+           line + "no data" label below carry the actual "this point isn't
+           real" signal now, since a style-only difference on the line/point
+           itself was found to be too subtle to notice at chat-message
+           rendering size (read as a real third data point instead). */
+        .trend-line-bridge {
+            stroke: var(--muted, #76656a);
+            stroke-width: 1.5;
+            stroke-dasharray: 4 4;
+            opacity: 0.35;
+        }
+
+        /* Full-height vertical guide marking exactly where a no-data gap
+           sits — unlike a dot placed ON the trend line, a vertical line
+           crossing the WHOLE plot area can't be mistaken for a plotted
+           value at any render size. Paired with .trend-gap-label below. */
+        .trend-gap-guide {
+            stroke: var(--muted, #76656a);
+            stroke-width: 1;
+            stroke-dasharray: 3 3;
+            opacity: 0.5;
+        }
+
+        /* Always-visible (no hover required) sub-label under a gap point's
+           year — a static screenshot or touch-screen viewer never triggers a
+           hover tooltip, so this is the ONLY thing that actually needs to
+           communicate "no data" to every viewer, not just mouse users. */
+        .trend-gap-label {
+            font-size: 9px;
+            font-style: italic;
+            opacity: 0.75;
+        }
+
+        .trend-line-point {
+            fill: var(--maroon);
+            stroke: #fff;
+            stroke-width: 1.5;
+            cursor: pointer;
+            transition: r 120ms ease;
+        }
+        .trend-line-point:hover {
+            r: 6;
+        }
+
+        body.dark-mode .trend-line-point {
+            fill: #fac853;
+            stroke: #241116;
+        }
+
+        .trend-tooltip {
+            transform: translate(-50%, -100%);
+            background: var(--maroon);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 8px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+
         .tracer-donut-layout {
             display: grid;
             grid-template-columns: 132px 1fr;
@@ -3624,6 +3727,31 @@
             display: flex;
             align-items: center;
             gap: 10px;
+        }
+
+        /* .admin-card-head-inline — opt-out for a card head that's just a
+           title + ONE small action button ("Employer Invites" / "Send
+           Invite"), unlike the search-box + filters + button combos the
+           several @media (max-width: 760/600/420/360px) rules further down
+           stack into a column for — this stays side-by-side at every width.
+           Doubled class + !important on each rule so it beats those (some
+           of which already use !important themselves) regardless of source
+           order or specificity. */
+        .admin-card-head.admin-card-head-inline {
+            flex-direction: row !important;
+            align-items: center !important;
+        }
+
+        .admin-card-head.admin-card-head-inline > div {
+            display: flex !important;
+            width: auto !important;
+            grid-template-columns: none !important;
+        }
+
+        .admin-card-head.admin-card-head-inline .add-button,
+        .admin-card-head.admin-card-head-inline .admin-choice {
+            width: auto !important;
+            margin: 0 !important;
         }
 
         .admin-choice,
@@ -7243,7 +7371,19 @@
 
         .emp-filter-grid {
             display: grid;
+<<<<<<< HEAD
             grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+=======
+            /* minmax(0, 1fr), not a bare 1fr — a grid item's default
+               min-width is auto, which for a <select> resolves to its
+               widest <option> text (a long college/course name). Without
+               the 0 floor, a select that's intrinsically wider than half
+               the card refuses to shrink to its track and overflows the
+               card into the page background instead of wrapping its text
+               or truncating — exactly the "College"/"Batch Year" controls
+               spilling out on a narrow phone screen. */
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+>>>>>>> c3c79e016afb073e8675232041b53338a3016e07
             gap: 14px;
             padding: 18px 20px;
         }
@@ -7254,11 +7394,18 @@
             font-size: 13px;
             font-weight: 700;
             color: #2d2024;
+            min-width: 0;
         }
 
         .emp-filter-grid select,
         .emp-filter-grid input {
             min-height: 36px;
+            /* width: 100% + min-width: 0 — fills (and is capped by) its
+               grid track instead of sizing to its content, the other half
+               of the overflow fix alongside minmax(0, 1fr) above. */
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             border: 1px solid #cba0a6;
             border-radius: 6px;
             padding: 0 10px;
@@ -7269,6 +7416,21 @@
 
         .emp-filter-grid label.full-col {
             grid-column: span 2;
+        }
+
+        @media (max-width: 600px) {
+            /* Same collapse-to-one-column pattern .record-fields-grid
+               already uses at this breakpoint — a single column always has
+               the full card width to work with, so this is also a second,
+               independent safety net against the overflow above even if a
+               future option value is unusually long. */
+            .emp-filter-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .emp-filter-grid label.full-col {
+                grid-column: span 1;
+            }
         }
 
         .tracer-modal-body {
@@ -8877,8 +9039,14 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             background: #241116;
         }
 
-        .ac-chart-title {
+        .ac-chart-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
             margin-bottom: 10px;
+        }
+
+        .ac-chart-title {
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
@@ -8888,6 +9056,36 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 
         body.dark-mode .ac-chart-title {
             color: var(--gold);
+        }
+
+        .ac-chart-copy-btn {
+            display: inline-grid;
+            place-items: center;
+            flex-shrink: 0;
+            margin-left: auto;
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #fff;
+            color: var(--muted);
+            cursor: pointer;
+            transition: background 120ms ease, color 120ms ease;
+        }
+        .ac-chart-copy-btn:hover {
+            background: var(--maroon);
+            border-color: var(--maroon);
+            color: #fff;
+        }
+        body.dark-mode .ac-chart-copy-btn {
+            background: transparent;
+            border-color: rgba(250, 200, 83, 0.22);
+            color: var(--gold);
+        }
+        body.dark-mode .ac-chart-copy-btn:hover {
+            background: var(--maroon);
+            border-color: var(--maroon);
+            color: #fff;
         }
 
         /* Markdown rendered output */
@@ -8962,7 +9160,19 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             display: grid;
             gap: 7px;
             margin: 4px 0 18px;
-            padding-left: 26px;
+            /* Was a fixed 26px, only ever room for a 1-2 digit marker
+               ("1."-"99.") — a list past 99 items (this app's alumni-name
+               lists routinely run into the hundreds, and are asked to scale
+               to 1000+) needs room for "100."-"9999." too, or the extra
+               digits get visually clipped against the text that follows.
+               `ch` (not a fixed px) scales with THIS element's own
+               font-size/font — same reason it also auto-adapts for the
+               14px mobile override below with no separate mobile rule
+               needed. 5ch comfortably fits a 4-digit marker + the period,
+               with tabular-nums (set on .ac-ac-text above) keeping every
+               digit's width identical so this doesn't get tighter for
+               "0000"-heavy numbers vs "1111"-heavy ones. */
+            padding-left: 5ch;
         }
         .ac-ac-text li {
             padding-left: 3px;
@@ -9687,8 +9897,10 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             .ac-bubble { max-width: 85%; }
             .ac-ac-text { max-width: 100%; font-size: 14px; line-height: 1.7; }
             .ac-ac-text h3 { font-size: 16px; }
-            .ac-ac-text ul,
-            .ac-ac-text ol { padding-left: 23px; }
+            /* No separate ul/ol padding-left override needed here anymore —
+               the base rule now uses `ch` (see its own comment), which
+               already scales down correctly for this smaller 14px
+               font-size on its own. */
             .ac-ac-text table { min-width: 390px; font-size: 13px; }
             .ac-ac-text th,
             .ac-ac-text td { padding: 9px 10px; }
@@ -10638,8 +10850,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 .tracer-modal input,
 .tracer-modal select,
 .tracer-modal textarea,
-.topbar-modal button,
-.tracer-modal label {
+.topbar-modal button {
     transition: transform 160ms ease, box-shadow 180ms ease, background-color 180ms ease,
                 border-color 180ms ease, color 180ms ease, opacity 180ms ease;
 }
@@ -10659,6 +10870,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.3px;
+    display: grid;
 }
 
 .content button:not(:disabled):active,
