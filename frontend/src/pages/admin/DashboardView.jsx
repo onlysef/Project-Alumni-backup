@@ -71,18 +71,24 @@ export default function DashboardView() {
     else setActivitiesLoading(true);
     async function fetchActivities() {
       try {
-        const limit = activityWindow === "all" ? 50 : 20;
-        const res = await fetch(`${API}/admin/announcements/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() });
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        const seen = new Map();
-        for (const activity of data.activities || []) {
-          const key = `${activity.user_id || activity.user_name}|${activity.announcement_id || activity.announcement_title}|${activity.action}`;
-          const previous = seen.get(key);
-          if (!previous || new Date(activity.createdAt) > new Date(previous.createdAt)) seen.set(key, activity);
-        }
+        const limit = activityWindow === "all" ? 50 : 25;
+        const [postRes, empRes] = await Promise.all([
+          fetch(`${API}/admin/announcements/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() }),
+          fetch(`${API}/admin/employment/activity?limit=${limit}`, { headers: authHeaders() })
+        ]);
+
+        if ((!postRes.ok && !empRes.ok) || cancelled) return;
+
+        const postData = postRes.ok ? await postRes.json() : { activities: [] };
+        const empData = empRes.ok ? await empRes.json() : { activities: [] };
+
+        const allActivities = [
+          ...(postData.activities || []).map(a => ({ ...a, type: 'post' })),
+          ...(empData.activities || []).map(a => ({ ...a, type: 'employment' }))
+        ];
+
         if (!cancelled) {
-          const sorted = [...seen.values()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+          const sorted = allActivities.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, limit);
           cachedPostActivities.set(activityWindow, sorted);
           setPostActivities(sorted);
         }
@@ -151,7 +157,7 @@ export default function DashboardView() {
         <aside className="right-stack">
           <section className="panel">
             <div className="panel-head light">
-              <span>{activityWindow === "all" ? "Post Activity History" : "Recent Post Activities"}</span>
+              <span>{activityWindow === "all" ? "Activity History" : "Recent Activities"}</span>
               <Dropdown
                 menuClassName="filter-menu activity-window-menu"
                 active={activityWindow === "24" ? "Last 24 hours" : activityWindow === "168" ? "Last 7 days" : "Full history"}
@@ -175,17 +181,22 @@ export default function DashboardView() {
                 </div>
               ) : postActivities.map((a) => (
                 <div
-                  className="activity activity-clickable"
+                  className="activity"
                   key={a._id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } })}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } }); } }}
+                  role={a.type === 'post' ? "button" : "status"}
+                  tabIndex={a.type === 'post' ? 0 : -1}
+                  onClick={() => a.type === 'post' && a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } })}
+                  onKeyDown={(e) => { if (a.type === 'post' && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } }); } }}
+                  style={{ cursor: a.type === 'post' ? 'pointer' : 'default' }}
                 >
                   <p>
                     <strong>{a.user_name}</strong>{" "}
                     {a.action}{" "}
-                    <em style={{ fontStyle: "normal" }}>&ldquo;{a.announcement_title}&rdquo;</em>
+                    {a.type === 'post' ? (
+                      <em style={{ fontStyle: "normal" }}>&ldquo;{a.announcement_title}&rdquo;</em>
+                    ) : (
+                      <em style={{ fontStyle: "normal" }}>{a.target_name || a.details || ''}</em>
+                    )}
                   </p>
                   <time dateTime={a.createdAt}>{timeAgo(a.createdAt)}</time>
                 </div>
