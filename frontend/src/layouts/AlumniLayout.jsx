@@ -4,13 +4,14 @@ import { AlumniSidebar } from "../components/alumni/AlumniSidebar.jsx";
 import { AlumniTopbar } from "../components/alumni/AlumniTopbar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch } from "../services/api.js";
+import { isDrawerViewport, watchDrawerBoundary } from "../constants/layout.js";
 
 const TITLES = { home: "Home", announcements: "Announcements", employment: "Alumni Profile", office: "Alumni Office", suggested: "Alumni Network", career: "Career Recommendation", jobconnect: "Job Connect" };
 
 export default function AlumniLayout() {
   const location = useLocation();
   const { firstLogin, tracerStudyCompleted, needsTracerUpdate } = useAuth();
-  const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
+  const [collapsed, setCollapsed] = useState(isDrawerViewport());
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
@@ -30,8 +31,6 @@ export default function AlumniLayout() {
   const page = location.pathname.split("/")[2];
   const title = page === "tsu" ? "Tarlac State University" : page === "about" ? "Alumni Association" : (TITLES[section] || "Home");
 
-  // Server settings win over whatever was cached locally, same as the
-  // admin/coordinator dashboards.
   useEffect(() => {
     apiFetch("/auth/settings")
       .then(({ settings: s }) => {
@@ -51,14 +50,6 @@ export default function AlumniLayout() {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");
   }, [settings.theme]);
 
-  // An alumni who hasn't set their password yet, hasn't completed the tracer
-  // study yet, or has new tracer-study questions to answer (added after they
-  // last submitted, e.g. via a Notify Alumni reminder) must finish that step
-  // before the rest of the portal is reachable — the sidebar/topbar shell
-  // still renders (same background, branding, and Logout button as the rest
-  // of the app), but the sidebar's nav list is withheld so no other section
-  // reads as available. These are three distinct steps, so the label shown
-  // has to reflect whichever one is actually still pending.
   const restrictedStep = firstLogin ? "Account Setup"
     : !tracerStudyCompleted ? "Tracer Study"
     : needsTracerUpdate ? "Update Employment Details"
@@ -66,15 +57,11 @@ export default function AlumniLayout() {
   const restricted = !!restrictedStep;
 
   useEffect(() => { document.title = `${title} | Tarlac State University`; }, [title]);
-  useEffect(() => {
-    const handleResize = () => setCollapsed(window.innerWidth <= 600);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  useEffect(() => watchDrawerBoundary(setCollapsed), []);
 
   return (
     <div className={`app alumni-app${collapsed ? " sidebar-collapsed" : ""}`}>
-      <AlumniSidebar collapsed={collapsed} restricted={restricted} restrictedLabel={restrictedStep} onNavigate={() => window.innerWidth <= 600 && setCollapsed(true)} />
+      <AlumniSidebar collapsed={collapsed} restricted={restricted} restrictedLabel={restrictedStep} onNavigate={() => isDrawerViewport() && setCollapsed(true)} />
       {!collapsed && <div className="sidebar-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />}
       <main className="main">
         <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} showToast={showToast} restricted={restricted} />

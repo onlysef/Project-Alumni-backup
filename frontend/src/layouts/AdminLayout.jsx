@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 import { AdminSidebar } from "../components/admin/AdminSidebar.jsx";
 import { AdminTopbar } from "../components/admin/AdminTopbar.jsx";
 import { apiFetch } from "../services/api.js";
+import { isDrawerViewport, watchDrawerBoundary } from "../constants/layout.js";
 
 const PATH_TITLES = {
   "/admin/dashboard":        "Dashboard",
@@ -23,7 +24,7 @@ const PATH_TITLES = {
 
 export default function AdminLayout() {
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(window.innerWidth <= 600);
+  const [collapsed, setCollapsed] = useState(isDrawerViewport());
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   const [settings, setSettings] = useState(() => {
@@ -45,7 +46,6 @@ export default function AdminLayout() {
     toastTimer.current = setTimeout(() => setToast(""), 2400);
   }, []);
 
-  // Load settings from server on mount; server takes priority over localStorage
   useEffect(() => {
     apiFetch("/auth/settings")
       .then(({ settings: s }) => {
@@ -56,7 +56,6 @@ export default function AdminLayout() {
       .catch(() => {});
   }, []);
 
-  // Persist settings to server whenever they change (skip initial render)
   const settingsInitialized = useRef(false);
   useEffect(() => {
     if (!settingsInitialized.current) { settingsInitialized.current = true; return; }
@@ -64,14 +63,7 @@ export default function AdminLayout() {
     localStorage.setItem("aptmsDashboardSettings", JSON.stringify(settings));
   }, [settings]);
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth <= 600) setCollapsed(true);
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  useEffect(() => watchDrawerBoundary(setCollapsed), []);
 
   useEffect(() => {
     document.body.classList.toggle("dark-mode", settings.theme === "dark");
@@ -89,12 +81,12 @@ export default function AdminLayout() {
     <div className={`app admin-app${collapsed ? " sidebar-collapsed" : ""}`}>
       <AdminSidebar
         collapsed={collapsed}
-        onNavigate={() => { if (window.innerWidth <= 600) setCollapsed(true); }}
+        onNavigate={() => { if (isDrawerViewport()) setCollapsed(true); }}
       />
       {!collapsed && (
         <div
           className="sidebar-backdrop"
-          onClick={() => { if (window.innerWidth <= 600) setCollapsed(true); }}
+          onClick={() => { if (isDrawerViewport()) setCollapsed(true); }}
           aria-hidden="true"
         />
       )}

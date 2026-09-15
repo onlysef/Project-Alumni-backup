@@ -5,6 +5,7 @@ import { Modal } from "../common/Primitives.jsx";
 import toptsuLogo from "../../assets/images/tsu-top-header.webp";
 import { API, authHeaders } from "../../services/api.js";
 import { getNotificationTarget } from "../../services/notificationNavigation.js";
+import { isDrawerViewport } from "../../constants/layout.js";
 
 const LAST_READ_KEY = "adminNotifReadAt";
 const READ_ITEMS_KEY = "adminNotifReadItems";
@@ -81,9 +82,7 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
       if (!res.ok) return;
       const data = await res.json();
       setNotifications(data.notifications || []);
-    } catch {
-      // silently fail — no connection shouldn't break the UI
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -92,7 +91,6 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
     return () => clearInterval(pollRef.current);
   }, [fetchNotifications]);
 
-  // Re-fetch every time the notifications panel is opened
   useEffect(() => {
     if (panel === "notifications") fetchNotifications();
   }, [panel, fetchNotifications]);
@@ -156,7 +154,7 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
             aria-label="Notifications"
             data-count={badge}
             onClick={() => {
-              if (window.innerWidth <= 600 && !collapsed) onToggleSidebar();
+              if (isDrawerViewport() && !collapsed) onToggleSidebar();
               setPanel(panel === "notifications" ? null : "notifications");
             }}
           >
@@ -166,7 +164,7 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
             className="icon-btn"
             aria-label="Settings"
             onClick={() => {
-              if (window.innerWidth <= 600 && !collapsed) onToggleSidebar();
+              if (isDrawerViewport() && !collapsed) onToggleSidebar();
               setPanel(panel === "settings" ? null : "settings");
             }}
           >
@@ -228,10 +226,6 @@ export function DashboardSettingsForm({
   onClose,
   showToast,
   notificationDescription = "Show badges for pending reviews and new posts.",
-  // Alumni already have their own password-change form under the account
-  // panel (avatar icon → Security) — showing a second one here too was
-  // duplicate UI for the same action. Admin/coordinator have no equivalent
-  // account panel, so this stays true (shown) for them.
   showChangePassword = true,
 }) {
   const [local, setLocal] = useState(settings);
@@ -332,9 +326,6 @@ function ChangePasswordSection({ showToast }) {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to change password."); return; }
-      // Backend invalidates every other session by bumping the token
-      // version, and hands this session a fresh token in the same response
-      // — without saving it, this tab's own next request would fail.
       if (data.token) localStorage.setItem("auth_token", data.token);
       reset();
       setOpen(false);

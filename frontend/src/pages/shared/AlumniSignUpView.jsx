@@ -20,10 +20,6 @@ function EyeIcon({ open }) {
   );
 }
 
-// Reuses the exact same glassmorphism login design (login-style.css,
-// alumni-office.jpg background, waving-hand icon) the live Login page
-// already uses — same .page/.card/.left-panel/.right-panel class structure,
-// so this gets that visual treatment for free with no new CSS of its own.
 export default function AlumniSignUpView() {
   const [form, setForm] = useState({
     firstName: "", middleInitial: "", lastName: "", email: "",
@@ -40,11 +36,6 @@ export default function AlumniSignUpView() {
     return (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
   }
 
-  // Switching colleges clears the previously-picked course/track — the old
-  // selection almost certainly isn't even in the new college's course list
-  // (e.g. "BSIT" picked under CCS makes no sense once college changes to
-  // COE), so leaving it in place would silently submit a mismatched
-  // course/college pair.
   function handleCollegeChange(e) {
     const college = e.target.value;
     setForm((f) => ({ ...f, college, course: "", track: "" }));
@@ -120,9 +111,8 @@ export default function AlumniSignUpView() {
               </div>
               <p className="welcome-heading">Join<br /><span className="name">TSU Alumni Portal</span></p>
               <p className="welcome-sub">
-                Create your Alumni Portal account. Connect with fellow<br />
-                graduates, explore career opportunities, and stay<br />
-                updated with your alma mater.
+                Create your Alumni Portal account. Connect with fellow graduates,
+                explore career opportunities, and stay updated with your alma mater.
               </p>
             </div>
           </section>

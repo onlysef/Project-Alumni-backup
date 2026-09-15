@@ -50,8 +50,6 @@ export default function EmployerAppointments() {
       && (positionFilter === "All" || item.position === positionFilter);
   }), [appointments, search, dateFilter, statusFilter, positionFilter]);
 
-  // Rejected candidates shouldn't be selectable here — nothing left to
-  // interview them for.
   const schedulableApplicants = useMemo(() => applicants.filter((item) => item.employerStatus !== "Rejected"), [applicants]);
 
   function selectApplicant(applicationId) {
@@ -158,13 +156,13 @@ export default function EmployerAppointments() {
       <div className="employer-table-wrap"><table className="employer-table appointment-table"><thead><tr><th>Applicant</th><th>Position</th><th>Date</th><th>Time</th><th>Mode</th><th>Status</th><th>Action</th></tr></thead><tbody>
         {loading && <tr><td colSpan="7"><div className="employer-empty">Loading appointments…</div></td></tr>}
         {!loading && filtered.map((item) => <tr key={item._id}>
-          <td><strong>{item.alumni_name}</strong><small>{item.location}</small></td>
-          <td>{item.position}</td>
-          <td>{displayDate(item.date)}</td>
-          <td>{displayTime(item.time)}</td>
-          <td>{item.mode}</td>
-          <td><span className={`employer-badge appointment-${item.status.toLowerCase()}`}>{item.status}</span></td>
-          <td><div className="employer-row-actions">
+          <td data-label="Applicant"><strong>{item.alumni_name}</strong><small>{item.location}</small></td>
+          <td data-label="Position">{item.position}</td>
+          <td data-label="Date">{displayDate(item.date)}</td>
+          <td data-label="Time">{displayTime(item.time)}</td>
+          <td data-label="Mode">{item.mode}</td>
+          <td data-label="Status"><span className={`employer-badge appointment-${item.status.toLowerCase()}`}>{item.status}</span></td>
+          <td data-label="Action"><div className="employer-row-actions">
             {item.status === "Upcoming" && <button type="button" aria-label={`Edit appointment for ${item.alumni_name}`} onClick={() => edit(item)}><Icon name="icon-edit"/></button>}
             {item.status === "Upcoming" && <button type="button" className="appointment-cancel-btn" aria-label={`Cancel appointment for ${item.alumni_name}`} onClick={() => cancelAppointment(item)}>✕</button>}
             <button type="button" aria-label={`Delete appointment for ${item.alumni_name}`} onClick={() => removeAppointment(item)}><Icon name="icon-delete"/></button>

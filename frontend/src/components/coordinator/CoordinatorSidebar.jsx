@@ -6,8 +6,7 @@ import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
 import toptsuLogo from "../../assets/images/tsu-top-header.webp";
 import { coordinatorNavItems } from "../../pages/coordinator/coordinatorData.js";
 import { useAuth } from "../../context/AuthContext.jsx";
-
-const MOBILE_BREAKPOINT = 600;
+import { isDrawerViewport, watchDrawerBoundary } from "../../constants/layout.js";
 
 const VIEW_TO_PATH = {
   dashboard:    "/coordinator/dashboard",
@@ -27,24 +26,13 @@ const VIEW_TO_PATH = {
 };
 
 export function useSidebarCoordinator() {
-  const [collapsed, setCollapsed] = useState(window.innerWidth <= MOBILE_BREAKPOINT);
+  const [collapsed, setCollapsed] = useState(isDrawerViewport());
 
-  useEffect(() => {
-    let wasMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-    const handleResize = () => {
-      const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
-      if (isMobile !== wasMobile) {
-        setCollapsed(isMobile);
-        wasMobile = isMobile;
-      }
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  useEffect(() => watchDrawerBoundary(setCollapsed), []);
 
   const toggleSidebar = useCallback(() => setCollapsed((c) => !c), []);
   const collapseOnMobile = useCallback(() => {
-    if (window.innerWidth <= MOBILE_BREAKPOINT) setCollapsed(true);
+    if (isDrawerViewport()) setCollapsed(true);
   }, []);
 
   return { collapsed, setCollapsed, toggleSidebar, collapseOnMobile };
@@ -65,19 +53,11 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
     const path = VIEW_TO_PATH[view] || "/coordinator/dashboard";
     const alreadyOnThisView = view === currentView();
     navigate(path);
-    // Clicking a sidebar item while already on that page is a no-op for
-    // React Router (same path -> no remount, so the target page's own
-    // mount effects never re-fire). For AI Assistant specifically, that
-    // meant clicking it again while scrolled up mid-conversation left you
-    // stranded there instead of jumping back to the latest message — handle
-    // that case directly since there's no route change to hook into.
     if (alreadyOnThisView && view === "aiassistant") {
-      // .ac-thread (not .content) is the actual scrollable element — see
-      // the comment on scrollToBottom in AiAssistantView.jsx for why.
       const container = document.querySelector(".ac-thread");
       if (container) container.scrollTop = container.scrollHeight;
     }
-    if (window.innerWidth <= MOBILE_BREAKPOINT) {
+    if (isDrawerViewport()) {
       setOpenMenu(null);
       onNavigate?.();
     }
