@@ -4,6 +4,7 @@ import { Modal } from "../../components/common/Primitives.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import Icon from "../../components/common/Icon.jsx";
 import { API, authHeaders } from "../../services/api.js";
+import { getHolidaysForMonth, PHILIPPINES_HOLIDAYS } from "../../constants/holidays.js";
 
 // "HH:MM" (24-h) → "8:00 AM"
 function fmt24to12(t) {
@@ -472,8 +473,15 @@ export default function AppointmentsView() {
       const res  = await fetch(`${API}/admin/appointments/settings`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) { showToast(data.message || "Failed to load office settings."); return; }
-      setSettings(data.settings);
-      setFormSettings(data.settings);
+      const settings = data.settings || {};
+      if (!settings.holidays || settings.holidays.length === 0) {
+        const currentMonth = new Date().getMonth() + 1;
+        const currentYear = new Date().getFullYear();
+        const monthHolidays = getHolidaysForMonth(currentYear, currentMonth);
+        settings.holidays = monthHolidays.map((h) => h.date);
+      }
+      setSettings(settings);
+      setFormSettings(settings);
     } catch { showToast("Could not connect to server."); }
     finally { setSettingsLoading(false); }
   }
@@ -529,7 +537,10 @@ export default function AppointmentsView() {
 
   function fmtHolidayDate(d) {
     const [y, m, day] = d.split("-").map(Number);
-    return new Date(y, m - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const monthDay = `${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const name = PHILIPPINES_HOLIDAYS[monthDay];
+    const date = new Date(y, m - 1, day).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return name ? `${date} - ${name}` : date;
   }
 
   // ── Staff ────────────────────────────────────────────────────
