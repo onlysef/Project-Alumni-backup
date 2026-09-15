@@ -5,6 +5,7 @@ import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { partnerActionList, actionLabels } from "../../data.js";
+import { COLLEGE_CODES, COLLEGE_NAMES } from "../../constants/colleges.js";
 
 import { API, authHeaders } from "../../services/api.js";
 
@@ -172,8 +173,24 @@ export default function PartnershipsView() {
   return (
     <section className={`content admin-view view active-view`}>
       <div className="admin-kpis">
-        <article><strong>{stats.active}</strong><span>Active Partners</span></article>
-        <article><strong>{stats.jobOpportunities}</strong><span>Job Opportunities</span></article>
+        <article>
+          <div>
+            <strong>{stats.active}</strong>
+            <span>Active Partners</span>
+          </div>
+          <div className="admin-kpi-icon">
+            <Icon name="icon-12" />
+          </div>
+        </article>
+        <article>
+          <div>
+            <strong>{stats.jobOpportunities}</strong>
+            <span>Job Opportunities</span>
+          </div>
+          <div className="admin-kpi-icon">
+            <Icon name="icon-11" />
+          </div>
+        </article>
       </div>
       <section className="admin-card">
         <div className="admin-card-head">
@@ -341,11 +358,11 @@ function EmployerInviteModal({ open, onClose, onSent, showToast }) {
             <p style={{ margin: "0 0 12px", fontSize: 14, lineHeight: 1.6 }}>
               Invite sent to <strong>{email.trim()}</strong>. If the email doesn't arrive, share this link directly:
             </p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input type="text" readOnly value={sentLink} style={{ flex: 1, padding: "8px 10px", border: "1px solid #e4cccc", borderRadius: 6, fontSize: 12 }} onFocus={(e) => e.target.select()} />
+            <div className="invite-link-container">
+              <input type="text" readOnly value={sentLink} onFocus={(e) => e.target.select()} />
               <button type="button" onClick={() => { navigator.clipboard?.writeText(sentLink); showToast("Link copied."); }}>Copy</button>
             </div>
-            <div className="modal-actions" style={{ paddingTop: 18 }}>
+            <div className="modal-actions">
               <button type="button" onClick={handleClose}>Done</button>
             </div>
           </div>
@@ -417,6 +434,7 @@ function PartnershipModal({ entry, onClose, onSubmit }) {
             const f = e.currentTarget.elements;
             onSubmit({
               name:        f.name.value.trim(),
+              contact:     f.contact.value.trim(),
               type:        f.type.value,
               status:      f.status.value,
               description: f.description.value.trim(),
@@ -427,19 +445,14 @@ function PartnershipModal({ entry, onClose, onSubmit }) {
             <label>Partner Name
               <input type="text" name="name" defaultValue={row?.partner || ""} required />
             </label>
-            <label>Industry Type
-              <select name="type" defaultValue={row?.type || "Information Technology & BPO"}>
-                <option>Information Technology & BPO</option>
-                <option>Manufacturing</option>
-                <option>Banking & Finance</option>
-                <option>Healthcare</option>
-                <option>Retail & Trade</option>
-                <option>Education</option>
-                <option>Government</option>
-                <option>Construction & Engineering</option>
-                <option>Hospitality & Tourism</option>
-                <option>Agriculture</option>
-                <option>Others</option>
+            <label>Contact Email
+              <input type="email" name="contact" defaultValue={row?.contact || ""} required />
+            </label>
+            <label>College
+              <select name="type" defaultValue={row?.type || "College of Computer Studies"}>
+                {COLLEGE_CODES.map((code) => (
+                  <option key={code} value={COLLEGE_NAMES[code]}>{COLLEGE_NAMES[code]}</option>
+                ))}
               </select>
             </label>
             <label>Status
@@ -449,7 +462,7 @@ function PartnershipModal({ entry, onClose, onSubmit }) {
               </select>
             </label>
             <label>Description
-              <input type="text" name="description" defaultValue={row?.description || ""} />
+              <input type="text" name="description" defaultValue={row?.description || ""} placeholder="Partnership notes or details" />
             </label>
           </div>
           <div className="modal-actions">
