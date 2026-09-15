@@ -5,6 +5,19 @@
 
 export const COLLEGE_CODES = ["CPAG", "CCS", "COS", "CIT", "COE", "CBA", "COED", "CASS", "CCJE", "CAFA"];
 
+export const COLLEGE_NAMES = {
+  CPAG: "College of Public Administration and Governance",
+  CCS:  "College of Computer Studies",
+  COS:  "College of Science",
+  CIT:  "College of Industrial Technology",
+  COE:  "College of Engineering",
+  CBA:  "College of Business and Accountancy",
+  COED: "College of Education",
+  CASS: "College of Arts and Social Sciences",
+  CCJE: "College of Criminal Justice Education",
+  CAFA: "College of Fine and Applied Arts",
+};
+
 // Mirrors TSU's actual baccalaureate program catalog (per-college), one
 // short code per program. Where a single degree title covers several named
 // majors/specializations (e.g. CCS's BSIT, COED's secondary ed majors), the
