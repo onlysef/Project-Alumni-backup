@@ -192,7 +192,7 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
       const have = job.skills.filter(s => s.matched).length;
       return (
         <aside className="connect-skill-gap" ref={skillGapRef}>
-          <b>Skill Match</b>
+          <b>Job Match</b>
           <span className="skill-match-ratio">{have} of {job.skills.length} skills matched</span>
           <div>{sorted.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
           <small>

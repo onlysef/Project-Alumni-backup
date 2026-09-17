@@ -15,13 +15,13 @@ const Job                   = require('../models/Job');
 const Event                = require('../models/Event');
 const Notification         = require('../models/Notification');
 const { getTracerFormConfig } = require('./tracerFormConfigController');
-const { getEmbedding }        = require('../services/embeddingService');
+const { getEmbedding, getEmbeddingsBatch } = require('../services/embeddingService');
 const careerjetService         = require('../services/careerjetService');
 const { tracerRowToText }     = require('../utils/fileParser');
-const { sendInquiryEmail }    = require('../utils/emailService');
+const { sendInquiryEmail, sendAlumniMessageEmail } = require('../utils/emailService');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
 const answerCache             = require('../services/answerCache');
-const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill } = require('../utils/skillMatching');
+const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill, extractSkillsFromText } = require('../utils/skillMatching');
 
 // The set of keys that the TracerStudyResponse schema handles directly.
 // Everything else in the submitted answers object goes into extra_answers.
@@ -784,12 +784,19 @@ const updateMyEmployment = async (req, res) => {
 // scoring function now, so they can't drift apart again.
 const RECOMMENDED_POOL_SIZE = 50;
 
-function scoreCareerjetJobs(rawJobs, { userSkillsText, location, typeLabel }) {
-  return rawJobs.map((job) => {
-    const jobText = `${job.title || ''} ${job.description || ''}`;
-    const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
-    const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
-    const matchedCount = skills.filter((s) => s.matched).length;
+async function scoreCareerjetJobs(rawJobs, { userId, userSkillsText, location, typeLabel }) {
+  const jobTexts = rawJobs.map((job) => `${job.title || ''} ${job.description || ''}`);
+  const cosineScores = await withTimeout(
+    computeJobCosineScores(jobTexts, userId, userSkillsText).catch((err) => {
+      console.error('Job cosine scoring failed, falling back to skill-ratio only:', err.message);
+      return jobTexts.map(() => null);
+    }),
+    JOB_COSINE_TIMEOUT_MS,
+    jobTexts.map(() => null)
+  );
+
+  return rawJobs.map((job, i) => {
+    const { skills, match } = scoreJobFromText(jobTexts[i], userSkillsText, cosineScores[i]);
     return {
       title: job.title,
       company: job.company || 'Company not listed',
@@ -799,7 +806,7 @@ function scoreCareerjetJobs(rawJobs, { userSkillsText, location, typeLabel }) {
       url: job.url,
       description: job.description || '',
       salary: job.salary || '',
-      match: skills.length ? Math.round((matchedCount / skills.length) * 100) : null,
+      match,
       skills,
     };
   });
@@ -810,12 +817,19 @@ function scoreCareerjetJobs(rawJobs, { userSkillsText, location, typeLabel }) {
 // Careerjet. `internal: true` + a synthetic "url" (Job has no real external
 // posting to link to) is what JobCard uses to render "Apply now" as an
 // in-app application instead of an outbound link.
-function scoreInternalJobs(rawJobs, { userSkillsText }) {
-  return rawJobs.map((job) => {
-    const jobText = `${job.title || ''} ${job.description || ''}`;
-    const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
-    const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
-    const matchedCount = skills.filter((s) => s.matched).length;
+async function scoreInternalJobs(rawJobs, { userId, userSkillsText }) {
+  const jobTexts = rawJobs.map((job) => `${job.title || ''} ${job.description || ''}`);
+  const cosineScores = await withTimeout(
+    computeJobCosineScores(jobTexts, userId, userSkillsText).catch((err) => {
+      console.error('Job cosine scoring failed, falling back to skill-ratio only:', err.message);
+      return jobTexts.map(() => null);
+    }),
+    JOB_COSINE_TIMEOUT_MS,
+    jobTexts.map(() => null)
+  );
+
+  return rawJobs.map((job, i) => {
+    const { skills, match } = scoreJobFromText(jobTexts[i], userSkillsText, cosineScores[i]);
     return {
       title: job.title,
       company: job.partnershipId?.name || 'Company not listed',
@@ -826,7 +840,7 @@ function scoreInternalJobs(rawJobs, { userSkillsText }) {
       url: `internal:${job._id}`,
       description: job.description || '',
       salary: '',
-      match: skills.length ? Math.round((matchedCount / skills.length) * 100) : null,
+      match,
       skills,
       internal: true,
     };
@@ -884,8 +898,8 @@ async function getRecommendedJobsForAlumni(alumniId, employment) {
       keywords, location: '', page: 1, pagesize: RECOMMENDED_POOL_SIZE, sort: 'date',
       userIp: '127.0.0.1', userAgent: 'AlumniPortal-HomeSummary/1.0', referrerUrl,
     });
-    const jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location: '', typeLabel: '' })
-      .filter((j) => (j.match ?? 0) > 0);
+    const scored = await scoreCareerjetJobs(data.jobs || [], { userId: alumniId, userSkillsText, location: '', typeLabel: '' });
+    const jobs = scored.filter((j) => (j.match ?? 0) > 0);
     recommendedJobsCache.set(cacheKey, { jobs, expiresAt: Date.now() + RECOMMENDED_COUNT_TTL_MS });
     return jobs;
   } catch (err) {
@@ -1095,6 +1109,36 @@ const getSuggestedAlumni = async (req, res) => {
   }
 };
 
+// POST /api/alumni/network/:id/message — "Send an email" on another
+// alumnus's profile in Suggested Alumni, sent for real through the backend
+// instead of a mailto: link (which does nothing if the browser has no
+// default mail client configured). Same pattern as employer's
+// messageApplicant in jobController.js.
+const messageAlumnus = async (req, res) => {
+  try {
+    const { subject, message } = req.body;
+    if (!subject?.trim() || !message?.trim()) {
+      return res.status(400).json({ message: 'Subject and message are required.' });
+    }
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ message: "You can't send a message to yourself." });
+    }
+
+    const [recipient, sender] = await Promise.all([
+      User.findOne({ _id: req.params.id, role: 'alumni' }).select('firstName email').lean(),
+      User.findById(req.user.id).select('firstName lastName email').lean(),
+    ]);
+    if (!recipient?.email) return res.status(404).json({ message: 'Alumnus not found.' });
+
+    const fromName = `${sender.firstName} ${sender.lastName}`.trim();
+    await sendAlumniMessageEmail(recipient.email, recipient.firstName, fromName, sender.email, subject.trim(), message.trim());
+    res.json({ message: 'Message sent.' });
+  } catch (err) {
+    console.error('messageAlumnus error:', err);
+    res.status(500).json({ message: 'Failed to send message.' });
+  }
+};
+
 // ============ CAREER RECOMMENDATION ============
 
 const hf = new HfInference(process.env.HF_API_KEY);
@@ -1128,6 +1172,39 @@ Write ONE short, specific, encouraging sentence (max 25 words) telling this alum
     return text || null;
   } catch (err) {
     console.error('generateNextStepSuggestion failed, using template fallback:', err.message);
+    return null;
+  }
+}
+
+// Powers the career detail modal's "Why this fits you" explanation — a
+// personalized paragraph naming the alumnus's actual matched strengths for
+// THIS specific path plus the concrete skill gaps to close, instead of the
+// generic per-path description (career.text) every alumnus sees regardless
+// of their own profile. Only generated for whichever card the alumnus
+// actually opens (see getCareerFitExplanation below), not all 5 up front.
+async function generateCareerFitExplanation({ career, matchedSkills, missingSkills, match, userCourse, userJobTitle }) {
+  try {
+    const prompt = `Alumnus profile — course: ${userCourse || 'not specified'}; current role: ${userJobTitle || 'not yet employed'}.
+Career path: "${career.title}" — ${career.text}
+Overall match score: ${match}%.
+Skills this alumnus already has that this path needs: ${matchedSkills.length ? matchedSkills.join(', ') : 'none yet'}.
+Skills this path needs that they don't have yet: ${missingSkills.length ? missingSkills.join(', ') : 'none — they already cover every core skill'}.
+Write a short explanation (2-3 sentences, max 55 words total) for this alumnus with two parts: (1) why this career path fits them specifically, referencing their actual matched skills or background, and (2) what skill gaps they should work on to improve their fit. Be specific and encouraging, not generic. No preamble, no headers, just the sentences.`;
+
+    const completion = await hf.chatCompletion({
+      model: CAREER_CHAT_MODEL,
+      provider: process.env.HF_PROVIDER || undefined,
+      messages: [
+        { role: 'system', content: 'You are a concise, encouraging career advisor for a university alumni portal.' },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 110,
+    });
+
+    const text = completion.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, '');
+    return text || null;
+  } catch (err) {
+    console.error('generateCareerFitExplanation failed, using template fallback:', err.message);
     return null;
   }
 }
@@ -1284,6 +1361,120 @@ function withTimeout(promise, ms, fallback) {
 function missingSkillFor(career, userSkillsText) {
   return career.skills.find((s) => !textContainsSkill(userSkillsText, s)) || null;
 }
+
+// Job Match = Cosine Similarity x Requirement Coverage.
+// Cosine is the primary ranking signal (semantic closeness between the
+// alumnus's skills text and the job's own title + description). Skill
+// coverage (the fraction of the job's detected skill keywords the alumnus
+// actually has) is a MULTIPLICATIVE guardrail, not a co-equal weighted
+// term — an additive blend still lets a job with zero matching skills score
+// well purely on semantic similarity (a "Nurse" posting can read as
+// generically similar to almost any profile). Multiplying means 0%
+// coverage zeroes the score outright regardless of how similar the wording
+// sounds, while still-partial coverage scales the score down proportionally
+// instead of hiding the listing entirely (a hard filter would risk hiding
+// genuinely relevant jobs whenever the ~6-keyword extraction from a scraped
+// posting's free text misses a real requirement it never explicitly named).
+function computeJobMatchScore(skillRatio, cosineScore) {
+  return Math.round(skillRatio * cosineScore * 100);
+}
+
+// Measured directly against the live HF embedding endpoint: a batch this
+// size (up to ~50 job postings) consistently takes 4-5.5s, not the sub-
+// second response the earlier 4000ms timeout assumed — meaning Job Connect
+// was routinely eating the full 4s wait on every cache miss before falling
+// back anyway. Cut low enough that the page never feels like it's hanging;
+// computeJobCosineScores's underlying HF call still keeps running after the
+// timeout fires and populates jobEmbeddingCache/userSkillsEmbeddingCache
+// regardless, so the SAME job text (very often re-requested — postings
+// recur across searches and alumni) scores instantly from cache next time
+// without needing another HF round trip at all.
+const JOB_COSINE_TIMEOUT_MS = 800;
+
+// Separate from Career Recommendation's userProfileEmbeddingCache — the two
+// features embed different text for the same user (full profile text vs.
+// just the skills field), and sharing one cache slot would mean switching
+// between Job Connect and Career Recommendation evicts the other's cached
+// vector on every visit.
+const userSkillsEmbeddingCache = new Map(); // userId -> { skillsText, embedding }
+
+// Job postings recur across searches and alumni far more than they change,
+// so caching by exact job text avoids re-embedding the same listing on every
+// request. Capped and cleared wholesale (not LRU) — simplest way to bound
+// memory on a long-running process without adding a dependency for it.
+const jobEmbeddingCache = new Map(); // jobText -> embedding
+const JOB_EMBEDDING_CACHE_MAX = 500;
+function cacheJobEmbedding(jobText, embedding) {
+  if (jobEmbeddingCache.size >= JOB_EMBEDDING_CACHE_MAX) jobEmbeddingCache.clear();
+  jobEmbeddingCache.set(jobText, embedding);
+}
+
+// Returns one cosine score per jobText (same order), or null for a given
+// job if there's nothing meaningful to compare (alumnus has no skills text
+// yet). Batches every embedding this call actually needs to fetch (the
+// alumnus's own skills, plus whichever job texts aren't already cached)
+// into a single Hugging Face request rather than one call per job.
+async function computeJobCosineScores(jobTexts, userId, userSkillsText) {
+  if (!userSkillsText.trim() || !jobTexts.length) return jobTexts.map(() => null);
+
+  const skillsKey = String(userId);
+  const cachedSkills = userSkillsEmbeddingCache.get(skillsKey);
+  const needSkillsEmbedding = !cachedSkills || cachedSkills.skillsText !== userSkillsText;
+
+  const uncachedIndices = [];
+  jobTexts.forEach((text, i) => { if (!jobEmbeddingCache.has(text)) uncachedIndices.push(i); });
+
+  const textsToEmbed = [
+    ...(needSkillsEmbedding ? [userSkillsText] : []),
+    ...uncachedIndices.map((i) => jobTexts[i]),
+  ];
+
+  if (textsToEmbed.length) {
+    const embeddings = await getEmbeddingsBatch(textsToEmbed);
+    let cursor = 0;
+    if (needSkillsEmbedding) {
+      userSkillsEmbeddingCache.set(skillsKey, { skillsText: userSkillsText, embedding: embeddings[cursor++] });
+    }
+    uncachedIndices.forEach((i) => cacheJobEmbedding(jobTexts[i], embeddings[cursor++]));
+  }
+
+  const skillsEmbedding = userSkillsEmbeddingCache.get(skillsKey).embedding;
+  return jobTexts.map((text) => {
+    const jobEmbedding = jobEmbeddingCache.get(text);
+    return jobEmbedding ? normalizeCosine(cosineSimilarity(skillsEmbedding, jobEmbedding)) : null;
+  });
+}
+
+// Shared by scoreCareerjetJobs/scoreInternalJobs so the cosine x coverage
+// formula only lives in one place. cosineScore is null when
+// computeJobCosineScores couldn't produce one (no skills text, or the HF
+// call timed out/failed) — falls back to the plain skill-ratio percentage
+// rather than blocking on it (there's no cosine value left to multiply by).
+function scoreJobFromText(jobText, userSkillsText, cosineScore) {
+  const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
+  const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
+  if (!skills.length) return { skills, match: null };
+  const matchedCount = skills.filter((s) => s.matched).length;
+  const skillRatio = matchedCount / skills.length;
+  const match = cosineScore === null ? Math.round(skillRatio * 100) : computeJobMatchScore(skillRatio, cosineScore);
+  return { skills, match };
+}
+
+// POST /api/alumni/skills/extract — lets the Employment Details skills field
+// accept a full sentence ("I'm skilled in Python and enjoy customer service
+// work") instead of one chip at a time. Deterministic keyword lookup against
+// the same SKILL_BUCKETS vocabulary career scoring uses, so whatever gets
+// added as a chip here is guaranteed to also be recognized by the scorer.
+const extractSkills = async (req, res) => {
+  try {
+    const text = String(req.body?.text || '').slice(0, 2000);
+    if (!text.trim()) return res.json({ skills: [] });
+    res.json({ skills: extractSkillsFromText(text) });
+  } catch (err) {
+    console.error('extractSkills error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
 
 // S = Sr*40% + Er*20% + Xr*30% + CS*10%
 // Sr: candidate's skill-set overlap with the role's required skills
@@ -1478,6 +1669,15 @@ const getCareerRecommendations = async (req, res) => {
       skillStrengths: computeSkillStrengths(userSkillsText),
       hasSkills: !!userSkillsText.trim(),
       nextStep,
+      // Weights the frontend's "How this score is calculated" formula line
+      // renders directly, so the displayed formula can never drift out of
+      // sync with what computeCareerScore actually computes.
+      scoreWeights: {
+        skills: Math.round(SCORE_WEIGHTS.Sr * 100),
+        education: Math.round(SCORE_WEIGHTS.Er * 100),
+        experience: Math.round(SCORE_WEIGHTS.Xr * 100),
+        profileSimilarity: Math.round(SCORE_WEIGHTS.CS * 100),
+      },
     });
   } catch (err) {
     console.error('getCareerRecommendations error:', err);
@@ -1511,6 +1711,42 @@ const getCareerNextStep = async (req, res) => {
     res.json({ nextStep });
   } catch (err) {
     console.error('getCareerNextStep error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/alumni/career-recommendations/explain?title=&match=&matched=&missing=
+// Lazily generates the "Why this fits you" explanation for one career card —
+// only called once the alumnus opens that card's detail modal (see
+// CareerRecommendation.jsx), so this ~4s LLM call never fires for the 4 cards
+// they never click into.
+const getCareerFitExplanation = async (req, res) => {
+  try {
+    const { title, match } = req.query;
+    if (!title) return res.status(400).json({ message: 'title is required.' });
+    const career = CAREER_PATHS.find((c) => c.title === title);
+    if (!career) return res.status(404).json({ message: 'Unknown career path.' });
+
+    const matchedSkills = String(req.query.matched || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const missingSkills = String(req.query.missing || '').split(',').map((s) => s.trim()).filter(Boolean);
+
+    const [me, employment] = await Promise.all([
+      User.findById(req.user.id).select('course').lean(),
+      AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
+    ]);
+
+    const explanation = await generateCareerFitExplanation({
+      career,
+      matchedSkills,
+      missingSkills,
+      match: Number(match) || 0,
+      userCourse: me?.course || '',
+      userJobTitle: cleanEmploymentValue(employment?.job_title),
+    });
+
+    res.json({ explanation });
+  } catch (err) {
+    console.error('getCareerFitExplanation error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -1620,7 +1856,7 @@ const searchJobs = async (req, res) => {
     // (unlike guessing a "work setup" from the description text used to be).
     const typeLabel = EMPLOYMENT_TYPE_LABELS[type] || '';
 
-    let jobs = scoreCareerjetJobs(data.jobs || [], { userSkillsText, location: effectiveLocation, typeLabel });
+    let jobs = await scoreCareerjetJobs(data.jobs || [], { userId: req.user.id, userSkillsText, location: effectiveLocation, typeLabel });
     if (proximity === 'nearby' && profileLocation) jobs = jobs.filter((job) => isSameArea(job.location, profileLocation));
     if (proximity === 'far' && profileLocation) jobs = jobs.filter((job) => !isSameArea(job.location, profileLocation));
     if (EDUCATION_LEVELS[education]) jobs = jobs.filter((job) => EDUCATION_LEVELS[education].test(job.description));
@@ -1661,7 +1897,7 @@ const getPartnerJobPostings = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const jobs = scoreInternalJobs(rawJobs, { userSkillsText });
+    const jobs = await scoreInternalJobs(rawJobs, { userId: req.user.id, userSkillsText });
     sortJobsByMatchThenDate(jobs);
     res.json({ jobs });
   } catch (err) {
@@ -1944,4 +2180,4 @@ const deleteApplication = async (req, res) => {
   }
 };
 
-module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, updateAlumniTracerData, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication };
+module.exports = { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, updateAlumniTracerData, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, messageAlumnus, getCareerRecommendations, getCareerNextStep, getCareerFitExplanation, extractSkills, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication };

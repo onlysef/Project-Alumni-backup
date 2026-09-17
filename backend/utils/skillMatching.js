@@ -16,16 +16,28 @@ const SKILL_BUCKETS = [
   { name: 'Networking', keywords: ['networking', 'cisco', 'network', 'router', 'firewall', 'network security', 'lan', 'wan', 'ip addressing', 'network administration'] },
   { name: 'Design', keywords: ['figma', 'design', 'ui', 'ux', 'photoshop', 'adobe', 'wireframe', 'prototyping', 'illustrator', 'canva', 'graphic design', 'video editing'] },
   { name: 'Project Management', keywords: ['project management', 'agile', 'scrum', 'planning', 'scheduling', 'kanban', 'jira', 'trello', 'coordination', 'risk management'] },
-  { name: 'Communication', keywords: ['communication', 'presentation', 'writing', 'leadership', 'teamwork', 'collaboration', 'public speaking', 'negotiation', 'interpersonal skills'] },
+  // Same underserved-bucket problem as Education & Training had: the
+  // original 9 keywords only matched sentences using those exact nouns
+  // ("communication", "teamwork"...), so extremely common self-described
+  // soft skills ("I can work under pressure", "I'm a fast learner", "I have
+  // good time management") extracted nothing at all.
+  { name: 'Communication & Soft Skills', keywords: ['communication', 'presentation', 'writing', 'leadership', 'teamwork', 'collaboration', 'public speaking', 'negotiation', 'interpersonal skills', 'problem solving', 'critical thinking', 'decision making', 'time management', 'attention to detail', 'adaptability', 'adaptable', 'flexibility', 'flexible', 'work ethic', 'hardworking', 'hard working', 'multitasking', 'multitask', 'patience', 'patient', 'initiative', 'creativity', 'creative', 'positive attitude', 'work under pressure', 'conflict resolution', 'emotional intelligence', 'willingness to learn', 'fast learner', 'resourcefulness', 'resourceful', 'reliability', 'reliable', 'self motivation'] },
   { name: 'Customer Service & Support', keywords: ['customer service', 'technical support', 'call center', 'chat support', 'email support', 'crm', 'zendesk', 'helpdesk', 'client relations', 'complaint handling', 'customer support'] },
   { name: 'Virtual Assistance', keywords: ['virtual assistant', 'remote work', 'scheduling', 'email management', 'calendar management', 'data entry', 'transcription', 'social media management', 'administrative support'] },
   { name: 'Healthcare', keywords: ['patient care', 'nursing', 'clinical', 'medical assistant', 'first aid', 'cpr', 'pharmacy', 'healthcare', 'medical billing', 'emr', 'vital signs'] },
   { name: 'Manufacturing & Engineering', keywords: ['quality control', 'production', 'autocad', 'cad', 'assembly', 'lean manufacturing', 'six sigma', 'machining', 'inventory management', 'process improvement', 'quality assurance'] },
-  { name: 'Finance & Accounting', keywords: ['accounting', 'bookkeeping', 'quickbooks', 'payroll', 'taxation', 'auditing', 'financial analysis', 'budgeting', 'reconciliation', 'accounts payable', 'accounts receivable'] },
+  { name: 'Finance & Accounting', keywords: ['accounting', 'accountant', 'bookkeeping', 'bookkeeper', 'quickbooks', 'payroll', 'taxation', 'tax preparation', 'auditing', 'audit', 'financial analysis', 'budgeting', 'reconciliation', 'accounts payable', 'accounts receivable', 'cost accounting'] },
   { name: 'Marketing & Sales', keywords: ['digital marketing', 'social media marketing', 'seo', 'content creation', 'sales', 'branding', 'copywriting', 'market research', 'advertising', 'lead generation'] },
   { name: 'Administrative & Office', keywords: ['clerical', 'office administration', 'filing', 'records management', 'ms office', 'excel', 'word', 'powerpoint', 'documentation', 'data entry'] },
   { name: 'Human Resources', keywords: ['recruitment', 'employee relations', 'onboarding', 'hr policies', 'talent acquisition', 'performance management', 'compensation', 'training and development'] },
-  { name: 'Education & Training', keywords: ['teaching', 'lesson planning', 'tutoring', 'curriculum development', 'classroom management', 'training', 'mentoring', 'facilitation'] },
+  // Deliberately deeper than most other buckets: "teaching"/"lesson
+  // planning"/"classroom management" alone missed almost every realistic
+  // teacher self-description ("I teach elementary students", "I'm a
+  // guidance counselor", "student assessment", "lesson plans") since none
+  // of those phrasings are literally the word "teaching". Covers the actual
+  // vocabulary Philippine K-12/DepEd teacher-alumni use to describe their
+  // own work, not just the single generic term.
+  { name: 'Education & Training', keywords: ['teaching', 'teacher', 'educator', 'instructor', 'professor', 'tutor', 'tutoring', 'lesson planning', 'lesson plan', 'lesson plans', 'curriculum development', 'curriculum planning', 'classroom management', 'classroom instruction', 'classroom discipline', 'student assessment', 'educational assessment', 'grading', 'academic advising', 'differentiated instruction', 'teaching strategies', 'instructional materials', 'module writing', 'learning modules', 'remedial teaching', 'special education', 'values education', 'guidance counseling', 'guidance counselor', 'student counseling', 'career guidance', 'training', 'mentoring', 'facilitation'] },
   { name: 'Construction & Trades', keywords: ['construction', 'carpentry', 'welding', 'electrical work', 'plumbing', 'site supervision', 'blueprint reading', 'safety compliance'] },
 ];
 
@@ -44,6 +56,8 @@ const SKILL_LABEL_OVERRIDES = {
   'asp.net': 'ASP.NET', jquery: 'jQuery', graphql: 'GraphQL', 'ruby on rails': 'Ruby on Rails',
   'sql server': 'SQL Server', db2: 'DB2', sqlite: 'SQLite', 'pl/sql': 'PL/SQL',
   aws: 'AWS', gcp: 'GCP', devops: 'DevOps', 'ci/cd': 'CI/CD',
+  adaptable: 'Adaptability', flexible: 'Flexibility', 'hard working': 'Hardworking',
+  patient: 'Patience', creative: 'Creativity', resourceful: 'Resourcefulness', reliable: 'Reliability', multitask: 'Multitasking',
 };
 
 const skillLabel = (keyword) => SKILL_LABEL_OVERRIDES[keyword] || keyword.replace(/\b\w/g, (c) => c.toUpperCase());
@@ -90,4 +104,47 @@ function textContainsSkill(userSkillsText, skill) {
   return false;
 }
 
-module.exports = { SKILL_BUCKETS, SKILL_LABEL_OVERRIDES, skillLabel, ALL_SKILL_KEYWORDS, normalizeSkillText, textContainsSkill };
+// Lets the Employment Details skills field accept a free-form sentence
+// ("I'm skilled in Python programming and enjoy customer service work")
+// instead of forcing alumni to type one chip at a time. Scans the sentence
+// for any of the ~250 known keywords using the same whole-word matching
+// textContainsSkill relies on elsewhere, then returns the matched keywords
+// in their display label form, longest phrase first, so a multi-word match
+// like "customer service" isn't also reported as a separate looser hit.
+// Deterministic keyword lookup (no LLM call) — reliable and instant, unlike
+// asking a small model to freelance an extraction from scratch.
+function extractSkillsFromText(text) {
+  // Longest phrase first so "network security" claims its two tokens before
+  // the bare "network"/"networking" keywords get a chance to match either one.
+  const sorted = [...ALL_SKILL_KEYWORDS].sort((a, b) => b.length - a.length);
+  const tokens = normalizeSkillText(text).split(' ').filter(Boolean);
+  const consumed = new Array(tokens.length).fill(false);
+  const found = [];
+
+  for (const keyword of sorted) {
+    const skillWords = normalizeSkillText(keyword).split(' ').filter(Boolean);
+    const skillFused = skillWords.join('');
+    if (skillFused.length < 2) continue;
+
+    for (let i = 0; i < tokens.length; i++) {
+      if (consumed[i]) continue;
+      let span = 0;
+      if (tokens[i] === skillFused || tokens[i] === `${skillFused}js`) {
+        span = 1;
+      } else if (skillWords.length > 1) {
+        const slice = tokens.slice(i, i + skillWords.length);
+        if (slice.length === skillWords.length && !slice.some((_, k) => consumed[i + k]) && slice.join('') === skillFused) {
+          span = skillWords.length;
+        }
+      }
+      if (span) {
+        for (let k = 0; k < span; k++) consumed[i + k] = true;
+        found.push(skillLabel(keyword));
+        break; // one hit per keyword is enough even if it appears more than once
+      }
+    }
+  }
+  return found;
+}
+
+module.exports = { SKILL_BUCKETS, SKILL_LABEL_OVERRIDES, skillLabel, ALL_SKILL_KEYWORDS, normalizeSkillText, textContainsSkill, extractSkillsFromText };

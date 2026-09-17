@@ -402,7 +402,7 @@ async function narratePersonBlock(personBlock, question, chatHistory) {
     const fabricatedYear = blockYears.size > 0 && [...extractYears(trimmed)].some(y => !blockYears.has(y));
 
     const answerPhrases = [...new Set(trimmed.match(CAPITALIZED_PHRASE) || [])]
-      .map(p => p.replace(/'s$/i, ''))
+      .map(p => p.replace(/'s?$/i, ''))
       .filter(p => !SAFE_PHRASES.has(p.toLowerCase()));
     const blockLower = personBlock.toLowerCase();
     const fabricatedDetail = answerPhrases.some((p) => {
@@ -968,7 +968,7 @@ function extractAboutPersonName(question) {
   const trigger = question.match(ABOUT_PERSON_TRIGGER_PATTERN);
   if (!trigger) return null;
   const nameMatch = trigger[1].match(ABOUT_PERSON_NAME_PATTERN);
-  return nameMatch ? nameMatch[0].replace(/'s$/i, '').trim() : null;
+  return nameMatch ? nameMatch[0].replace(/'s?$/i, '').trim() : null;
 }
 
 // Referenced from inside SYSTEM_PROMPT below (rule 2) AND checked verbatim
@@ -1984,7 +1984,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         let fabricatedDetail = false;
         if (isPersonLookup) {
           const answerPhrases = [...new Set(trimmed.match(CAPITALIZED_PHRASE) || [])]
-            .map(p => p.replace(/'s$/i, ''))
+            .map(p => p.replace(/'s?$/i, ''))
             .filter(p => !SAFE_PHRASES.has(p.toLowerCase()));
           // Per-word substring check, not whole-phrase — a stored surname
           // like "Dejesus" (one run-on word, common in this dataset's
@@ -2374,7 +2374,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   const namedPerson = aggregationService.extractPersonName(question) ||
     extractAboutPersonName(question);
   if (namedPerson) {
-    const nameTokens = namedPerson.replace(/'s$/i, '').split(/\s+/).filter(Boolean);
+    const nameTokens = namedPerson.replace(/'s?$/i, '').split(/\s+/).filter(Boolean);
     const tokenPatterns = nameTokens.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
 
     // fileParser.js batches THREE tracer respondents' records into one
@@ -2428,7 +2428,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     }
 
     if (!matchingChunks.length) {
-      const notFoundMsg = `I don't have any record of "${namedPerson.replace(/'s$/i, '')}" in the tracer study or alumni data.`;
+      const notFoundMsg = `I don't have any record of "${namedPerson.replace(/'s?$/i, '')}" in the tracer study or alumni data.`;
       await dbAnswerThinkingDelay();
       if (onToken) onToken(notFoundMsg);
       return finish({ answer: notFoundMsg, sources: [], type: 'rag' });
@@ -2574,6 +2574,24 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   if (finalAnswer === QUALITATIVE_REFUSAL_SENTENCE && !hasDomainKeyword(question) && !isFabricated) {
     finalAnswer = UNKNOWN_RESPONSE;
     unansweredDetail = 'unknown';
+  }
+  // A named-person question ("is X alumni?", "what is X's phone number?")
+  // that reaches HERE means the structured Graduate lookup already missed
+  // earlier (aggregationService.js's isAlumniMatch/personName branches both
+  // deliberately defer to RAG on a miss — see their own comments) AND RAG
+  // just failed too. The generic UNKNOWN_RESPONSE/QUALITATIVE_REFUSAL_SENTENCE
+  // reads as if the SYSTEM lacks the data category entirely, not that this
+  // ONE specific person wasn't found — confusing for a plain existence
+  // question. Substituting only happens here, strictly AFTER RAG had its
+  // real turn — someone genuinely findable only in an ingested document
+  // (never submitted the tracer study themselves) still gets their real
+  // RAG-sourced answer above this point, never reaches this fallback at all.
+  if (!isFabricated && (finalAnswer === QUALITATIVE_REFUSAL_SENTENCE || finalAnswer === UNKNOWN_RESPONSE)) {
+    const candidateName = aggregationService.extractPersonName(question);
+    if (candidateName) {
+      finalAnswer = `I don't have any information about **${candidateName}** in the tracer study database or other available records.`;
+      unansweredDetail = 'person_not_found';
+    }
   }
   if (onToken) onToken(finalAnswer);
   // Skipped when isFabricated — that case already got its own, more specific

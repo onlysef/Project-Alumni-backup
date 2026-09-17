@@ -671,9 +671,10 @@
 .status-pill.unemployed { background: #f7e6e8; color: #8e1c31; }
 .employment-block { padding: 20px 26px; border-bottom: 1px solid #eee6e8; }
 .employment-block h3 { margin: 0 0 16px; color: #650019; font-size: 13px; }
-.employment-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px 18px; }
+.employment-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 15px 18px; }
 .employment-fields.two-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .employment-field { display: grid; gap: 7px; }
+.employment-field-full { grid-column: 1 / -1; }
 .employment-field span { color: #66585c; font-size: 11px; font-weight: 700; }
 .employment-field input, .employment-field select { width: 100%; min-width: 0; height: 39px; padding: 0 11px; border: 1px solid #cdbdc1; border-radius: 5px; outline: 0; background: #fff; color: #30272a; font: inherit; font-size: 12px; }
 .employment-field input:focus, .employment-field select:focus { border-color: #770022; box-shadow: 0 0 0 3px rgba(119,0,34,.08); }
@@ -690,6 +691,13 @@
 .skill-chip button:hover { background: #70001d; color: #fff; }
 .add-skill-button { justify-self: start; padding: 5px 9px; border: 1px solid #70001d; border-radius: 5px; background: #fff; color: #70001d; font-size: 10px; font-weight: 800; cursor: pointer; }
 .add-skill-button:hover { background: #fdf0f2; }
+.add-skill-button:disabled { opacity: .55; cursor: not-allowed; }
+.skills-sentence-input { display: grid; gap: 6px; padding-bottom: 8px; border-bottom: 1px dashed #dcc9cd; margin-bottom: 2px; }
+.skills-sentence-input textarea { width: 100%; min-width: 0; padding: 8px 11px; border: 1px solid #cdbdc1; border-radius: 5px; outline: 0; background: #fff; color: #30272a; font: inherit; font-size: 12px; resize: vertical; }
+.skills-sentence-input textarea:focus { border-color: #770022; box-shadow: 0 0 0 3px rgba(119,0,34,.08); }
+.skills-extract-error { margin: 0; color: #a34a1f; font-size: 11px; }
+.skills-group { display: grid; gap: 5px; }
+.skills-group-label { color: #8a6b2a; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .employment-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 26px; }
 .primary-employment-btn, .secondary-employment-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 8px 13px; border-radius: 5px; font-size: 11px; font-weight: 800; line-height: 1; cursor: pointer; }
 .primary-employment-btn img, .secondary-employment-btn img { display: block; width: 14px; height: 14px; flex: 0 0 auto; }
@@ -741,6 +749,9 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
 .profile-row strong { display: block; font-size: 11px; line-height: 1.4; }
 .profile-chip-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
 .profile-chip { padding: 3px 9px; border-radius: 11px; background: rgba(255,255,255,.14); color: #fff; font-size: 10px; font-weight: 700; line-height: 1.5; }
+.profile-chip-group { margin-top: 6px; }
+.profile-chip-group:first-child { margin-top: 0; }
+.profile-chip-group-label { display: block; margin-bottom: 3px; color: #f4cf6b; font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 
 /* Suggested alumni directory */
 .suggested-page {
@@ -958,6 +969,8 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
 .career-modal-skill-count { color: #268146; font-size: 10px; font-weight: 800; text-transform: none; }
 .career-skill-tags-full span.skill-have { padding: 5px 9px; border-radius: 12px; background: #eaf7ee; color: #1f6b3a; font-size: 10px; font-weight: 700; }
 .career-skill-tags-full span.skill-missing { padding: 5px 9px; border-radius: 12px; border: 1px dashed #cdbec2; background: #fff; color: #8a777d; font-size: 10px; font-weight: 700; }
+.career-fit-explanation { margin: 0; padding: 12px 14px; border-left: 3px solid #70001d; border-radius: 6px; background: #fdf4e3; color: #5a4d51; font-size: 12px; line-height: 1.6; }
+.career-score-formula { margin: 0 0 12px; color: #8a6b2a; font-size: 10.5px; font-weight: 700; line-height: 1.5; }
 
 /* Job Connect */
 .job-connect-page { width: 100%; max-width: none; }.job-connect-hero { display: flex; align-items: center; justify-content: space-between; padding: 25px 30px; border-radius: 11px 11px 0 0; background: linear-gradient(120deg,#71001d,#4c0014); color:#fff; }.job-connect-hero span,.job-list-head span,.application-tracker > div span { color:#edc45e;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em }.job-connect-hero h1{margin:5px 0;font-size:25px}.job-connect-hero p{margin:0;color:rgba(255,255,255,.72);font-size:11px}.job-alerts-toggle{padding:9px 13px;border:1px solid rgba(255,255,255,.25);border-radius:20px;background:rgba(255,255,255,.1);color:#fff;font-size:10px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,color .15s}.job-alerts-toggle.on{border-color:#edc45e;background:#edc45e;color:#5e0019}.job-search-bar{display:grid;grid-template-columns:1fr 150px 120px;gap:10px;padding:15px;background:#fff;border:1px solid #e4d9dc;border-top:0;border-radius:0 0 10px 10px}.job-search-bar label{position:relative}.job-search-bar label svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;fill:none;stroke:#8d7b80;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}.job-search-bar input,.job-search-bar select{width:100%;height:38px;border:1px solid #d5c8cc;border-radius:5px;padding:0 12px;font-size:11px}.job-search-bar input{padding-left:34px}.job-search-bar button{border:0;border-radius:5px;background:#70001d;color:#fff;font-size:10px;font-weight:800}.job-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}.job-stats>div{display:flex;align-items:center;gap:10px;padding:13px 16px;border:1px solid #e4d9dc;border-radius:7px;background:#fff}.job-stats strong{color:#70001d;font-size:20px}.job-stats span{color:#776a6e;font-size:9px}.job-connect-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:18px}.job-list-head{display:flex;justify-content:space-between;align-items:end;margin:8px 0 12px}.job-list-head h2,.application-tracker h2{margin:4px 0 0;color:#5e0019;font-size:18px}.job-list-head>b{color:#8e7e83;font-size:10px}.job-connect-list{display:grid;gap:12px}.connect-job-card{display:grid;grid-template-columns:58px minmax(0,1fr) 105px;gap:14px;padding:17px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.job-company-logo{display:grid;place-items:center;width:54px;height:54px;border-radius:8px;background:#70001d;color:#f0cd70;font-weight:900}.connect-job-title{display:flex;justify-content:space-between;gap:10px}.connect-job-title h3{margin:0;color:#3e3337;font-size:14px}.connect-job-title p{margin:3px 0;color:#776a6e;font-size:10px}.connect-job-title>span{color:#278246;font-size:10px;font-weight:800}.job-facts{display:flex;flex-wrap:wrap;gap:12px;margin:9px 0;color:#776a6e;font-size:9px}.job-required{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.job-required b{margin-right:3px;color:#695a5f;font-size:9px}.job-required span{padding:4px 7px;border-radius:10px;background:#f3e9ec;color:#70001d;font-size:8px;font-weight:700}.connect-job-main>small{display:block;margin-top:10px;color:#a08f94;font-size:8px}.connect-job-actions{display:grid;align-content:center;gap:7px}.connect-job-actions button{padding:7px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer}.save-job{border:1px solid #cdbec2;background:#fff;color:#65575b}.save-job.saved{border-color:#c49b34;background:#fff8df;color:#755b1d}.apply-job{border:1px solid #70001d;background:#70001d;color:#fff;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:5px;white-space:nowrap;cursor:pointer}.view-job{border:0;background:transparent;color:#70001d;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:4px;white-space:nowrap;cursor:pointer}.apply-job svg,.view-job svg{width:11px;height:11px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}.job-connect-side{display:grid;align-content:start;gap:12px}.application-tracker,.job-profile-card{padding:19px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.application-tracker>div{margin-bottom:17px}.tracker-row{display:grid;grid-template-columns:16px 1fr auto;align-items:center;padding:9px 0;border-bottom:1px solid #eee7e9;color:#8b7b80;font-size:10px}.tracker-row i{width:8px;height:8px;border-radius:50%;background:#d9cdd0}.tracker-row.active i{background:#70001d}.tracker-row b{color:#70001d}.job-profile-card{text-align:center}.profile-ring{position:relative;display:grid;place-items:center;width:70px;height:70px;margin:0 auto 10px;border-radius:50%;background:conic-gradient(#70001d calc(var(--pct,0) * 3.6deg),#e8c55f 0deg)}.profile-ring::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#fff}.profile-ring strong{position:relative;z-index:1;color:#70001d;font-size:16px}.job-profile-card h3{margin:0;color:#4e4145;font-size:13px}.job-profile-card p{color:#817177;font-size:9px;line-height:1.5}.job-profile-card button{width:100%;padding:8px;border:0;border-radius:4px;background:#70001d;color:#fff;font-size:9px;font-weight:800}.job-tip-card{padding:15px;border-left:4px solid #d5aa3e;border-radius:6px;background:#fff8e5;color:#6b5a31}.job-tip-card b{font-size:10px}.job-tip-card p{margin:5px 0 0;font-size:9px;line-height:1.5}.job-empty{display:grid;place-items:center;min-height:220px;background:#fff;border:1px dashed #d4c6ca;border-radius:8px;color:#7c6d72}.job-empty span{margin-top:-80px;font-size:10px}
@@ -2140,6 +2153,11 @@ body.dark-mode .employment-field select:disabled { background: #2b141a; color: #
 body.dark-mode .skills-chip-list { border-color: rgba(250, 200, 83, .22); background: #2b141a; }
 body.dark-mode .skill-chip { border-color: rgba(250, 200, 83, .22); background: #3a2027; color: #f0e4e7; }
 body.dark-mode .skills-empty { color: #a98d93; }
+body.dark-mode .skills-sentence-input { border-bottom-color: rgba(250, 200, 83, .22); }
+body.dark-mode .skills-sentence-input textarea { border-color: rgba(250, 200, 83, .22); background: #321820; color: #f8eef1; }
+body.dark-mode .skills-sentence-input textarea:focus { border-color: #fac853; box-shadow: 0 0 0 3px rgba(250, 200, 83, .15); }
+body.dark-mode .skills-extract-error { color: #f2b98a; }
+body.dark-mode .skills-group-label { color: #f6d98a; }
 body.dark-mode .secondary-employment-btn { border-color: rgba(250, 200, 83, .3); background: #241116; color: #e7cfd4; }
 body.dark-mode .profile-course,
 body.dark-mode .profile-email { color: rgba(255, 255, 255, .7); }
@@ -2230,6 +2248,8 @@ body.dark-mode .career-modal-section h4 { color: #fff6f8; }
 body.dark-mode .career-modal-skill-count { color: #7fe0a0; }
 body.dark-mode .career-skill-tags-full span.skill-have { background: rgba(21, 128, 61, .2); color: #b7f3c9; }
 body.dark-mode .career-skill-tags-full span.skill-missing { border-color: rgba(250, 200, 83, .3); background: transparent; color: #b99ba4; }
+body.dark-mode .career-fit-explanation { border-left-color: #fac853; background: rgba(250, 200, 83, .12); color: #f6d98a; }
+body.dark-mode .career-score-formula { color: #f6d98a; }
 
 /* Job Connect */
 body.dark-mode .job-search-bar { background: #241116; border-color: rgba(250, 200, 83, .18); }
@@ -2395,7 +2415,13 @@ body.dark-mode .resume-preview-modal-head button { border-color: rgba(250, 200, 
 
 .network-empty { align-content: center; gap: 10px; }
 .network-empty span { margin: 0; color: #9a898e; }
-.network-profile-modal { width: min(530px, calc(100vw - 28px)); }
+/* .coord-alumni-profile (coordinator-dashboard.css) sets overflow:hidden to
+   clip its header banner to the modal's rounded corners — harmless for the
+   coordinator's own shorter profile modal, but this alumni-facing modal has
+   more rows (match banner, social links) and needs to scroll once content
+   exceeds .tracer-modal's max-height. Same specificity as that rule, but
+   this file loads after coordinator-dashboard.css in main.jsx, so it wins. */
+.network-profile-modal { width: min(530px, calc(100vw - 28px)); overflow-y: auto; }
 .network-profile-summary { align-items: center; padding: 22px; }
 .directory-avatar.large { width: 76px; height: 76px; font-size: 20px; }
 .network-profile-summary > div:last-child { display: grid; gap: 4px; }
@@ -2405,6 +2431,14 @@ body.dark-mode .resume-preview-modal-head button { border-color: rgba(250, 200, 
 .profile-match-banner strong { color: #765811; font-size: 11px; }
 .profile-match-banner span { color: #8b7337; font-size: 9px; text-align: right; }
 .profile-detail-wide { grid-column: 1 / -1; }
+.network-mail-compose { display: grid; gap: 12px; padding: 0 20px 20px; }
+.network-mail-compose label { display: grid; gap: 6px; color: #66585c; font-size: 11px; font-weight: 700; }
+.network-mail-compose input,
+.network-mail-compose textarea { width: 100%; padding: 9px 11px; border: 1px solid #cdbdc1; border-radius: 5px; outline: 0; background: #fff; color: #30272a; font: inherit; font-size: 12px; resize: vertical; }
+.network-mail-compose input:focus,
+.network-mail-compose textarea:focus { border-color: #770022; box-shadow: 0 0 0 3px rgba(119,0,34,.08); }
+.network-mail-error { margin: 0; color: #a3231f; font-size: 11px; }
+.network-mail-sent { margin: 12px 20px 0; padding: 10px 13px; border-radius: 6px; background: #eaf7ee; color: #1f6b3a; font-size: 11px; font-weight: 700; }
 .network-profile-actions .danger { background: #b32b43; color: #fff; }
 .network-profile-actions button,
 .network-profile-actions .network-email-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
@@ -2593,6 +2627,13 @@ body.dark-mode .profile-match-banner { background: rgba(250,200,83,.12); }
 body.dark-mode .profile-match-banner strong { color: #fac853; }
 body.dark-mode .profile-match-banner span,
 body.dark-mode .network-profile-summary > div:last-child small { color: #d4bdc3; }
+body.dark-mode .network-mail-compose label { color: #d4bdc3; }
+body.dark-mode .network-mail-compose input,
+body.dark-mode .network-mail-compose textarea { border-color: rgba(250,200,83,.22); background: #321820; color: #f8eef1; }
+body.dark-mode .network-mail-compose input:focus,
+body.dark-mode .network-mail-compose textarea:focus { border-color: #fac853; box-shadow: 0 0 0 3px rgba(250,200,83,.15); }
+body.dark-mode .network-mail-error { color: #f2a9a5; }
+body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4b4; }
 
 @media (max-width: 800px) {
   .network-hero { align-items: flex-start; flex-direction: column; }

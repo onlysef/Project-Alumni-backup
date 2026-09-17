@@ -1144,6 +1144,7 @@ export default function CoordinatorEmploymentView() {
                       <input
                         type="date"
                         value={editForm.date_employed}
+                        max={new Date().toISOString().slice(0, 10)}
                         onChange={e => setEditForm(f => ({ ...f, date_employed: e.target.value }))}
                       />
                     </label>
@@ -1167,7 +1168,7 @@ export default function CoordinatorEmploymentView() {
                   <h4 style={{ color: "var(--maroon)", fontSize: 14, margin: "0 0 12px" }}>Qualifications</h4>
                   <label>
                     Skills
-                    <SkillsEditor value={editForm.skills} onChange={(value) => setEditForm(f => ({ ...f, skills: value }))} />
+                    <SkillsEditor value={editForm.skills} onChange={(value) => setEditForm(f => ({ ...f, skills: value }))} extractEndpoint="/coordinator/skills/extract" />
                   </label>
                   <label style={{ marginTop: 10 }}>
                     Experience

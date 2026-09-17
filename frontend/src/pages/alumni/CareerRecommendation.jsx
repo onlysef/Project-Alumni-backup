@@ -10,6 +10,8 @@ export default function CareerRecommendation() {
   const [nextStepLoading, setNextStepLoading] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
+  const [explanation, setExplanation] = useState("");
+  const [explanationLoading, setExplanationLoading] = useState(false);
 
   function load() {
     setLoading(true);
@@ -45,6 +47,21 @@ export default function CareerRecommendation() {
 
   const careers = data?.careers || [];
   const skillStrengths = data?.skillStrengths || [];
+  const weights = data?.scoreWeights || { skills: 40, education: 20, experience: 30, profileSimilarity: 10 };
+
+  function openCareer(career) {
+    setSelected(career);
+    setExplanation("");
+    setExplanationLoading(true);
+    const matched = career.allSkills.filter((s) => s.matched).map((s) => s.name);
+    const missing = career.allSkills.filter((s) => !s.matched).map((s) => s.name);
+    const params = new URLSearchParams({ title: career.title, match: career.match, matched: matched.join(","), missing: missing.join(",") });
+    fetch(`${API}/alumni/career-recommendations/explain?${params}`, { headers: authHeaders() })
+      .then((r) => r.json())
+      .then((d) => setExplanation(d?.explanation || ""))
+      .catch(() => {})
+      .finally(() => setExplanationLoading(false));
+  }
 
   return <div className="alumni-page-content career-reco-page">
     <section className="career-hero">
@@ -80,7 +97,7 @@ export default function CareerRecommendation() {
                   <div className="career-skill-tags">{career.skills.map((skill) => <span key={skill}>{skill}</span>)}</div>
                   {career.missing && <div className="career-gap"><b>Skill to develop:</b> {career.missing}</div>}
                 </div>
-                <button className="career-details" type="button" onClick={() => setSelected(career)}>Skill Gap →</button>
+                <button className="career-details" type="button" onClick={() => openCareer(career)}>Skill Gap →</button>
               </article>
             ))}
           </div>
@@ -131,11 +148,21 @@ export default function CareerRecommendation() {
             </div>
 
             <div className="career-modal-section">
+              <h4>Why this fits you</h4>
+              <p className="career-fit-explanation">
+                {explanationLoading ? "Thinking about how your profile fits this path…" : (explanation || selected.text)}
+              </p>
+            </div>
+
+            <div className="career-modal-section">
               <h4>How this score is calculated</h4>
-              <Skill name="Skills match (40%)" value={selected.breakdown.skills} />
-              <Skill name="Education fit (20%)" value={selected.breakdown.education} />
-              <Skill name="Experience level (30%)" value={selected.breakdown.experience} />
-              <Skill name="Profile similarity (10%)" value={selected.breakdown.profileSimilarity} />
+              <p className="career-score-formula">
+                Score = {weights.skills}% Skills Match + {weights.education}% Education Fit + {weights.experience}% Experience Level + {weights.profileSimilarity}% Profile Similarity
+              </p>
+              <Skill name={`Skills match (${weights.skills}%)`} value={selected.breakdown.skills} />
+              <Skill name={`Education fit (${weights.education}%)`} value={selected.breakdown.education} />
+              <Skill name={`Experience level (${weights.experience}%)`} value={selected.breakdown.experience} />
+              <Skill name={`Profile similarity (${weights.profileSimilarity}%)`} value={selected.breakdown.profileSimilarity} />
             </div>
 
             <div className="career-modal-section">
