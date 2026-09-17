@@ -74,7 +74,7 @@ export default function DashboardView() {
         const limit = activityWindow === "all" ? 50 : 25;
         const [postRes, empRes] = await Promise.all([
           fetch(`${API}/admin/announcements/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() }),
-          fetch(`${API}/admin/employment/activity?limit=${limit}`, { headers: authHeaders() })
+          fetch(`${API}/admin/employment/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() })
         ]);
 
         if ((!postRes.ok && !empRes.ok) || cancelled) return;
