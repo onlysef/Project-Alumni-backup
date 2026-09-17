@@ -471,7 +471,7 @@ export default function JobConnect() {
             )}
             {detailsJob.skills?.length > 0 && (
               <div className="job-details-skills">
-                <b>Skill Match</b>
+                <b>Job Match</b>
                 <span className="skill-match-ratio">{detailsJob.skills.filter(s => s.matched).length} of {detailsJob.skills.length} skills matched</span>
                 <div>{[...detailsJob.skills].sort((a, b) => Number(b.matched) - Number(a.matched)).map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
               </div>
@@ -552,7 +552,7 @@ function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
     </div>
     {app.skills?.length > 0 && (
       <aside className="connect-skill-gap">
-        <b>Skill Match</b>
+        <b>Job Match</b>
         <span className="skill-match-ratio">{app.skills.filter(s => s.matched).length} of {app.skills.length} skills matched</span>
         <div>{[...app.skills].sort((a, b) => Number(b.matched) - Number(a.matched)).map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
         <small>Based on your profile as of when you applied.</small>

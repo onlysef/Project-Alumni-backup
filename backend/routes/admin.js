@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { createUser, getUsers, updateUser, deleteUser, importUsers, upload, resendCredentials, getNotifications, bulkUpdateStatus } = require('../controllers/adminController');
-const { updateAlumniTracerData } = require('../controllers/alumniController');
+const { updateAlumniTracerData, extractSkills } = require('../controllers/alumniController');
 const {
   getAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
@@ -111,6 +111,7 @@ router.get('/employment/:id',        getEmploymentRecord);
 router.patch('/employment/:id',      updateEmploymentRecord);
 router.patch('/employment/:id/avatar', updateEmploymentRecordAvatar);
 router.patch('/employment/:id/tracer', updateAlumniTracerData);
+router.post('/skills/extract',         extractSkills);
 
 // Office settings
 router.get('/appointments/settings',   getOfficeSettings);

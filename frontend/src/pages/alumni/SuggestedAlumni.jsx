@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { API, authHeaders } from "../../services/api.js";
+import { API, authHeaders, apiFetch } from "../../services/api.js";
 import { Modal } from "../../components/common/Primitives.jsx";
 import { useAuth } from "../../context/AuthContext";
 
@@ -298,6 +298,27 @@ function externalHref(value) {
 }
 
 function ProfileModal({ person, saved, onSave, onClose }) {
+  const [mailOpen, setMailOpen] = useState(false);
+  const [mailDraft, setMailDraft] = useState({ subject: `Hello ${person.name}`, message: "" });
+  const [mailSending, setMailSending] = useState(false);
+  const [mailError, setMailError] = useState("");
+  const [mailSent, setMailSent] = useState(false);
+
+  async function sendMail() {
+    if (!mailDraft.subject.trim() || !mailDraft.message.trim()) return;
+    setMailSending(true);
+    setMailError("");
+    try {
+      await apiFetch(`/alumni/network/${person._id}/message`, { method: "POST", body: mailDraft });
+      setMailSent(true);
+      setMailOpen(false);
+    } catch (err) {
+      setMailError(err.message || "Could not send the message.");
+    } finally {
+      setMailSending(false);
+    }
+  }
+
   return <Modal open onClose={onClose}>
     <section className="tracer-modal coord-alumni-profile network-profile-modal" role="dialog" aria-modal="true" aria-label={`${person.name} profile`}>
       <div className="modal-head"><h3>Alumni Profile</h3><button type="button" aria-label="Close profile" onClick={onClose}>×</button></div>
@@ -314,12 +335,26 @@ function ProfileModal({ person, saved, onSave, onClose }) {
         <div className="profile-detail-wide"><dt>Email</dt><dd>{person.email ? <a href={`mailto:${person.email}`}>{person.email}</a> : "Not available"}</dd></div>
         <div className="profile-detail-wide"><dt>Skills</dt><dd>{person.skills || "Not yet updated"}</dd></div>
       </dl>
-      <div className="modal-actions coord-profile-actions network-profile-actions">
-        <button className={saved ? "" : "modal-confirm"} type="button" onClick={onSave}><StarIcon filled={saved} />{saved ? "Remove saved" : "Save profile"}</button>
-        {person.facebook && <a className="network-social-button network-facebook-button" href={externalHref(person.facebook)} target="_blank" rel="noopener noreferrer"><FacebookIcon />Facebook</a>}
-        {person.linkedin && <a className="network-social-button network-linkedin-button" href={externalHref(person.linkedin)} target="_blank" rel="noopener noreferrer"><LinkedInIcon />LinkedIn</a>}
-        {person.email && <a className="modal-confirm network-email-button" href={`mailto:${person.email}?subject=${encodeURIComponent(`Hello ${person.name}`)}`}><MailIcon />Send an email</a>}
-      </div>
+
+      {mailOpen ? (
+        <div className="network-mail-compose">
+          <label>Subject<input value={mailDraft.subject} onChange={(e) => setMailDraft({ ...mailDraft, subject: e.target.value })} required /></label>
+          <label>Message<textarea rows={5} value={mailDraft.message} onChange={(e) => setMailDraft({ ...mailDraft, message: e.target.value })} placeholder={`Write a message to ${person.name}…`} required /></label>
+          {mailError && <p className="network-mail-error">{mailError}</p>}
+          <div className="modal-actions coord-profile-actions network-profile-actions">
+            <button type="button" onClick={() => { setMailOpen(false); setMailError(""); }}>Cancel</button>
+            <button className="modal-confirm" type="button" onClick={sendMail} disabled={mailSending || !mailDraft.subject.trim() || !mailDraft.message.trim()}>{mailSending ? "Sending…" : "Send"}</button>
+          </div>
+        </div>
+      ) : (
+        <div className="modal-actions coord-profile-actions network-profile-actions">
+          <button className={saved ? "" : "modal-confirm"} type="button" onClick={onSave}><StarIcon filled={saved} />{saved ? "Remove saved" : "Save profile"}</button>
+          {person.facebook && <a className="network-social-button network-facebook-button" href={externalHref(person.facebook)} target="_blank" rel="noopener noreferrer"><FacebookIcon />Facebook</a>}
+          {person.linkedin && <a className="network-social-button network-linkedin-button" href={externalHref(person.linkedin)} target="_blank" rel="noopener noreferrer"><LinkedInIcon />LinkedIn</a>}
+          {person.email && <button className="modal-confirm network-email-button" type="button" onClick={() => setMailOpen(true)}><MailIcon />{mailSent ? "Send another email" : "Send an email"}</button>}
+        </div>
+      )}
+      {mailSent && !mailOpen && <p className="network-mail-sent">Message sent to {person.name}.</p>}
     </section>
   </Modal>;
 }

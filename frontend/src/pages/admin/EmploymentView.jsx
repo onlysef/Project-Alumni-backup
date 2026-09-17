@@ -7,7 +7,7 @@ import AvatarCropper from "../../components/common/AvatarCropper.jsx";
 import SkillsEditor from "../../components/common/SkillsEditor.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
-import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
+import { COLLEGE_CODES as COLLEGES, COLLEGE_NAMES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
 function timeAgo(dateStr) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -1116,7 +1116,7 @@ export default function EmploymentView() {
               College
               <select value={pendingFilters.college} onChange={e => setPendingFilters(f => ({ ...f, college: e.target.value, course: "" }))}>
                 <option value="">All colleges</option>
-                {COLLEGES.map(c => <option key={c} value={c}>{c}</option>)}
+                {COLLEGES.map(c => <option key={c} value={c}>{COLLEGE_NAMES[c]}</option>)}
               </select>
             </label>
             <label>
@@ -1495,6 +1495,7 @@ export default function EmploymentView() {
                       <input
                         type="date"
                         value={editForm.date_employed}
+                        max={new Date().toISOString().slice(0, 10)}
                         onChange={e => setEditForm(f => ({ ...f, date_employed: e.target.value }))}
                       />
                     </label>
@@ -1518,7 +1519,7 @@ export default function EmploymentView() {
                   <h4 style={{ color: "var(--maroon)", fontSize: 14, margin: "0 0 12px" }}>Qualifications</h4>
                   <label>
                     Skills
-                    <SkillsEditor value={editForm.skills} onChange={(value) => setEditForm(f => ({ ...f, skills: value }))} />
+                    <SkillsEditor value={editForm.skills} onChange={(value) => setEditForm(f => ({ ...f, skills: value }))} extractEndpoint="/admin/skills/extract" />
                   </label>
                   <label style={{ marginTop: 10 }}>
                     Experience
@@ -1678,6 +1679,7 @@ export default function EmploymentView() {
                     <input
                       type="date"
                       value={addForm.date_employed}
+                      max={new Date().toISOString().slice(0, 10)}
                       onChange={e => setAddForm(f => ({ ...f, date_employed: e.target.value }))}
                     />
                   </label>

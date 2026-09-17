@@ -8,7 +8,7 @@ import { accountActionList, actionLabels } from "../../data.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
-import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
+import { COLLEGE_CODES as COLLEGES, COLLEGE_NAMES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
 function capitalize(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
@@ -812,7 +812,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
               <label><span className="field-label">College<span className="required-asterisk">*</span></span>
                 <select name="college" value={college} onChange={(e) => { setCollege(e.target.value); setCourse(""); }} required>
                   <option value="">— Select college —</option>
-                  {COLLEGES.map((c) => <option key={c}>{c}</option>)}
+                  {COLLEGES.map((c) => <option key={c} value={c}>{COLLEGE_NAMES[c]}</option>)}
                 </select>
               </label>
             )}

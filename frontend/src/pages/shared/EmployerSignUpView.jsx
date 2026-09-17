@@ -23,10 +23,6 @@ function EyeIcon({ open }) {
   );
 }
 
-// Employer accounts have no public "Sign Up" page — this page only works
-// when opened via a special invite link an admin sent (see
-// PartnershipsView.jsx's "Send Invite" / employerInviteController.js), which
-// carries a one-time ?token= that's validated below before the form unlocks.
 export default function EmployerSignUpView() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
@@ -125,7 +121,7 @@ export default function EmployerSignUpView() {
               </div>
               <p className="welcome-heading">Partner with<br /><span className="name">TSU Alumni Portal</span></p>
               <p className="welcome-sub">
-                Create your employer account to post job opportunities<br />
+                Create your employer account to post job opportunities
                 and connect with TSU alumni graduates.
               </p>
             </div>

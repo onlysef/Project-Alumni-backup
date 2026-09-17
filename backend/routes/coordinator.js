@@ -8,7 +8,7 @@ const {
   getEmploymentRecord, updateEmploymentRecord, updateEmploymentRecordAvatar, logPrintActivity,
   logActivity, resolveAdminName,
 } = require('../controllers/employmentController');
-const { updateAlumniTracerData } = require('../controllers/alumniController');
+const { updateAlumniTracerData, extractSkills } = require('../controllers/alumniController');
 const {
   getEvents, createEvent, updateEvent, deleteEvent,
   getInterestedAlumni, getCoordinatorNotifications, markNotificationsRead,
@@ -452,6 +452,7 @@ router.patch('/employment/:id/tracer', (req, res, next) => {
   req.forcedCollege = req.user.college || '';
   next();
 }, updateAlumniTracerData);
+router.post('/skills/extract', extractSkills);
 
 // Tracer form config — resolveCollege() in the controller forces the
 // coordinator's own college regardless of any ?college= query param.

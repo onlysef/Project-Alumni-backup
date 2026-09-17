@@ -36,12 +36,19 @@ async function getEmbedding(text) {
   return flat;
 }
 
+// One HTTP round-trip for the whole batch (hf.featureExtraction accepts an
+// array `inputs` and returns one vector per entry) instead of awaiting
+// getEmbedding() in a loop — used by job matching, which scores up to 50
+// postings per request and can't afford 50 sequential HF calls.
 async function getEmbeddingsBatch(texts) {
-  const results = [];
-  for (const text of texts) {
-    results.push(await getEmbedding(text));
-  }
-  return results;
+  if (!texts.length) return [];
+  const truncated = texts.map((t) => (t.length > MAX_EMBED_CHARS ? t.slice(0, MAX_EMBED_CHARS) : t));
+  const result = await hf.featureExtraction({
+    model: EMBED_MODEL,
+    inputs: truncated,
+    provider: 'hf-inference',
+  });
+  return result;
 }
 
 module.exports = { getEmbedding, getEmbeddingsBatch };

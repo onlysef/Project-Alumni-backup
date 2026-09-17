@@ -4,12 +4,16 @@ import { API, authHeaders } from "../../services/api.js";
 import { Modal } from "../../components/common/Primitives.jsx";
 import AvatarCropper from "../../components/common/AvatarCropper.jsx";
 import SkillsEditor from "../../components/common/SkillsEditor.jsx";
+import { classifySkill } from "../../utils/skillClassification.js";
 
 const EMPLOYMENT_ICONS = {
   edit: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z'/%3E%3Cpath d='M14 8l3 3'/%3E%3C/svg%3E",
   save: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3h12l2 2v16H5z'/%3E%3Cpath d='M8 3v6h8V3'/%3E%3Cpath d='M8 21v-7h8v7'/%3E%3C/svg%3E",
   cancel: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2365585c' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M9 9l6 6'/%3E%3Cpath d='M15 9l-6 6'/%3E%3C/svg%3E",
 };
+
+// Caps the "Date Hired" picker at today — a hire date can't be in the future.
+const todayStr = () => new Date().toISOString().slice(0, 10);
 
 const SALARY_RANGES = [
   "Below PHP 15,000",
@@ -231,6 +235,11 @@ export default function AlumniEmploymentDetails() {
   // mode ends, the card falls back to the values confirmed by the server.
   const profile = editing ? form : saved;
   const skillList = (profile.skills || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const skillGroups = [
+    ["Technical / Domain Skills", skillList.filter((s) => classifySkill(s) === "hard")],
+    ["Soft Skills", skillList.filter((s) => classifySkill(s) === "soft")],
+    ["Other", skillList.filter((s) => classifySkill(s) === "other")],
+  ].filter(([, items]) => items.length);
 
   if (loading) return <div className="alumni-page-content employment-details-page"><p style={{ color: "#76656a" }}>Loading…</p></div>;
 
@@ -248,8 +257,13 @@ export default function AlumniEmploymentDetails() {
         <ProfileRow icon={<IndustryIcon />} label="Industry" value={profile.industry || "Not yet updated"} />
         <ProfileRow icon={<LocationIcon />} label="Work location" value={profile.location || "Not yet updated"} />
         <ProfileRow icon={<SkillsIcon />} label="Skills">
-          {skillList.length
-            ? <div className="profile-chip-list">{skillList.map((skill) => <span key={skill} className="profile-chip">{skill}</span>)}</div>
+          {skillGroups.length
+            ? skillGroups.map(([groupLabel, items]) => (
+              <div key={groupLabel} className="profile-chip-group">
+                <span className="profile-chip-group-label">{groupLabel}</span>
+                <div className="profile-chip-list">{items.map((skill) => <span key={skill} className="profile-chip">{skill}</span>)}</div>
+              </div>
+            ))
             : <strong>Not yet updated</strong>}
         </ProfileRow>
         <ProfileRow icon={<ExperienceIcon />} label="Experience" value={profile.experience || "Not yet updated"} />
@@ -296,7 +310,7 @@ export default function AlumniEmploymentDetails() {
           </Field>
           <Field label="Work Location"><input value={form.location} onChange={e => update("location", e.target.value)} /></Field>
         </div></div>
-        <div className="employment-block"><h3>Compensation</h3><div className="employment-fields two-columns"><Field label="Date Hired"><input type="date" value={form.hired} onChange={e => update("hired", e.target.value)} /></Field><Field label="Monthly Salary">
+        <div className="employment-block"><h3>Compensation</h3><div className="employment-fields two-columns"><Field label="Date Hired"><input type="date" value={form.hired} max={todayStr()} onChange={e => update("hired", e.target.value)} /></Field><Field label="Monthly Salary">
             <select value={form.salary} onChange={e => update("salary", e.target.value)}>
               <option value="">Select a range</option>
               {/* Keeps a legacy free-text value (saved before this became
@@ -306,7 +320,7 @@ export default function AlumniEmploymentDetails() {
             </select>
           </Field></div></div>
         <div className="employment-block"><h3>Qualifications</h3><div className="employment-fields">
-          <Field label="Skills">
+          <Field label="Skills" full>
             <SkillsEditor value={form.skills} onChange={(value) => update("skills", value)} />
           </Field>
           <Field label="Experience">
@@ -328,7 +342,7 @@ export default function AlumniEmploymentDetails() {
   </div>;
 }
 
-function Field({ label, children }) { return <label className="employment-field"><span>{label}</span>{children}</label>; }
+function Field({ label, full, children }) { return <label className={`employment-field${full ? " employment-field-full" : ""}`}><span>{label}</span>{children}</label>; }
 function ProfileRow({ icon, label, value, children }) { return <div className="profile-row"><i>{icon}</i><div><span>{label}</span>{children ?? <strong>{value}</strong>}</div></div>; }
 function RoleIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="2" /><path d="M9 7V5h6v2" /><path d="M4 12h16" /></svg>; }
 function IndustryIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18" /><path d="M4 20V9l6 4V9l6 4V9l4 2v9" /></svg>; }

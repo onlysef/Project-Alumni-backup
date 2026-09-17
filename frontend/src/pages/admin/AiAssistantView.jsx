@@ -62,10 +62,13 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
   );
 }
 
+// Chips show the actual question, not a short category name — a chip
+// labeled just "Alumni records" made the admin guess what clicking it would
+// even ask; showing the real question upfront answers that before the click.
 const QUICK_PROMPTS = [
-  { label: "Alumni records", text: "How many alumni records are there?" },
-  { label: "Tracer surveys", text: "Show me tracer survey activity." },
-  { label: "Employment status", text: "What's the current employment status?" },
+  "How many alumni records are there?",
+  "Show me tracer survey activity.",
+  "What's the current employment status?",
 ];
 
 const FLAG_TYPE_LABEL = { injection: "Injection", fabrication: "Fabrication", unanswered: "Unanswered" };
@@ -694,7 +697,7 @@ export default function AiAssistantView() {
       setMessages((prev) => {
         const lastAc = [...prev].reverse().find((m) => m.role === "ac");
         if (lastAc?.text && !hadError) {
-          const base = serverSuggestions?.length ? serverSuggestions : QUICK_PROMPTS.map((q) => q.text);
+          const base = serverSuggestions?.length ? serverSuggestions : QUICK_PROMPTS;
           const filtered = base
             .filter((s) => s.toLowerCase() !== fullAnswer.toLowerCase() && s.toLowerCase() !== question.toLowerCase())
             .slice(0, 3);
@@ -1050,12 +1053,12 @@ export default function AiAssistantView() {
             <div className="ac-quick-row">
               {QUICK_PROMPTS.map((q) => (
                 <button
-                  key={q.label}
+                  key={q}
                   type="button"
                   className="ac-quick-chip"
-                  onClick={() => send(q.text)}
+                  onClick={() => send(q)}
                 >
-                  {q.label}
+                  {q}
                 </button>
               ))}
             </div>

@@ -258,7 +258,16 @@ const TOPIC_PATTERNS = {
   job_relevance:   /\b(related|relevance|relevant\s+to\s+(?:the(?:ir)?\s+)?(?:course|study|program|degree|field)|align(?:s|ed|ment)?\s+(?:with|to)\b.{0,20}\b(?:course|study|studied|program|degree|field))\b|\bkaugnay\s+(?:ng|sa)\s+(?:kurso|propesyon|larangan|programa)\b|\bmay\s+kinalaman\s+sa\s+(?:kurso|propesyon|larangan|programa)\b/i,
   further_studies: /\b(further studies?|graduate studies?|masters?|phd|post.?grad|further education|nagpatuloy.{0,15}pag-?aaral|magpapatuloy.{0,15}pag-?aaral)\b/i,
   licensure:       /\blicens\w*\b|\b(board\s+exam|professional\s+exam|prc|lisensya)\b|\b(tak\w*|pass\w*|fail\w*).{0,20}\bexam\b/i,
-  competencies:    /\b(competenc\w*|skill\s+ratings?|self.?assess|performance|technical\s+skills?|communication\s+skills?|problem.?solving|critical\s+thinking|teamwork|adaptability|project\s+management|kasanayan|kakayahan)\b/i,
+  // Bare "rating(s)" ADDED — the only thing "rating" ever refers to in this
+  // dataset is the competency self-assessment scores (Excellent/Competent/
+  // .../Non-Acceptable per category); there's no other "rating" concept for
+  // it to collide with. Without this, "What is the average rating of
+  // alumni?" matched no TOPIC_PATTERNS entry and no EMPLOYMENT_SIGNAL word
+  // either, so it fell through the whole aggregation layer to RAG — which
+  // had nothing relevant either — and refused with the generic "I don't
+  // have enough data" sentence for a question the competency data could
+  // answer perfectly well.
+  competencies:    /\b(competenc\w*|skill\s+ratings?|ratings?|self.?assess|performance|technical\s+skills?|communication\s+skills?|problem.?solving|critical\s+thinking|teamwork|adaptability|project\s+management|kasanayan|kakayahan)\b/i,
   // Bare "skill(s)" — checked AFTER competencies above, so a specific
   // category phrase ("technical skills", "skill ratings") still wins there
   // first; this only catches a bare, unqualified mention ("most common
@@ -1080,6 +1089,37 @@ function extractFilters(question) {
     filters.furtherEducation = 'Yes';
   }
 
+  // Specific employment TYPE (not status) — "regular/permanent jobs",
+  // "contractual", "job order", "casual", "temporary", "probationary",
+  // "project-based", "trainee", "on training", "GIP" — a real Graduate field
+  // (employmentType) with no filter extraction of its own until now. Gated
+  // on a "job(s)/employment/employee(s)/position/work" word nearby so a bare
+  // "regular"/"permanent"/"casual" elsewhere in an unrelated sentence is
+  // never mistaken for this filter. Without this, "How many alumni have
+  // regular or permanent jobs?" matched no filter at all and silently
+  // answered with the unfiltered whole-database total (262) instead of the
+  // ~98 alumni actually in a Regular/Permanent position. "employee(s)"
+  // added after the fix's own first pass missed "How many alumni are
+  // casual employees?" — "employees" isn't a substring of "employment", so
+  // the original guard word list didn't catch it either.
+  if (/\b(?:jobs?|employment|employees?|position|work)\b/i.test(question)) {
+    const WORK_TYPE_MAP = [
+      [/\b(?:regular|permanent)\b/i, 'Regular/Permanent'],
+      [/\bjob\s*order\b/i,           'Job Order'],
+      [/\bcontractual\b/i,           'Contractual'],
+      [/\btemporary\b/i,             'Temporary'],
+      [/\bprobationary\b/i,          'Probationary'],
+      [/\bcasual\b/i,                'Casual'],
+      [/\bproject-?based\b/i,        'Project-based'],
+      [/\btrainee\b/i,               'Trainee'],
+      [/\bon\s+training\b/i,         'On Training'],
+      [/\b(?:gip|government\s+internship)\b/i, 'GIP'],
+    ];
+    for (const [pat, value] of WORK_TYPE_MAP) {
+      if (pat.test(question)) { filters.employmentType = value; break; }
+    }
+  }
+
   // Job relevance filter — requires "job/jobs" or "field" (a common synonym
   // in "field related to their degree/course") to avoid extracting from
   // generic overview questions ("Is the work relevant to their degree?"
@@ -1250,6 +1290,18 @@ function withChart(text, { type = 'donut', title, rows, labelField = '_id', limi
   if (!chartRows.length) return text;
   return { text, chart: { type, title, rows: chartRows } };
 }
+
+// Recognizes a "by program" question shape — used at every rate/relevance/
+// work-location dispatch site that decides between a single overall number
+// and a per-program breakdown. Was just "(which|what) (program|course|
+// degree)" (requires the trigger word DIRECTLY adjacent to the noun), which
+// missed "What is the RANKING OF programs by employment rate?" — several
+// words sit between "what" and "programs" there, so the plain-adjacency
+// version never matched and this fell all the way through to the generic
+// single-number queryRate() instead of the by-program ranking actually
+// asked for. The 2nd/3rd alternatives catch that shape (and "rank the
+// programs"/"programs ranked") without requiring exact adjacency.
+const BY_PROGRAM_QUESTION_PATTERN = /\b(?:which|what)\s+(?:program|course|degree)\b|\branking\s+of\s+(?:programs?|courses?)\b|\b(?:programs?|courses?)\s+(?:ranking|ranked)\b|\brank(?:ed)?\s+(?:the\s+)?(?:programs?|courses?)\b/i;
 
 const YES_RE = /^yes\b/i;
 
@@ -2196,7 +2248,14 @@ async function queryByProgram(filters) {
 // sorted by rate and calling out the top program instead of just listing all.
 // Programs with fewer than 3 respondents are excluded so a single
 // lucky/unlucky record can't swing the "highest" result.
-async function queryEmploymentRateByProgram(filters) {
+// direction: 'highest' (default) or 'lowest' — was previously hardcoded to
+// always report the highest-rate program regardless of what was asked, so
+// "Which program has the LOWEST employment rate?" answered with the exact
+// same "X has the highest employment rate" sentence as the highest-rate
+// question. queryProgramRateExtreme() (below) already got this fix for the
+// unemployment metric; this is the equivalent for the plain employment-rate
+// metric, which had no direction parameter at all until now.
+async function queryEmploymentRateByProgram(filters, direction = 'highest') {
   const stableMatch = {};
   const yearCond = yearMatchCondition(filters);
   if (yearCond !== null) stableMatch.yearGraduated = yearCond;
@@ -2224,11 +2283,11 @@ async function queryEmploymentRateByProgram(filters) {
   const ranked = rows
     .map(r => { const emp = r.employed + r.selfEmp; return { ...r, emp, rate: r.total > 0 ? emp / r.total : 0 }; })
     .sort((a, b) => b.rate - a.rate);
-  const top = ranked[0];
+  const top = direction === 'lowest' ? ranked[ranked.length - 1] : ranked[0];
 
   let out = `**Employment rate by program:**\n\n`;
   ranked.forEach(r => { out += `- **${r._id}**: ${r.emp}/${r.total} employed (${pct(r.emp, r.total)})\n`; });
-  out += `\n**${top._id}** has the highest employment rate at **${pct(top.emp, top.total)}** (${top.emp} out of ${top.total}, including self-employed).`;
+  out += `\n**${top._id}** has the ${direction} employment rate at **${pct(top.emp, top.total)}** (${top.emp} out of ${top.total}, including self-employed).`;
   // Chart bars show each program's employment RATE (%), not raw headcount —
   // that's the actual thing being compared/ranked here.
   const chartRows = ranked.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
@@ -2429,11 +2488,18 @@ async function queryYearWithMostGraduates(filters, direction) {
 
   const ranked = [...rows].sort((a, b) => direction === 'highest' ? b.total - a.total : a.total - b.total);
   const top = ranked[0];
+  const tied = ranked.filter(r => r.total === top.total);
   const lbl = filterLabel(filters);
 
   let out = `**Graduates by batch year${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **Batch ${r._id}**: ${r.total} graduate${r.total !== 1 ? 's' : ''}\n`; });
-  out += `\n**Batch ${top._id}** had the ${direction === 'highest' ? 'most' : 'fewest'} graduates, with **${top.total}**.`;
+  // Naming only ONE batch as having "the most/fewest" implied a false
+  // uniqueness whenever several batches are genuinely tied — caught live:
+  // 7 different batches tied at 1 graduate each for "fewest," but the
+  // sentence singled out just whichever one happened to sort first.
+  out += tied.length > 1
+    ? `\n**${tied.length} batches** are tied for the ${direction === 'highest' ? 'most' : 'fewest'} graduates, each with **${top.total}**: ${tied.map(r => `Batch ${r._id}`).join(', ')}.`
+    : `\n**Batch ${top._id}** had the ${direction === 'highest' ? 'most' : 'fewest'} graduates, with **${top.total}**.`;
   const chartRows = [...rows].reverse().map(r => ({ _id: `Batch ${r._id}`, count: r.total }));
   return withChart(out, { type: 'bars', title: 'Graduates by Batch Year', rows: chartRows });
 }
@@ -2593,6 +2659,35 @@ const PERSON_LOOKUP_PATTERNS = [
 // roster as if it had answered the question.
 const NAMED_LOOKUP_PATTERN = /\b(?:alumni|alumnus|alumna|graduates?)\s+(?:named|called)\s+([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4})(?=[?,!.]|$)/i;
 
+// "Is Joseph Tolentino alumni?" / "is joseph tolentino an alumnus?" — a
+// database-membership existence question, structurally different from every
+// other pattern here (none of them are phrased as a yes/no question). Not
+// capitalization-dependent, unlike most patterns below — the trigger words
+// ("is" ... "alumni/alumnus/...") anchor BOTH ends of the name already, so a
+// lowercase-typed name (the common case) needs no extra capitalized-word
+// re-match to isolate it. Shared by extractPersonName() below AND
+// ragService.js's own final-fallback rewrite (see its own comment) so a
+// no-match at either the structured-lookup stage or the RAG stage names the
+// SAME person consistently.
+// The captured span is capped at 1-4 WORDS (matching every other name
+// pattern's own word-count shape), NOT an unbounded `.+?` — a bare "is"
+// anchor with no length limit matches "is" inside almost any "What IS...
+// alumni" question, not just a genuine "is [Name] alumni?" one. Caught
+// live: "What is the employment breakdown of BSIT alumni?" satisfied "is"
+// ... "alumni" and captured "the employment breakdown of BSIT" as if it
+// were a person's name, then confidently reported "no record of 'the
+// employment breakdown of BSIT'" for a completely unrelated, perfectly
+// answerable statistics question. Capping the word count means "the
+// employment breakdown of BSIT" (5 words) can no longer reach "alumni" at
+// all, while a genuine 1-4 word name still matches fine.
+// Each word token excludes "a"/"an"/"the" (negative lookahead) — without it,
+// the greedy word-count cap swallowed the article meant for the OPTIONAL
+// "(?:an?\s+)?" group right after it: "is Liam Miranda an alumnus?"
+// captured "Liam Miranda an" (3 words, still under the cap) instead of the
+// clean "Liam Miranda", since the capture group tries to consume as many
+// words as its cap allows before the trailing "alumni/alumnus" literal.
+const IS_ALUMNI_PATTERN = /\bis\s+((?:(?!\b(?:an?|the)\b)[a-zA-Z][a-zA-Z.'-]*)(?:\s+(?:(?!\b(?:an?|the)\b)[a-zA-Z][a-zA-Z.'-]*)){0,3})\s+(?:an?\s+)?(?:alumni|alumnus|alumna|a\s+graduate|part\s+of\s+(?:the\s+)?(?:alumni|tracer\s+study))\b/i;
+
 // "Who is Vincent De Jesus?" / "who is vincent de jesus" — the single most
 // natural way to ask about one specific person, but every PERSON_LOOKUP_PATTERNS
 // entry above requires a trailing clause ("... working for/at/with"). A bare
@@ -2628,8 +2723,17 @@ const WHO_IS_NAME_WORD = String.raw`(?!(?:${WHO_IS_EXCLUDE_WORDS})\b)[a-zA-Z][a-
 // required "working" to follow immediately) — the filler is matched by the
 // lookahead itself, not the capture group, so it's consumed without being
 // part of the returned name.
+// "\s+from\s+\S" ADDED to the lookahead — without a terminator for it, "Who
+// is Rain Thora FROM BATCH 2025?" / "...FROM BSIT?" (the natural way to
+// answer the ambiguous-match prompt's own "Batch 2025"/"BSIT" disambiguation
+// hints) had no valid stopping point after the name, so the whole pattern
+// failed to match at all and the question fell through to a generic
+// names-list query instead of a real person lookup. Broad on purpose (any
+// "from X", not just "from batch/year") — a real person's name is never
+// itself followed by the literal word "from", so this carries no collision
+// risk with a legitimate multi-word name.
 const WHO_IS_PATTERN = new RegExp(
-  String.raw`\bwho\s+is\s+(${WHO_IS_NAME_WORD}(?:\s+${WHO_IS_NAME_WORD}){0,4}?)(?=(?:\s+(?:currently|now|still|recently|presently))?\s+working\s+(?:for|with|at)\b|[?,!.]|\s*$)`,
+  String.raw`\bwho\s+is\s+(${WHO_IS_NAME_WORD}(?:\s+${WHO_IS_NAME_WORD}){0,4}?)(?=(?:\s+(?:currently|now|still|recently|presently))?\s+working\s+(?:for|with|at)\b|\s+from\s+\S|[?,!.]|\s*$)`,
   'i'
 );
 
@@ -2705,6 +2809,9 @@ function extractPersonName(question) {
   const namedMatch = question.match(NAMED_LOOKUP_PATTERN);
   if (namedMatch) return namedMatch[1].trim();
 
+  const isAlumniMatch = question.match(IS_ALUMNI_PATTERN);
+  if (isAlumniMatch) return isAlumniMatch[1].trim();
+
   const whoIsMatch = question.match(WHO_IS_PATTERN);
   if (whoIsMatch) return whoIsMatch[1].trim();
 
@@ -2715,7 +2822,7 @@ function extractPersonName(question) {
   if (saanTrabahoMatch) return saanTrabahoMatch[1].trim();
 
   const statusMatch = question.match(STATUS_LOOKUP_PATTERN);
-  if (statusMatch) return statusMatch[1].replace(/'s$/i, '').trim();
+  if (statusMatch) return statusMatch[1].replace(/'s?$/i, '').trim();
 
   for (const pat of PERSON_LOOKUP_PATTERNS) {
     const m = question.match(pat);
@@ -2728,11 +2835,18 @@ function extractPersonName(question) {
       // first lowercase-starting word.
       const nameMatch = m[1].match(/[A-Z][a-zA-Z.'-]*(?:\s+[A-Z][a-zA-Z.'-]*)*/);
       // Apostrophe is a valid mid-name character (O'Brien), but a trailing
-      // possessive "'s" ("Canlapan's job") is grammar, not part of the name
-      // — the name-token character class can't tell the difference, so it
-      // must be stripped after the fact or "Canlapan's" never matches the
-      // stored "Canlapan" at all.
-      if (nameMatch) return nameMatch[0].replace(/'s$/i, '').trim();
+      // possessive — "'s" ("Canlapan's job") OR a bare "'" for a name
+      // already ending in s ("Gonzales' phone number", standard English
+      // possessive form) — is grammar, not part of the name. The
+      // name-token character class can't tell the difference (it happily
+      // includes that trailing apostrophe as a "valid" name character), so
+      // it must be stripped after the fact or neither form matches the
+      // stored name at all. Caught live: "what is his phone number" ->
+      // condenseQuestion() correctly resolved "his" to "Gilbert G.
+      // Gonzales", but the trailing bare "'" from "Gonzales' phone number"
+      // rode along into the captured name, and "Gilbert G. Gonzales'" (with
+      // the stray apostrophe) matched zero real records.
+      if (nameMatch) return nameMatch[0].replace(/'s?$/i, '').trim();
     }
   }
 
@@ -2842,7 +2956,14 @@ function programKeywordFrom(rawProgram) {
 // **bolded** so the narration's own verification check (in ragService.js)
 // can confirm nothing the model states was invented beyond what's listed
 // here.
-async function queryPersonLookup(name) {
+// `disambiguators` (yearGraduated and/or program, resolved from the SAME
+// question's own extractFilters() output) narrows an ambiguous multi-match
+// BEFORE declaring it ambiguous — this is exactly the info the ambiguous
+// list itself now displays (see its own comment below) to tell same-named
+// people apart, so a natural follow-up like "Rain Thora from Batch 2025" /
+// "who is Rain Thora from Batch 2025" should actually resolve to that ONE
+// person instead of re-showing the identical list with no progress made.
+async function queryPersonLookup(name, disambiguators = {}) {
   const tokens = name.split(/\s+/).filter(Boolean);
   if (!tokens.length) return null;
   const tokenPatterns = tokens.map(t => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
@@ -2857,16 +2978,75 @@ async function queryPersonLookup(name) {
   // happened to come first in the aggregate, with no indication a second
   // person even existed. Same 0/1/multiple-match shape resolveEvent() (event
   // lookups, below) already uses.
-  const matches = rows.filter(r => tokenPatterns.every(re => re.test(r.name)));
+  let matches = rows.filter(r => tokenPatterns.every(re => re.test(r.name)));
   if (!matches.length) return null;
+  if (matches.length > 1 && disambiguators.yearGraduated) {
+    const narrowed = matches.filter(r => r.yearGraduated === disambiguators.yearGraduated);
+    if (narrowed.length) matches = narrowed;
+  }
+  if (matches.length > 1 && disambiguators.program) {
+    // Raw, NOT escapeRegex()'d — disambiguators.program comes straight from
+    // extractFilters().program, which is ALREADY a ready-to-use regex
+    // pattern everywhere else this file uses it (e.g. a track-specific
+    // mention resolves to a composite "Information Technology.*Technical
+    // Service Management" pattern, not a literal string). Escaping it here
+    // would have literal-matched the ".*" as two literal characters instead
+    // of "any text in between," silently breaking every track-specific
+    // disambiguation.
+    let narrowed = matches.filter(r => r.program && new RegExp(disambiguators.program, 'i').test(r.program));
+    // A BARE course mention ("from BSIT") with no track/specialization named
+    // should mean the UNTRACKED program specifically, not every track
+    // variant that also happens to contain the same base course name —
+    // "Information Technology" is a substring of both "Bachelor of Science
+    // in Information Technology" AND "...Specialized in Technical Service
+    // Management," so a plain substring match alone can't tell two
+    // same-named people on different tracks apart. Generalized on the
+    // "Specialized in" phrasing every track-style program value shares
+    // (not hardcoded to BSIT/CCS) so this applies automatically to any
+    // other college/course that adds its own track specializations later.
+    // Skipped when the disambiguator is ITSELF already track-specific
+    // (contains the ".*" composite-pattern joiner) — that mention already
+    // named an exact track, so excluding "Specialized in" entries would
+    // exclude the very match being asked for.
+    if (!disambiguators.program.includes('.*') && narrowed.length > 1) {
+      const untracked = narrowed.filter(r => !/specialized\s+in/i.test(r.program));
+      if (untracked.length) narrowed = untracked;
+    }
+    if (narrowed.length) matches = narrowed;
+  }
   if (matches.length > 1) {
-    const names = matches.slice(0, 8).map(r => toTitleCase(cleanText(r.name)));
+    // Two DIFFERENT people can share the exact same full name (caught live:
+    // two separate "Rain Thora" accounts, same college, same course) — a
+    // disambiguation list built from just the name repeats the identical
+    // string for every entry, giving the admin nothing to actually choose
+    // between despite the whole point of asking being to let them pick.
+    // Each line adds whatever DOES differ (program, batch year, employment
+    // status) plus the one field guaranteed unique per account — email — so
+    // there's always at least one way to tell the entries apart.
+    const lines = matches.slice(0, 8).map(r => {
+      const displayName = toTitleCase(cleanText(r.name));
+      const details = [
+        r.program && toTitleCase(cleanText(r.program)),
+        r.yearGraduated && `Batch ${r.yearGraduated}`,
+        r.employmentStatus && cleanText(r.employmentStatus),
+        r.email,
+      ].filter(Boolean).join(', ');
+      return details ? `- **${displayName}** — ${details}` : `- **${displayName}**`;
+    });
     // ambiguous: true — this is a deterministic instruction to the user, not
     // narratable data. ragService.js must show it verbatim, never send it
     // to the LLM (which could easily garble or drop entries from the list).
-    return { text: `Multiple alumni match "${name}" — please be more specific:\n\n${names.map(n => `- **${n}**`).join('\n')}`, ambiguous: true };
+    return { text: `Multiple alumni match "${name}" — please be more specific:\n\n${lines.join('\n')}`, ambiguous: true };
   }
-  const match = matches[0];
+  return buildPersonLookupResult(matches[0]);
+}
+
+// Shared by both name-based lookup (queryPersonLookup, above) and
+// email-based lookup (queryPersonLookupByEmail, below) — an email uniquely
+// identifies one Graduate row directly, with no name-matching/ambiguity
+// step needed at all, but the actual fact-block text should read identically
+// either way.
+async function buildPersonLookupResult(match) {
   const displayName = toTitleCase(cleanText(match.name));
 
   // A Graduate row created at account-signup time (see adminController.js
@@ -2955,6 +3135,19 @@ async function queryPersonLookup(name) {
       programLabel: programKeyword,
     },
   };
+}
+
+// "who is danicamanlapig@gmail.com?" / a bare email address alone — the
+// single most UNAMBIGUOUS way to identify one specific person (every
+// account has a unique email), so this never needs queryPersonLookup()'s
+// name-token/ambiguous-match machinery at all. Added specifically so the
+// email shown in an ambiguous-match disambiguation list (see
+// queryPersonLookup()'s own comment) is itself a valid, resolving follow-up
+// answer, the same way "from Batch YYYY" already is.
+async function queryPersonLookupByEmail(email) {
+  const match = await Graduate.findOne({ email: new RegExp(`^${escapeRegex(email)}$`, 'i') }).lean();
+  if (!match) return null;
+  return buildPersonLookupResult(match);
 }
 
 async function queryNames(filters, question = '') {
@@ -3564,6 +3757,7 @@ async function queryCount(filters) {
   }
   if (filters.jobTitleRegex)    postDedup.jobTitle         = { $regex: filters.jobTitleRegex, $options: 'i' };
   if (filters.companyRegex)     postDedup.companyName      = { $regex: filters.companyRegex, $options: 'i' };
+  if (filters.employmentType)   postDedup.employmentType   = { $regex: escapeRegex(filters.employmentType), $options: 'i' };
   if (filters.industry)         postDedup.industry         = { $regex: filters.industry, $options: 'i' };
   if (filters.excludeIndustry) {
     postDedup.industry = {
@@ -3640,6 +3834,7 @@ async function queryCount(filters) {
                        : filters.excludeIndustry ? ` NOT in ${filters.excludeIndustry}`
                        : '';
   const jobTitleLabel  = filters.jobTitle ? ` working as ${filters.jobTitle}` : '';
+  const workTypeLabel  = filters.employmentType ? ` with a ${filters.employmentType} position` : '';
   const companyLabel   = filters.company  ? ` at ${filters.company}` : '';
   const locationLabel  = filters.workLocation
     ? (filters.negateWorkLocation ? ` NOT working ${filters.workLocation}` : ` working ${filters.workLocation}`)
@@ -3666,8 +3861,8 @@ async function queryCount(filters) {
   // look inconsistent even when both were correct.
   const genderLabel = filters.gender ? `${filters.gender.toLowerCase()} ` : '';
   const desc = statusLabel
-    ? `${genderLabel}**${statusLabel}** alumni${jobTitleLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`
-    : `${genderLabel}graduate${total !== 1 ? 's' : ''}${jobTitleLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`;
+    ? `${genderLabel}**${statusLabel}** alumni${jobTitleLabel}${workTypeLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`
+    : `${genderLabel}graduate${total !== 1 ? 's' : ''}${jobTitleLabel}${workTypeLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`;
   let out = `There are **${total}** ${desc} in the tracer study database${lbl}.`;
 
   // For general "related" queries, add directly/somewhat sub-breakdown.
@@ -4007,6 +4202,55 @@ async function queryInner(question, seedFilters = {}) {
     }
   }
 
+  // "How many alumni graduated in 2099?" — extractFilters()'s own year regex
+  // deliberately caps at 1990-2039 (see its own comment) so an unrelated
+  // 4-digit number elsewhere in a question is never mistaken for a batch
+  // year. That's the right call for numbers with no year-context at all, but
+  // "graduated in 2099"/"batch 2099"/"class of 2099" IS unambiguous year
+  // context — it just names a year outside the plausible range, which
+  // extractFilters() then treats as if no year had been mentioned at all,
+  // silently falling through to the unfiltered whole-database total (262)
+  // instead of ever acknowledging "2099" was typed. Caught live: asked for
+  // no real reason other than robustness-testing, and got back the exact
+  // same "262 graduates" a completely unqualified question would.
+  const outOfRangeYearMatch = question.match(/\b(?:batch|class\s+of|graduated?\s+in)\s+(\d{4})\b/i)
+    || question.match(/\b(\d{4})\s+batch\b/i);
+  if (outOfRangeYearMatch && !/\b(199\d|20[0-3]\d)\b/.test(outOfRangeYearMatch[1])) {
+    const bounds = await Graduate.aggregate([
+      { $match: { yearGraduated: { $ne: null } } },
+      { $group: { _id: null, min: { $min: '$yearGraduated' }, max: { $max: '$yearGraduated' } } },
+    ]);
+    const range = bounds[0];
+    return {
+      text: range
+        ? `There's no batch **${outOfRangeYearMatch[1]}** in the tracer study database — records on file span batch **${range.min}** to **${range.max}**.`
+        : `There's no batch **${outOfRangeYearMatch[1]}** in the tracer study database.`,
+      direct: true, topic: 'out_of_scope', filters: {},
+    };
+  }
+
+  // "How many alumni are neither employed nor unemployed?" — a genuine
+  // exclusion question (NOT status='Yes' AND NOT status='No') that none of
+  // the single-value employmentStatus/excludeEmploymentStatus filters below
+  // can express (they only ever exclude/match ONE status at a time). Without
+  // this it fell through to the generic count topic with no filter at all,
+  // showing the full unfiltered Yes/No breakdown — never actually answering
+  // "neither" with a number. In this schema the two statuses that are
+  // literally neither 'Yes' nor 'No' are Self-Employed and Never Employed —
+  // answered as their own breakdown (not just a combined total) so the
+  // reasoning behind the number is visible, not asserted as a black box.
+  if (/\bneither\s+employed\s+nor\s+unemployed\b/i.test(question)) {
+    const rows = await Graduate.aggregate([
+      ...DEDUP,
+      { $match: { employmentStatus: { $regex: '^(self.?employed|never employed)', $options: 'i' } } },
+      { $group: { _id: '$employmentStatus', count: { $sum: 1 } } },
+    ]);
+    const total = rows.reduce((s, r) => s + r.count, 0);
+    let out = `There are **${total}** graduates who are neither employed nor unemployed (Self-Employed or Never Employed) in the tracer study database.\n\n`;
+    rows.forEach(r => { out += `- **${r._id}**: ${r.count}\n`; });
+    return { text: out, direct: true, topic: 'count', filters: {} };
+  }
+
   // "Who are Liam Miranda and Vincent De Jesus?" — 2+ named people at once.
   // Checked before the single-name branch below (extractPersonNames() itself
   // falls back to the single-name extractor when its own narrower pattern
@@ -4087,6 +4331,96 @@ async function queryInner(question, seedFilters = {}) {
   // query()'s multi-turn context accumulation (buildSeedFilters(), further
   // below) — see queryCount()/queryNames()'s own filters.companyRegex handling.
 
+  // "Is Joseph Tolentino an alumnus?" — a database-membership question (see
+  // IS_ALUMNI_PATTERN's own comment for the pattern itself). A CONFIRMED
+  // match is safe to assert positively right here (Graduate IS the
+  // authoritative source for "yes, this person has a tracer-study record").
+  // A miss is deliberately NOT asserted as "no" here, though — this looked
+  // like a clean case for a direct negative until it wasn't: verified live
+  // that someone genuinely mentioned as a real MIT alumnus in the ingested
+  // accreditation PDF (RAG content, not a Graduate row — he never submitted
+  // the tracer study) got wrongly told "No, I don't have a record of him"
+  // by an earlier version of this fix that skipped RAG entirely on a
+  // Graduate miss. The original "vector search may still have relevant
+  // unstructured mentions" reasoning (see the personName branch below)
+  // applies here too — RAG still gets its turn on a miss; see
+  // ragService.js's own post-RAG fallback for the "genuinely not found
+  // anywhere" case (the actual "is Joseph Tolentino alumni?" bug this was
+  // meant to fix).
+  const isAlumniMatch = question.match(IS_ALUMNI_PATTERN);
+  if (isAlumniMatch) {
+    const candidateName = isAlumniMatch[1].trim() || null;
+    if (candidateName) {
+      const lookup = await queryPersonLookup(candidateName);
+      if (lookup && !lookup.ambiguous) {
+        return { text: `Yes — ${lookup.text}`, direct: true, topic: 'person_lookup', filters: lookup.personFilters || {} };
+      }
+      if (lookup && lookup.ambiguous) {
+        return { text: lookup.text, direct: true, topic: 'person_lookup_ambiguous', filters: {} };
+      }
+      // Falls through to RAG (personName branch below, then ragService.js)
+      // instead of returning here — see this block's own comment above.
+    }
+  }
+
+  // "who is danicamanlapig@gmail.com?" / a bare email alone — the single
+  // most unambiguous way to identify one specific person, and exactly what
+  // the ambiguous-match disambiguation list itself shows for each entry (see
+  // queryPersonLookup()'s own comment). Checked before every name-based
+  // branch below so an email-only follow-up resolves directly without
+  // needing a name at all.
+  const emailMatch = question.match(/\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/);
+  if (emailMatch) {
+    const lookup = await queryPersonLookupByEmail(emailMatch[0]);
+    if (lookup) {
+      return { text: lookup.text, direct: true, topic: 'person_lookup', filters: lookup.personFilters || {} };
+    }
+  }
+
+  // "Rain Thora from Batch 2025" / "Rain Thora from BSIT" — a bare name (no
+  // "who is"/"sino"/etc. trigger word at all) followed by a batch-year or
+  // program qualifier, the natural way to answer an ambiguous-match prompt
+  // (which now shows each match's own batch year AND program — see
+  // queryPersonLookup()'s disambiguation list). Without a dedicated pattern
+  // for this shape, it fell through to a generic year-filtered NAMES LIST
+  // instead of a real person lookup — caught live: 2 real "Rain Thora"
+  // accounts exist (batch 2025 and 2026), and this answered with a bare
+  // "Alumni Batch 2025 (1 total): 1. Rain Thora" list instead of that
+  // person's actual details.
+  const bareNameFromBatchMatch = question.match(/^\s*([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4})\s+from\s+batch\s+(\d{4})\b/i);
+  if (bareNameFromBatchMatch) {
+    const lookup = await queryPersonLookup(bareNameFromBatchMatch[1].trim(), { yearGraduated: parseInt(bareNameFromBatchMatch[2], 10) });
+    if (lookup) {
+      return {
+        text: lookup.text,
+        direct: true,
+        topic: lookup.ambiguous ? 'person_lookup_ambiguous' : 'person_lookup',
+        filters: lookup.personFilters || {},
+      };
+    }
+  }
+
+  // "Rain Thora from BSIT" — same idea as bareNameFromBatchMatch just above,
+  // disambiguating by PROGRAM instead of batch year. Reuses extractFilters()'s
+  // own course-abbreviation resolution rather than a second hand-rolled
+  // course-name regex.
+  const bareNameFromProgramMatch = !bareNameFromBatchMatch
+    && question.match(/^\s*([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z.'-]*){0,4})\s+from\s+([a-zA-Z][a-zA-Z .'-]{1,40})\s*[?.!]?\s*$/i);
+  if (bareNameFromProgramMatch) {
+    const programGuess = extractFilters(`from ${bareNameFromProgramMatch[2]}`).program;
+    if (programGuess) {
+      const lookup = await queryPersonLookup(bareNameFromProgramMatch[1].trim(), { program: programGuess });
+      if (lookup) {
+        return {
+          text: lookup.text,
+          direct: true,
+          topic: lookup.ambiguous ? 'person_lookup_ambiguous' : 'person_lookup',
+          filters: lookup.personFilters || {},
+        };
+      }
+    }
+  }
+
   // "Where is Bryan Canlapan currently working?" — a lookup for ONE named
   // person, structurally different from every other question this file
   // answers (all of which aggregate across many respondents). Checked before
@@ -4097,7 +4431,21 @@ async function queryInner(question, seedFilters = {}) {
   // vector search may still have relevant unstructured mentions.
   const personName = extractPersonName(question);
   if (personName) {
-    const lookup = await queryPersonLookup(personName);
+    // "who is Rain Thora from Batch 2025" — WHO_IS_PATTERN's own lookahead
+    // fix stops the NAME capture cleanly before "from Batch 2025", but that
+    // trailing text is still real disambiguating info sitting right there in
+    // the question — extracted here so a same-named ambiguous match can
+    // resolve to the one actual person meant, instead of just re-showing the
+    // identical list a second time with no progress made. Program disambig
+    // reuses extractFilters()'s own course-abbreviation resolution ("BSIT"
+    // -> "Information Technology") so "who is Rain Thora from BSIT" works
+    // the same way the batch-year form does.
+    const yearDisambigMatch = question.match(/\bfrom\s+(?:batch|year)\s+(\d{4})\b/i) || question.match(/\bbatch\s+(\d{4})\b/i);
+    const disambiguators = {
+      ...(yearDisambigMatch ? { yearGraduated: parseInt(yearDisambigMatch[1], 10) } : {}),
+      ...(extractFilters(question).program ? { program: extractFilters(question).program } : {}),
+    };
+    const lookup = await queryPersonLookup(personName, disambiguators);
     if (lookup) {
       // The ambiguous (multiple-match) case is a deterministic instruction
       // to the user, not narratable data — a distinct topic so ragService.js
@@ -4473,11 +4821,11 @@ async function queryInner(question, seedFilters = {}) {
     count:           () => isSectorQuestion ? querySector(filters) : filters.employmentStatuses ? queryEmployment(filters) : (filters.workLocation || isCompoundLocationQuestion) ? queryWorkLocation(filters) : ((filters.industry || filters.excludeIndustry) && !filters.company && !filters.jobRelated) ? queryIndustry(filters) : queryCount(filters),
     rate:            () => isCompoundLocationQuestion
       ? queryWorkLocation(filters)
-      : /\b(which|what)\s+(program|course|degree)\b/i.test(question)
+      : BY_PROGRAM_QUESTION_PATTERN.test(question)
       ? (isJobAlignmentQuestion ? queryJobAlignmentByProgram(filters)
         : wantsUnemploymentByProgram ? queryProgramRateExtreme(filters, programSuperlativeDirection, 'unemployment')
         : filters.workLocation ? queryWorkLocationByProgram(filters, filters.workLocation)
-        : queryEmploymentRateByProgram(filters))
+        : queryEmploymentRateByProgram(filters, programSuperlativeDirection))
       : filters.tookExam === 'passed'
       ? queryExamPassRate(filters, 'passed')
       : filters.tookExam === 'failed'
@@ -4545,7 +4893,7 @@ async function queryInner(question, seedFilters = {}) {
     // checked first here, same priority order the 'count' topic's own
     // dispatch already gives filters.industry over its own default.
     work_type:       () => isSectorQuestion ? querySector(filters) : (filters.industry || filters.excludeIndustry) ? queryIndustry(filters) : queryWorkType(filters),
-    job_relevance:   () => /\bwhich\s+(program|course|degree)\b/i.test(question) ? queryJobAlignmentByProgram(filters)
+    job_relevance:   () => BY_PROGRAM_QUESTION_PATTERN.test(question) ? queryJobAlignmentByProgram(filters)
       : filters.jobRelated ? queryCount(filters) : queryJobRelevance(filters),
     // filters.furtherEducation checked first — same reasoning as
     // licensure's own filters.tookExam check just below: an English "how
@@ -4558,7 +4906,7 @@ async function queryInner(question, seedFilters = {}) {
     further_studies: () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.furtherEducation ? queryCount(filters) : queryFurtherStudies(filters),
     licensure:       () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.tookExam ? queryCount(filters) : queryLicensure(filters),
     competencies:    () => queryCompetencies(filters, wantsRankHighest()),
-    work_location:   () => /\b(which|what)\s+(program|course|degree)\b/i.test(question)
+    work_location:   () => BY_PROGRAM_QUESTION_PATTERN.test(question)
       ? queryWorkLocationByProgram(filters, filters.workLocation || 'abroad')
       : /\bwho\b/i.test(question) ? queryNames(filters) : queryWorkLocation(filters),
     by_program:      () => queryByProgram(filters),
@@ -4587,12 +4935,12 @@ async function queryInner(question, seedFilters = {}) {
       const isCombinedEmployedQuery = filters.employmentStatuses?.length === 2
         && filters.employmentStatuses.includes('Yes')
         && filters.employmentStatuses.includes('Self-Employed');
-      if (/\b(which|what)\s+(program|course|degree)\b/i.test(question)) {
+      if (BY_PROGRAM_QUESTION_PATTERN.test(question)) {
         if (isJobAlignmentQuestion) return queryJobAlignmentByProgram(filters);
         if (wantsUnemploymentByProgram) return queryProgramRateExtreme(filters, programSuperlativeDirection, 'unemployment');
         return filters.workLocation
           ? queryWorkLocationByProgram(filters, filters.workLocation)
-          : queryEmploymentRateByProgram(filters);
+          : queryEmploymentRateByProgram(filters, programSuperlativeDirection);
       }
       if (isCombinedEmployedQuery) return queryRate(filters);
       if (filters.industry || filters.excludeIndustry) return queryIndustry(filters);

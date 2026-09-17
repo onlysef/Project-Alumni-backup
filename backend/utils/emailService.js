@@ -249,6 +249,43 @@ const sendApplicantMessageEmail = async (to, applicantName, companyName, fromEma
   });
 };
 
+// Alumnus -> alumnus, from the "Send an email" button on another alumnus's
+// profile in Suggested Alumni. Sent for real through the backend instead of
+// a mailto: link, same reasoning as sendApplicantMessageEmail: a mailto:
+// link does nothing useful if the browser has no default mail client
+// configured. replyTo is the sender's own account email so the recipient
+// can just hit reply — this app never sees or stores that reply.
+const sendAlumniMessageEmail = async (to, recipientName, fromName, fromEmail, subject, message) => {
+  const safeFromName = escapeHtml(fromName);
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="background:linear-gradient(135deg,#7B1A2E 0%,#9B2235 100%);padding:32px;text-align:center;">
+        <h1 style="color:#C49A2A;font-family:Georgia,serif;margin:0;font-size:26px;">TSU Alumni Portal</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Message from ${safeFromName}</p>
+      </div>
+      <div style="padding:32px 40px;">
+        <h2 style="color:#2d3748;margin:0 0 10px;font-size:20px;">Hi ${escapeHtml(recipientName)},</h2>
+        <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4a5568;white-space:pre-wrap;">${escapeHtml(message)}</p>
+        <p style="color:#718096;font-size:13px;margin:0;">
+          Sent by <strong>${safeFromName}</strong>, a fellow TSU alumnus, through the TSU Alumni Portal.
+          Reply directly to this email to respond to ${escapeHtml(fromEmail)}.
+        </p>
+      </div>
+      <div style="background:#f7fafc;padding:16px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+        <p style="color:#a0aec0;font-size:12px;margin:0;">© 2026 TSU Alumni Portal · Tarlac State University</p>
+      </div>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from:    `"${fromName} via TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
+    to,
+    replyTo: fromEmail,
+    subject,
+    html,
+  });
+};
+
 // Employer -> applicant, sent the moment an interview is scheduled from the
 // employer's Appointments page. replyTo is the employer's own account email
 // so the alumnus can reply straight to it, same pattern as sendApplicantMessageEmail.
@@ -336,4 +373,4 @@ const sendEmployerInviteEmail = async (to, link) => {
   });
 };
 
-module.exports = { generateOTP, sendOTPEmail, sendAccountCreatedEmail, sendEmploymentReminderBulk, sendInquiryEmail, sendApplicantMessageEmail, sendInterviewInvitationEmail, sendEmployerInviteEmail };
+module.exports = { generateOTP, sendOTPEmail, sendAccountCreatedEmail, sendEmploymentReminderBulk, sendInquiryEmail, sendApplicantMessageEmail, sendAlumniMessageEmail, sendInterviewInvitationEmail, sendEmployerInviteEmail };

@@ -44,7 +44,6 @@ export default function CoordinatorLayout() {
     toastTimer.current = setTimeout(() => setToast(""), 2400);
   }, []);
 
-  // Load settings from server on mount; server takes priority over localStorage
   useEffect(() => {
     apiFetch("/auth/settings")
       .then(({ settings: s }) => {
@@ -55,7 +54,6 @@ export default function CoordinatorLayout() {
       .catch(() => {});
   }, []);
 
-  // Persist settings to server whenever they change (skip initial render)
   const settingsInitialized = useRef(false);
   useEffect(() => {
     if (!settingsInitialized.current) { settingsInitialized.current = true; return; }

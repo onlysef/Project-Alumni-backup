@@ -52,12 +52,6 @@ export function AuthProvider({ children }) {
     setTracerStudyCompletedState(true);
   }
 
-  // Whether this alumni has unanswered questions added to their college's
-  // tracer form after they last submitted — checked once per session so
-  // ProtectedRoute can route a notified alumni straight to the "new
-  // questions" view instead of the dashboard right after login, rather than
-  // only surfacing this once they happen to open the tracer-study page on
-  // their own. null = not checked yet (or not applicable), true/false once resolved.
   const [needsTracerUpdate, setNeedsTracerUpdateState] = useState(null);
   const [tracerUpdateChecked, setTracerUpdateChecked] = useState(false);
 

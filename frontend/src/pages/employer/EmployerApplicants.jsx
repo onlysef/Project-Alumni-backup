@@ -14,9 +14,6 @@ function shortDate(value) {
   return new Date(value).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 }
 
-// Applications carry the skills the alumnus was scored against for THIS
-// specific posting (matched + missing) — that's more directly relevant to
-// the employer than pulling from the alumnus's general profile.
 function applicantSkills(item) {
   return (item.skills || []).map((s) => s.name);
 }
@@ -130,12 +127,12 @@ export default function EmployerApplicants() {
           {loading && <tr><td colSpan="6"><div className="employer-empty">Loading applicants…</div></td></tr>}
           {!loading && error && <tr><td colSpan="6"><div className="employer-empty">{error}</div></td></tr>}
           {!loading && !error && filtered.map((item) => <tr key={item._id}>
-            <td><strong>{item.alumni_id?.firstName} {item.alumni_id?.lastName}</strong><small>{item.alumni_id?.email}</small></td>
-            <td>{item.alumni_id?.course || "—"}</td>
-            <td>{shortDate(item.appliedAt)}</td>
-            <td>{item.title}</td>
-            <td><span className={`employer-badge applicant-${item.employerStatus.toLowerCase()}`}>{item.employerStatus}</span></td>
-            <td><div className="employer-row-actions"><button type="button" aria-label={`View ${item.alumni_id?.firstName}`} onClick={() => openApplicant(item)}><Icon name="icon-view"/></button>{item.employerStatus !== "Rejected" && <button type="button" className="appointment-cancel-btn" aria-label={`Reject ${item.alumni_id?.firstName}`} onClick={() => rejectApplicant(item)}>✕</button>}</div></td>
+            <td data-label="Name"><strong>{item.alumni_id?.firstName} {item.alumni_id?.lastName}</strong><small>{item.alumni_id?.email}</small></td>
+            <td data-label="Course">{item.alumni_id?.course || "—"}</td>
+            <td data-label="Application date">{shortDate(item.appliedAt)}</td>
+            <td data-label="Position">{item.title}</td>
+            <td data-label="Status"><span className={`employer-badge applicant-${item.employerStatus.toLowerCase()}`}>{item.employerStatus}</span></td>
+            <td data-label="Action"><div className="employer-row-actions"><button type="button" aria-label={`View ${item.alumni_id?.firstName}`} onClick={() => openApplicant(item)}><Icon name="icon-view"/></button>{item.employerStatus !== "Rejected" && <button type="button" className="appointment-cancel-btn" aria-label={`Reject ${item.alumni_id?.firstName}`} onClick={() => rejectApplicant(item)}>✕</button>}</div></td>
           </tr>)}
           {!loading && !error && !filtered.length && <tr><td colSpan="6"><div className="employer-empty">No applicants match your filters.</div></td></tr>}
         </tbody>

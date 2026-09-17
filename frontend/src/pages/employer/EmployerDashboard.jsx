@@ -13,9 +13,6 @@ function statusLabel(status) {
   return status === "open" ? "Active" : "Closed";
 }
 
-// The plain "→" character above rendered as a flat dash at this font's small
-// size — an inline currentColor SVG stays crisp and matches the link's color
-// in both light and dark mode.
 function ArrowIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -25,10 +22,6 @@ function ArrowIcon() {
   );
 }
 
-// Module-level, not state — survives this component unmounting when the
-// employer navigates away and back, so returning to the Dashboard shows the
-// last-known jobs/applicants/interviews instantly instead of an empty table
-// while a fresh copy loads silently in the background.
 let cachedEmployerData = null;
 
 export default function EmployerDashboard() {
@@ -74,8 +67,6 @@ export default function EmployerDashboard() {
 
   useEffect(() => {
     load(!cachedEmployerData);
-    // Keeps stat cards and the applicants/interviews counts live while the
-    // employer stays on this page, not just on next visit.
     const interval = setInterval(() => load(false), 30000);
     return () => clearInterval(interval);
   }, []);
@@ -188,11 +179,11 @@ export default function EmployerDashboard() {
               {loading && <tr><td colSpan="5"><div className="employer-empty">Loading job posts…</div></td></tr>}
               {!loading && error && <tr><td colSpan="5"><div className="employer-empty">{error}</div></td></tr>}
               {!loading && !error && filtered.map((job) => <tr key={job._id}>
-                <td><button className="employer-title-link" type="button" onClick={() => setModal({ type: "view", job })}>{job.title}</button><small>{job.jobType} · {job.location || "—"}</small></td>
-                <td><span className={`employer-badge ${statusLabel(job.status).toLowerCase()}`}>{statusLabel(job.status)}</span></td>
-                <td>{prettyDate(job.createdAt)}</td>
-                <td>{applicantCountByJob[job._id] || 0}</td>
-                <td><div className="employer-row-actions"><button type="button" aria-label={`View ${job.title}`} onClick={() => setModal({ type: "view", job })}><Icon name="icon-view"/></button><button type="button" aria-label={`Edit ${job.title}`} onClick={() => openEdit(job)}><Icon name="icon-edit"/></button><button type="button" aria-label={`Delete ${job.title}`} onClick={() => setModal({ type: "delete", job })}><Icon name="icon-delete"/></button></div></td>
+                <td data-label="Job title"><button className="employer-title-link" type="button" onClick={() => setModal({ type: "view", job })}>{job.title}</button><small>{job.jobType} · {job.location || "—"}</small></td>
+                <td data-label="Status"><span className={`employer-badge ${statusLabel(job.status).toLowerCase()}`}>{statusLabel(job.status)}</span></td>
+                <td data-label="Post date">{prettyDate(job.createdAt)}</td>
+                <td data-label="Applicants">{applicantCountByJob[job._id] || 0}</td>
+                <td data-label="Actions"><div className="employer-row-actions"><button type="button" aria-label={`View ${job.title}`} onClick={() => setModal({ type: "view", job })}><Icon name="icon-view"/></button><button type="button" aria-label={`Edit ${job.title}`} onClick={() => openEdit(job)}><Icon name="icon-edit"/></button><button type="button" aria-label={`Delete ${job.title}`} onClick={() => setModal({ type: "delete", job })}><Icon name="icon-delete"/></button></div></td>
               </tr>)}
               {!loading && !error && !filtered.length && <tr><td colSpan="5"><div className="employer-empty">No job posts match your filters.</div></td></tr>}
             </tbody>

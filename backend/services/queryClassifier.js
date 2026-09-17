@@ -147,12 +147,25 @@ const HELP_PATTERNS = [
   /\bwhat (questions|topics) can (i|you)\b/i,
   /^\s*help\s*$/i,
   /\bhow does this (chat|assistant|bot) work\b/i,
+  // "Can I ask (you) something/a question?" — a permission-seeking preamble,
+  // not a real question yet, so there's nothing for the statistical/RAG
+  // pipeline to search for. Previously fell all the way through to the
+  // generic UNKNOWN_RESPONSE refusal ("I'm designed to answer questions
+  // related to the Graduate Tracer Study records...") even though the exact
+  // same INTENT already had a Tagalog equivalent two lines below ("ano ang
+  // pwede kong itanong") that correctly routed to 'help' — an English/
+  // Tagalog asymmetry in the same file. End-anchored (allowing trailing
+  // punctuation) so a real question that happens to start the same way
+  // ("can I ask something about the employment rate") still falls through
+  // to the actual statistical pipeline instead of being swallowed here.
+  /\bcan\s+i\s+ask\s+(?:you\s+)?(?:something|a\s+question|anything)\s*[?.!]*\s*$/i,
   // Filipino/Taglish — "ano ang kaya mong gawin" ("what can you do"), "paano
   // (kita\/ko) gamitin ito" ("how do I use this"), "ano (pwede\|puwede) kong
-  // itanong" ("what can I ask").
+  // itanong" ("what can I ask"), "pwede ba akong magtanong" ("may I ask").
   /\bano (ang )?kaya mo(ng)?\s*(gawin|sagutin|tulungan)\b/i,
   /\bpaano (ko|kita|namin)?\s*(gamitin|magamit)\b/i,
   /\bano (ang )?(pwede|puwede) ko(ng)? (itanong|tanungin)\b/i,
+  /\b(pwede|puwede)\s+(po\s+)?(ba\s+)?(ako|akong)?\s*magtanong\b/i,
 ];
 
 // "Who/what are you" style questions directed at AC itself — a near-universal

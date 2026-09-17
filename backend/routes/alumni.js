@@ -1,7 +1,7 @@
 const express = require('express');
 const router  = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, getCareerRecommendations, getCareerNextStep, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication } = require('../controllers/alumniController');
+const { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, messageAlumnus, getCareerRecommendations, getCareerNextStep, getCareerFitExplanation, extractSkills, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication } = require('../controllers/alumniController');
 const { getAnnouncements, toggleLike, getComments, addComment, trackShare } = require('../controllers/announcementController');
 const { getAlumniEvents, toggleInterested, getCoordinatorNotifications, markNotificationsRead } = require('../controllers/eventController');
 const { getOfficeSettings, getAvailableStaff, bookAppointment, getBookedSlots } = require('../controllers/appointmentController');
@@ -14,8 +14,11 @@ router.post('/tracer-study',         protect, authorize('alumni'), submitTracerS
 router.get('/tracer-form-config',    protect, authorize('alumni'), getTracerFormConfig);
 router.get('/home-summary',          protect, authorize('alumni'), getHomeSummary);
 router.get('/suggested',             protect, authorize('alumni'), getSuggestedAlumni);
+router.post('/network/:id/message',  protect, authorize('alumni'), messageAlumnus);
 router.get('/career-recommendations', protect, authorize('alumni'), getCareerRecommendations);
 router.get('/career-recommendations/next-step', protect, authorize('alumni'), getCareerNextStep);
+router.get('/career-recommendations/explain', protect, authorize('alumni'), getCareerFitExplanation);
+router.post('/skills/extract',       protect, authorize('alumni'), extractSkills);
 router.get('/jobs/search',           protect, authorize('alumni'), searchJobs);
 router.get('/jobs/partner-postings', protect, authorize('alumni'), getPartnerJobPostings);
 router.get('/jobs/skill-tip',        protect, authorize('alumni'), getJobSkillTip);

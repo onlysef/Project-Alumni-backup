@@ -5,6 +5,7 @@ import { Modal } from "../common/Primitives.jsx";
 import { DashboardSettingsForm } from "../admin/AdminTopbar.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { getNotificationTarget } from "../../services/notificationNavigation.js";
+import { isDrawerViewport } from "../../constants/layout.js";
 
 function timeAgo(date) {
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(date).getTime()) / 1000));
@@ -36,9 +37,7 @@ export default function EmployerTopbar({
       const data = await response.json();
       setNotifications(data.notifications ?? []);
       setUnread(data.unread ?? 0);
-    } catch {
-      // A temporarily unavailable API should not prevent the dashboard from opening.
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -105,7 +104,7 @@ export default function EmployerTopbar({
   }
 
   function togglePanel(nextPanel) {
-    if (window.innerWidth <= 600 && !collapsed) onToggleSidebar();
+    if (isDrawerViewport() && !collapsed) onToggleSidebar();
     setPanel((current) => current === nextPanel ? null : nextPanel);
   }
 
