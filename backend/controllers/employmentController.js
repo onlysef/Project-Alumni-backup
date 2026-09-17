@@ -306,7 +306,12 @@ const getEmploymentRecords = async (req, res) => {
 const getEmploymentActivity = async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit, 10) || 30, 50);
-    const match = {};
+    const fullHistory = req.query.hours === 'all';
+    const requestedHours = parseInt(req.query.hours, 10);
+    const hours = fullHistory ? null : (Number.isFinite(requestedHours)
+      ? Math.min(168, Math.max(1, requestedHours))
+      : 24);
+    const match = fullHistory ? {} : { createdAt: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) } };
     if (req.user.role === 'coordinator') {
       const staffInCollege = await User.find({ college: req.user.college }).select('_id').lean();
       match.user_id = { $in: staffInCollege.map(u => u._id) };
