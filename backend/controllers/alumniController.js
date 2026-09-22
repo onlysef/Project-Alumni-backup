@@ -933,10 +933,25 @@ const getHomeSummary = async (req, res) => {
     // thing on the page.
     const upcomingEventsFilter = { visibility: { $in: eventVisibilities }, event_datetime: { $gte: new Date() } };
 
-    const [announcementsCount, recentEventsCount, employment, networkMatchesCount, similarAlumni, recentAnnouncements, recentEvents] = await Promise.all([
+    // Fetched alone, ahead of the Promise.all below, because
+    // getRecommendedJobsForAlumni (an external Careerjet API call — by far
+    // the slowest thing this endpoint does) needs it as an input. Pulling it
+    // out lets that call run concurrently with the other independent
+    // queries instead of only starting after all of them finish.
+    const employment = await AlumniEmployment.findOne({ alumni_id: alumniId }).lean();
+
+    // Careerjet results are already sorted freshest-first (sort: 'date' in
+    // getRecommendedJobsForAlumni) — same list backs both the count card and
+    // the first few entries of the recent-updates feed below. Careerjet's
+    // `posted` timestamp reflects when a listing was fetched, which is
+    // effectively "now" on almost every call — mixed unfiltered into the
+    // recentUpdates merge below (newest-first, capped to 6), that would let
+    // Jobs claim every single slot and bury real campus News/Events that
+    // are just as relevant but dated days or weeks ago. Capped to 2 here so
+    // the feed stays a genuine mix instead of an all-jobs list.
+    const [announcementsCount, recentEventsCount, networkMatchesCount, similarAlumni, recentAnnouncements, recentEvents, recommendedJobs] = await Promise.all([
       Announcement.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
       Event.countDocuments(recentEventsFilter),
-      AlumniEmployment.findOne({ alumni_id: alumniId }).lean(),
       me?.course ? User.countDocuments({ role: 'alumni', course: me.course, _id: { $ne: alumniId } }) : 0,
       // Scored below to surface the 3 closest matches rather than just the
       // first 3 the database happened to return — but courses like BSIT run
@@ -952,18 +967,8 @@ const getHomeSummary = async (req, res) => {
         : [],
       Announcement.find({ createdAt: { $gte: thirtyDaysAgo } }).sort({ createdAt: -1 }).limit(6).select('title type createdAt').lean(),
       Event.find(upcomingEventsFilter).sort({ event_datetime: 1 }).limit(6).select('title location createdAt event_datetime').lean(),
+      getRecommendedJobsForAlumni(alumniId, employment),
     ]);
-
-    // Careerjet results are already sorted freshest-first (sort: 'date' in
-    // getRecommendedJobsForAlumni) — same list backs both the count card and
-    // the first few entries of the recent-updates feed below. Careerjet's
-    // `posted` timestamp reflects when a listing was fetched, which is
-    // effectively "now" on almost every call — mixed unfiltered into the
-    // recentUpdates merge below (newest-first, capped to 6), that would let
-    // Jobs claim every single slot and bury real campus News/Events that
-    // are just as relevant but dated days or weeks ago. Capped to 2 here so
-    // the feed stays a genuine mix instead of an all-jobs list.
-    const recommendedJobs = await getRecommendedJobsForAlumni(alumniId, employment);
     const recommendedJobsCount = recommendedJobs.length;
     const recentJobs = recommendedJobs.slice(0, 2);
 
