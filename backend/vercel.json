@@ -1,5 +1,6 @@
 {
   "version": 2,
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }],
-  "functions": { "api/index.js": { "maxDuration": 60 } }
+  "functions": { "api/index.js": { "maxDuration": 60 } },
+  "crons": [{ "path": "/api/cron/job-alerts", "schedule": "0 0 * * *" }]
 }
