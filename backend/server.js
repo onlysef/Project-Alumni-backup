@@ -14,6 +14,7 @@ const alumniRoutes      = require('./routes/alumni');
 const employerRoutes    = require('./routes/employer');
 const coordinatorRoutes = require('./routes/coordinator');
 const aiRoutes          = require('./routes/ai');
+const cronRoutes        = require('./routes/cron');
 
 connectDB();
 
@@ -68,6 +69,7 @@ app.use('/api/alumni',      alumniRoutes);
 app.use('/api/employer',    employerRoutes);
 app.use('/api/coordinator', coordinatorRoutes);
 app.use('/api/ai',          aiRoutes);
+app.use('/api/cron',        cronRoutes);
 
 
 app.get('/api/health', (req, res) => {

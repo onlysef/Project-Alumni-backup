@@ -176,6 +176,9 @@ Employer accounts are created via an email-locked invite link generated on the a
 - `GET /events`, `POST /events/:id/interested`, `GET/POST /events/:id/feedback`
 - `GET /notifications`, `PATCH /notifications/read`
 
+### Cron (`/api/cron`)
+- `GET /job-alerts` — daily Job Connect alert sweep, invoked by Vercel Cron (`Authorization: Bearer $CRON_SECRET`); not for direct/manual use
+
 ### Employer (`/api/employer`)
 - `GET /partnerships` — active partnerships
 - `GET/POST/PATCH/DELETE /jobs`, `PATCH /jobs/:id/close` — job posting management
@@ -276,6 +279,10 @@ CLIENT_URL=
 HF_API_KEY=
 HF_PROVIDER=
 HF_CHAT_MODEL=
+HF_EMBED_MODEL=
+CAREERJET_AFFID=
+CAREERJET_LOCALE=
+CRON_SECRET=
 ```
 
 ### Frontend (`frontend/.env`)
