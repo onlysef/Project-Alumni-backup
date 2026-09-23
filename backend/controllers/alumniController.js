@@ -1455,8 +1455,19 @@ async function computeJobCosineScores(jobTexts, userId, userSkillsText) {
 // computeJobCosineScores couldn't produce one (no skills text, or the HF
 // call timed out/failed) — falls back to the plain skill-ratio percentage
 // rather than blocking on it (there's no cosine value left to multiply by).
+//
+// In practice cosineScore is null far more often than not: the HF batch
+// embedding call measures 4-5.5s on a cache miss (see JOB_COSINE_TIMEOUT_MS's
+// own comment), against an 800ms timeout — so most fresh searches fall back
+// to skillRatio alone. That used to be capped to at most 6 detected
+// keywords, leaving only 7 possible percentages total (0/6..6/6 → 0, 17, 33,
+// 50, 67, 83, 100%) — two completely unrelated job postings landing on the
+// exact same score wasn't a coincidence, it was near-guaranteed. Not capping
+// this list gives each posting's real, uncapped keyword count as the
+// denominator instead, which varies a lot more per posting and stops the
+// scores from collapsing onto the same handful of coarse buckets.
 function scoreJobFromText(jobText, userSkillsText, cosineScore) {
-  const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw)).slice(0, 6);
+  const jobSkillKeywords = ALL_SKILL_KEYWORDS.filter((kw) => textContainsSkill(jobText, kw));
   const skills = jobSkillKeywords.map((kw) => ({ name: skillLabel(kw), matched: textContainsSkill(userSkillsText, kw) }));
   if (!skills.length) return { skills, match: null };
   const matchedCount = skills.filter((s) => s.matched).length;

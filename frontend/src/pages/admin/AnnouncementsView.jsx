@@ -531,6 +531,11 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
             <>
               <div className="post-viewer-body">
                 {display.type && <span className="post-meta-type">{display.type}</span>}
+                {display.location && (
+                  <p className="post-viewer-location">
+                    <span aria-hidden="true">📍</span> {display.location}
+                  </p>
+                )}
                 {display.imageUrl && (
                   <img className="post-viewer-img" src={display.imageUrl} alt={display.title} />
                 )}

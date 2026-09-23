@@ -306,15 +306,45 @@ const getEmploymentActivity = async (req, res) => {
     const hours = fullHistory ? null : (Number.isFinite(requestedHours)
       ? Math.min(168, Math.max(1, requestedHours))
       : 24);
-    const match = fullHistory ? {} : { createdAt: { $gte: new Date(Date.now() - hours * 60 * 60 * 1000) } };
+    const since = fullHistory ? null : new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const adminMatch  = fullHistory ? {} : { createdAt:   { $gte: since } };
+    const tracerMatch = fullHistory ? {} : { submittedAt: { $gte: since } };
     if (req.user.role === 'coordinator') {
       const staffInCollege = await User.find({ college: req.user.college }).select('_id').lean();
-      match.user_id = { $in: staffInCollege.map(u => u._id) };
+      const ids = staffInCollege.map(u => u._id);
+      adminMatch.user_id    = { $in: ids };
+      tracerMatch.alumni_id = { $in: ids };
     }
-    const activities = await EmploymentActivity.find(match)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .select('user_name action target_name details createdAt');
+
+    // This feed is "things staff/alumni did to the data" (admin actions +
+    // alumni tracer submissions) — deliberately excludes post like/comment/
+    // share activity, which belongs in the notification bell instead, not
+    // mixed in here.
+    const [adminActivities, tracerSubs] = await Promise.all([
+      EmploymentActivity.find(adminMatch)
+        .sort({ createdAt: -1 }).limit(limit)
+        .select('user_name action target_name details createdAt').lean(),
+      TracerStudyResponse.find(tracerMatch)
+        .sort({ submittedAt: -1 }).limit(limit)
+        .populate('alumni_id', 'firstName lastName')
+        .select('alumni_id submittedAt').lean(),
+    ]);
+
+    const tracerActivities = tracerSubs
+      .filter(t => t.alumni_id)
+      .map(t => ({
+        user_name:   `${t.alumni_id.firstName} ${t.alumni_id.lastName}`,
+        action:      'updated their tracer study response',
+        target_name: '',
+        details:     '',
+        createdAt:   t.submittedAt,
+      }));
+
+    const activities = [...adminActivities, ...tracerActivities]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, limit);
+
     res.json({ activities });
   } catch (err) {
     console.error('getEmploymentActivity error:', err);
@@ -1911,12 +1941,15 @@ const notifyAlumniToUpdate = async (req, res) => {
     }
 
     const emails = alumni.map(a => a.email);
-    await sendEmploymentReminderBulk(emails);
+    const { sent, failedEmails } = await sendEmploymentReminderBulk(emails);
 
     res.json({
-      message: `Reminder sent to ${emails.length} alumni.`,
-      sent:  emails.length,
+      message: failedEmails.length
+        ? `Reminder sent to ${sent} of ${emails.length} alumni — ${failedEmails.length} failed to deliver.`
+        : `Reminder sent to ${sent} alumni.`,
+      sent,
       total: emails.length,
+      failedEmails,
     });
   } catch (err) {
     console.error('notifyAlumniToUpdate error:', err);

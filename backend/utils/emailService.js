@@ -1,5 +1,3 @@
-const nodemailer = require('nodemailer');
-
 // Applied to every user-supplied value interpolated into an HTML email body
 // (employer message text, company/applicant names, free-text location) —
 // without this, an employer could type raw HTML/links into "Send a mail" or
@@ -8,49 +6,72 @@ function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
-const SMTP_CONFIG = {
-  host: 'smtp.gmail.com',
-  // Both 465 (implicit TLS) and 587 (STARTTLS) time out identically on
-  // Railway — confirmed by testing both directly against a deployed
-  // instance. That rules out a port-specific quirk; it's Railway's network
-  // blocking outbound SMTP entirely (a common anti-abuse restriction on
-  // hobby/free-tier plans across most PaaS providers). No SMTP host/port
-  // combination fixes this from here — it needs either a paid plan with
-  // SMTP egress allowed, or switching this file to an HTTP-based email API
-  // (Resend, SendGrid, Mailgun, etc.) instead of raw SMTP. 587 is kept as
-  // the more broadly-compatible default for whichever host this ends up
-  // running on.
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  family: 4,
-};
+// Sends over Brevo's HTTP API — Railway blocks outbound SMTP entirely on
+// this plan (confirmed by testing both port 465 and 587 directly against a
+// deployed instance, both timed out identically; Railway only unblocks SMTP
+// on Pro+), so no SMTP host/port combination was ever going to work from
+// here. An HTTP call has no such restriction. Chose Brevo over Resend
+// specifically because Brevo's free tier (300/day) can deliver to arbitrary
+// recipients without a verified domain — Resend's equivalent
+// (onboarding@resend.dev) only accepts sends to the account owner's own
+// address until a domain is verified, which isn't an option here yet.
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
 
-// Single-send transporter (OTP, account creation)
-const transporter = nodemailer.createTransport(SMTP_CONFIG);
+// The address transactional mail is sent from. Brevo still requires this
+// exact address to be added and verified under Senders in the Brevo
+// dashboard (a confirmation link sent to the inbox) even without a verified
+// *domain* — without a verified domain Brevo silently rewrites the visible
+// sending domain to @brevosend.com for DKIM alignment, which is a
+// deliverability/spam-folder risk but not a hard failure.
+const FROM_ADDRESS = process.env.BREVO_FROM_EMAIL || process.env.OFFICE_EMAIL;
 
-// Pooled transporter for bulk sends — reuses up to 5 concurrent connections
-const bulkTransporter = nodemailer.createTransport({
-  ...SMTP_CONFIG,
-  pool:           true,
-  maxConnections: 5,
-  maxMessages:    Infinity,
-  rateDelta:      1000,
-  rateLimit:      10,
-});
+// The Alumni Office's own inbox — where inquiry-form submissions land and
+// where the bulk employment-reminder batches are addressed (recipients are
+// BCC'd).
+const OFFICE_INBOX = process.env.OFFICE_EMAIL;
 
-// Verify SMTP connection on startup
-transporter.verify((err) => {
-  if (err) {
-    console.error('❌ SMTP connection failed:', err.message);
-  } else {
-    console.log('✅ SMTP connection ready — emails can be sent.');
+// A few emails (employer -> applicant, alumnus -> alumnus) put the sender's
+// own name/company in the display name so the recipient knows who it's
+// really from, while the underlying address stays the one fixed/verified
+// address above.
+const senderOf = (displayName) => ({ name: displayName, email: FROM_ADDRESS });
+const asRecipients = (v) => (Array.isArray(v) ? v : [v]).map((email) => ({ email }));
+
+// Talks to Brevo's REST API directly (POST /v3/smtp/email) rather than
+// pulling in their SDK — it's one endpoint and Node's built-in fetch
+// already covers it. Every caller in this file expects sendXEmail() to
+// throw on failure (their own controllers catch it and return a 500), so a
+// non-2xx response is turned into a real thrown Error to match.
+async function send({ from, to, replyTo, bcc, subject, html }) {
+  if (!BREVO_API_KEY) throw new Error('BREVO_API_KEY is not set — cannot send email.');
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key':      BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      'Accept':       'application/json',
+    },
+    body: JSON.stringify({
+      sender:      from || senderOf('TSU Alumni Portal'),
+      to:          asRecipients(to),
+      ...(replyTo ? { replyTo: { email: replyTo } } : {}),
+      ...(bcc     ? { bcc: asRecipients(bcc) }      : {}),
+      subject,
+      htmlContent: html,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || `Brevo send failed with status ${res.status}.`);
   }
-});
+  return res.json();
+}
+
+if (!BREVO_API_KEY) {
+  console.error('❌ BREVO_API_KEY is not set — emails cannot be sent.');
+} else {
+  console.log('✅ Brevo configured — emails can be sent.');
+}
 
 const generateOTP = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
@@ -81,12 +102,7 @@ const sendOTPEmail = async (to, subject, otp, purpose = 'verification') => {
     </div>
   `;
 
-  await transporter.sendMail({
-    from: `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
-    to,
-    subject,
-    html,
-  });
+  await send({ to, subject, html });
 };
 
 const sendAccountCreatedEmail = async (to, firstName, tempPassword) => {
@@ -121,12 +137,7 @@ const sendAccountCreatedEmail = async (to, firstName, tempPassword) => {
     </div>
   `;
 
-  await transporter.sendMail({
-    from: `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
-    to,
-    subject: 'Your TSU Alumni Portal Account',
-    html,
-  });
+  await send({ to, subject: 'Your TSU Alumni Portal Account', html });
 };
 
 const sendEmploymentReminderBulk = async (emails) => {
@@ -165,36 +176,40 @@ const sendEmploymentReminderBulk = async (emails) => {
     </div>
   `;
 
-  // Sending every recipient in one BCC on the single-send `transporter` was
-  // two separate problems: Gmail SMTP enforces per-message recipient caps
-  // and aggressive rate limiting, so a large cohort either gets throttled/
-  // rejected as a single unit (no partial delivery) or trips spam
-  // detection — and `bulkTransporter` was already built with pooled
-  // connections and its own rate limit specifically to spread this load,
-  // but nothing ever actually sent through it. Batching into
-  // Gmail-friendly chunks and sending each through the pooled transporter
-  // fixes both; allSettled means one bad batch doesn't take down the rest.
-  const BATCH_SIZE = 50;
-  const batches = [];
-  for (let i = 0; i < emails.length; i += BATCH_SIZE) batches.push(emails.slice(i, i + BATCH_SIZE));
-
-  const results = await Promise.allSettled(batches.map((batch) =>
-    bulkTransporter.sendMail({
-      from:    `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
-      to:      process.env.EMAIL_USER,
-      bcc:     batch.join(','),
-      subject: 'Reminder: Please Update Your Employment Details',
-      html,
-    })
-  ));
-
-  const failed = results.filter((r) => r.status === 'rejected');
-  if (failed.length === results.length) {
-    throw failed[0].reason instanceof Error ? failed[0].reason : new Error('All reminder email batches failed to send.');
+  // One email per alumnus, addressed directly to them — not one email to
+  // OFFICE_INBOX with everyone BCC'd. BCC-batching was inherited from the
+  // old Gmail SMTP version, where it worked around Gmail's *connection*-
+  // level rate limiting; Brevo's HTTP API has no such concern, and BCC
+  // batching only made every recipient's own inbox/the sender's own log
+  // show "To: <office inbox>" instead of their own address, which is
+  // confusing and looks like the reminder never really reached them.
+  // Concurrency is still capped so a large cohort doesn't fire hundreds of
+  // requests at once.
+  const CONCURRENCY = 10;
+  const failedEmails = [];
+  let sent = 0;
+  for (let i = 0; i < emails.length; i += CONCURRENCY) {
+    const chunk = emails.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(chunk.map((email) =>
+      send({
+        to:      email,
+        subject: 'Reminder: Please Update Your Employment Details',
+        html,
+      })
+    ));
+    results.forEach((r, idx) => {
+      if (r.status === 'fulfilled') sent += 1;
+      else {
+        failedEmails.push(chunk[idx]);
+        console.error(`sendEmploymentReminderBulk failed for ${chunk[idx]}:`, r.reason?.message || r.reason);
+      }
+    });
   }
-  if (failed.length) {
-    failed.forEach((f) => console.error('sendEmploymentReminderBulk batch failed:', f.reason?.message || f.reason));
+
+  if (sent === 0 && emails.length > 0) {
+    throw new Error('Failed to send the reminder to every selected alumnus.');
   }
+  return { sent, failedEmails };
 };
 
 const sendInquiryEmail = async (fromName, fromEmail, subject, message) => {
@@ -218,9 +233,8 @@ const sendInquiryEmail = async (fromName, fromEmail, subject, message) => {
     </div>
   `;
 
-  await transporter.sendMail({
-    from:    `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
-    to:      process.env.EMAIL_USER,
+  await send({
+    to:      OFFICE_INBOX,
     replyTo: fromEmail,
     subject: `[Alumni Inquiry] ${subject}`,
     html,
@@ -252,8 +266,8 @@ const sendApplicantMessageEmail = async (to, applicantName, companyName, fromEma
     </div>
   `;
 
-  await transporter.sendMail({
-    from:    `"${companyName} via TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
+  await send({
+    from:    senderOf(`${companyName} via TSU Alumni Portal`),
     to,
     replyTo: fromEmail,
     subject,
@@ -289,8 +303,8 @@ const sendAlumniMessageEmail = async (to, recipientName, fromName, fromEmail, su
     </div>
   `;
 
-  await transporter.sendMail({
-    from:    `"${fromName} via TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
+  await send({
+    from:    senderOf(`${fromName} via TSU Alumni Portal`),
     to,
     replyTo: fromEmail,
     subject,
@@ -334,8 +348,8 @@ const sendInterviewInvitationEmail = async (to, applicantName, companyName, posi
     </div>
   `;
 
-  await transporter.sendMail({
-    from:    `"${companyName} via TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
+  await send({
+    from:    senderOf(`${companyName} via TSU Alumni Portal`),
     to,
     replyTo: fromEmail,
     subject: `Interview Invitation: ${position} at ${companyName}`,
@@ -377,12 +391,7 @@ const sendEmployerInviteEmail = async (to, link) => {
     </div>
   `;
 
-  await transporter.sendMail({
-    from: `"TSU Alumni Portal" <${process.env.EMAIL_USER}>`,
-    to,
-    subject: 'You are invited to join TSU Alumni Portal as an Employer Partner',
-    html,
-  });
+  await send({ to, subject: 'You are invited to join TSU Alumni Portal as an Employer Partner', html });
 };
 
 module.exports = { generateOTP, sendOTPEmail, sendAccountCreatedEmail, sendEmploymentReminderBulk, sendInquiryEmail, sendApplicantMessageEmail, sendAlumniMessageEmail, sendInterviewInvitationEmail, sendEmployerInviteEmail };

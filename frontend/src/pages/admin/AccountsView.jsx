@@ -14,23 +14,32 @@ function capitalize(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+// A past version of this page stuffed the middle initial into the lastName
+// field itself ("A. Thora") instead of sending the backend's own dedicated
+// middleInitial field — every admin edit re-prepended it on top of
+// whatever was already there, so some stored values have several rounds of
+// "X. " baked in ("A. A. Thora"). Stripping in a loop (not just once)
+// fully recovers those on the next load, regardless of how many edits it
+// took to get there.
 function splitStoredLastName(value = "") {
-  const normalized = String(value).trim();
-  const match = normalized.match(/^([A-Za-z])\.?\s+(.+)$/);
-  return match
-    ? { middleInitial: match[1].toUpperCase(), lastName: match[2].trim() }
-    : { middleInitial: "", lastName: normalized };
-}
-
-function joinStoredLastName(middleInitial = "", lastName = "") {
-  const initial = String(middleInitial).trim().replace(/\./g, "").slice(0, 1).toUpperCase();
-  return [initial ? `${initial}.` : "", String(lastName).trim()].filter(Boolean).join(" ");
+  let normalized = String(value).trim();
+  let middleInitial = "";
+  let match;
+  while ((match = normalized.match(/^([A-Za-z])\.?\s+(.+)$/))) {
+    middleInitial = match[1].toUpperCase();
+    normalized = match[2].trim();
+  }
+  return { middleInitial, lastName: normalized };
 }
 
 function mapUser(u) {
+  // Always derive lastName from the stripped value, never the raw
+  // u.lastName — the dedicated u.middleInitial field can't be trusted to
+  // mean "u.lastName is already clean" (see above), so there's no safe
+  // shortcut around parsing it every time.
   const parsedLastName = splitStoredLastName(u.lastName);
   const middleInitial = (u.middleInitial || parsedLastName.middleInitial || "").replace(/\./g, "").slice(0, 1).toUpperCase();
-  const lastName = u.middleInitial ? u.lastName : parsedLastName.lastName;
+  const lastName = parsedLastName.lastName;
   return {
     id:             u._id,
     firstName:      u.firstName,
@@ -488,13 +497,13 @@ export default function AccountsView() {
         onSubmit={async (data) => {
           if (entry.row) {
             try {
-              const storedLastName = joinStoredLastName(data.middleInitial, data.lastName);
               const payload = {
-                firstName: data.firstName,
-                lastName:  storedLastName,
-                email:     data.email,
-                role:      data.role.toLowerCase(),
-                status:    data.status.toLowerCase(),
+                firstName:     data.firstName,
+                middleInitial: data.middleInitial,
+                lastName:      data.lastName,
+                email:         data.email,
+                role:          data.role.toLowerCase(),
+                status:        data.status.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -531,18 +540,19 @@ export default function AccountsView() {
                   email:     json.user.email,
                 });
               }
+              const displayName = `${data.firstName} ${data.middleInitial ? `${data.middleInitial}. ` : ""}${data.lastName}`;
               showToast(json.employmentRemoved
-                ? `${data.firstName} ${storedLastName} updated. Employment record removed.`
-                : `${data.firstName} ${storedLastName} updated.`);
+                ? `${displayName} updated. Employment record removed.`
+                : `${displayName} updated.`);
             } catch { showToast("Could not connect to server."); return; }
           } else {
             try {
-              const storedLastName = joinStoredLastName(data.middleInitial, data.lastName);
               const payload = {
-                firstName: data.firstName,
-                lastName:  storedLastName,
-                email:     data.email,
-                role:      data.role.toLowerCase(),
+                firstName:     data.firstName,
+                middleInitial: data.middleInitial,
+                lastName:      data.lastName,
+                email:         data.email,
+                role:          data.role.toLowerCase(),
               };
               if (data.role.toLowerCase() === "coordinator") {
                 payload.college = data.college || "";
@@ -792,10 +802,25 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
                 maxLength={1}
                 inputMode="text"
                 aria-label="Middle initial"
+                placeholder="e.g. A"
+                // A single letter only — the "." is added automatically
+                // wherever this is displayed (mapUser's `name` field, the
+                // account list, etc.), so typing one here would just be a
+                // second, redundant period stacking on top of that.
+                onChange={(e) => { e.target.value = e.target.value.replace(/[^A-Za-z]/g, "").slice(0, 1).toUpperCase(); }}
               />
             </label>
             <label><span className="field-label">Last Name<span className="required-asterisk">*</span></span>
-              <input type="text" name="lastName" defaultValue={row?.lastName || ""} required />
+              <input
+                type="text"
+                name="lastName"
+                defaultValue={row?.lastName || ""}
+                required
+                // The middle initial has its own field/column — a period
+                // typed here would look like a (wrong) second initial
+                // embedded in the surname once displayed.
+                onChange={(e) => { e.target.value = e.target.value.replace(/\./g, ""); }}
+              />
             </label>
             <label><span className="field-label">Email<span className="required-asterisk">*</span></span>
               <input type="email" name="email" defaultValue={row?.email || ""} required />
