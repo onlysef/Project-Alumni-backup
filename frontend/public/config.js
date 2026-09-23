@@ -19,11 +19,11 @@
       ? 'http://localhost:5000/api'
       : isDevTunnel
         ? window.location.origin + '/api'
-        : 'https://project-alumni-backend.vercel.app/api',
+        : 'https://alumni-backend-production-a303.up.railway.app/api',
     APP: IS_LOCAL
       ? 'http://localhost:5173'
       : isDevTunnel
         ? window.location.origin
-        : 'https://project-alumni-frontend.vercel.app',
+        : 'https://alumni-frontend-production.up.railway.app',
   };
 })();

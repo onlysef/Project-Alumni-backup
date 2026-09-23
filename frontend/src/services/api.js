@@ -13,7 +13,7 @@ function resolveApiBase() {
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
     if (host.endsWith(".devtunnels.ms")) return `${window.location.origin}/api`;
-    if (!["localhost", "127.0.0.1"].includes(host)) return "https://project-alumni-backend.vercel.app/api";
+    if (!["localhost", "127.0.0.1"].includes(host)) return "https://alumni-backend-production-a303.up.railway.app/api";
   }
   return "http://localhost:5000/api";
 }
