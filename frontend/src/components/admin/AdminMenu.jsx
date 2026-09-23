@@ -6,6 +6,7 @@ export default function AdminMenu({ menuKey, label, onSelect }) {
   return (
     <Dropdown
       menuClassName="admin-menu"
+      portal
       options={adminMenuChoices[menuKey] || ["All"]}
       onSelect={onSelect}
       active={label}

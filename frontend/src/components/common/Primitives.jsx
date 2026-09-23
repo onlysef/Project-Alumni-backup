@@ -2,14 +2,30 @@ import React, { useState, useRef, useEffect } from "react";
 import ReactDOM from "react-dom";
 
 // Generic "click to open, click outside to close" dropdown.
-export function Dropdown({ trigger, className, options, onSelect, active, menuClassName }) {
+//
+// `portal`: render the menu into document.body with fixed positioning
+// computed from the trigger's own screen position, instead of the normal
+// absolutely-positioned-within-the-trigger approach. Every admin/coordinator
+// page body (`.content`) scrolls internally via `overflow-y: auto` with a
+// fixed height — a long option list opening from a trigger near the top of a
+// short page has no room to render within that box, so its tail end gets
+// clipped with no way to scroll to it, regardless of z-index. Escaping to
+// body sidesteps that clipping entirely. Only opt in where this has actually
+// bitten (AdminMenu) — other menu variants have their own bespoke
+// up/down-opening CSS that a blanket switch would fight with.
+export function Dropdown({ trigger, className, options, onSelect, active, menuClassName, portal = false }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
   const ref = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) {
+      if (
+        ref.current && !ref.current.contains(e.target) &&
+        !(menuRef.current && menuRef.current.contains(e.target))
+      ) {
         setOpen(false);
       }
     };
@@ -19,27 +35,49 @@ export function Dropdown({ trigger, className, options, onSelect, active, menuCl
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !portal || !ref.current) return;
+    const compute = () => {
+      const r = ref.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+    };
+    compute();
+    window.addEventListener("resize", compute);
+    window.addEventListener("scroll", compute, true);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("scroll", compute, true);
+    };
+  }, [open, portal]);
+
+  const menu = open && (
+    <div
+      ref={menuRef}
+      className={menuClassName + " show"}
+      style={portal ? { position: "fixed", top: pos?.top ?? 0, right: pos?.right ?? 0, visibility: pos ? "visible" : "hidden" } : undefined}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {options.map((label) => (
+        <button
+          key={label}
+          type="button"
+          className={label === active ? "active" : undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(false);
+            onSelect(label);
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <span ref={ref} style={{ position: "relative" }}>
       {trigger(() => setOpen((o) => !o), open)}
-      {open && (
-        <div className={menuClassName + " show"} onClick={(e) => e.stopPropagation()}>
-          {options.map((label) => (
-            <button
-              key={label}
-              type="button"
-              className={label === active ? "active" : undefined}
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                onSelect(label);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      {menu && (portal ? ReactDOM.createPortal(menu, document.body) : menu)}
     </span>
   );
 }
