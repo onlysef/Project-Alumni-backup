@@ -112,18 +112,13 @@ function buildBasePipeline({ search, status, college, course, batch_year, date_u
   const andFilters = [];
   if (search) {
     andFilters.push({
-      $or: [
-        {
-          $expr: {
-            $regexMatch: {
-              input:   { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
-              regex:   escapeRegex(search),
-              options: 'i',
-            },
-          },
+      $expr: {
+        $regexMatch: {
+          input:   { $concat: ['$alumni.firstName', ' ', '$alumni.lastName'] },
+          regex:   escapeRegex(search),
+          options: 'i',
         },
-        { company_name: { $regex: escapeRegex(search), $options: 'i' } },
-      ],
+      },
     });
   }
   if (college)     andFilters.push({ 'alumni.college':        college });
@@ -1872,12 +1867,10 @@ const getNotifyCandidates = async (req, res) => {
 // POST /api/admin/employment/notify
 const { sendEmploymentReminderBulk } = require('../utils/emailService');
 
-// Mirrors NOTIFY_ALUMNI_DISABLED in frontend/src/pages/admin/NotifyAlumniView.jsx.
-// The 254 bulk-migrated alumni accounts must not be emailed until explicitly
-// authorized — the frontend button is disabled, but that alone doesn't stop
-// a direct API call, so this is the actual enforcement point. Flip both
-// flags together when permission is granted.
-const NOTIFY_ALUMNI_DISABLED = true;
+// Mirrors NOTIFY_ALUMNI_DISABLED in the frontend NotifyAlumniView pages.
+// Permission to email the 254 bulk-migrated alumni accounts was granted —
+// this is the actual enforcement point, the frontend flags are just UI copies.
+const NOTIFY_ALUMNI_DISABLED = false;
 
 const notifyAlumniToUpdate = async (req, res) => {
   try {

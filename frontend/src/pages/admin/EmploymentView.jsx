@@ -57,7 +57,7 @@ const INDUSTRIES = [
   "Non-Profit/NGO",
   "Other",
 ];
-const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "", company: "" };
+const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "" };
 // Same fixed lists the alumni's own Employment Details form uses — kept
 // identical so an admin editing this on their behalf sees the exact same
 // choices, not a different set that silently diverges over time.
@@ -463,7 +463,6 @@ export default function EmploymentView() {
           course:       appliedFilters.course,
           batch_year:   appliedFilters.batch_year,
           date_updated: appliedFilters.date_updated,
-          company:      appliedFilters.company,
         });
         const res = await fetch(`${API}/admin/employment?${params}`, { headers: authHeaders() });
         if (cancelled) return;
@@ -943,7 +942,7 @@ export default function EmploymentView() {
           <input
             className="emp-search"
             type="text"
-            placeholder="Search by name, company…"
+            placeholder="Search by name…"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
           />
@@ -1138,15 +1137,6 @@ export default function EmploymentView() {
                 <option value="">All years</option>
                 {batchYears.map(y => <option key={y} value={y}>{y}</option>)}
               </select>
-            </label>
-            <label>
-              Company
-              <input
-                type="text"
-                placeholder="Filter by company…"
-                value={pendingFilters.company}
-                onChange={e => setPendingFilters(f => ({ ...f, company: e.target.value }))}
-              />
             </label>
             <label className="full-col">
               Date Last Updated

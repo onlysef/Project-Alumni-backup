@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "serve -s dist -l $PORT"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -15,7 +16,8 @@
     "marked": "^18.0.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.17.0"
+    "react-router-dom": "^7.17.0",
+    "serve": "^14.2.6"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",

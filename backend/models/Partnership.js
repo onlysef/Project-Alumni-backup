@@ -2,19 +2,10 @@ const mongoose = require('mongoose');
 
 const partnershipSchema = new mongoose.Schema({
   name:             { type: String, required: true, trim: true },
-  type:             { type: String, enum: [
-    'Information Technology & BPO',
-    'Manufacturing',
-    'Banking & Finance',
-    'Healthcare',
-    'Retail & Trade',
-    'Education',
-    'Government',
-    'Construction & Engineering',
-    'Hospitality & Tourism',
-    'Agriculture',
-    'Others',
-  ], required: true },
+  // Not an enum — picking "Others" in the admin/self-registration UI lets
+  // the submitter type a free-text industry name, which then becomes the
+  // stored value directly (not the literal "Others").
+  type:             { type: String, required: true, trim: true },
   // Set at self-registration (registerPartner); admin-created partnerships
   // via the Add/Edit Partnership form no longer collect this, so it can't
   // stay required or every admin-side create/update would fail validation.

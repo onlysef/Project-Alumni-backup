@@ -10,12 +10,24 @@ function escapeHtml(str) {
 
 const SMTP_CONFIG = {
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
+  // Both 465 (implicit TLS) and 587 (STARTTLS) time out identically on
+  // Railway — confirmed by testing both directly against a deployed
+  // instance. That rules out a port-specific quirk; it's Railway's network
+  // blocking outbound SMTP entirely (a common anti-abuse restriction on
+  // hobby/free-tier plans across most PaaS providers). No SMTP host/port
+  // combination fixes this from here — it needs either a paid plan with
+  // SMTP egress allowed, or switching this file to an HTTP-based email API
+  // (Resend, SendGrid, Mailgun, etc.) instead of raw SMTP. 587 is kept as
+  // the more broadly-compatible default for whichever host this ends up
+  // running on.
+  port: 587,
+  secure: false,
+  requireTLS: true,
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  family: 4,
 };
 
 // Single-send transporter (OTP, account creation)

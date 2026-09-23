@@ -4066,6 +4066,16 @@
             background: #fff;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
             z-index: 35;
+            /* A long option list (e.g. all 11 partner types) can be taller
+               than the viewport below the trigger. It's absolutely
+               positioned, so that extra height doesn't grow the page's own
+               scroll area — the tail end of the list would otherwise render
+               past the bottom of the window with no way to reach it. Capping
+               the menu's own height and scrolling inside it keeps every
+               option reachable regardless of where the trigger sits on the
+               page. */
+            max-height: min(60vh, 420px);
+            overflow-y: auto;
         }
 
         .admin-menu.show {
@@ -6568,11 +6578,13 @@
             position: relative;
         }
 
+        /* Position is set inline (see Dropdown's `portal` mode in
+           Primitives.jsx) since the menu is now portaled to document.body
+           and fixed-positioned from the trigger's own bounding rect — these
+           !important top/right rules used to fight that inline position. */
         .admin-menu {
-            top: calc(100% + 8px) !important;
-            right: 0 !important;
             min-width: 150px;
-            z-index: 200 !important;
+            z-index: 200;
         }
 
         .admin-kpis {
@@ -7570,9 +7582,6 @@
 
         .emp-filter-grid {
             display: grid;
-<<<<<<< HEAD
-            grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
-=======
             /* minmax(0, 1fr), not a bare 1fr — a grid item's default
                min-width is auto, which for a <select> resolves to its
                widest <option> text (a long college/course name). Without
@@ -7582,7 +7591,6 @@
                or truncating — exactly the "College"/"Batch Year" controls
                spilling out on a narrow phone screen. */
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
->>>>>>> c3c79e016afb073e8675232041b53338a3016e07
             gap: 14px;
             padding: 18px 20px;
         }
