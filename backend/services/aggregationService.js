@@ -230,7 +230,14 @@ const TOPIC_PATTERNS = {
   // industry field for the literal string "percentage of BSIT graduates",
   // found nothing, and surfaced the generic "I don't have enough data"
   // refusal for a question this app can answer perfectly well.
-  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|employment\s+rate|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job|porsyento|porsiyento)\b/i,
+  //
+  // (un)?employment\s+rate, not employment\s+rate — "employment rate" IS a
+  // literal substring of "unemployment rate", but the leading \b on the
+  // whole alternation can't match mid-word (there's no word boundary
+  // between "un" and "employment"), so "unemployment rate" silently missed
+  // this pattern entirely and fell all the way through to the generic "I
+  // don't have enough data" refusal instead of answering.
+  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|(un)?employment\s+rate|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job|porsyento|porsiyento)\b/i,
   overview:        /\b(tracer survey activity|tracer study activity|overview|summary|overall|general (data|info|result|stat)|show.*tracer|tracer.*result|employment\s+breakdown|employment\s+data|employment\s+statistic|buod)\b/i,
   // "What are the most/least common job positions among alumni?" — checked
   // before `industry` (job titles vs industries are different fields
@@ -334,6 +341,17 @@ const EMPLOYMENT_SIGNAL = /employ|\bjob|\bwork|\bstatus\b|\boccupation\b|\bposit
 // above warns about — that fallback exists for status/count questions, not
 // process questions that happen to mention a status-adjacent word.
 const JOB_SEARCH_METHOD_PATTERN = /\bhow\s+(did|do|does|would|can)\s+(?:\w+\s+){0,4}(find|get|land|search\s+for|secure|obtain)\b/i;
+
+// "Show me the visualization/chart/graph of X" — an explicit ask for a
+// chart alongside whatever answer text the question would otherwise get.
+// Currently wired into queryRate() only (the reported case: the overall
+// employment/unemployment rate is a single derived percentage with no
+// natural chart of its own, unlike a by-program/by-year breakdown, which
+// already always charts regardless of whether a visualization was asked
+// for) — not yet applied to every other plain-text-only answer path in this
+// file. Extend the same wantsChart wiring to other handlers if those need
+// on-request charts too.
+const VISUALIZATION_REQUEST_PATTERN = /\b(visuali[sz]e|visuali[sz]ation|chart|graph|plot|pie\s*(chart|graph)?)\b/i;
 
 function detectTopic(question) {
   question = normalizeQuestion(question);
@@ -3588,13 +3606,39 @@ async function computeEmploymentRate(filters) {
   return { total, formal, selfEmp, employed };
 }
 
-async function queryRate(filters) {
+// asUnemployment: the question asked for the UNemployment rate specifically
+// ("unemployment rate of alumni") — set by the 'rate' dispatcher checking
+// for "unemploy(ed/ment)" in the raw question text. Without this, every
+// call here answered with employment-rate phrasing regardless of which one
+// was actually asked; worse, before the 'rate' TOPIC_PATTERNS fix (see its
+// own comment), "unemployment rate" didn't even reach this function at all
+// — the \b word-boundary before "employment rate" can't match mid-word, so
+// it silently fell through detectTopic() with no topic and surfaced the
+// generic "I don't have enough data" refusal instead of an answer.
+// wantsChart: set by the 'rate' dispatcher when the question explicitly
+// asks for a visualization/chart/graph (VISUALIZATION_REQUEST_PATTERN) —
+// this is otherwise a single derived percentage with no natural chart of
+// its own, so "show me the visualization of alumni employment rate" used
+// to answer with plain text and no chart at all, ignoring half the request.
+async function queryRate(filters, asUnemployment = false, wantsChart = false) {
   const stats = await computeEmploymentRate(filters);
   if (!stats) return null;
   const { total, formal, selfEmp, employed } = stats;
+  const unemployed = total - employed;
 
   const lbl = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
+
+  if (asUnemployment) {
+    const text = `The unemployment rate of ${gPrefix}graduates${lbl} is **${pct(unemployed, total)}** (${unemployed} out of ${total} respondents not currently employed or self-employed).`;
+    if (!wantsChart) return text;
+    const chartRows = [
+      { _id: 'Employed', count: employed },
+      { _id: 'Unemployed', count: unemployed },
+    ].filter(r => r.count > 0);
+    return withChart(text, { type: 'donut', title: 'Employment Status', rows: chartRows });
+  }
+
   const breakdown = filters.excludeSelfEmployed
     ? `${formal} formally employed, self-employed not counted`
     : `${employed}, made up of ${formal} formally employed + ${selfEmp} self-employed`;
@@ -3615,6 +3659,21 @@ async function queryRate(filters) {
     ].filter(r => r.count > 0);
     return withChart(text, { type: 'donut', title: 'Employed + Self-Employed', rows: chartRows });
   }
+
+  if (wantsChart) {
+    const chartRows = (filters.excludeSelfEmployed
+      ? [
+          { _id: 'Formally Employed', count: formal },
+          { _id: 'Not Employed', count: total - formal },
+        ]
+      : [
+          { _id: 'Formally Employed', count: formal },
+          { _id: 'Self-Employed', count: selfEmp },
+          { _id: 'Not Employed', count: unemployed },
+        ]).filter(r => r.count > 0);
+    return withChart(text, { type: 'donut', title: 'Employment Status', rows: chartRows });
+  }
+
   return text;
 }
 
@@ -4856,7 +4915,7 @@ async function queryInner(question, seedFilters = {}) {
       ? querySimpleRate(filters, { industry: { $regex: filters.industry, $options: 'i' } }, `work in ${filters.industry}`)
       : filters.excludeIndustry
       ? querySimpleRate(filters, { industry: { $nin: [null, ''], $not: { $regex: filters.excludeIndustry, $options: 'i' } } }, `do NOT work in ${filters.excludeIndustry}`)
-      : queryRate(filters),
+      : queryRate(filters, /\bunemploy(ed|ment)?\b/i.test(question), VISUALIZATION_REQUEST_PATTERN.test(question)),
     overview:        () => /\bby\s+(program|course)\b/i.test(question) ? queryByProgram(filters)
       : /\bby\s+(batch|year|graduation)\b/i.test(question) ? queryByYear(filters)
       : /\bemployment\s+(breakdown|data|statistic)/i.test(question) ? queryEmployment(filters)

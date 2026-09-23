@@ -8,7 +8,7 @@ const ACTION_ICONS = {
   view:     "icon-20",
   edit:     "icon-18",
   delete:   "icon-delete",
-  print:    "icon-19",
+  print:    "icon-download",
   approve:  "icon-13",
   reject:   "icon-9",
   complete: "icon-13",

@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
+import { jsPDF } from "jspdf";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal } from "../../components/common/Primitives.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
@@ -668,17 +669,18 @@ export default function EmploymentView() {
 
   // Takes just the bare row (only _id/name guaranteed) and fetches the full
   // record + that college's live form config itself — this used to only
-  // print whatever the caller already had in hand, so the row-level "quick
-  // print" button (which only ever loaded the bare list row) silently
-  // printed an incomplete record with no picture, no tracer pages, and no
-  // resume, while printing from inside the Alumni Record modal looked
-  // complete. Fetching fresh here every time makes both entry points
-  // produce the exact same, always-complete printout.
+  // download whatever the caller already had in hand, so the row-level
+  // "quick download" button (which only ever loaded the bare list row)
+  // silently produced an incomplete record with no picture, no tracer
+  // pages, and no resume, while downloading from inside the Alumni Record
+  // modal looked complete. Fetching fresh here every time makes both entry
+  // points produce the exact same, always-complete PDF.
+  //
+  // Built with jsPDF's text APIs directly (not an HTML-to-canvas
+  // rasterization or the browser print dialog) — same pattern as
+  // downloadResumePdf in JobConnect.jsx — so it's a real, crisp,
+  // selectable-text PDF that downloads in one click via doc.save().
   async function printRecord(rowRecord) {
-    const w  = window.open("", "_blank");
-    if (!w) { showToast(`${rowRecord.name} record is ready to print.`); return; }
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Alumni Record — ${rowRecord.name}</title></head><body style="font-family:Arial,sans-serif;padding:40px;color:#570013">Loading full record…</body></html>`);
-
     let r;
     try {
       const res = await fetch(`${API}/admin/employment/${rowRecord._id}`, { headers: authHeaders() });
@@ -686,8 +688,7 @@ export default function EmploymentView() {
       if (!res.ok) throw new Error(data.message || "Failed to load record.");
       r = data.record;
     } catch (err) {
-      w.close();
-      showToast(err.message || "Could not load the full record to print.");
+      showToast(err.message || "Could not load the full record to download.");
       return;
     }
 
@@ -697,13 +698,12 @@ export default function EmploymentView() {
         const cfgRes  = await fetch(`${API}/admin/tracer-form-config?college=${encodeURIComponent(r.college)}`, { headers: authHeaders() });
         const cfgData = await cfgRes.json();
         config = cfgData.config || null;
-      } catch { /* prints without dynamic tracer sections if this fails */ }
+      } catch { /* downloads without dynamic tracer sections if this fails */ }
     }
 
     const td     = r.tracer_data || null;
     const resume = r.resume || null;
 
-    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const fmt = (v) => {
       if (v === undefined || v === null || v === "") return "";
       if (Array.isArray(v)) return v.join(", ");
@@ -711,53 +711,63 @@ export default function EmploymentView() {
       return String(v);
     };
     const fmtList = (v) => String(v || "").split(/[,;\n]/).map((s) => s.trim()).filter(Boolean).join(", ");
-    const row    = (label, value) => { const v = fmt(value); return v ? `<tr><th>${esc(label)}</th><td>${esc(v)}</td></tr>` : ""; };
-    const rowPre = (label, value) => { const v = fmt(value); return v ? `<tr><th>${esc(label)}</th><td style="white-space:pre-line">${esc(v)}</td></tr>` : ""; };
-
     const answerFor = (q) => {
       if (!td) return undefined;
       if (Object.prototype.hasOwnProperty.call(td, q.id)) return td[q.id];
       return td.extra_answers?.[q.id];
     };
 
-    const section = (title, rowsHtml) => rowsHtml
-      ? `<div class="card"><h2>${esc(title)}</h2><table>${rowsHtml}</table></div>`
-      : "";
+    const doc = new jsPDF({ unit: "pt", format: "letter" });
+    const marginX = 50;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const contentWidth = pageWidth - marginX * 2;
+    const labelColWidth = 150;
+    let y = 50;
 
-    let tracerSectionsHtml = "";
-    if (td && config) {
-      tracerSectionsHtml = config.pages.map((page) => {
-        const rowsHtml = (page.questions || [])
-          .filter((q) => q.type !== "static_text")
-          .map((q) => {
-            if (q.type === "rating_table") {
-              const val = answerFor(q);
-              if (!val || !Object.values(val).some(Boolean)) return "";
-              const sub = (q.rows || [])
-                .filter((rr) => val[rr.key])
-                .map((rr) => `<tr><td>${esc(rr.label)}</td><td><strong>${esc(val[rr.key])}</strong></td></tr>`)
-                .join("");
-              return sub ? `<tr><th colspan="2" style="background:#f0dfe2;color:#570013;width:auto">${esc(q.label)}</th></tr>${sub}` : "";
-            }
-            return row(q.label, answerFor(q));
-          })
-          .filter(Boolean)
-          .join("");
-        return section(page.title, rowsHtml);
-      }).join("");
+    function ensureSpace(need) {
+      if (y + need > pageHeight - 50) {
+        doc.addPage();
+        y = 50;
+      }
     }
 
-    const resumeRows = resume ? [
-      row("LinkedIn", resume.linkedin),
-      rowPre("Summary", resume.summary),
-      row("Skills", fmtList(resume.skills)),
-      rowPre("Experience", resume.experience),
-      rowPre("Education", resume.education),
-      rowPre("Certifications", resume.certifications),
-      rowPre("Projects", resume.projects),
-      row("Languages", fmtList(resume.languages)),
-    ].filter(Boolean).join("") : "";
-    const resumeHtml = section("Profile / Resume", resumeRows);
+    // Single label/value row — skips itself entirely when empty, same as
+    // the old row()/rowPre() helpers, since a section shouldn't show a
+    // blank line for a field the alumnus never answered. pre=true keeps
+    // the value's own line breaks (matching white-space:pre-line in the
+    // old HTML version) instead of treating it as one wrappable paragraph.
+    function field(label, value, pre = false) {
+      const v = fmt(value);
+      if (!v) return;
+      const valueWidth = contentWidth - labelColWidth;
+      const wrapped = pre
+        ? v.split("\n").map((l) => l.trim()).filter(Boolean).flatMap((l) => doc.splitTextToSize(l, valueWidth))
+        : doc.splitTextToSize(v, valueWidth);
+      ensureSpace(Math.max(14, wrapped.length * 13));
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(138, 115, 119);
+      doc.text(label, marginX, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(45, 32, 36);
+      doc.text(wrapped, marginX + labelColWidth, y);
+      y += Math.max(14, wrapped.length * 13);
+    }
+
+    function sectionHeading(title) {
+      ensureSpace(28);
+      y += 6;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(11.5);
+      doc.setTextColor(87, 0, 19);
+      doc.text(title.toUpperCase(), marginX, y);
+      y += 5;
+      doc.setDrawColor(240, 223, 226);
+      doc.line(marginX, y, pageWidth - marginX, y);
+      y += 14;
+    }
 
     const isUnemployed = r.employment_status === "Unemployed";
     const isNoRecord   = r.employment_status === "Not Yet Updated";
@@ -767,81 +777,106 @@ export default function EmploymentView() {
     const jrd = String(td?.jobRelatedToDegree || "").toLowerCase().trim();
     const related = td?.jobRelatedToDegree ? (jrd.startsWith("yes") ? "Yes" : "No") : (r.job_related_to_course ? "Yes" : "No");
 
-    const initials = (r.name || "").split(" ").filter(Boolean).slice(0, 2).map((s) => s[0]?.toUpperCase()).join("") || "?";
-    const avatarHtml = r.avatarUrl
-      ? `<img src="${r.avatarUrl}" alt="" style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.3)" />`
-      : `<div style="width:88px;height:88px;border-radius:50%;background:#fff;color:#570013;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;border:3px solid #fff">${esc(initials)}</div>`;
+    // ── Header ───────────────────────────────────────────────────────────
+    doc.setFillColor(87, 0, 19);
+    doc.rect(0, 0, pageWidth, 74, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(255, 255, 255);
+    doc.text(r.name || "", marginX, 34);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10.5);
+    doc.setTextColor(255, 255, 255);
+    const subtitle = [r.college, r.course, r.graduation_year ? `Batch ${r.graduation_year}` : ""].filter(Boolean).join("  ·  ");
+    doc.text(subtitle, marginX, 51);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.text((r.employment_status || "Not Yet Updated").toUpperCase(), marginX, 66);
+    y = 100;
 
-    const contactRows = [
-      row("Email", r.contact_email || r.email),
-      row("Contact Number", r.contact_number),
-      row("Facebook", r.facebook),
-      row("LinkedIn", r.linkedin),
-    ].filter(Boolean).join("");
-    const contactHtml = section("Contact Information", contactRows);
+    // ── Contact Information ─────────────────────────────────────────────
+    if (fmt(r.contact_email || r.email) || fmt(r.contact_number) || fmt(r.facebook) || fmt(r.linkedin)) {
+      sectionHeading("Contact Information");
+      field("Email", r.contact_email || r.email);
+      field("Contact Number", r.contact_number);
+      field("Facebook", r.facebook);
+      field("LinkedIn", r.linkedin);
+      y += 6;
+    }
 
-    const summaryRows = [
-      !isUnemployed && !isNoRecord ? row("Company Name", td?.companyName || r.company_name) : "",
-      !isUnemployed && !isNoRecord ? row("Job Title", jobTitle) : "",
-      !isUnemployed && !isNoRecord ? row("Industry", industry) : "",
-      !isUnemployed && !isNoRecord ? row("Work Location", workLoc) : "",
-      !isUnemployed && !isNoRecord ? row("Employment Type", td?.presentEmploymentType || r.employment_type) : "",
-      !isUnemployed && !isNoRecord ? row("Years in Job", td?.yearsInCurrentJob || r.years_in_current_job) : "",
-      !isUnemployed && !isNoRecord ? row("Related to Course", related) : "",
-      !isUnemployed && !isNoRecord ? row("Salary Range", r.salary_range) : "",
-      !isUnemployed && !isNoRecord && r.date_employed ? row("Date Employed", fmtDate(r.date_employed)) : "",
-      isUnemployed ? row("Reason Unemployed", r.reason_unemployed) : "",
-      row("Last Updated", fmtDate(r.last_updated)),
-    ].filter(Boolean).join("");
+    // ── Employment Summary ──────────────────────────────────────────────
+    const summaryFields = [
+      !isUnemployed && !isNoRecord ? ["Company Name", td?.companyName || r.company_name] : null,
+      !isUnemployed && !isNoRecord ? ["Job Title", jobTitle] : null,
+      !isUnemployed && !isNoRecord ? ["Industry", industry] : null,
+      !isUnemployed && !isNoRecord ? ["Work Location", workLoc] : null,
+      !isUnemployed && !isNoRecord ? ["Employment Type", td?.presentEmploymentType || r.employment_type] : null,
+      !isUnemployed && !isNoRecord ? ["Years in Job", td?.yearsInCurrentJob || r.years_in_current_job] : null,
+      !isUnemployed && !isNoRecord ? ["Related to Course", related] : null,
+      !isUnemployed && !isNoRecord ? ["Salary Range", r.salary_range] : null,
+      !isUnemployed && !isNoRecord && r.date_employed ? ["Date Employed", fmtDate(r.date_employed)] : null,
+      isUnemployed ? ["Reason Unemployed", r.reason_unemployed] : null,
+      ["Last Updated", fmtDate(r.last_updated)],
+    ].filter((f) => f && fmt(f[1]));
+    if (summaryFields.length) {
+      sectionHeading("Employment Summary");
+      summaryFields.forEach(([l, v]) => field(l, v));
+      y += 6;
+    }
 
-    // A second document.write() on an already-closed stream would just
-    // append after "Loading full record…" instead of replacing it —
-    // document.open() resets the stream so this write starts clean.
-    w.document.open();
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>Alumni Record — ${esc(r.name)}</title>
-<style>
-  @media print { @page { margin: 14mm; } .card { break-inside: avoid; page-break-inside: avoid; } }
-  * { box-sizing: border-box; }
-  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
-  body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;margin:0;color:#2d2024;background:#f5eef0;font-size:13px;line-height:1.5}
-  .sheet{max-width:820px;margin:0 auto;background:#fff}
-  .banner{display:flex;align-items:center;gap:20px;background:linear-gradient(135deg,#570013 0%,#8b1a2e 100%);color:#fff;padding:26px 30px}
-  .banner h1{margin:0;font-size:21px;letter-spacing:.01em}
-  .banner p{margin:5px 0 0;font-size:13px;opacity:.85}
-  .badge{display:inline-block;margin-top:9px;padding:4px 13px;border-radius:999px;font-weight:800;font-size:11px;letter-spacing:.03em;background:#fff;color:#570013}
-  .content{padding:24px 30px 8px}
-  .card{background:#fff;border:1px solid #f0dfe2;border-radius:10px;padding:2px 0 0;margin-bottom:16px;overflow:hidden;box-shadow:0 1px 3px rgba(87,0,19,.06)}
-  h2{color:#570013;font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;background:#faf5f5;padding:9px 16px;margin:0;border-bottom:1px solid #f0dfe2}
-  table{border-collapse:collapse;width:100%}
-  th,td{padding:8px 16px;text-align:left;font-size:12.5px;vertical-align:top;border-bottom:1px solid #f5eaea}
-  th{color:#8a7377;font-weight:700;width:210px}
-  td{color:#2d2024}
-  tr:last-child th, tr:last-child td { border-bottom: none; }
-  tr:nth-child(even) th, tr:nth-child(even) td { background:#fcf8f8; }
-  .footer{margin:10px 0 26px;padding-top:12px;border-top:1px solid #eee;font-size:11px;color:#9a8080;text-align:center}
-</style></head><body>
-  <div class="sheet">
-    <div class="banner">
-      ${avatarHtml}
-      <div>
-        <h1>${esc(r.name)}</h1>
-        <p>${esc(r.college || "")}${r.college ? " · " : ""}${esc(r.course || "")}${r.graduation_year ? ` · Batch ${r.graduation_year}` : ""}</p>
-        <span class="badge">${esc(r.employment_status || "Not Yet Updated")}</span>
-      </div>
-    </div>
-    <div class="content">
-      ${contactHtml}
-      ${section("Employment Summary", summaryRows)}
-      ${resumeHtml}
-      ${tracerSectionsHtml}
-      <div class="footer">Printed ${new Date().toLocaleString("en-PH")} — Tarlac State University Alumni Portal</div>
-    </div>
-  </div>
-</body></html>`);
-    w.document.close();
-    w.print();
-    showToast(`${r.name} record sent to printer.`);
+    // ── Profile / Resume ─────────────────────────────────────────────────
+    if (resume) {
+      const resumeFields = [
+        ["LinkedIn", resume.linkedin, false],
+        ["Summary", resume.summary, true],
+        ["Skills", fmtList(resume.skills), false],
+        ["Experience", resume.experience, true],
+        ["Education", resume.education, true],
+        ["Certifications", resume.certifications, true],
+        ["Projects", resume.projects, true],
+        ["Languages", fmtList(resume.languages), false],
+      ].filter(([, v]) => fmt(v));
+      if (resumeFields.length) {
+        sectionHeading("Profile / Resume");
+        resumeFields.forEach(([l, v, pre]) => field(l, v, pre));
+        y += 6;
+      }
+    }
+
+    // ── Dynamic tracer sections (per this college's live form) ─────────
+    if (td && config) {
+      config.pages.forEach((page) => {
+        const pageFields = [];
+        (page.questions || [])
+          .filter((q) => q.type !== "static_text")
+          .forEach((q) => {
+            if (q.type === "rating_table") {
+              const val = answerFor(q);
+              if (!val || !Object.values(val).some(Boolean)) return;
+              (q.rows || []).filter((rr) => val[rr.key]).forEach((rr) => pageFields.push([rr.label, val[rr.key]]));
+              return;
+            }
+            const v = answerFor(q);
+            if (fmt(v)) pageFields.push([q.label, v]);
+          });
+        if (pageFields.length) {
+          sectionHeading(page.title);
+          pageFields.forEach(([l, v]) => field(l, v));
+          y += 6;
+        }
+      });
+    }
+
+    // ── Footer ───────────────────────────────────────────────────────────
+    ensureSpace(20);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8.5);
+    doc.setTextColor(154, 128, 128);
+    doc.text(`Generated ${new Date().toLocaleString("en-PH")} — Tarlac State University Alumni Portal`, pageWidth / 2, pageHeight - 24, { align: "center" });
+
+    const filename = (r.name || "alumni-record").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    doc.save(`${filename}-record.pdf`);
+
     fetch(`${API}/admin/employment/log-print`, {
       method: "POST", headers: authHeaders(), body: JSON.stringify({ alumni_name: r.name }),
     }).catch(() => {});
@@ -1001,14 +1036,14 @@ export default function EmploymentView() {
                       <button
                         type="button"
                         className="table-icon table-print"
-                        aria-label="Print record"
+                        aria-label="Download record"
                         onClick={() => setConfirm({
                           open: true,
-                          message: `Print employment record for ${r.name}?`,
+                          message: `Download employment record for ${r.name}?`,
                           onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
                         })}
                       >
-                        <span><Icon name="icon-19" /></span>
+                        <span><Icon name="icon-download" /></span>
                       </button>
                       <button
                         type="button"
@@ -1029,7 +1064,7 @@ export default function EmploymentView() {
                           }
                           setConfirm({
                             open: true,
-                            message: `Print employment record for ${r.name}?`,
+                            message: `Download employment record for ${r.name}?`,
                             onConfirm: () => { setConfirm(c => ({ ...c, open: false })); printRecord(r); },
                           });
                         }}
@@ -1319,7 +1354,7 @@ export default function EmploymentView() {
 
               <div className="modal-actions record-actions">
                 <button type="button" onClick={() => setViewRecord(null)}>Close</button>
-                <button type="button" onClick={() => printRecord(viewRecord)}>Print Record</button>
+                <button type="button" onClick={() => printRecord(viewRecord)}>Download Record</button>
                 <button
                   type="button"
                   style={{ background: "var(--maroon)", color: "#fff" }}

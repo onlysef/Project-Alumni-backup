@@ -8,8 +8,8 @@ img.admin-svg-icon {
   mask: none !important;
   object-fit: contain;
   display: inline-block;
-  width: 18px;
-  height: 18px;
+  width: 18px !important;
+  height: 18px !important;
   flex: 0 0 auto;
   max-width: 100%;
   max-height: 100%;
@@ -23,8 +23,49 @@ img.admin-svg-icon {
 .post-actions img.admin-svg-icon,
 .composer-tool-btn img.admin-svg-icon,
 .icon-btn img.admin-svg-icon {
-  width: 18px;
-  height: 18px;
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* The "blob bug" (an unconstrained <img> filling its whole button as a
+   solid square) has resurfaced specifically on the print/view action
+   buttons despite the rules above — forcing it here too, since something
+   with higher specificity than we could track down is still winning for
+   this pair. Filled maroon buttons with a white icon (rather than a maroon
+   icon on transparent) — matches .maroon-action's filled-button look
+   elsewhere in the admin UI, and forcing white via filter sidesteps the
+   two source SVGs having different hardcoded stroke colors (#570013 vs
+   #ffffff) that would otherwise look inconsistent against the same fill. */
+.table-icon.table-print,
+.table-icon.table-view {
+  background: var(--maroon) !important;
+  /* Flex/grid centering on the button and its <span> wrapper still left a
+     visible offset — likely the inline <img>'s baseline "phantom"
+     whitespace fighting the centering at this size. Absolute-positioning
+     the icon dead center of the button, independent of the <span>'s own
+     layout, removes any room for that to happen. */
+  position: relative;
+}
+
+.table-icon.table-print > span,
+.table-icon.table-view > span {
+  position: static;
+}
+
+.table-icon.table-print img.admin-svg-icon,
+.table-icon.table-view img.admin-svg-icon {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 18px !important;
+  height: 18px !important;
+  max-width: 18px !important;
+  max-height: 18px !important;
+  margin: 0 !important;
+  background: transparent !important;
+  filter: brightness(0) invert(1);
+  display: block;
 }
 
 .maroon-action img.admin-svg-icon,

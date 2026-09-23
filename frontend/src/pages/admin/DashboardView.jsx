@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from "react";
-import { useOutletContext, useNavigate } from "react-router-dom";
+import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Dropdown } from "../../components/common/Primitives.jsx";
 
@@ -24,7 +24,6 @@ const cachedPostActivities = new Map(); // keyed by activityWindow ("24"/"168"/"
 
 export default function DashboardView() {
   const { showToast } = useOutletContext();
-  const navigate = useNavigate();
   const [totalUsers, setTotalUsers]   = useState(cachedTotalUsers);
   const [activeCount, setActiveCount] = useState(cachedActiveCount);
   const [inactiveCount, setInactiveCount] = useState(cachedInactiveCount);
@@ -69,28 +68,19 @@ export default function DashboardView() {
     const cached = cachedPostActivities.get(activityWindow);
     if (cached) { setPostActivities(cached); setActivitiesLoading(false); }
     else setActivitiesLoading(true);
+    // Admin actions (export/print/etc.) + alumni tracer submissions —
+    // deliberately not post like/comment/share activity, which belongs in
+    // the notification bell instead of this feed.
     async function fetchActivities() {
       try {
         const limit = activityWindow === "all" ? 50 : 25;
-        const [postRes, empRes] = await Promise.all([
-          fetch(`${API}/admin/announcements/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() }),
-          fetch(`${API}/admin/employment/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() })
-        ]);
-
-        if ((!postRes.ok && !empRes.ok) || cancelled) return;
-
-        const postData = postRes.ok ? await postRes.json() : { activities: [] };
-        const empData = empRes.ok ? await empRes.json() : { activities: [] };
-
-        const allActivities = [
-          ...(postData.activities || []).map(a => ({ ...a, type: 'post' })),
-          ...(empData.activities || []).map(a => ({ ...a, type: 'employment' }))
-        ];
-
+        const res = await fetch(`${API}/admin/employment/activity?hours=${activityWindow}&limit=${limit}`, { headers: authHeaders() });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
         if (!cancelled) {
-          const sorted = allActivities.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, limit);
-          cachedPostActivities.set(activityWindow, sorted);
-          setPostActivities(sorted);
+          const activities = data.activities || [];
+          cachedPostActivities.set(activityWindow, activities);
+          setPostActivities(activities);
         }
       } catch {} finally {
         if (!cancelled) setActivitiesLoading(false);
@@ -180,23 +170,11 @@ export default function DashboardView() {
                   {activityWindow === "all" ? "No activity history yet." : "No activity in this period."}
                 </div>
               ) : postActivities.map((a) => (
-                <div
-                  className="activity"
-                  key={a._id}
-                  role={a.type === 'post' ? "button" : "status"}
-                  tabIndex={a.type === 'post' ? 0 : -1}
-                  onClick={() => a.type === 'post' && a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } })}
-                  onKeyDown={(e) => { if (a.type === 'post' && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); a.announcement_id && navigate("/admin/announcements", { state: { postId: String(a.announcement_id) } }); } }}
-                  style={{ cursor: a.type === 'post' ? 'pointer' : 'default' }}
-                >
+                <div className="activity" key={a._id} role="status">
                   <p>
                     <strong>{a.user_name}</strong>{" "}
                     {a.action}{" "}
-                    {a.type === 'post' ? (
-                      <em style={{ fontStyle: "normal" }}>&ldquo;{a.announcement_title}&rdquo;</em>
-                    ) : (
-                      <em style={{ fontStyle: "normal" }}>{a.target_name || a.details || ''}</em>
-                    )}
+                    <em style={{ fontStyle: "normal" }}>{a.target_name || a.details || ''}</em>
                   </p>
                   <time dateTime={a.createdAt}>{timeAgo(a.createdAt)}</time>
                 </div>

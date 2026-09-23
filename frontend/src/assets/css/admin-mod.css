@@ -4838,21 +4838,21 @@
             flex: 1;
             min-height: 36px;
             border: 0;
-            border-bottom: 1px solid rgba(255,255,255,0.25);
+            border-bottom: 1px solid rgba(87, 0, 19, 0.2);
             background: transparent;
-            color: #e8ecef;
+            color: #2d2024;
             font: inherit;
             font-size: 14px;
             padding: 0 4px;
         }
 
         .location-row input::placeholder {
-            color: rgba(255,255,255,0.4);
+            color: #9a8080;
         }
 
         .location-row input:focus {
             outline: none;
-            border-bottom-color: rgba(255,255,255,0.6);
+            border-bottom-color: var(--maroon);
         }
 
         .location-clear {
@@ -4860,7 +4860,7 @@
             height: 24px;
             border: 0;
             background: transparent;
-            color: rgba(255,255,255,0.5);
+            color: #9a8080;
             font-size: 18px;
             cursor: pointer;
             display: grid;
@@ -6716,6 +6716,12 @@
             white-space: pre-wrap;
         }
 
+        .post-viewer-location {
+            margin: -4px 0 0;
+            font-size: 13px;
+            color: #76656a;
+        }
+
         .post-viewer-actions {
             display: flex;
             gap: 8px;
@@ -6940,6 +6946,10 @@
 
         body.dark-mode .post-viewer-text {
             color: #f3e7ea;
+        }
+
+        body.dark-mode .post-viewer-location {
+            color: #c9a6ac;
         }
 
         body.dark-mode .post-viewer-actions {
@@ -8625,7 +8635,7 @@
             }
 
             .employment-table td[data-label="Actions"] {
-                justify-items: start;
+                justify-items: center;
             }
 
             .employment-table td[data-label="Actions"]::before {
