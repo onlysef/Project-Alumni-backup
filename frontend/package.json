@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "serve -s dist -l $PORT"
+    "start": "serve -s dist -c serve.json -l $PORT"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
