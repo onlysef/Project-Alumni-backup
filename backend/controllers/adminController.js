@@ -622,7 +622,7 @@ const resendCredentials = async (req, res) => {
 
 const getNotifications = async (req, res) => {
   try {
-    const [pendingUsers, empActivity, pendingPartners, recentAnnouncements, pendingAppointments] = await Promise.all([
+    const [pendingUsers, postActivity, pendingPartners, recentAnnouncements, pendingAppointments] = await Promise.all([
       // Only 'employer' — an alumni/coordinator's 'pending' status just means
       // they haven't logged in yet (it self-clears on first login, see
       // authController.login), so surfacing it here as something needing
@@ -630,7 +630,7 @@ const getNotifications = async (req, res) => {
       // where it's real: login is blocked until an admin approves them.
       User.find({ role: 'employer', status: 'pending' })
         .select('firstName lastName company createdAt').sort({ createdAt: -1 }).limit(5).lean(),
-      EmploymentActivity.find()
+      ActivityLog.find()
         .sort({ createdAt: -1 }).limit(5).lean(),
       Partnership.find({ status: 'Pending' })
         .select('name createdAt').sort({ createdAt: -1 }).limit(5).lean(),
@@ -648,7 +648,7 @@ const getNotifications = async (req, res) => {
         body: `${u.company || `${u.firstName} ${u.lastName}`} is waiting for account approval.`,
         createdAt: u.createdAt,
       })),
-      ...empActivity.map(a => ({
+      ...postActivity.map(a => ({
         resource_id: a.announcement_id || a._id,
         type: a.action === 'liked' ? 'like' : a.action === 'shared' ? 'share' : 'comment',
         title: a.action === 'liked' ? 'New post like' : a.action === 'shared' ? 'Post shared' : 'New post comment',
