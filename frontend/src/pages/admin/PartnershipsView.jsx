@@ -4,8 +4,7 @@ import Icon from "../../components/common/Icon.jsx";
 import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
-import { partnerActionList, actionLabels } from "../../data.js";
-import { COLLEGE_CODES, COLLEGE_NAMES } from "../../constants/colleges.js";
+import { partnerActionList, actionLabels, adminMenuChoices } from "../../data.js";
 
 import { API, authHeaders } from "../../services/api.js";
 
@@ -390,9 +389,18 @@ function EmployerInviteModal({ open, onClose, onSent, showToast }) {
   );
 }
 
+const PARTNER_TYPES = adminMenuChoices["partner-type"].filter((t) => t !== "All");
+
 function PartnershipModal({ entry, onClose, onSubmit }) {
+  const row = entry?.row;
+  // A saved type outside the preset list (from a prior "Others" submission)
+  // means the dropdown should reopen on "Others" with that value pre-filled,
+  // not silently fall back to the first preset option.
+  const rowTypeIsCustom = !!row?.type && !PARTNER_TYPES.includes(row.type);
+  const [typeChoice, setTypeChoice] = useState(rowTypeIsCustom ? "Others" : (row?.type || PARTNER_TYPES[0]));
+  const [customType, setCustomType] = useState(rowTypeIsCustom ? row.type : "");
+
   if (!entry) return null;
-  const row     = entry.row;
   const mode    = entry.mode || (row ? "edit" : "add");
   const isView  = mode === "view";
   const title   = isView ? "View Partnership" : row ? "Edit Partnership" : "Add Partnership";
@@ -435,7 +443,7 @@ function PartnershipModal({ entry, onClose, onSubmit }) {
             onSubmit({
               name:        f.name.value.trim(),
               contact:     f.contact.value.trim(),
-              type:        f.type.value,
+              type:        typeChoice === "Others" ? customType.trim() : typeChoice,
               status:      f.status.value,
               description: f.description.value.trim(),
             });
@@ -448,13 +456,24 @@ function PartnershipModal({ entry, onClose, onSubmit }) {
             <label>Contact Email
               <input type="email" name="contact" defaultValue={row?.contact || ""} required />
             </label>
-            <label>College
-              <select name="type" defaultValue={row?.type || "College of Computer Studies"}>
-                {COLLEGE_CODES.map((code) => (
-                  <option key={code} value={COLLEGE_NAMES[code]}>{COLLEGE_NAMES[code]}</option>
+            <label>Type
+              <select name="type" value={typeChoice} onChange={(e) => setTypeChoice(e.target.value)}>
+                {PARTNER_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
                 ))}
               </select>
             </label>
+            {typeChoice === "Others" && (
+              <label>Please specify
+                <input
+                  type="text"
+                  value={customType}
+                  onChange={(e) => setCustomType(e.target.value)}
+                  placeholder="Enter partner type"
+                  required
+                />
+              </label>
+            )}
             <label>Status
               <select name="status" defaultValue={row?.status === "Archived" ? "Archived" : "Active"}>
                 <option>Active</option>
