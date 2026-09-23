@@ -5,7 +5,7 @@ import { API, authHeaders } from "../../services/api.js";
 
 const STATUSES = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
 
-const EMPTY_FILTERS = { search: "", status: "", course: "", batch_year: "", company: "" };
+const EMPTY_FILTERS = { search: "", status: "", course: "", batch_year: "" };
 
 // Same shape as the admin Export Alumni Record page, minus the College
 // filter — every /coordinator/employment* route already force-scopes
@@ -83,7 +83,7 @@ export default function ExportEmploymentListView() {
           <input
             className="emp-search"
             type="text"
-            placeholder="Search by name, company…"
+            placeholder="Search by name…"
             value={filters.search}
             onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
           />
@@ -118,15 +118,6 @@ export default function ExportEmploymentListView() {
               <option value="">All years</option>
               {batchYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
-          </label>
-          <label>
-            Company
-            <input
-              type="text"
-              placeholder="Filter by company…"
-              value={filters.company}
-              onChange={e => setFilters(f => ({ ...f, company: e.target.value }))}
-            />
           </label>
         </div>
 

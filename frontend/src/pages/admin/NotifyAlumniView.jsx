@@ -5,12 +5,10 @@ import { ConfirmDialog } from "../../components/common/Primitives.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { COLLEGE_CODES as COLLEGES, COLLEGE_NAMES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
-// Temporary: the 254 bulk-migrated alumni accounts must not be emailed until
-// explicitly authorized. Flip back to false once that permission is granted.
-// The backend has its own copy of this same flag (the real enforcement
-// point — see notifyAlumniToUpdate in employmentController.js), so leaving
-// this true is a UI convenience, not the only thing stopping a send.
-const NOTIFY_ALUMNI_DISABLED = true;
+// Permission to email the 254 bulk-migrated alumni accounts was granted —
+// see notifyAlumniToUpdate in employmentController.js for the backend's
+// matching copy of this flag (the real enforcement point).
+const NOTIFY_ALUMNI_DISABLED = false;
 
 const STATUSES = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
 const LIMIT = 25;
