@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import ReactDOM from "react-dom";
 import { useLocation, useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
@@ -630,9 +631,20 @@ function StarRating({ label, value, onChange, size = "md", readOnly = false }) {
   </div>;
 }
 
+// Portaled straight onto <body> (not rendered inline in the page tree) —
+// .alumni-page-content and its ancestors carry the page's own entrance
+// animation, which briefly (and on some layouts, persistently) puts a
+// `transform` on that ancestor. Any `position: fixed` descendant of an
+// element with an active transform is repositioned relative to THAT
+// ancestor's box instead of the viewport, per the CSS spec's containing-
+// block rules — so the overlay could render centered on the full scrolled
+// page height instead of the visible viewport, needing a scroll to find it.
+// Portaling out from under that ancestor sidesteps the whole problem, same
+// pattern as the shared Modal in Primitives.jsx.
 function EventFeedbackFormModal({ state, onClose, onChange, onSubmit }) {
   const { event, rating, ratings, comments, submitting, error } = state;
-  return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={`Give feedback for ${event.title}`}>
+  return ReactDOM.createPortal(
+    <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={`Give feedback for ${event.title}`}>
     <div className="alumni-action-modal event-feedback-modal">
       <div><span>Event feedback</span><h2>{event.title}</h2></div>
       <div className="event-feedback-fields">
@@ -654,12 +666,15 @@ function EventFeedbackFormModal({ state, onClose, onChange, onSubmit }) {
         <button type="button" className="primary-card-btn" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting…" : "Submit Feedback"}</button>
       </div>
     </div>
-  </div>;
+  </div>,
+    document.body
+  );
 }
 
 function EventFeedbackResponseModal({ state, onClose }) {
   const { event, loading, data } = state;
-  return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={`Your feedback for ${event.title}`}>
+  return ReactDOM.createPortal(
+    <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={`Your feedback for ${event.title}`}>
     <div className="alumni-action-modal event-feedback-modal">
       <div><span>Your feedback</span><h2>{event.title}</h2></div>
       {loading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading…</p>}
@@ -679,11 +694,14 @@ function EventFeedbackResponseModal({ state, onClose }) {
         <button type="button" className="details-btn" onClick={onClose}>Close</button>
       </div>
     </div>
-  </div>;
+  </div>,
+    document.body
+  );
 }
 
 function ActionModal({ modal, onClose }) {
-  return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={modal.title}>
+  return ReactDOM.createPortal(
+    <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label={modal.title}>
     <div className="alumni-action-modal">
       <div><span>{modal.eyebrow}</span><h2>{modal.title}</h2><p>{modal.body}</p></div>
       <div className="alumni-action-modal-buttons">
@@ -691,14 +709,17 @@ function ActionModal({ modal, onClose }) {
         {modal.action && <button type="button" className="primary-card-btn" onClick={() => { modal.onAction?.(); onClose(); }}>{modal.action}</button>}
       </div>
     </div>
-  </div>;
+  </div>,
+    document.body
+  );
 }
 
 const COMMENT_EMOJIS = ["😀", "😂", "😍", "👍", "❤️", "🎉"];
 
 function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
   const { announcement, comments, loading, text, submitting } = state;
-  return <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label="Comments">
+  return ReactDOM.createPortal(
+    <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label="Comments">
     <div className="alumni-action-modal" style={{ display: "flex", flexDirection: "column", maxHeight: "78vh" }}>
       <div><span>Comments</span><h2 style={{ marginBottom: 0 }}>{announcement.title}</h2></div>
       <div style={{ flex: 1, overflowY: "auto", margin: "12px 0", minHeight: 60 }}>
@@ -732,5 +753,7 @@ function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
         <button type="button" className="details-btn" onClick={onClose}>Close</button>
       </div>
     </div>
-  </div>;
+  </div>,
+    document.body
+  );
 }

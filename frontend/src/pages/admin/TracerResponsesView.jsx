@@ -326,7 +326,7 @@ export default function TracerResponsesView() {
       <div className="admin-hero" aria-label="Tracer responses header">
         <h1 className="admin-hero-title">Tracer Form Responses</h1>
         <p className="admin-hero-subtitle">
-          Browse every alumni tracer study submission — search by name, filter by college and
+          Browse every alumni tracer study submission, search by name, filter by college and
           submission date, and open a response to see the full answer sheet.
         </p>
       </div>

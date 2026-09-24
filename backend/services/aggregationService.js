@@ -351,7 +351,7 @@ const JOB_SEARCH_METHOD_PATTERN = /\bhow\s+(did|do|does|would|can)\s+(?:\w+\s+){
 // for) — not yet applied to every other plain-text-only answer path in this
 // file. Extend the same wantsChart wiring to other handlers if those need
 // on-request charts too.
-const VISUALIZATION_REQUEST_PATTERN = /\b(visuali[sz]e|visuali[sz]ation|chart|graph|plot|pie\s*(chart|graph)?)\b/i;
+const VISUALIZATION_REQUEST_PATTERN = /\b(visuals?|visuali[sz]e|visuali[sz]ation|chart|graph|plot|pie\s*(chart|graph)?)\b/i;
 
 function detectTopic(question) {
   question = normalizeQuestion(question);
@@ -4011,11 +4011,18 @@ async function queryOverview(filters) {
   out += `**Employment Status:**\n`;
   empRows.forEach(r => { out += `- ${r._id}: **${r.count}** (${pct(r.count, empTotal)})\n`; });
   out += `→ Overall employment rate: **${pct(employed, empTotal)}** (including self-employed)\n\n`;
+  // {{chart:N}} is a placement anchor the frontend's block parser recognizes
+  // and swaps for the Nth entry of `charts` below, right where it appears in
+  // the text — so the Employment Status donut renders directly under the
+  // Employment Status section instead of every chart being dumped together
+  // after all the text, which read as disconnected from what it illustrated.
+  out += `{{chart:0}}\n\n`;
 
   if (indRows.length) {
     out += `**Top Industries:**\n`;
     indRows.forEach((r, i) => { out += `${i + 1}. ${r._id}: ${r.count}\n`; });
     out += '\n';
+    out += `{{chart:1}}\n\n`;
   }
 
   if (locRows.length) {
@@ -4030,7 +4037,19 @@ async function queryOverview(filters) {
   // here instead used to make this line disagree with a direct "how many
   // pursued further studies?" question asked about the exact same cohort.
   out += `**Further Education:** ${pursuedEdu} pursued further studies (${pct(pursuedEdu, total)})`;
-  return out;
+
+  // Two charts, not one — Employment Status is a part-of-whole breakdown
+  // (donut/pie reads naturally), Top Industries is a ranked comparison
+  // across different categories (bars read naturally); forcing both into a
+  // single chart type would misrepresent whichever one didn't fit. Callers
+  // that only handle a single `chart` field still get the first one via the
+  // `charts` -> `chart` fallback in queryInner's normalization.
+  const charts = [
+    { type: 'donut', title: 'Employment Status', rows: empRows.map(r => ({ label: r._id, count: r.count })) },
+    indRows.length ? { type: 'bars', title: 'Top Industries', rows: indRows.map(r => ({ label: r._id, count: r.count })) } : null,
+  ].filter(Boolean);
+
+  return { text: out, charts };
 }
 
 // TracerStudyResponse.submittedAt is stamped to `new Date()` on EVERY save,
@@ -5021,15 +5040,23 @@ async function queryInner(question, seedFilters = {}) {
   // Most query functions still return a plain string; a growing set (starting
   // with queryGender) return { text, chart } instead so the AC chatbot can
   // render an inline graph alongside the answer — handle both shapes here
-  // rather than converting all ~30 functions at once.
+  // rather than converting all ~30 functions at once. queryOverview() is the
+  // first to return { text, charts } (plural, multiple distinct visuals for
+  // one answer) — `chart` still gets the first one so every existing
+  // single-chart consumer keeps working untouched.
   const result = await fn();
   if (!result) return null;
-  const { text, chart, eventTitle } = typeof result === 'string' ? { text: result, chart: null, eventTitle: null } : result;
+  const { text, chart, charts, eventTitle } = typeof result === 'string' ? { text: result, chart: null, charts: null, eventTitle: null } : result;
+  const resolvedCharts = charts?.length ? charts : (chart ? [chart] : null);
   // eventTitle (set by queryEventAttendanceCount/Attendees/Feedback when they
   // resolved one specific event) rides into filters purely so
   // suggestFollowUps() can build contextual event follow-up chips — it's
   // never used as an actual query filter anywhere else.
-  return text ? { text, direct: true, topic, filters: eventTitle ? { ...filters, eventTitle } : filters, chart: chart || null } : null;
+  return text ? {
+    text, direct: true, topic, filters: eventTitle ? { ...filters, eventTitle } : filters,
+    chart: resolvedCharts?.[0] || null,
+    charts: resolvedCharts,
+  } : null;
 }
 
 // A college coordinator must only ever see their own college's tracer study

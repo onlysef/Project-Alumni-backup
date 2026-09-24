@@ -145,14 +145,18 @@ export async function downloadChartExcel(filename, title, csvRows, svgEl) {
   URL.revokeObjectURL(url);
 }
 
-function wrapChartLabel(label = "") {
+// maxCharsPerLine used to be a flat 14 regardless of how much room a bar's
+// slot actually had — fine for a handful of bars, but with many events the
+// slot shrinks well below what 14 characters needs, so neighboring labels
+// overlapped into each other. Now driven by the caller's actual slot width.
+function wrapChartLabel(label = "", maxCharsPerLine = 14) {
   const words = String(label).split(/\s+/).filter(Boolean);
   const lines = [];
   let current = "";
 
   words.forEach((word) => {
     const next = current ? `${current} ${word}` : word;
-    if (next.length > 14 && current) {
+    if (next.length > maxCharsPerLine && current) {
       lines.push(current);
       current = word;
     } else {
@@ -162,46 +166,60 @@ function wrapChartLabel(label = "") {
   if (current) lines.push(current);
 
   if (lines.length <= 2) return lines;
-  return [lines[0], `${lines[1].slice(0, 12).trim()}...`];
+  return [lines[0], `${lines[1].slice(0, Math.max(4, maxCharsPerLine - 2)).trim()}...`];
 }
 
 export function MiniBarChart({ title, values, labels }) {
   const max = Math.max(...values, 1);
   const count = Math.max(values.length, 1);
   const plotLeft = 50;
-  const plotRight = 390;
-  const plotWidth = plotRight - plotLeft;
-  const slot = plotWidth / count;
-  const barWidth = Math.min(38, Math.max(24, slot * 0.48));
+  // Each bar gets a guaranteed minimum slot instead of splitting one fixed
+  // 340-unit plot width evenly across however many events there are —
+  // with more than ~5 events that even split left each slot (and its
+  // wrapped label) too narrow, so adjacent event names ran into each
+  // other. The chart now grows wider (via the viewBox + matching inline
+  // width below) instead of squeezing everything into the same footprint;
+  // the wrapping .coord-chart-box-wrap scrolls horizontally if it doesn't
+  // fit the card.
+  const slot = Math.max(72, 340 / count);
+  const plotWidth = slot * count;
+  const plotRight = plotLeft + plotWidth;
+  const viewBoxWidth = plotRight + 30;
+  const barWidth = Math.min(42, Math.max(26, slot * 0.42));
+  // Character budget scales with the slot each bar actually got, instead
+  // of a constant that only fit the original few-bar case.
+  const maxCharsPerLine = Math.max(8, Math.floor(slot / 6.5));
 
   return (
-    <div className="coord-chart-box" role="img" aria-label={title}>
-      <p>{title}</p>
-      <svg viewBox="0 0 420 245" className="coord-chart">
-        <line x1="50" y1="18" x2="50" y2="176" />
-        <line x1="50" y1="176" x2="390" y2="176" />
-        {[0, 1, 2, 3].map((n) => {
-          const y = 176 - n * 42;
-          return <line key={n} className="coord-chart-grid" x1="50" y1={y} x2="390" y2={y} />;
-        })}
-        {values.map((value, index) => {
-          const h = Math.round((value / max) * 140);
-          const x = plotLeft + slot * index + (slot - barWidth) / 2;
-          const labelLines = wrapChartLabel(labels[index]);
-          return (
-            <g key={labels[index]}>
-              <title>{labels[index]}</title>
-              <rect x={x} y={176 - h} width={barWidth} height={h} rx="2" />
-              <text x={x + barWidth / 2} y={176 - h - 5} textAnchor="middle" fontWeight="700">{value}</text>
-              <text x={x + barWidth / 2} y="202" textAnchor="middle" className="coord-chart-label">
-                {labelLines.map((line, lineIndex) => (
-                  <tspan key={line} x={x + barWidth / 2} dy={lineIndex === 0 ? 0 : 13}>{line}</tspan>
-                ))}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+    <div className="coord-chart-box-wrap">
+      <div className="coord-chart-box" role="img" aria-label={title}>
+        <p>{title}</p>
+        <svg viewBox={`0 0 ${viewBoxWidth} 260`} className="coord-chart" style={{ width: Math.max(420, viewBoxWidth) }}>
+          <line x1={plotLeft} y1="18" x2={plotLeft} y2="176" />
+          <line x1={plotLeft} y1="176" x2={plotRight} y2="176" />
+          {[0, 1, 2, 3].map((n) => {
+            const y = 176 - n * 42;
+            return <line key={n} className="coord-chart-grid" x1={plotLeft} y1={y} x2={plotRight} y2={y} />;
+          })}
+          {values.map((value, index) => {
+            const h = Math.round((value / max) * 140);
+            const x = plotLeft + slot * index + (slot - barWidth) / 2;
+            const labelLines = wrapChartLabel(labels[index], maxCharsPerLine);
+            return (
+              <g key={labels[index]}>
+                <title>{labels[index]}</title>
+                <rect x={x} y={176 - h} width={barWidth} height={h} rx="2" />
+                <text x={x + barWidth / 2} y={176 - h - 5} textAnchor="middle" fontWeight="700">{value}</text>
+                <text x={x + barWidth / 2} y="202" textAnchor="middle" className="coord-chart-label">
+                  {labelLines.map((line, lineIndex) => (
+                    <tspan key={line} x={x + barWidth / 2} dy={lineIndex === 0 ? 0 : 14}>{line}</tspan>
+                  ))}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
     </div>
   );
 }

@@ -23,19 +23,45 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
 
   async function handleCopy() {
     if (!blockRef.current) return;
+    const node = blockRef.current;
     try {
+      // The donut/bars/legend all have an entrance animation (rotate + scale
+      // + clip-path reveal for the donut, ~800ms total) that plays when the
+      // chart first mounts. Capturing while any of that is still running
+      // freezes the DOM at whatever mid-transition clip-path/rotation it
+      // happened to be at — a donut caught mid-reveal looks like a rotated,
+      // partially-clipped wedge overlapping its own card once pasted as a
+      // flat image, which is exactly the "overlapping content" bug this
+      // guards against. Waiting for every running animation to finish first
+      // guarantees the capture always reflects the chart's final, settled
+      // state, however soon after mount the button gets clicked.
+      const runningAnimations = node.getAnimations?.({ subtree: true }) || [];
+      await Promise.all(runningAnimations.map((a) => a.finished.catch(() => {})));
+
       // Background is set explicitly (not left to the node's own CSS
       // background) because toBlob() rasterizes onto a transparent canvas by
       // default — without this, a copied chart pasted onto a light surface
       // (Word/Slack/etc, usually white) would show whatever was BEHIND the
       // chat panel, not the chart's own maroon-tinted card background.
       const isDark = document.body.classList.contains("dark-mode");
-      const blob = await toBlob(blockRef.current, {
+
+      // Deliberately NOT pinning any width/height/box-sizing on the node
+      // before capture (earlier attempts did, to fight what looked like a
+      // sizing mismatch). That turned out to make things worse: forcing an
+      // explicit inline height went through a getComputedStyle round-trip
+      // that silently added the card's own padding+border on top of itself,
+      // making the clone taller than the frame html-to-image draws it into
+      // and clipping the bottom edge. Verified directly (captured output
+      // inspected pixel-by-pixel) that a plain, unmodified capture — relying
+      // on .ac-chart-block's CSS min-width floor and the donut/bars grids'
+      // minmax(N, 1fr) floors to size things correctly on their own — renders
+      // a complete, uncut card. Leave it alone.
+      const blob = await toBlob(node, {
         backgroundColor: isDark ? "#241116" : "#fdf8f8",
         pixelRatio: 2,
         // The copy button itself shouldn't appear baked into the shared
         // image — it's a UI control for THIS page, not part of the chart.
-        filter: (node) => !node.classList?.contains("ac-chart-copy-btn"),
+        filter: (n) => !n.classList?.contains("ac-chart-copy-btn"),
       });
       if (!blob) return;
       await navigator.clipboard.write([new window.ClipboardItem({ [blob.type]: blob })]);
@@ -175,6 +201,13 @@ function beginsStructuredBlock(lines, index) {
   return line.includes("|") && next.includes("|");
 }
 
+// Used when a raw answer needs to leave the app (copy-as-text) — the
+// {{chart:N}} anchors parseAssistantBlocks() relies on are an internal
+// rendering detail, not something a pasted answer should carry along.
+function stripChartAnchors(text = "") {
+  return text.replace(/\{\{chart:\d+\}\}\n?/g, "");
+}
+
 function parseAssistantBlocks(text = "") {
   const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
   const blocks = [];
@@ -183,6 +216,18 @@ function parseAssistantBlocks(text = "") {
   while (index < lines.length) {
     const line = lines[index].trim();
     if (!line) {
+      index += 1;
+      continue;
+    }
+
+    // {{chart:N}} is a placement anchor the backend drops into an answer's
+    // text (see queryOverview) to say "the Nth chart in this message's
+    // `charts` array belongs right here" — swapped for the actual chart
+    // component below instead of every chart being appended after all the
+    // text, which read as disconnected from the section it illustrated.
+    const chartAnchor = line.match(/^\{\{chart:(\d+)\}\}$/);
+    if (chartAnchor) {
+      blocks.push({ type: "chart", index: Number(chartAnchor[1]) });
       index += 1;
       continue;
     }
@@ -269,7 +314,7 @@ function parseAssistantBlocks(text = "") {
   return blocks;
 }
 
-function AssistantResponse({ text, messageId }) {
+function AssistantResponse({ text, messageId, charts, copiedChartId, onCopyChart }) {
   const blocks = parseAssistantBlocks(text);
   const wordCursor = { value: 0 };
   // See WORD_REVEAL_TARGET_MS's comment above — a long list needs a smaller
@@ -280,10 +325,28 @@ function AssistantResponse({ text, messageId }) {
     ? Math.max(WORD_REVEAL_MIN_STEP, Math.min(WORD_REVEAL_MAX_STEP, WORD_REVEAL_TARGET_MS / totalWords))
     : WORD_REVEAL_MAX_STEP;
 
+  const usedChartIndices = new Set();
+  const renderChart = (chart, chartKey) => (
+    <AcChart
+      key={chartKey}
+      chart={chart}
+      id={chartKey}
+      copiedChartId={copiedChartId}
+      onCopy={onCopyChart}
+    />
+  );
+
   return (
     <div className="ac-response-content">
       {blocks.map((block, blockIndex) => {
         const key = `${messageId}-block-${blockIndex}`;
+
+        if (block.type === "chart") {
+          const chart = charts?.[block.index];
+          if (!chart) return null;
+          usedChartIndices.add(block.index);
+          return renderChart(chart, `${messageId}-chart-${block.index}`);
+        }
 
         if (block.type === "heading") {
           const Heading = block.level <= 2 ? "h3" : "h4";
@@ -340,6 +403,11 @@ function AssistantResponse({ text, messageId }) {
         const className = /^The Bachelor|^Bachelor/i.test(plainText) ? "ac-answer-program" : undefined;
         return <p key={key} className={className}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</p>;
       })}
+      {/* Charts nobody anchored with {{chart:N}} — every answer type besides
+          queryOverview just attaches one chart with no anchor in its text,
+          so this is what keeps those still showing up (at the end, same as
+          before anchors existed). */}
+      {(charts || []).map((chart, i) => (usedChartIndices.has(i) ? null : renderChart(chart, `${messageId}-chart-${i}`)))}
     </div>
   );
 }
@@ -573,7 +641,7 @@ export default function AiAssistantView() {
   const streamAnswer = useCallback(async (question, currentMessages, { reuseId } = {}) => {
     const history = currentMessages
       .filter((m) => m.role === "user" || m.role === "ac")
-      .map((m) => ({ role: m.role === "ac" ? "assistant" : "user", content: m.text }));
+      .map((m) => ({ role: m.role === "ac" ? "assistant" : "user", content: stripChartAnchors(m.text) }));
 
     const ac = new AbortController();
     abortRef.current = ac;
@@ -655,8 +723,16 @@ export default function AiAssistantView() {
                 serverSuggestions = payload.suggestions;
               }
               // Chart data (breakdown questions like "how many are male?")
-              // renders an inline graph below the text answer.
-              if (payload.chart) {
+              // renders an inline graph below the text answer. `charts`
+              // (plural) is for answers with more than one distinct visual
+              // (e.g. the tracer overview's Employment Status donut +
+              // Top Industries bars) — falls back to the single `chart` for
+              // every other statistics answer, which only ever sends one.
+              if (payload.charts?.length) {
+                setMessages((m) =>
+                  m.map((msg) => msg.id === streamingId ? { ...msg, charts: payload.charts } : msg)
+                );
+              } else if (payload.chart) {
                 setMessages((m) =>
                   m.map((msg) => msg.id === streamingId ? { ...msg, chart: payload.chart } : msg)
                 );
@@ -1116,22 +1192,22 @@ export default function AiAssistantView() {
                 ) : (
                   <div key={m.id} className="ac-row ac-row-ac">
                     <div className="ac-ac-text">
-                      <AssistantResponse text={m.text} messageId={m.id} />
+                      <AssistantResponse
+                        text={m.text}
+                        messageId={m.id}
+                        charts={m.charts?.length ? m.charts : (m.chart ? [m.chart] : [])}
+                        copiedChartId={copiedChartId}
+                        onCopyChart={(id) => {
+                          setCopiedChartId(id);
+                          setTimeout(() => setCopiedChartId((c) => (c === id ? null : c)), 1400);
+                        }}
+                      />
                     </div>
-                    <AcChart
-                      chart={m.chart}
-                      id={m.id}
-                      copiedChartId={copiedChartId}
-                      onCopy={(id) => {
-                        setCopiedChartId(id);
-                        setTimeout(() => setCopiedChartId((c) => (c === id ? null : c)), 1400);
-                      }}
-                    />
                     <div className="ac-msg-tools ac-msg-tools-ac">
                       <button
                         type="button"
                         className="ac-tool-btn"
-                        onClick={() => copyMessage(m.id, m.text)}
+                        onClick={() => copyMessage(m.id, stripChartAnchors(m.text))}
                         title={copiedId === m.id ? "Copied" : "Copy"}
                         aria-label="Copy response"
                       >

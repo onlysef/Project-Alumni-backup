@@ -690,9 +690,14 @@ export default function CoordinatorEmploymentView() {
     <section
       className={`content coordinator-content view active-view`}
     >
-      <section className="coord-records-card">
-        <h3>Alumni Record</h3>
+      <div className="admin-hero" aria-label="Alumni record header">
+        <h1 className="admin-hero-title">Alumni Record</h1>
+        <p className="admin-hero-subtitle">
+          Every alumni's employment record in one place, searchable by name or filtered by type and status.
+        </p>
+      </div>
 
+      <section className="coord-records-card">
         <div className="coord-record-toolbar coord-employ-toolbar">
           <input
             type="search"

@@ -878,7 +878,7 @@ export default function TracerFormEditorView() {
         <h1 className="admin-hero-title">Edit Tracer Form</h1>
         <p className="admin-hero-subtitle">
           {isCoordinator
-            ? `Build and manage the ${college} tracer study questionnaire — add pages and questions, set conditional logic, or import a starting point from a Google Form.`
+            ? `Build and manage the ${college} tracer study questionnaire, add pages and questions, set conditional logic, or import a starting point from a Google Form.`
             : "Build and manage each college's tracer study questionnaire — add pages and questions, set conditional logic, or import a starting point from another college or a Google Form."}
         </p>
       </div>

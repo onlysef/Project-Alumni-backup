@@ -1930,6 +1930,32 @@
             margin-bottom: 0;
         }
 
+        /* A donut/pie chart is intrinsically narrow (fixed-diameter circle +
+           legend) — stacked full-width above a bar chart the way every
+           .tracer-chart-block used to render, it left a wide strip of empty
+           space beside it before the next chart even started. Side by side,
+           that same space goes to the second chart instead of sitting
+           unused, and the pair takes less total vertical room than stacking
+           did. Wraps to stacked on narrow viewports via the min-width floor
+           below, same as the AC chatbot's own donut/legend sizing pattern. */
+        .tracer-chart-row {
+            display: flex;
+            align-items: stretch;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .tracer-chart-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .tracer-chart-row .tracer-chart-block {
+            flex: 1 1 280px;
+            min-width: 0;
+            margin-bottom: 0;
+        }
+
         .tracer-chart-export {
             flex-shrink: 0;
             display: inline-flex;
@@ -2267,7 +2293,13 @@
 
         .tracer-donut-layout {
             display: grid;
-            grid-template-columns: 132px 1fr;
+            /* minmax(0, 1fr), not a bare 1fr — a grid track's implicit
+               min-width is auto, which for a legend row with nowrap values
+               resolves to the text's full unwrapped width. Without the 0
+               floor, a wide value ("170 (66%)") refuses to let this column
+               shrink to fit the card, so the legend overflows straight
+               through the card's own border instead of staying inside it. */
+            grid-template-columns: 132px minmax(150px, 1fr);
             gap: 24px;
             align-items: center;
         }
@@ -2314,7 +2346,12 @@
 
         .tracer-donut-legend-row {
             display: grid;
-            grid-template-columns: 13px 1fr auto;
+            /* Same minmax(0, 1fr) floor as .tracer-donut-layout above — this
+               is the column .tracer-donut-legend-label's own overflow:hidden/
+               text-overflow:ellipsis lives on, and neither ever engages
+               without it (the label column just refuses to shrink below its
+               full text width instead of truncating). */
+            grid-template-columns: 13px minmax(0, 1fr) auto;
             align-items: center;
             gap: 8px;
             font-size: 12px;
@@ -9310,6 +9347,14 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 
         .ac-chart-block {
             max-width: 88%;
+            /* Fixed-px floor, not just a percentage — a percentage alone can
+               end up resolving against a different (often narrower) box
+               during html-to-image's capture, since the node gets cloned
+               out of its live layout context. A min-width in real pixels
+               resolves the same whether attached to the live page or
+               captured, so the donut legend always has the room it needs
+               and never spills through the card's own border. */
+            min-width: min(420px, 100%);
             margin-top: 10px;
             padding: 14px 16px;
             border: 1px solid var(--line);

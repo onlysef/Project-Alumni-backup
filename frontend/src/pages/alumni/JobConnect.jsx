@@ -367,9 +367,7 @@ export default function JobConnect() {
         <section className="application-tracker resume-creation">
           <div><span>Resume tools</span><h2>Resume Creation</h2></div>
           <input ref={resumeFileInputRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden onChange={handleResumeFilePick} />
-          {editingResume ? (
-            <ResumeEditor value={draftResume} onChange={updateDraft} />
-          ) : resumeFile ? (
+          {resumeFile ? (
             <div className="resume-file-card">
               <ResumeFileIcon />
               <div><b>{resumeFile.fileName}</b><span>Uploaded resume — employers see this file.</span></div>
@@ -382,14 +380,8 @@ export default function JobConnect() {
               <p>Create a resume from your alumni profile, or upload a PDF/DOC/DOCX file. Employers see it on every application.</p>
             </div>
           )}
-          <div className={`resume-actions${editingResume ? "" : resumeFile ? " resume-actions--two" : !resumeSaved ? " resume-actions--stack" : ""}`}>
-            {editingResume ? (
-              <>
-                <button className="resume-preview-btn" type="button" onClick={() => setResumePreviewOpen(true)}><ResumePreviewIcon />Preview</button>
-                <button className="resume-edit" type="button" onClick={cancelResumeEdit}><ResumeCloseIcon />Cancel</button>
-                <button className="resume-export" type="button" onClick={saveResumeEdit}><ResumeCheckIcon />Save</button>
-              </>
-            ) : resumeFile ? (
+          <div className={`resume-actions${resumeFile ? " resume-actions--two" : !resumeSaved ? " resume-actions--stack" : ""}`}>
+            {resumeFile ? (
               <>
                 <button className="resume-edit" type="button" disabled={resumeFileBusy} onClick={() => resumeFileInputRef.current?.click()}><ResumeEditIcon />{resumeFileBusy ? "Working…" : "Replace file"}</button>
                 <button className="resume-edit" type="button" disabled={resumeFileBusy} onClick={removeResumeFile}><ResumeCloseIcon />Remove file</button>
@@ -436,6 +428,29 @@ export default function JobConnect() {
             <button type="button" onClick={() => setResumePreviewOpen(false)} aria-label="Close preview"><ResumeCloseIcon /></button>
           </div>
           <ResumePreview resume={previewResume} mode="modal" />
+        </div>
+      </div>,
+      document.body
+    )}
+    {/* Editing used to happen inline in the narrow sidebar card — cramped
+        inputs, tiny font, and nothing like what the resume would actually
+        look like. Editing now happens in the same width/point-of-view as
+        the preview modal (reusing .resume-preview-modal), so filling in a
+        field looks and feels like editing the real document instead of a
+        squeezed side form. */}
+    {editingResume && ReactDOM.createPortal(
+      <div className="resume-preview-overlay" role="dialog" aria-modal="true" aria-label="Resume editor">
+        <div className="resume-preview-modal resume-editor-modal">
+          <div className="resume-preview-modal-head">
+            <div><span>Resume tools</span><h2>Resume Creation</h2></div>
+            <button type="button" onClick={cancelResumeEdit} aria-label="Close editor"><ResumeCloseIcon /></button>
+          </div>
+          <ResumeEditor value={draftResume} onChange={updateDraft} />
+          <div className="resume-editor-modal-actions">
+            <button className="resume-preview-btn" type="button" onClick={() => setResumePreviewOpen(true)}><ResumePreviewIcon />Preview</button>
+            <button className="resume-edit" type="button" onClick={cancelResumeEdit}><ResumeCloseIcon />Cancel</button>
+            <button className="resume-export" type="button" onClick={saveResumeEdit}><ResumeCheckIcon />Save</button>
+          </div>
         </div>
       </div>,
       document.body
@@ -570,7 +585,12 @@ function ResumePreview({ resume, mode = "card" }) {
       <p>{[resume.address, resume.phone, resume.email, resume.linkedin].filter(Boolean).join(" | ")}</p>
     </div>
     <ResumeSection title="Professional Summary" show={resume.summary}><p>{resume.summary}</p></ResumeSection>
-    <ResumeSection title="Key Skills" show={resume.skills}><ul>{lines(resume.skills).map(item => <li key={item}>{item}</li>)}</ul></ResumeSection>
+    {/* Skills are short one-to-three-word entries, unlike the sentence-
+        length entries in Certifications/Projects below — one per bullet
+        line down a single column turned a modest skill list into a long
+        vertical scroll. Flowing the same bullets into 2 columns instead
+        halves the height without changing how they're written. */}
+    <ResumeSection title="Key Skills" show={resume.skills}><ul className="resume-skills-list">{lines(resume.skills).map(item => <li key={item}>{item}</li>)}</ul></ResumeSection>
     <ResumeSection title="Professional Experience" show={resume.experience}>
       {experienceLines[0] && <b className="resume-entry-title">{experienceLines[0]}</b>}
       {experienceLines[1] && <p className="resume-entry-meta">{experienceLines[1]}</p>}

@@ -208,7 +208,7 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
                 </option>
                 {legacyFallback && (
                   <option value="" disabled>
-                    {legacyFallback.name} ({legacyFallback.email}) — current, no matching account
+                    {legacyFallback.name} ({legacyFallback.email}), currently no matching account
                   </option>
                 )}
                 {adminList.map((a) => (
@@ -366,7 +366,7 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
                   <option value="">No active staff available</option>
                 ) : staffList.map((s) => (
                   <option key={s._id} value={s._id}>
-                    {s.name} — {s.role}
+                    {s.name} · {s.role}
                   </option>
                 ))}
               </select>
@@ -405,7 +405,7 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
 
           {settings && (
             <p style={{ fontSize: 12, color: "var(--muted, #76656a)", margin: "4px 0 8px" }}>
-              Office hours: {fmt24to12(settings.start_time)} – {fmt24to12(settings.end_time)}
+              Office hours: {fmt24to12(settings.start_time)} to {fmt24to12(settings.end_time)}
               &nbsp;·&nbsp;Working days: {settings.working_days.join(", ") || "none"}
             </p>
           )}
