@@ -1625,12 +1625,30 @@
     min-height: 58px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     padding: 14px 18px !important;
     background: var(--maroon) !important;
     color: #fff !important;
     font-size: 18px !important;
     font-weight: 700;
     border-radius: 10px 10px 0 0;
+}
+
+.coord-event-list-year {
+    flex: 0 0 auto;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.coord-event-list-year option {
+    color: #241116;
 }
 
 .coord-create-body {
@@ -1774,7 +1792,12 @@
     padding: 13px 15px;
     display: grid;
     gap: 4px;
+    cursor: pointer;
     transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+.coord-event-list-inner article:focus-visible {
+    outline: 2px solid var(--maroon);
+    outline-offset: 2px;
 }
 .coord-event-list-inner article:hover {
     border-color: var(--maroon);

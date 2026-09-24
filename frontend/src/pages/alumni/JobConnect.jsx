@@ -576,7 +576,12 @@ function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
   </article>;
 }
 
-function ResumePreview({ resume, mode = "card" }) {
+// Exported so the employer side (EmployerApplicants.jsx's resume viewer)
+// renders an applicant's resume with the exact same component instead of
+// its own separately hand-rolled markup — the two had drifted apart (no
+// skill chips/columns, no section accent styling on the employer side)
+// even though they're displaying the same underlying resume data.
+export function ResumePreview({ resume, mode = "card" }) {
   const lines = (value) => String(value || "").split("\n").map(line => line.trim()).filter(Boolean);
   const experienceLines = lines(resume.experience);
   return <div className={`resume-preview ${mode === "modal" ? "resume-preview-full" : ""}`} aria-label="Resume preview">

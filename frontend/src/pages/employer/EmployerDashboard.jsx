@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom";
 import { Link, useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon";
 import { apiFetch } from "../../services/api.js";
@@ -203,7 +204,16 @@ export default function EmployerDashboard() {
         </article>
       </section>
 
-      {modal && <div className="employer-modal" role="dialog" aria-modal="true" aria-labelledby="employer-modal-title">
+      {/* Portaled straight onto <body> — this page's own root div carries a
+          page-entrance transform animation (system-motion.css matches
+          .employer-page), and any position:fixed descendant rendered
+          inline (not portaled) gets repositioned relative to that
+          transformed ancestor's box instead of the real viewport, per the
+          CSS containing-block rules — the modal could open clipped near
+          the top of the scrolled page instead of centered on screen. Same
+          bug already fixed for the alumni- and coordinator-side modals. */}
+      {modal && ReactDOM.createPortal(
+        <div className="employer-modal" role="dialog" aria-modal="true" aria-labelledby="employer-modal-title">
         <button className="employer-modal-backdrop" aria-label="Close dialog" onClick={() => setModal(null)}/>
         <section className="employer-modal-card">
           <button className="employer-modal-close" type="button" onClick={() => setModal(null)} aria-label="Close">×</button>
@@ -221,7 +231,9 @@ export default function EmployerDashboard() {
           {modal.type === "view" && <div><span className="eyebrow">Job details</span><h2 id="employer-modal-title">{modal.job.title}</h2><div className="employer-detail-grid"><div><span>Status</span><strong>{statusLabel(modal.job.status)}</strong></div><div><span>Partnership</span><strong>{modal.job.partnershipId?.name || "—"}</strong></div><div><span>Type</span><strong>{modal.job.jobType}</strong></div><div><span>Location</span><strong>{modal.job.location || "—"}</strong></div></div><p className="employer-detail-copy">{modal.job.description || "No description provided."}</p><div className="employer-modal-actions">{modal.job.status === "open" && <button className="employer-secondary-btn" type="button" onClick={() => closeJobPost(modal.job)}>Close posting</button>}<button className="employer-secondary-btn" type="button" onClick={() => setModal(null)}>Close</button><button className="employer-primary-btn" type="button" onClick={() => openEdit(modal.job)}>Edit post</button></div></div>}
           {modal.type === "delete" && <div><span className="eyebrow">Delete job post</span><h2 id="employer-modal-title">Remove "{modal.job.title}"?</h2><p className="employer-detail-copy">This permanently removes the post. This action cannot be undone.</p><div className="employer-modal-actions"><button className="employer-secondary-btn" type="button" onClick={() => setModal(null)}>Cancel</button><button className="employer-danger-btn" type="button" onClick={() => removeJob(modal.job._id)}>Delete post</button></div></div>}
         </section>
-      </div>}
+      </div>,
+        document.body
+      )}
     </div>
   );
 }
