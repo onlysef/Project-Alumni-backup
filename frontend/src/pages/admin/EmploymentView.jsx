@@ -961,12 +961,12 @@ export default function EmploymentView() {
   return (
     <section className={`content employment-view view active-view`}>
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
-      <div className="employment-toolbar">
-        <div className="section-title">
-          <h3>Alumni Record</h3>
-          <span />
-        </div>
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div className="admin-hero" aria-label="Alumni record header">
+        <h1 className="admin-hero-title">Alumni Record</h1>
+        <p className="admin-hero-subtitle">
+          Every alumni's employment record in one place, searchable by name or filtered by type and status.
+        </p>
       </div>
 
       {/* ── Employment Card ──────────────────────────────────────────────────── */}

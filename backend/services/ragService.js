@@ -1902,7 +1902,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
           }
         }
         if (onToken) onToken(listAnswer);
-        return finish({ answer: listAnswer, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null });
+        return finish({ answer: listAnswer, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null, charts: aggResult.charts || null });
       }
 
       // Multi-person: narrate each person's block independently in parallel
@@ -1919,7 +1919,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         timings.llmMs = Date.now() - narrateStart;
         const finalAnswer = narratedBlocks.join('\n\n');
         if (onToken) { for (const line of finalAnswer.split('\n')) onToken(line + '\n'); }
-        return finish({ answer: finalAnswer, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null });
+        return finish({ answer: finalAnswer, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null, charts: aggResult.charts || null });
       }
 
       const context  = `=== TRACER STUDY DATA (from structured records) ===\n${aggText}`;
@@ -2185,7 +2185,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       if (onToken) {
         for (const line of finalAnswer.split('\n')) onToken(line + '\n');
       }
-      return finish({ answer: finalAnswer, sources, type: 'statistics', suggestions, chart: aggResult.chart || null });
+      return finish({ answer: finalAnswer, sources, type: 'statistics', suggestions, chart: aggResult.chart || null, charts: aggResult.charts || null });
     }
 
     // See the collegeScope comment above — a scoped coordinator query that

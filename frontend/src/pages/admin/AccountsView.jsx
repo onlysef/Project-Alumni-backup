@@ -836,7 +836,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
             {(role === "Alumni" || role === "Coordinator") && (
               <label><span className="field-label">College<span className="required-asterisk">*</span></span>
                 <select name="college" value={college} onChange={(e) => { setCollege(e.target.value); setCourse(""); }} required>
-                  <option value="">— Select college —</option>
+                  <option value="">Select College</option>
                   {COLLEGES.map((c) => <option key={c} value={c}>{COLLEGE_NAMES[c]}</option>)}
                 </select>
               </label>
@@ -844,7 +844,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
             {role === "Employer" && (
               <label>Partner Company
                 <select name="partnershipId" value={partnershipId} onChange={(e) => setPartnershipId(e.target.value)}>
-                  <option value="">— Not linked to a partnership —</option>
+                  <option value="">Not linked to a partnership</option>
                   {partnerships.map((p) => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
                 </select>
               </label>
@@ -852,7 +852,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
             {role === "Alumni" && (
               <label><span className="field-label">Course<span className="required-asterisk">*</span></span>
                 <select name="course" value={course} onChange={(e) => setCourse(e.target.value)} required>
-                  <option value="">— Select course —</option>
+                  <option value="">Select Course</option>
                   {(COURSES_BY_COLLEGE[college] || []).map((c) => <option key={c}>{c}</option>)}
                 </select>
               </label>
@@ -860,7 +860,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
             {role === "Alumni" && course === "BSIT" && (
               <label>BSIT Track
                 <select name="track" defaultValue={row?.track || ""}>
-                  <option value="">— Select track —</option>
+                  <option value="">Select Track</option>
                   {BSIT_TRACKS.map((t) => <option key={t}>{t}</option>)}
                 </select>
               </label>

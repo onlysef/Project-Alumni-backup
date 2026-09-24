@@ -69,7 +69,7 @@ const chat = async (req, res) => {
     // data — admins see everything. See utils/collegeScope.js for why.
     const college = req.user?.role === 'coordinator' ? req.user.college : null;
 
-    const { sources, type, suggestions, chart } = await generateAnswer(
+    const { sources, type, suggestions, chart, charts } = await generateAnswer(
       question,
       history,
       {
@@ -96,7 +96,7 @@ const chat = async (req, res) => {
     // Final event with sources, classification type, (when available)
     // backend-computed follow-up suggestions guaranteed answerable by
     // aggregation, and (when available) chart data for an inline graph.
-    res.write(`data: ${JSON.stringify({ done: true, sources, type, suggestions, chart })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, sources, type, suggestions, chart, charts })}\n\n`);
   } catch (err) {
     logger.error('chat_request_failed', { question, error: err });
     const isRateLimit = err?.status === 429 || err?.status === 413;

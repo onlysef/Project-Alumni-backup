@@ -308,14 +308,14 @@ function TracerStudyAnalytics({ data }) {
       key: "profile", title: "Respondent Profile",
       subtitle: "Gender and course distribution of tracer respondents.",
       body: (
-        <>
+        <div className="tracer-chart-row">
           <ChartBlock title="By Gender" filename="tracer-gender.xlsx" csvRows={distCsv(data.respondentProfile.byGender)} chartType="donut" chartRows={data.respondentProfile.byGender}>
             <MiniDonut rows={data.respondentProfile.byGender} />
           </ChartBlock>
           <ChartBlock title="By Program" filename="tracer-program.xlsx" csvRows={distCsv(data.respondentProfile.byProgram)} chartType="bars" chartRows={data.respondentProfile.byProgram}>
             <DistributionBars rows={data.respondentProfile.byProgram} />
           </ChartBlock>
-        </>
+        </div>
       ),
     },
     {
@@ -332,12 +332,14 @@ function TracerStudyAnalytics({ data }) {
       subtitle: "Employment participation, classification, job-relevance, and duration.",
       body: (
         <>
-          <ChartBlock title="Employment Status" filename="tracer-employment-status.xlsx" csvRows={distCsv(data.employmentOverview.byStatus)} chartType="donut" chartRows={data.employmentOverview.byStatus}>
-            <MiniDonut rows={data.employmentOverview.byStatus} />
-          </ChartBlock>
-          <ChartBlock title="Job-Relatedness" filename="tracer-job-relatedness.xlsx" csvRows={distCsv(data.employmentOverview.byJobRelevance)} chartType="vbars" chartRows={data.employmentOverview.byJobRelevance}>
-            <MiniBarChart rows={data.employmentOverview.byJobRelevance} />
-          </ChartBlock>
+          <div className="tracer-chart-row">
+            <ChartBlock title="Employment Status" filename="tracer-employment-status.xlsx" csvRows={distCsv(data.employmentOverview.byStatus)} chartType="donut" chartRows={data.employmentOverview.byStatus}>
+              <MiniDonut rows={data.employmentOverview.byStatus} />
+            </ChartBlock>
+            <ChartBlock title="Job-Relatedness" filename="tracer-job-relatedness.xlsx" csvRows={distCsv(data.employmentOverview.byJobRelevance)} chartType="vbars" chartRows={data.employmentOverview.byJobRelevance}>
+              <MiniBarChart rows={data.employmentOverview.byJobRelevance} />
+            </ChartBlock>
+          </div>
           <ChartBlock title="Duration in Current Job" filename="tracer-job-duration.xlsx" csvRows={distCsv(data.employmentOverview.byDuration)} chartType="line" chartRows={data.employmentOverview.byDuration} chartOrder={DURATION_ORDER}>
             <TrendLine rows={data.employmentOverview.byDuration} order={DURATION_ORDER} />
           </ChartBlock>
@@ -380,14 +382,14 @@ function TracerStudyAnalytics({ data }) {
       key: "education", title: "Further Education",
       subtitle: "Further-education participation and training pursuits.",
       body: (
-        <>
+        <div className="tracer-chart-row">
           <ChartBlock title="Pursued Further Education" filename="tracer-further-education.xlsx" csvRows={distCsv(data.furtherEducation.byFurtherEducation)} chartType="donut" chartRows={data.furtherEducation.byFurtherEducation}>
             <MiniDonut rows={data.furtherEducation.byFurtherEducation} />
           </ChartBlock>
           <ChartBlock title="Pursued Trainings" filename="tracer-trainings.xlsx" csvRows={distCsv(data.furtherEducation.byTrainings)} chartType="vbars" chartRows={data.furtherEducation.byTrainings}>
             <MiniBarChart rows={data.furtherEducation.byTrainings} />
           </ChartBlock>
-        </>
+        </div>
       ),
     },
     {
@@ -408,14 +410,14 @@ function TracerStudyAnalytics({ data }) {
       key: "development", title: "Professional Development Activities",
       subtitle: "Participation in professional-development activities and certifications.",
       body: (
-        <>
+        <div className="tracer-chart-row">
           <ChartBlock title="Development Activities" filename="tracer-dev-activities.xlsx" csvRows={distCsv(data.professionalDevelopment.byDevActivities)} chartType="donut" chartRows={data.professionalDevelopment.byDevActivities}>
             <MiniDonut rows={data.professionalDevelopment.byDevActivities} />
           </ChartBlock>
           <ChartBlock title="Professional Certifications" filename="tracer-certifications.xlsx" csvRows={distCsv(data.professionalDevelopment.byCertifications)} chartType="vbars" chartRows={data.professionalDevelopment.byCertifications}>
             <MiniBarChart rows={data.professionalDevelopment.byCertifications} />
           </ChartBlock>
-        </>
+        </div>
       ),
     },
   ];
@@ -462,6 +464,12 @@ const EMPTY_TRACER_FILTERS = {
 // the same TSM/WMA/NA vocabulary used at signup (AlumniSignUpView.jsx) and
 // account creation (AccountsView.jsx).
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
+
+// Display-only relabeling for this filter's dropdown — the option's `value`
+// stays the raw "Yes"/"No" stored on TracerStudyResponse (so filtering still
+// matches the real data), only the text shown to the coordinator reads as
+// "Employed"/"Unemployed" instead of a bare yes/no.
+const EMPLOYMENT_STATUS_LABELS = { Yes: "Employed", No: "Unemployed" };
 
 // Course/batch filters live on User and can be validated against a known
 // vocabulary (COURSES_BY_COLLEGE, scoped to the coordinator's own college —
@@ -536,7 +544,7 @@ function TracerFilterPanel({ pending, onChange, options, courseOptions, onApply,
         <label>Employment Status
           <select value={pending.employmentStatus} onChange={(e) => set("employmentStatus", e.target.value)}>
             <option value="">All Statuses</option>
-            {(options.employmentStatuses || []).map((v) => <option key={v} value={v}>{v}</option>)}
+            {(options.employmentStatuses || []).map((v) => <option key={v} value={v}>{EMPLOYMENT_STATUS_LABELS[v] || v}</option>)}
           </select>
         </label>
         <label>Job Related to Degree
@@ -843,7 +851,7 @@ function downloadTracerAnalyticsPdf(data, filters) {
   doc.text(`Generated ${new Date().toLocaleString()}`, marginX, 52);
   const activeFilters = Object.entries(filters).filter(([, v]) => v);
   const filtersLine = activeFilters.length
-    ? `Filters Applied: ${activeFilters.map(([k, v]) => `${FILTER_LABELS[k] || k} = ${v}`).join("  ·  ")}`
+    ? `Filters Applied: ${activeFilters.map(([k, v]) => `${FILTER_LABELS[k] || k} = ${k === "employmentStatus" ? (EMPLOYMENT_STATUS_LABELS[v] || v) : v}`).join("  ·  ")}`
     : "Filters Applied: None (all data)";
   doc.text(doc.splitTextToSize(filtersLine, contentWidth), marginX, 66);
   y = headerH + 20;

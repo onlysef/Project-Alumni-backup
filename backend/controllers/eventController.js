@@ -275,6 +275,32 @@ const getAlumniEvents = async (req, res) => {
     myAttendance.forEach((a) => { attendedMap[String(a.event_id)] = a.status !== 'Absent'; });
     const feedbackSubmittedSet = new Set(myFeedback.map((f) => String(f.event_id)));
 
+    // Sent immediately — the reminder/feedback notification bookkeeping
+    // below is pure background housekeeping the alumnus never sees directly
+    // (it just makes a Notification show up later), so there's no reason to
+    // make every single events-page load wait on 2 extra queries + 2
+    // conditional inserts before the page can render. It used to run before
+    // res.json, adding real, avoidable latency to every load.
+    res.json({
+      events: events.map((e) => {
+        const attended = !!attendedMap[String(e._id)];
+        // "Not Available" until the event has ended AND this alumnus
+        // attended — the frontend never has to independently decide this,
+        // it just renders whatever the backend already resolved.
+        let feedbackStatus = 'not_available';
+        if (isEventEnded(e) && attended) {
+          feedbackStatus = feedbackSubmittedSet.has(String(e._id)) ? 'submitted' : 'available';
+        }
+        return {
+          ...e,
+          interested_count: countMap[String(e._id)] || 0,
+          isInterestedByMe: mySet.has(String(e._id)),
+          attended,
+          feedbackStatus,
+        };
+      }),
+    });
+
     // There's no scheduler/cron in this app to fire a reminder exactly N
     // hours before an event, so the reminder is generated lazily here: any
     // time this alumnus loads their events, check their interested events
@@ -328,29 +354,9 @@ const getAlumniEvents = async (req, res) => {
         }));
       if (toNotify.length) await Notification.insertMany(toNotify);
     }
-
-    res.json({
-      events: events.map((e) => {
-        const attended = !!attendedMap[String(e._id)];
-        // "Not Available" until the event has ended AND this alumnus
-        // attended — the frontend never has to independently decide this,
-        // it just renders whatever the backend already resolved.
-        let feedbackStatus = 'not_available';
-        if (isEventEnded(e) && attended) {
-          feedbackStatus = feedbackSubmittedSet.has(String(e._id)) ? 'submitted' : 'available';
-        }
-        return {
-          ...e,
-          interested_count: countMap[String(e._id)] || 0,
-          isInterestedByMe: mySet.has(String(e._id)),
-          attended,
-          feedbackStatus,
-        };
-      }),
-    });
   } catch (err) {
     console.error('getAlumniEvents error:', err);
-    res.status(500).json({ message: 'Server error.' });
+    if (!res.headersSent) res.status(500).json({ message: 'Server error.' });
   }
 };
 

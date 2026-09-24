@@ -604,14 +604,39 @@
     .coord-highlight {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 10px;
+        gap: 22px;
+        padding-right: 62px;
         font-size: 11px;
     }
-    .coord-highlight > div {
+    /* Was one stacked column (Top Event label, its value, Low Response
+       label, its value, all crammed with a 2px gap) squeezed into the
+       card's left edge while the rest of the card sat empty — now each
+       stat gets its own half of the available width, matching the label-
+       above-value hierarchy the other .coord-stat cards already use. */
+    .coord-highlight > .coord-highlight-item {
+        flex: 1 1 0;
+        min-width: 0;
+        /* Overrides the shared ".coord-stat > div, .coord-highlight > div"
+           rule's padding-right:62px (icon clearance meant for a single
+           child div) — that space is now reserved once on .coord-highlight
+           itself above, not duplicated on each of these two items. */
+        padding-right: 0;
         display: grid;
-        gap: 2px;
-        align-content: center;
+        gap: 6px;
+    }
+    .coord-highlight-item span {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        color: rgba(255, 255, 255, .72);
+    }
+    .coord-highlight-item strong {
+        display: block;
+        font-size: 15px;
+        font-weight: 800;
+        line-height: 1.3;
+        overflow-wrap: break-word;
     }
     .coord-highlight .admin-svg-icon {
         position: absolute;
@@ -706,9 +731,17 @@
                 opacity: 1 !important;
             }
 
+            /* Scrolls horizontally instead of squeezing every bar into a
+               fixed 420px footprint — a chart with many events now grows
+               wider (see MiniBarChart's dynamic viewBox) rather than
+               cramming labels until they overlap each other. */
+            .coord-chart-box-wrap {
+                overflow-x: auto;
+            }
+
             .coord-chart-box {
                 display: grid;
-                place-items: center;
+                justify-items: center;
                 padding: 12px;
             }
 
@@ -719,8 +752,8 @@
             }
 
             .coord-chart {
-                width: min(100%, 420px);
-                min-height: 210px;
+                display: block;
+                min-height: 230px;
             }
 
             .coord-chart line {

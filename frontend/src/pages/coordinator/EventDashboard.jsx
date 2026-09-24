@@ -78,6 +78,12 @@ export default function EventDashboard() {
     [stats?.completedEvents ?? "—", "Annual Completed Events",    "icon-5"],
     [stats?.recentFeedbacks ?? "—", "Recent Feedback Submission", "icon-13"],
     [stats?.avgRating       ?? "—", "Avg. Event Rating",          "icon-12"],
+    // "icon-trophy" isn't a real registered icon (Icon.jsx silently renders
+    // an empty box for any unknown name) — icon-25/icon-9 are both already
+    // used elsewhere in this app for the same "recognition" / "needs
+    // attention" meaning these two cards are going for.
+    [stats?.topEvent ?? "—", "Top Event",    "icon-25"],
+    [stats?.lowEvent ?? "—", "Low Response", "icon-9"],
   ];
 
   function downloadReport(report, format) {
@@ -124,15 +130,6 @@ export default function EventDashboard() {
             <Icon name={icon} />
           </article>
         ))}
-        <article className={`coord-highlight${statsLoading ? " coord-stat-loading" : ""}`}>
-          <div>
-            <strong>Top Event:</strong>
-            <span>{statsLoading ? "…" : (stats?.topEvent ?? "—")}</span>
-            <strong>Low Response:</strong>
-            <span>{statsLoading ? "…" : (stats?.lowEvent ?? "—")}</span>
-          </div>
-          <Icon name="icon-trophy" />
-        </article>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 4 }}>
