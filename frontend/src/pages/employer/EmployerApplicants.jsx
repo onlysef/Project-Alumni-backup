@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon";
 import { apiFetch } from "../../services/api.js";
+import { ResumePreview } from "../alumni/JobConnect.jsx";
 
 function ApplicantPortrait({ avatarUrl, name }) {
   if (avatarUrl) {
@@ -139,7 +141,11 @@ export default function EmployerApplicants() {
       </table></div>
     </section>
 
-    {selected && <div className="employer-modal applicant-profile-layer" role="dialog" aria-modal="true" aria-labelledby="applicant-name"><button className="employer-modal-backdrop" aria-label="Close applicant profile" onClick={() => setSelected(null)}/><section className="employer-modal-card applicant-profile-card"><button className="employer-modal-close" type="button" onClick={() => setSelected(null)} aria-label="Close">×</button>
+    {/* Portaled to <body> — see EmployerDashboard.jsx's matching comment:
+        this page's root div carries a page-entrance transform animation
+        that breaks position:fixed for any modal rendered inline instead
+        of portaled out. */}
+    {selected && ReactDOM.createPortal(<div className="employer-modal applicant-profile-layer" role="dialog" aria-modal="true" aria-labelledby="applicant-name"><button className="employer-modal-backdrop" aria-label="Close applicant profile" onClick={() => setSelected(null)}/><section className="employer-modal-card applicant-profile-card"><button className="employer-modal-close" type="button" onClick={() => setSelected(null)} aria-label="Close">×</button>
       <div className="applicant-profile-identity"><ApplicantPortrait avatarUrl={selected.alumni_id?.avatarUrl} name={`${selected.alumni_id?.firstName || ""} ${selected.alumni_id?.lastName || ""}`.trim()}/><div><h2 id="applicant-name">{selected.alumni_id?.firstName} {selected.alumni_id?.lastName}</h2><a href={`mailto:${selected.alumni_id?.email}`}>{selected.alumni_id?.email}</a><strong>{[selected.alumni_id?.college, selected.alumni_id?.course, selected.alumni_id?.graduationYear].filter(Boolean).join(" · ")}</strong></div></div>
       <div className="applicant-profile-facts">
         <section><h3>Applied for</h3><p>{selected.title}</p></section>
@@ -162,9 +168,9 @@ export default function EmployerApplicants() {
           <button className="employer-primary-btn" type="button" onClick={() => openResume(selected)}>View resume</button>
         </div>
       )}
-    </section></div>}
+    </section></div>, document.body)}
 
-    {resumeApplicant && <div className="employer-modal applicant-resume-layer" role="dialog" aria-modal="true" aria-labelledby="resume-name"><button className="employer-modal-backdrop" aria-label="Close resume" onClick={() => setResumeApplicant(null)}/><section className="applicant-resume-shell"><button className="employer-modal-close" type="button" onClick={() => setResumeApplicant(null)} aria-label="Close resume">×</button>
+    {resumeApplicant && ReactDOM.createPortal(<div className="employer-modal applicant-resume-layer" role="dialog" aria-modal="true" aria-label={`Resume${resumeApplicant.resume?.name ? ` for ${resumeApplicant.resume.name}` : ""}`}><button className="employer-modal-backdrop" aria-label="Close resume" onClick={() => setResumeApplicant(null)}/><section className="applicant-resume-shell"><button className="employer-modal-close" type="button" onClick={() => setResumeApplicant(null)} aria-label="Close resume">×</button>
       {resumeLoading && <div className="employer-empty">Loading resume…</div>}
       {!resumeLoading && resumeApplicant.resume === null && (
         <div className="employer-empty"><b>No resume on file</b><span>{resumeApplicant.alumni_id?.firstName} hasn't saved a resume through Job Connect yet.</span></div>
@@ -176,23 +182,23 @@ export default function EmployerApplicants() {
           <a className="employer-primary-btn" href={resumeApplicant.resume.fileData} download={resumeApplicant.resume.fileName || "resume"} target="_blank" rel="noopener noreferrer">Download resume</a>
         </div>
       )}
+      {/* Same ResumePreview component the alumni side uses for their own
+          resume — an applicant's resume here is exactly the same data,
+          rendered by a separately hand-maintained markup before, which had
+          drifted from the real one (no skill chips, no section styling). */}
       {!resumeLoading && resumeApplicant.resume && !resumeApplicant.resume.fileData && (<>
         {!resumeApplicant.resumeIsSaved && (
           <p className="resume-derived-note">Built from {resumeApplicant.alumni_id?.firstName}'s alumni profile — they haven't saved a formal resume through Job Connect yet.</p>
         )}
-        <article className="applicant-resume-document">
-          <header><h2 id="resume-name">{resumeApplicant.resume.name || `${resumeApplicant.alumni_id?.firstName} ${resumeApplicant.alumni_id?.lastName}`}</h2><p><b>Email:</b> {resumeApplicant.resume.email || resumeApplicant.alumni_id?.email}</p>{resumeApplicant.resume.phone && <p><b>Phone:</b> {resumeApplicant.resume.phone}</p>}{resumeApplicant.resume.address && <p><b>Address:</b> {resumeApplicant.resume.address}</p>}</header>
-          {resumeApplicant.resume.summary && <section><h3>Summary</h3><p>{resumeApplicant.resume.summary}</p></section>}
-          {resumeApplicant.resume.education && <section><h3>Education</h3><p style={{ whiteSpace: "pre-line" }}>{resumeApplicant.resume.education}</p></section>}
-          {resumeApplicant.resume.experience && <section><h3>Work experience</h3><p style={{ whiteSpace: "pre-line" }}>{resumeApplicant.resume.experience}</p></section>}
-          <div className="resume-two-column">
-            {resumeApplicant.resume.skills && <section><h3>Skills</h3><p style={{ whiteSpace: "pre-line" }}>{resumeApplicant.resume.skills}</p></section>}
-            {resumeApplicant.resume.certifications && <section><h3>Certifications</h3><p style={{ whiteSpace: "pre-line" }}>{resumeApplicant.resume.certifications}</p></section>}
-          </div>
-          {resumeApplicant.resume.projects && <section><h3>Projects</h3><p style={{ whiteSpace: "pre-line" }}>{resumeApplicant.resume.projects}</p></section>}
-          {resumeApplicant.resume.languages && <section><h3>Languages</h3><p style={{ whiteSpace: "pre-line" }}>{resumeApplicant.resume.languages}</p></section>}
-        </article>
+        <ResumePreview
+          resume={{
+            ...resumeApplicant.resume,
+            name: resumeApplicant.resume.name || `${resumeApplicant.alumni_id?.firstName || ""} ${resumeApplicant.alumni_id?.lastName || ""}`.trim(),
+            email: resumeApplicant.resume.email || resumeApplicant.alumni_id?.email || "",
+          }}
+          mode="modal"
+        />
       </>)}
-    </section></div>}
+    </section></div>, document.body)}
   </div>;
 }

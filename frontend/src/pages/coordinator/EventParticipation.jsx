@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from "react";
+import ReactDOM from "react-dom";
 import { useOutletContext, useLocation } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 
@@ -523,7 +524,11 @@ export default function EventParticipation() {
       </section>
 
       {/* ── Edit Attendance Modal ── */}
-      {editRecord && (
+      {/* Portaled straight onto <body> — see EventManagement.jsx's matching
+          comment: this page's root section carries a page-entrance
+          transform animation, which breaks position:fixed for any
+          descendant rendered inline instead of portaled out. */}
+      {editRecord && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setEditRecord(null)}>
           <div className="coord-modal coord-modal-sm" onClick={e => e.stopPropagation()}>
             <div className="coord-modal-head">
@@ -556,11 +561,12 @@ export default function EventParticipation() {
               <button type="button" className="btn btn-secondary" onClick={() => setEditRecord(null)}>Cancel</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── View Event Modal ── */}
-      {viewEvent && (
+      {viewEvent && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setViewEvent(null)}>
           <div className="coord-modal" onClick={e => e.stopPropagation()}>
             <div className="coord-modal-head">
@@ -585,11 +591,12 @@ export default function EventParticipation() {
               <button type="button" className="btn btn-secondary" onClick={() => setViewEvent(null)}>Close</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── View Feedback Modal ── */}
-      {feedbackModalOpen && (
+      {feedbackModalOpen && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setFeedbackModalOpen(false)}>
           <div className="coord-modal coord-feedback-modal" onClick={e => e.stopPropagation()}>
             <div className="coord-modal-head">
@@ -656,7 +663,8 @@ export default function EventParticipation() {
               <button type="button" className="btn btn-secondary" onClick={() => setFeedbackModalOpen(false)}>Close</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );

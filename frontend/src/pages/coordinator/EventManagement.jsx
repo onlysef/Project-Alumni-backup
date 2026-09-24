@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useRef } from "react";
+import ReactDOM from "react-dom";
 import { useOutletContext, useLocation } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -131,6 +132,16 @@ export default function EventManagement() {
   const sortedEvents = [...events].sort((a, b) =>
     STATUS_ORDER[computeStatus(a.event_datetime, a.end_datetime)] - STATUS_ORDER[computeStatus(b.event_datetime, b.end_datetime)]
   );
+
+  // A coordinator running the same annual event year after year (orientation,
+  // alumni reunion, etc.) ends up with a list mixing every year together —
+  // filtering to one year at a time makes a specific past run findable
+  // without scrolling past everything else.
+  const [listYearFilter, setListYearFilter] = useState("");
+  const eventYears = [...new Set(events.map(e => new Date(e.event_datetime).getFullYear()))].sort((a, b) => b - a);
+  const visibleEvents = listYearFilter
+    ? sortedEvents.filter(e => String(new Date(e.event_datetime).getFullYear()) === listYearFilter)
+    : sortedEvents;
 
   // recent posts = newest first (already sorted desc by backend)
   const recentEvents = [...events];
@@ -369,14 +380,27 @@ export default function EventManagement() {
 
         {/* RIGHT */}
         <aside className="coord-event-list">
-          <h3>List of Events</h3>
+          <h3>
+            <span>List of Events</span>
+            {eventYears.length > 0 && (
+              <select
+                className="coord-event-list-year"
+                value={listYearFilter}
+                onChange={e => setListYearFilter(e.target.value)}
+                aria-label="Filter events by year"
+              >
+                <option value="">All Years</option>
+                {eventYears.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            )}
+          </h3>
           <div className="coord-event-list-inner">
             {loading ? (
               <p className="coord-employ-empty" style={{ padding: 12 }}>Loading…</p>
-            ) : sortedEvents.length === 0 ? (
+            ) : visibleEvents.length === 0 ? (
               <p className="coord-employ-empty" style={{ padding: 12 }}>No events found.</p>
             ) : (
-              sortedEvents.map(event => {
+              visibleEvents.map(event => {
                 const status = computeStatus(event.event_datetime, event.end_datetime);
                 const slug = status.toLowerCase().replace(/\s+/g, "-");
                 const isHighlighted = String(event._id) === highlightId;
@@ -384,6 +408,10 @@ export default function EventManagement() {
                   <article
                     key={event._id}
                     ref={isHighlighted ? highlightRef : null}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openEdit(event)}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(event); } }}
                     style={isHighlighted ? { outline: `2px solid #570013`, borderRadius: 6, background: "rgba(87,0,19,0.06)" } : undefined}
                   >
                     <span className={`coord-event-status status-${slug}`}>{status}</span>
@@ -400,7 +428,15 @@ export default function EventManagement() {
       </div>
 
       {/* EDIT MODAL */}
-      {editEvent && (
+      {/* Portaled straight onto <body> — this page's own root section
+          carries a page-entrance transform animation (system-motion.css),
+          and any position:fixed descendant of an element with an active
+          transform gets repositioned relative to THAT element's box
+          instead of the real viewport, per the CSS containing-block rules.
+          Rendered inline, this modal could open anywhere on the scrolled
+          page instead of centered on screen — same bug already fixed for
+          the alumni-side modals, see AlumniDashboard.jsx. */}
+      {editEvent && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setEditEvent(null)}>
           <div className="coord-modal" onClick={e => e.stopPropagation()}>
             <div className="coord-modal-head">
@@ -470,13 +506,14 @@ export default function EventManagement() {
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* DELETE MODAL */}
       {deleteId && (() => {
         const ev = events.find(e => String(e._id) === String(deleteId));
-        return (
+        return ReactDOM.createPortal(
           <div className="coord-modal-backdrop" onClick={() => setDeleteId(null)}>
             <div className="coord-modal coord-modal-sm" onClick={e => e.stopPropagation()}>
               <div className="coord-modal-head">
@@ -499,12 +536,13 @@ export default function EventManagement() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         );
       })()}
 
       {/* INTERESTED MODAL */}
-      {interestedModal && (
+      {interestedModal && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setInterestedModal(null)}>
           <div className="coord-modal" onClick={e => e.stopPropagation()}>
             <div className="coord-modal-head">
@@ -538,7 +576,8 @@ export default function EventManagement() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </section>
   );

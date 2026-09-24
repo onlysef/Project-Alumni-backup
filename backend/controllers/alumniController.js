@@ -1266,23 +1266,30 @@ const getJobSkillTip = async (req, res) => {
   }
 };
 
-// Derived from a real dataset (Kaggle: "Candidate Job Role Dataset",
-// ckshetty/candidate-job-role-dataset — 1000 candidate rows across 22 job
-// roles). `skills` per role are the actual most-frequent skills reported for
-// that role in the dataset (not hand-picked), filtered to skills appearing
-// in 2+ rows for that role. "Video Game Designer" (1 row) was merged into
-// "Game Developer" (50 rows, identical skill set) as an obvious duplicate
-// label, not a real distinct role.
-// `courses` maps only where the dataset's qualification field is a direct
-// equivalent to one of this portal's 4 actual alumni courses (BSIT/BSCS/
-// BSIS/BSIM) — left empty for roles whose real-data qualification (Data
-// Science, Cybersecurity, Design, Marketing, HR, Finance, Game Development,
-// Statistics, AI) has no honest TSU-course counterpart, rather than forcing
-// a fabricated match.
+// Derived from two real datasets:
+// 1) Kaggle: "Candidate Job Role Dataset" (ckshetty/candidate-job-role-dataset,
+//    1000 rows / 22 roles) — the original IT/business-focused core below.
+// 2) "Clean Data Set - Fixed (All Compiled)" (23,317 rows spanning Kaggle's
+//    54k Resume Dataset, trendcart/resume-dataset, HuggingFace resume-job-match
+//    and job-description sets) — added to broaden coverage beyond IT into
+//    every industry alumni actually report working in.
+// For (2), job_role labels were normalized (case/punctuation-only variants
+// merged) and thresholded to roles with 36+ sample rows so each derived
+// skill list has a reliable frequency signal, then true near-duplicate
+// titles (e.g. "Front End Developer" / "Front-End Developer" / "Front End
+// Web Developer") were hand-merged into one entry and roles too generic to
+// carry a distinct skill signal (e.g. "Job Seeker") were dropped. `skills`
+// per role are the most frequent skills actually reported for that role in
+// the data (not hand-picked). `courses` maps only where the dataset's
+// qualification field is a direct equivalent to one of this portal's 4
+// actual alumni courses (BSIT/BSCS/BSIS/BSIM) — left empty for roles whose
+// real-data qualification has no honest TSU-course counterpart, rather than
+// forcing a fabricated match.
 const CAREER_PATHS = [
-  { title: 'AIML', text: 'Build and train machine learning and deep learning models to solve real-world problems.', skills: ['Python', 'Deep Learning', 'NLP', 'TensorFlow'], industries: ['Information Technology'], courses: [] },
+  // ---- Original IT/business core (Kaggle candidate-job-role-dataset) ----
+  { title: 'Machine Learning Engineer', text: 'Build and train machine learning and deep learning models to solve real-world problems.', skills: ['Python', 'Machine Learning', 'Deep Learning', 'TensorFlow', 'PyTorch'], industries: ['Information Technology'], courses: [] },
   { title: 'Backend Developer', text: 'Design and maintain the server-side logic, APIs, and databases behind an application.', skills: ['Java', 'SQL', 'REST APIs', 'Spring', 'Hibernate', 'Microservices'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
-  { title: 'Blockchain Developer', text: 'Build decentralized applications and smart contracts on blockchain platforms.', skills: ['Solidity', 'Ethereum', 'Web3', 'Blockchain', 'JavaScript'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Blockchain Developer', text: 'Build decentralized applications and smart contracts on blockchain platforms.', skills: ['Solidity', 'Smart Contracts', 'Blockchain', 'Cryptocurrency', 'JavaScript'], industries: ['Information Technology'], courses: ['BSCS'] },
   { title: 'C# Developer', text: 'Build Windows and enterprise applications using the .NET ecosystem.', skills: ['C#', 'Azure', 'SQL Server', 'ASP.NET', '.NET Core'], industries: ['Information Technology'], courses: ['BSCS'] },
   { title: 'Cybersecurity Engineer', text: 'Protect systems and networks from threats through security monitoring and testing.', skills: ['SIEM', 'Network Security', 'Penetration Testing', 'Firewalls', 'Ethical Hacking'], industries: ['Information Technology'], courses: [] },
   { title: 'Data Analyst', text: 'Turn raw business data into reports, dashboards, and actionable insights.', skills: ['SQL', 'Python', 'Pandas', 'Data Visualization', 'Tableau', 'Statistics', 'R'], industries: ['Information Technology'], courses: [] },
@@ -1290,17 +1297,122 @@ const CAREER_PATHS = [
   { title: 'Designer', text: 'Design intuitive, user-centered interfaces for websites and applications.', skills: ['Figma', 'UI/UX', 'Adobe XD', 'Prototyping', 'Sketch', 'Wireframing'], industries: ['Information Technology'], courses: [] },
   { title: 'DevOps Engineer', text: 'Automate and manage the infrastructure and deployment pipeline for software systems.', skills: ['AWS', 'Jenkins', 'Terraform', 'Docker', 'Linux'], industries: ['Information Technology'], courses: ['BSCS'] },
   { title: 'Finance', text: 'Analyze financial data and manage risk to support business decisions.', skills: ['Financial Modeling', 'Excel', 'Communication', 'Risk Analysis'], industries: ['Finance and Banking'], courses: [] },
-  { title: 'Frontend Developer', text: 'Build the user-facing interface of web applications.', skills: ['HTML', 'CSS', 'React', 'JavaScript', 'Redux', 'TypeScript'], industries: ['Information Technology'], courses: ['BSCS'] },
-  { title: 'Full Stack Java Developer', text: 'Build complete web applications end-to-end using Java-based technologies.', skills: ['Java', 'AWS', 'Spring Boot', 'Angular', 'Spring', 'React'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
+  { title: 'Frontend Developer', text: 'Build the user-facing interface of web applications.', skills: ['HTML', 'CSS', 'JavaScript', 'React', 'Bootstrap', 'jQuery'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Full Stack Java Developer', text: 'Build complete web applications end-to-end using Java-based technologies.', skills: ['Java', 'Spring Boot', 'J2EE', 'Hibernate', 'JavaScript', 'HTML/CSS'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
   { title: 'Full Stack Python Developer', text: 'Build complete web applications end-to-end using Python-based technologies.', skills: ['Python', 'JavaScript', 'PostgreSQL', 'Django', 'Flask', 'SQL'], industries: ['Information Technology'], courses: ['BSCS'] },
   { title: 'Game Developer', text: 'Design and build interactive games using modern game engines.', skills: ['C++', 'Game Design', 'Unity', 'Unreal Engine', 'VR Development', 'VR', '3D Modeling'], industries: ['Information Technology'], courses: [] },
   { title: 'HR', text: 'Manage recruitment, employee relations, and workplace policies.', skills: ['Recruitment', 'HR Policies', 'HR Management', 'Employee Relations', 'Training'], industries: ['Human Resources'], courses: [] },
   { title: 'Kubernetes Operations Engineer', text: 'Manage containerized infrastructure and deployments at scale.', skills: ['Kubernetes', 'Docker', 'Helm', 'AWS', 'GCP', 'CI/CD'], industries: ['Information Technology'], courses: ['BSCS'] },
   { title: 'Marketing', text: 'Plan and run campaigns that grow a brand’s reach and engagement.', skills: ['Analytics', 'SEO', 'Digital Marketing', 'PPC', 'Social Media', 'Marketing Campaigns'], industries: ['Marketing'], courses: [] },
-  { title: 'Mobile Developer', text: 'Build native mobile applications for iOS and Android.', skills: ['Swift', 'UI/UX', 'iOS Development', 'Core Data', 'Java', 'Kotlin', 'REST APIs', 'iOS'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
-  { title: 'PHP Developer', text: 'Build server-side web applications using PHP and its frameworks.', skills: ['PHP', 'MySQL', 'JavaScript', 'Laravel', 'Symfony'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Mobile Developer', text: 'Build native mobile applications for iOS and Android.', skills: ['Swift', 'Kotlin', 'Java', 'Android SDK', 'REST API', 'iOS Development'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'PHP Developer', text: 'Build server-side web applications using PHP and its frameworks.', skills: ['PHP', 'MySQL', 'Laravel', 'Symfony', 'HTML/CSS', 'API Development'], industries: ['Information Technology'], courses: ['BSIT'] },
   { title: 'Software Project Manager', text: 'Plan, coordinate, and deliver software projects on time and on budget.', skills: ['Agile', 'Scrum', 'Project Management', 'JIRA', 'Stakeholder Management'], industries: ['Information Technology'], courses: ['BSIM'] },
-  { title: 'Web Developer', text: 'Build and maintain websites and web applications.', skills: ['JavaScript', 'HTML', 'CSS', 'Node.js', 'MongoDB', 'Express', 'Vue.js'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'Web Developer', text: 'Build and maintain websites and web applications.', skills: ['JavaScript', 'HTML', 'CSS', 'PHP', 'Node.js', 'MongoDB'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+
+  // ---- Broader IT roles (Clean Data Set - Fixed) ----
+  { title: 'Software Engineer', text: 'Design, build, and maintain software systems across the full development lifecycle.', skills: ['Java', 'Python', 'C++', 'Git', 'Software Design'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'Java Developer', text: 'Build and maintain enterprise applications using Java and the broader Java EE ecosystem.', skills: ['Java', 'Hibernate', 'Spring', 'J2EE', 'JSP'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
+  { title: 'Java Backend Developer', text: 'Build the server-side services and REST APIs of Java applications using Spring Boot and microservices.', skills: ['Java', 'Spring Boot', 'Microservices', 'Maven', 'REST API'], industries: ['Information Technology'], courses: ['BSIT', 'BSCS'] },
+  { title: 'Python Developer', text: 'Build server-side applications and services using Python and frameworks like Django and Flask.', skills: ['Python', 'Django', 'Flask', 'JavaScript', 'MySQL'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Full Stack Developer', text: 'Build complete web applications, from the database to the user interface, end to end.', skills: ['JavaScript', 'React', 'Node.js', 'Git', 'MongoDB'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'React Developer', text: 'Build interactive, component-based user interfaces for web applications using React.', skills: ['React', 'Redux', 'JavaScript', 'API Integration', 'HTML/CSS'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Cassandra Developer', text: 'Build and tune large-scale distributed data stores on Apache Cassandra.', skills: ['Distributed Systems', 'CQL', 'Cassandra', 'NoSQL', 'Scalability'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Database Administrator', text: 'Install, configure, and safeguard the databases that store an organization’s critical data.', skills: ['SQL', 'Linux', 'Database Security', 'MongoDB', 'SQL Server'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Oracle Database Administrator', text: 'Administer and tune Oracle database systems for performance, backup, and recovery.', skills: ['RMAN', 'SQL', 'Oracle', 'PL/SQL', 'Performance Tuning'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Network Administrator', text: 'Configure and maintain the servers, network hardware, and user accounts that keep an organization’s IT infrastructure running.', skills: ['Active Directory', 'Networking', 'Windows Server', 'Technical Support', 'Cisco'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Network Engineer', text: 'Design, implement, and secure the routing and switching infrastructure that connects an organization’s networks.', skills: ['Cisco', 'TCP/IP', 'Routing', 'Network Security', 'Configuration'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Systems Administrator', text: 'Keep servers, user accounts, and IT systems running smoothly day to day.', skills: ['Active Directory', 'Linux', 'Windows Server', 'Networking', 'Troubleshooting'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'IT Manager', text: 'Oversee an organization’s IT operations, staff, and vendor relationships.', skills: ['Active Directory', 'Network Administration', 'Vendor Management', 'IT Management', 'Project Management'], industries: ['Information Technology'], courses: ['BSIT', 'BSIM'] },
+  { title: 'IT Consultant', text: 'Advise organizations on technology strategy and help them design and implement IT solutions.', skills: ['Project Management', 'System Design', 'IT Knowledge', 'Communication', 'Technical Expertise'], industries: ['Information Technology'], courses: ['BSIT', 'BSIS'] },
+  { title: 'IT Project Manager', text: 'Plan, coordinate, and deliver IT projects on schedule and within budget.', skills: ['Project Management', 'Agile', 'Waterfall', 'IT Knowledge', 'Leadership'], industries: ['Information Technology'], courses: ['BSIM', 'BSIT'] },
+  { title: 'Technical Lead', text: 'Guide a development team’s technical direction, code quality, and architecture decisions.', skills: ['Architecture', 'Leadership', 'Mentoring', 'Code Review', 'Problem Solving'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'Solution Architect', text: 'Design end-to-end technical solutions that meet both business and engineering requirements.', skills: ['System Architecture', 'Solution Design', 'Technical Expertise', 'Business Acumen', 'Leadership'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'Cloud Architect', text: 'Design and oversee an organization’s cloud infrastructure across providers like AWS, Azure, and GCP.', skills: ['Azure', 'AWS', 'GCP', 'Networking', 'System Design'], industries: ['Information Technology'], courses: ['BSCS', 'BSIT'] },
+  { title: 'IoT Engineer', text: 'Design and build connected devices and the systems that collect and act on their sensor data.', skills: ['IoT Technology', 'Sensors', 'Embedded Systems', 'System Design', 'Networking'], industries: ['Information Technology', 'Engineering'], courses: ['BSCS', 'BSIT'] },
+  { title: 'AR/VR Developer', text: 'Build immersive augmented and virtual reality applications and experiences.', skills: ['Unreal Engine', 'Unity', 'AR/VR Platforms', '3D Graphics', 'C#'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Hadoop Developer', text: 'Build and maintain big data pipelines using the Hadoop ecosystem.', skills: ['Hadoop', 'HDFS', 'MapReduce', 'Big Data', 'Java'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Redis Developer', text: 'Design and optimize caching and data layers using Redis.', skills: ['Redis', 'Caching', 'Data Structures', 'Scalability', 'Performance Optimization'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Talend Developer', text: 'Build ETL pipelines that integrate and clean data across enterprise systems using Talend.', skills: ['ETL', 'Data Integration', 'Data Quality', 'SQL', 'Java'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'SAP Developer', text: 'Configure and customize SAP enterprise systems to fit business processes.', skills: ['SAP', 'ABAP', 'Configuration', 'Enterprise Systems', 'SQL'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Haskell Developer', text: 'Build reliable software systems using functional programming in Haskell.', skills: ['Haskell', 'Functional Programming', 'Type System', 'Concurrency', 'Problem Solving'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'C++ Developer', text: 'Build performance-critical software and systems using C++.', skills: ['C++', 'System Programming', 'Performance', 'Debugging', 'Memory Management'], industries: ['Information Technology'], courses: ['BSCS'] },
+  { title: 'Cybersecurity Analyst', text: 'Monitor systems for threats, assess vulnerabilities, and respond to security incidents.', skills: ['Risk Assessment', 'Incident Response', 'Vulnerability Assessment', 'NIST', 'Security'], industries: ['Information Technology'], courses: [] },
+  { title: 'Performance Tester', text: 'Test software systems under load to identify and resolve performance bottlenecks.', skills: ['JMeter', 'Load Testing', 'Performance Testing', 'Analysis', 'Reporting'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Release Manager', text: 'Coordinate and manage the software release process from build to deployment.', skills: ['Release Management', 'Change Control', 'Project Management', 'Documentation', 'Communication'], industries: ['Information Technology'], courses: ['BSIT'] },
+  { title: 'Scrum Master', text: 'Facilitate agile ceremonies and remove blockers to help a development team deliver effectively.', skills: ['Scrum', 'Agile', 'Team Leadership', 'Coaching', 'Communication'], industries: ['Information Technology', 'Business and Management'], courses: ['BSIM'] },
+  { title: 'Product Manager', text: 'Define product strategy and guide a product’s development from concept to launch.', skills: ['Product Strategy', 'Data Analysis', 'Market Analysis', 'User Research', 'Leadership'], industries: ['Business and Management', 'Information Technology'], courses: ['BSIM'] },
+  { title: 'Technical Writer', text: 'Write clear documentation, guides, and API references for technical products.', skills: ['Technical Writing', 'API Documentation', 'Documentation', 'Organization', 'Communication'], industries: ['Information Technology', 'Creative and Media'], courses: [] },
+
+  // ---- Business and management ----
+  { title: 'Project Manager', text: 'Plan, coordinate, and deliver projects on time and within budget across any industry.', skills: ['Project Management', 'Risk Management', 'Communication', 'Team Leadership', 'Budget Control'], industries: ['Business and Management'], courses: ['BSIM'] },
+  { title: 'Business Analyst', text: 'Bridge business needs and technical solutions by gathering requirements and improving processes.', skills: ['SQL', 'Documentation', 'Requirements Gathering', 'Process Improvement', 'Stakeholder Communication'], industries: ['Business and Management', 'Information Technology'], courses: ['BSIS'] },
+  { title: 'Operations Manager', text: 'Oversee day-to-day operations to keep a business running efficiently.', skills: ['Project Management', 'Process Management', 'Efficiency Optimization', 'Quality Control', 'Leadership'], industries: ['Business and Management'], courses: ['BSIM'] },
+  { title: 'Executive Assistant', text: 'Manage schedules, communications, and priorities to keep an executive’s day running smoothly.', skills: ['Communication', 'Executive Support', 'Organization', 'Discretion', 'Leadership Support'], industries: ['Business and Management'], courses: [] },
+  { title: 'Chief Executive Officer', text: 'Set an organization’s overall strategy and direction, and lead its executive team.', skills: ['Strategic Leadership', 'Decision Making', 'Business Acumen', 'Communication', 'Executive Management'], industries: ['Business and Management'], courses: [] },
+  { title: 'Business Development Manager', text: 'Identify new business opportunities and build partnerships to grow a company’s revenue.', skills: ['Business Development Strategy', 'Networking', 'Market Analysis', 'Negotiation', 'Sales'], industries: ['Sales', 'Business and Management'], courses: [] },
+  { title: 'Account Executive', text: 'Manage client accounts and drive sales revenue through relationship building.', skills: ['Sales', 'Account Management', 'CRM', 'Negotiation', 'Relationship Building'], industries: ['Sales'], courses: [] },
+  { title: 'Logistics Manager', text: 'Plan and coordinate the movement, storage, and distribution of goods.', skills: ['Logistics Planning', 'Fleet Management', 'Supplier Management', 'Cost Optimization', 'Distribution'], industries: ['Business and Management'], courses: [] },
+  { title: 'Production Manager', text: 'Oversee production schedules, staff, and quality on a manufacturing or production floor.', skills: ['Production Planning', 'Quality Control', 'Staff Management', 'Equipment Maintenance', 'Safety'], industries: ['Business and Management'], courses: [] },
+  { title: 'Non-profit Director', text: 'Lead a non-profit organization’s mission, fundraising, and operations.', skills: ['Non-profit Leadership', 'Fundraising', 'Budget Management', 'Strategic Planning', 'Communication'], industries: ['Business and Management'], courses: [] },
+  { title: 'Grant Writer', text: 'Research funding opportunities and write proposals to secure grants for an organization.', skills: ['Grant Writing', 'Fundraising Knowledge', 'Research', 'Organization', 'Communication'], industries: ['Business and Management'], courses: [] },
+  { title: 'Product Researcher', text: 'Conduct research to understand user needs and inform product or business decisions.', skills: ['User Research', 'Research Methodology', 'Data Analysis', 'Report Writing', 'Problem Solving'], industries: ['Business and Management'], courses: [] },
+  { title: 'Audit Manager', text: 'Lead audits of financial and operational controls to ensure compliance and manage risk.', skills: ['Internal Controls', 'Risk Assessment', 'Audit Procedures', 'Compliance', 'Leadership'], industries: ['Finance and Banking'], courses: [] },
+  { title: 'Financial Analyst', text: 'Analyze financial data and model scenarios to guide investment and business decisions.', skills: ['Financial Modeling', 'Risk Analysis', 'Valuation', 'Statistics', 'Excel'], industries: ['Finance and Banking'], courses: [] },
+  { title: 'Accountant', text: 'Prepare and review financial records, statements, and tax filings for accuracy and compliance.', skills: ['Accounting Principles', 'Financial Analysis', 'QuickBooks', 'GAAP', 'Tax Knowledge'], industries: ['Finance and Banking'], courses: [] },
+
+  // ---- Engineering ----
+  { title: 'Automotive Engineer', text: 'Design, test, and improve vehicle systems and components.', skills: ['CAD', 'Vehicle Systems', 'Materials', 'Thermal Systems', 'Testing'], industries: ['Engineering'], courses: [] },
+  { title: 'Electronics Engineer', text: 'Design and build circuits, embedded systems, and electronic hardware.', skills: ['Circuit Design', 'Embedded Systems', 'Hardware Design', 'Microcontrollers', 'PCB Design'], industries: ['Engineering'], courses: [] },
+  { title: 'Aerospace Engineer', text: 'Design and analyze aircraft and spacecraft systems.', skills: ['Aerodynamics', 'CAD', 'Structural Analysis', 'Physics', 'MATLAB'], industries: ['Engineering'], courses: [] },
+  { title: 'Structural Engineer', text: 'Design and assess the structural integrity of buildings and infrastructure.', skills: ['Structural Analysis', 'Building Codes', 'CAD', 'Materials', 'Calculations'], industries: ['Engineering'], courses: [] },
+  { title: 'Project Engineer', text: 'Coordinate the technical and logistical details of engineering projects from planning to completion.', skills: ['Project Management', 'Technical Knowledge', 'Documentation', 'Coordination', 'Communication'], industries: ['Engineering'], courses: [] },
+  { title: 'Agricultural Engineer', text: 'Design equipment and systems that improve agricultural production and sustainability.', skills: ['Agricultural Systems', 'Equipment Design', 'Sustainability', 'Analysis', 'Technical Knowledge'], industries: ['Engineering'], courses: [] },
+  { title: 'Environmental Engineer', text: 'Design solutions to environmental problems like waste management, water quality, and pollution control.', skills: ['Environmental Assessment', 'Waste Management', 'Water Systems', 'Sustainability', 'Regulations'], industries: ['Engineering'], courses: [] },
+
+  // ---- Healthcare ----
+  { title: 'Medical Technologist', text: 'Run laboratory tests on patient samples to support diagnosis and treatment.', skills: ['Lab Testing', 'Quality Control', 'Equipment Operation', 'Analysis', 'Attention to Detail'], industries: ['Healthcare'], courses: [] },
+  { title: 'Clinical Lab Scientist', text: 'Perform and interpret complex laboratory tests that guide clinical diagnoses.', skills: ['Laboratory Analysis', 'Quality Control', 'Data Analysis', 'Equipment Maintenance', 'Attention to Detail'], industries: ['Healthcare'], courses: [] },
+  { title: 'Pharmacist', text: 'Dispense medications and counsel patients on safe and effective drug use.', skills: ['Pharmacy Knowledge', 'Drug Interactions', 'Patient Counseling', 'Attention to Detail', 'Accuracy'], industries: ['Healthcare'], courses: [] },
+
+  // ---- Legal and government ----
+  { title: 'Corporate Lawyer', text: 'Advise businesses on contracts, transactions, and corporate legal matters.', skills: ['Corporate Law', 'Contract Negotiation', 'Research', 'Strategic Thinking', 'Writing'], industries: ['Legal'], courses: [] },
+  { title: 'Judge', text: 'Preside over court proceedings and issue rulings based on the law and evidence presented.', skills: ['Legal Expertise', 'Decision Making', 'Ethics', 'Fairness', 'Communication'], industries: ['Legal'], courses: [] },
+  { title: 'Detective', text: 'Investigate crimes by gathering evidence, interviewing witnesses, and building cases.', skills: ['Investigation', 'Analysis', 'Attention to Detail', 'Communication', 'Judgment'], industries: ['Government and Public Service'], courses: [] },
+  { title: 'Conservation Officer', text: 'Protect natural resources and enforce environmental regulations in the field.', skills: ['Conservation', 'Environmental Knowledge', 'Law Enforcement', 'Safety', 'Communication'], industries: ['Government and Public Service'], courses: [] },
+  { title: 'Park Ranger', text: 'Protect and manage public parks and natural areas while educating and assisting visitors.', skills: ['Conservation', 'Environmental Knowledge', 'Public Safety', 'Outdoor Skills', 'Communication'], industries: ['Government and Public Service'], courses: [] },
+
+  // ---- Education ----
+  { title: 'School Principal', text: 'Lead a school’s staff, budget, and academic program toward its educational goals.', skills: ['Educational Leadership', 'Community Relations', 'Management', 'Budgeting', 'Staff Management'], industries: ['Education'], courses: [] },
+  { title: 'Training Specialist', text: 'Design and deliver training programs that build employee skills and knowledge.', skills: ['Instructional Design', 'Training Program Development', 'eLearning', 'Assessment', 'Communication'], industries: ['Education', 'Human Resources'], courses: [] },
+
+  // ---- Science and research ----
+  { title: 'Microbiologist', text: 'Study microorganisms in a lab setting to support research, healthcare, or industry applications.', skills: ['Microbiology', 'Laboratory Work', 'Research', 'Data Analysis', 'Precision'], industries: ['Science and Research'], courses: [] },
+  { title: 'Meteorologist', text: 'Analyze atmospheric data to forecast weather and study climate patterns.', skills: ['Meteorology', 'Weather Analysis', 'Data Analysis', 'Research', 'Communication'], industries: ['Science and Research'], courses: [] },
+
+  // ---- Creative and media ----
+  { title: 'Art Director', text: 'Set the visual direction for a brand, campaign, or creative project and lead the design team executing it.', skills: ['Creativity', 'Team Leadership', 'Design Principles', 'Artistic Direction', 'Visual Communication'], industries: ['Creative and Media'], courses: [] },
+  { title: '3D Artist', text: 'Create 3D models, textures, and renders for games, film, or product visualization.', skills: ['3D Modeling', 'Rendering', 'Texturing', 'Creativity', 'Software Skills'], industries: ['Creative and Media'], courses: [] },
+  { title: 'Sound Engineer', text: 'Record, mix, and engineer audio for music, film, or live events.', skills: ['Sound Design', 'Audio Engineering', 'Equipment Knowledge', 'Precision', 'Technical Skills'], industries: ['Creative and Media'], courses: [] },
+  { title: 'Museum Curator', text: 'Research, acquire, and manage a museum’s collections and exhibitions.', skills: ['Curation', 'Art Knowledge', 'Research', 'Management', 'Communication'], industries: ['Creative and Media'], courses: [] },
+  { title: 'Archivist', text: 'Organize, preserve, and provide access to historical records and archival collections.', skills: ['Archives Management', 'Preservation', 'Research', 'Organization', 'Documentation'], industries: ['Creative and Media'], courses: [] },
+  { title: 'Conservator', text: 'Restore and preserve artwork, artifacts, or historical materials.', skills: ['Restoration', 'Conservation', 'Precision', 'Technical Skills', 'Research'], industries: ['Creative and Media'], courses: [] },
+
+  // ---- Skilled trades ----
+  { title: 'HVAC Technician', text: 'Install, maintain, and repair heating, ventilation, and air conditioning systems.', skills: ['HVAC Systems', 'Troubleshooting', 'Equipment', 'Technical Knowledge', 'Safety'], industries: ['Skilled Trades'], courses: [] },
+  { title: 'Plumber', text: 'Install and repair the pipes, fixtures, and systems that carry water and gas through a building.', skills: ['Plumbing Systems', 'Code Knowledge', 'Technical Knowledge', 'Problem Solving', 'Safety'], industries: ['Skilled Trades'], courses: [] },
+  { title: 'Welder', text: 'Join and repair metal parts and structures using welding techniques.', skills: ['Welding', 'Technical Knowledge', 'Safety', 'Precision', 'Physical Stamina'], industries: ['Skilled Trades'], courses: [] },
+
+  // ---- Hospitality and personal care ----
+  { title: 'Hairstylist', text: 'Cut, color, and style hair to help clients look and feel their best.', skills: ['Hair Styling', 'Customer Service', 'Precision', 'Creativity', 'Technical Skills'], industries: ['Hospitality and Personal Care'], courses: [] },
+  { title: 'Nail Technician', text: 'Provide manicure, pedicure, and nail art services to clients.', skills: ['Nail Care', 'Artistry', 'Sanitation', 'Precision', 'Customer Service'], industries: ['Hospitality and Personal Care'], courses: [] },
+  { title: 'Esthetician', text: 'Provide skincare treatments and beauty services to clients.', skills: ['Skincare', 'Facial Treatment', 'Product Knowledge', 'Technical Skills', 'Customer Service'], industries: ['Hospitality and Personal Care'], courses: [] },
+
+  // ---- Sports and fitness ----
+  { title: 'Sports Manager', text: 'Manage the business and operations side of a sports team, league, or facility.', skills: ['Sports Management', 'Financial Management', 'Leadership', 'Marketing', 'Communication'], industries: ['Sports and Fitness'], courses: [] },
+  { title: 'Coach', text: 'Train and mentor athletes to develop their skills and performance.', skills: ['Coaching', 'Athletic Knowledge', 'Training Program Design', 'Leadership', 'Motivation'], industries: ['Sports and Fitness'], courses: [] },
+
+  // ---- Maritime and logistics ----
+  { title: 'Ship Captain', text: 'Command a vessel and its crew, ensuring safe and lawful navigation.', skills: ['Navigation', 'Maritime Law', 'Leadership', 'Safety', 'Technical Knowledge'], industries: ['Maritime and Logistics'], courses: [] },
 ];
 
 function cosineSimilarity(a, b) {
@@ -1317,15 +1429,17 @@ function cosineSimilarity(a, b) {
 const careerEmbeddingText = (career) =>
   `${career.title}. ${career.text} Relevant skills: ${career.skills.join(', ')}. Industry: ${career.industries.join(', ')}.`;
 
-// The 10 career descriptions never change at runtime, so their embeddings
+// The CAREER_PATHS descriptions never change at runtime, so their embeddings
 // are computed once per server process and reused — otherwise every single
-// page load would cost 10 extra Hugging Face API calls for nothing.
+// page load would cost one Hugging Face API call per career path for
+// nothing. Batched into a single HF round trip (not Promise.all over
+// getEmbedding) since CAREER_PATHS now spans 100+ roles — one request per
+// role would mean 100+ simultaneous HF calls on the first page load after a
+// server restart.
 let careerEmbeddingsCache = null;
 async function getCareerEmbeddings() {
   if (!careerEmbeddingsCache) {
-    careerEmbeddingsCache = await Promise.all(
-      CAREER_PATHS.map((career) => getEmbedding(careerEmbeddingText(career)))
-    );
+    careerEmbeddingsCache = await getEmbeddingsBatch(CAREER_PATHS.map((career) => careerEmbeddingText(career)));
   }
   return careerEmbeddingsCache;
 }
