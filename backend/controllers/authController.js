@@ -463,6 +463,38 @@ const registerPartner = async (req, res) => {
   }
 };
 
+// GET /api/auth/me — the logged-in user's own current profile, straight from
+// the database. `user` in AuthContext is otherwise just a snapshot frozen at
+// login time (only ever patched in-place by this same tab's own actions via
+// updateUser) — a change saved from another device/tab/session (e.g. an
+// avatar upload that succeeded but whose optimistic updateUser patch never
+// ran here) would silently never show up until the next full re-login.
+// AuthContext calls this once on app load to keep that snapshot honest.
+const getMe = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    res.json({
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        college: user.college || '',
+        course: user.course,
+        graduationYear: user.graduationYear,
+        tracerStudyCompleted: user.tracerStudyCompleted,
+        avatarUrl: user.avatarUrl || '',
+        isTwoFactorEnabled: user.isTwoFactorEnabled,
+      },
+    });
+  } catch (err) {
+    console.error('getMe error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 module.exports = {
   login,
   verifyTwoFactor,
@@ -474,4 +506,5 @@ module.exports = {
   disableTwoFactor,
   registerPartner,
   registerAlumni,
+  getMe,
 };
