@@ -20,6 +20,7 @@ router.post('/verify-reset-otp',  otpLimiter, ctrl.verifyResetOTP);
 router.post('/reset-password',    ctrl.resetPassword);
 router.post('/enable-2fa',  protect, ctrl.enableTwoFactor);
 router.post('/disable-2fa', protect, ctrl.disableTwoFactor);
+router.get('/me', protect, ctrl.getMe);
 
 router.get('/settings', protect, async (req, res) => {
   try {

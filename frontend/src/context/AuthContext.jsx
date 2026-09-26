@@ -55,6 +55,20 @@ export function AuthProvider({ children }) {
   const [needsTracerUpdate, setNeedsTracerUpdateState] = useState(null);
   const [tracerUpdateChecked, setTracerUpdateChecked] = useState(false);
 
+  // `user` is otherwise just a snapshot frozen at login time, only ever
+  // patched in-place by this same tab's own actions (updateUser) — a change
+  // saved from another device/tab/session (e.g. an avatar upload there)
+  // would never show up here until the next full re-login. One refetch on
+  // app load keeps this session's copy honest without needing that.
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.user) updateUser(d.user); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   useEffect(() => {
     if (!token || user?.role !== "alumni" || !tracerStudyCompleted) {
       setTracerUpdateChecked(true);
