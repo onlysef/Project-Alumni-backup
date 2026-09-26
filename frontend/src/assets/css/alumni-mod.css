@@ -730,6 +730,21 @@
    stage and Save/Cancel buttons behind it. An explicit, higher z-index here
    makes the cropper always win instead of leaving it to insertion order. */
 .modal-backdrop.avatar-cropper-modal { z-index: 70; }
+/* AccountPanel's inline crop view (see AdminTopbar.jsx) reuses the same
+   .topbar-modal element that's normally pinned top-right like every other
+   topbar popover — fine for a short menu, but the crop stage reads better
+   centered like a normal dialog. `top/right/bottom/left/margin:auto` (not
+   `transform`) so it doesn't fight .topbar-modal's own `admin-modal-in`
+   entrance animation, which already animates `transform` on this element.
+   3 classes to reliably outrank the 2-class `.account-popover .topbar-modal`
+   positioning rules regardless of CSS file load order. */
+.tracer-modal.account-panel-modal.is-cropping {
+    top: 0; right: 0; bottom: 0; left: 0;
+    margin: auto;
+    width: min(340px, calc(100vw - 32px));
+    height: fit-content;
+    max-height: calc(100vh - 48px);
+}
 .avatar-cropper { width: min(340px, 92vw); border-radius: 12px; background: #fff; color: #3e3337; overflow: hidden; box-shadow: 0 20px 50px rgba(40,0,14,.35); }
 /* background explicit — admin-mod.css's generic .modal-head sets a maroon
    background (for every OTHER modal's white-on-maroon title bar), which
