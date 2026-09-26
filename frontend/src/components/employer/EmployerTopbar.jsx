@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
-import { DashboardSettingsForm } from "../admin/AdminTopbar.jsx";
+import { DashboardSettingsForm, AvatarButton, AccountPanel } from "../admin/AdminTopbar.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { getNotificationTarget } from "../../services/notificationNavigation.js";
 import { isDrawerViewport } from "../../constants/layout.js";
@@ -62,7 +62,13 @@ export default function EmployerTopbar({
     function closeOnOutsidePointer(event) {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      if (target.closest(".topbar-modal") || target.closest(".top-actions")) return;
+      // .avatar-cropper-modal — AccountPanel's own nested AvatarCropper
+      // Modal portals separately into document.body, so it's never a DOM
+      // descendant of .topbar-modal. Without this exclusion, clicking
+      // "Save Photo" registered as an outside click on this capture-phase
+      // listener and closed the whole account panel before Save's own
+      // onClick could run.
+      if (target.closest(".topbar-modal") || target.closest(".top-actions") || target.closest(".avatar-cropper-modal")) return;
       if (panel === "settings") closeSettings();
       else setPanel(null);
     }
@@ -149,6 +155,7 @@ export default function EmployerTopbar({
           >
             <span><Icon name="icon-10" /></span>
           </button>
+          <AvatarButton active={panel === "account"} onClick={() => togglePanel("account")} />
         </div>
       </header>
 
@@ -194,7 +201,12 @@ export default function EmployerTopbar({
           onClose={closeSettings}
           showToast={showToast}
           notificationDescription="Show badges for new applicants and appointment updates."
+          showChangePassword={false}
         />
+      </Modal>
+
+      <Modal open={panel === "account"} onClose={() => setPanel(null)} className="topbar-popover account-popover">
+        <AccountPanel onClose={() => setPanel(null)} showToast={showToast} />
       </Modal>
     </>
   );

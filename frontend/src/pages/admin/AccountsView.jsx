@@ -154,7 +154,7 @@ export default function AccountsView() {
         });
         const data = await res.json();
         if (res.ok) {
-          setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, status: "Pending" } : r));
+          setRows((prev) => prev.map((r) => r.id === row.id ? { ...r, status: data.status || "Pending" } : r));
           showToast(data.message);
         } else {
           showToast(data.message || "Failed to resend credentials.");
@@ -184,7 +184,7 @@ export default function AccountsView() {
       return;
     }
 
-    const newStatus = (action === "approve" || action === "activate") ? "active" : "suspended";
+    const newStatus = (action === "approve" || action === "activate" || action === "unsuspend") ? "active" : "suspended";
     try {
       const res = await fetch(`${API}/admin/users/${row.id}`, {
         method: "PATCH",
@@ -201,7 +201,7 @@ export default function AccountsView() {
   }
 
   function handleBulkAction(action) {
-    const label    = action === "activate" ? "activate" : action === "suspend" ? "suspend" : "reject";
+    const label    = action === "activate" ? "activate" : "suspend";
     const status   = action === "activate" ? "active" : "suspended";
     const capLabel = label.charAt(0).toUpperCase() + label.slice(1);
 
@@ -397,14 +397,6 @@ export default function AccountsView() {
             </button>
             <button
               type="button"
-              className="bulk-btn bulk-reject"
-              disabled={bulkBusy}
-              onClick={() => handleBulkAction("reject")}
-            >
-              Reject Selected
-            </button>
-            <button
-              type="button"
               className="bulk-btn bulk-clear"
               disabled={bulkBusy}
               onClick={() => setSelected(new Set())}
@@ -562,6 +554,9 @@ export default function AccountsView() {
                 if (data.course)         payload.course         = data.course;
                 if (data.graduationYear) payload.graduationYear = Number(data.graduationYear);
                 if (data.course === "BSIT" && data.track) payload.track = data.track;
+              }
+              if (data.role.toLowerCase() === "employer") {
+                payload.partnershipId = data.partnershipId || "";
               }
               const res = await fetch(`${API}/admin/users`, {
                 method: "POST",

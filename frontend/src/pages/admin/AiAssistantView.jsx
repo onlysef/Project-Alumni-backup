@@ -1098,9 +1098,9 @@ export default function AiAssistantView() {
 
         {!started ? (
           <div className="ac-welcome">
-            <h2 className="ac-welcome-title">Ask away, {firstName}!</h2>
+            <h2 className="ac-welcome-title">Good day, {firstName}.</h2>
             <p className="ac-welcome-sub">
-              I'm AC, your assistant for alumni records, tracer surveys, and employment outcomes.
+              I am AC, your assistant for alumni records, tracer surveys, and employment outcomes.
             </p>
 
             <form className="ac-composer ac-composer-center" onSubmit={handleSubmit}>

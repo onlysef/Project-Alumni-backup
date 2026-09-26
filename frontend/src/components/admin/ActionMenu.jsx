@@ -15,6 +15,7 @@ const ACTION_ICONS = {
   cancel:   "icon-9",
   suspend:  "icon-9",
   activate: "icon-13",
+  unsuspend: "icon-13",
   archive:  "icon-26",
   resend:   "icon-15",
 };

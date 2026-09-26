@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, messageAlumnus, getCareerRecommendations, getCareerNextStep, getCareerFitExplanation, extractSkills, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication } = require('../controllers/alumniController');
-const { getAnnouncements, toggleLike, getComments, addComment, trackShare } = require('../controllers/announcementController');
+const { getAlumniAnnouncements, toggleLike, getComments, addComment, trackShare } = require('../controllers/announcementController');
 const { getAlumniEvents, toggleInterested, getCoordinatorNotifications, markNotificationsRead } = require('../controllers/eventController');
 const { getOfficeSettings, getAvailableStaff, bookAppointment, getBookedSlots } = require('../controllers/appointmentController');
 const { submitEventFeedback, getMyEventFeedback } = require('../controllers/feedbackController');
@@ -45,9 +45,9 @@ router.get('/appointments/staff',    protect, authorize('alumni'), getAvailableS
 router.get('/appointments/booked-slots', protect, authorize('alumni'), getBookedSlots);
 router.post('/appointments',         protect, authorize('alumni'), bookAppointment);
 
-// Same underlying Announcement data/logic the admin panel manages — alumni
-// only get read + like/comment/share, no create/update/delete.
-router.get('/announcements',                protect, authorize('alumni'), getAnnouncements);
+// Lean, Announcement-only read (no Event/Job union, no poster-name lookups)
+// — the admin panel's merged feed lives in getAnnouncements instead.
+router.get('/announcements',                protect, authorize('alumni'), getAlumniAnnouncements);
 router.post('/announcements/:id/like',      protect, authorize('alumni'), toggleLike);
 router.get('/announcements/:id/comments',   protect, authorize('alumni'), getComments);
 router.post('/announcements/:id/comment',   protect, authorize('alumni'), addComment);

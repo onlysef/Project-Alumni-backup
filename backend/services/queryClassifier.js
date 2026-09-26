@@ -206,6 +206,32 @@ const WHO_AM_I_PATTERNS = [
   /\bano\s+ako(\s+ba)?\b/i,
 ];
 
+// A bare trigger word/phrase with nothing after it to say what it should act
+// ON or refer TO — every one of these MUST be followed by a real subject in
+// a genuine question ("how many alumni are employed", "why did they
+// resign", "compare BSIT and BSCS") — occurring alone, anchored whole-
+// message like GREETING_PATTERN above, is an unfinished thought rather than
+// a legitimate (if terse) one. Without this, these fell through to
+// 'statistical' (the classify() default) or 'qualitative', found no topic
+// or retrievable context, and landed on the generic "I can't answer
+// unrelated questions" refusal — reading as if the message were off-topic,
+// when the real issue is that it never said what it was asking about.
+// Checked before UNKNOWN_PATTERNS below (no overlap in trigger words either
+// way, but keeps both "short-circuit before the generic dispatch" groups
+// together) and returns its own 'incomplete' classification so ragService.js
+// can ask a targeted clarifying question instead of guessing.
+const INCOMPLETE_THOUGHT_PATTERNS = [
+  // Statistical-shaped action verbs with no object.
+  /^\s*(show\s+me|give\s+me|list|tell\s+me|ipakita(?:\s+mo)?|ilista(?:\s+mo)?|ibigay\s+mo)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
+  // Statistical-shaped bare nouns/quantifiers with nothing to count or measure.
+  /^\s*(how\s+many|how\s+much|total|average|count|number\s+of|percentage|ranking|breakdown|distribution|compare|graphs?|charts?|visuali[sz]e|visuali[sz]ations?|plot|ilan|porsyento|porsiyento)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
+  // Qualitative-shaped bare trigger words with no named subject.
+  /^\s*(why|explain|describe|summarize|suggest|recommend|feedback|bakit|ipaliwanag|mungkahi)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
+];
+function isIncompleteThought(q) {
+  return INCOMPLETE_THOUGHT_PATTERNS.some((p) => p.test(q));
+}
+
 // High-confidence off-topic patterns — general knowledge / entertainment / small talk
 // that has nothing to do with graduate tracer records. Kept narrow and conservative:
 // anything ambiguous falls through to statistical/qualitative (the safe default),
@@ -468,7 +494,7 @@ const ARITHMETIC_PATTERN = /\d+\s*[\+*x×÷\/]\s*\d+/;
 const INLINE_DATE_PATTERN = /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g;
 
 /**
- * Classify a question as 'offensive', 'unclear', 'greeting', 'acknowledgment', 'who_am_i', 'identity', 'help', 'unknown', 'statistical', 'qualitative', or 'mixed'.
+ * Classify a question as 'offensive', 'unclear', 'greeting', 'acknowledgment', 'who_am_i', 'identity', 'help', 'incomplete', 'unknown', 'statistical', 'qualitative', or 'mixed'.
  * Defaults to 'statistical' for ambiguous questions so MongoDB is tried first.
  */
 function classify(question) {
@@ -481,6 +507,7 @@ function classify(question) {
   if (WHO_AM_I_PATTERNS.some(p => p.test(q))) return 'who_am_i';
   if (IDENTITY_PATTERNS.some(p => p.test(q))) return 'identity';
   if (HELP_PATTERNS.some(p => p.test(q))) return 'help';
+  if (isIncompleteThought(q)) return 'incomplete';
   if (UNKNOWN_PATTERNS.some(p => p.test(q))) return 'unknown';
   if (ARITHMETIC_PATTERN.test(q.replace(INLINE_DATE_PATTERN, ''))) return 'unknown';
 

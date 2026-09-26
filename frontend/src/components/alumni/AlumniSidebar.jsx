@@ -14,12 +14,22 @@ const ITEMS = [
   ["suggested", "Alumni Network", "alumni-suggested"],
   ["career", "Career Recommendation", "alumni-career"],
   ["jobconnect", "Job Connect", "alumni-job-connect"],
+  // Not a `?section=` view like the others above — the tracer study form is
+  // its own top-level route (see AppRoutes.jsx's "tracer-study" path), so
+  // this key is special-cased in the render loop below to navigate there
+  // directly instead of going through select()'s dashboard-section
+  // mechanism. Previously the ONLY way to reach this page at all was the
+  // single-item "restricted" nav shown during the mandatory first-time
+  // completion flow — once that flow finished, the link disappeared
+  // entirely and an alumni who wanted to review or correct their own
+  // answers later had no way back in short of typing the URL by hand.
+  ["tracer-study", "Tracer Study", "alumni-tracer"],
 ];
 
 const NAV_SECTIONS = [
   { label: "Overview", items: ITEMS.slice(0, 1) },
   { label: "Community", items: [ITEMS[1], ITEMS[3], ITEMS[4]] },
-  { label: "Career", items: [ITEMS[2], ITEMS[5], ITEMS[6]] },
+  { label: "Career", items: [ITEMS[2], ITEMS[5], ITEMS[6], ITEMS[7]] },
 ];
 
 export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restrictedLabel = "Account Setup" }) {
@@ -42,6 +52,11 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
   const openInstitutionPage = (page) => {
     if (restricted) return;
     navigate(`/alumni/${page}`);
+    onNavigate?.();
+  };
+  const openTracerStudy = () => {
+    if (restricted) return;
+    navigate("/alumni/tracer-study");
     onNavigate?.();
   };
   const selectFilter = (filter) => { navigate(filter === "All" ? "/alumni/dashboard?section=announcements" : `/alumni/dashboard?section=announcements&filter=${encodeURIComponent(filter)}`); onNavigate?.(); };
@@ -93,7 +108,8 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
               <span><Icon name={icon} /></span><span>{label}</span>{!collapsed && <b className={announcementsOpen ? "open" : ""} aria-hidden="true" />}
             </a>
             {!collapsed && announcementsOpen && <div className="alumni-nav-sub">{["All", "News", "Events"].map(item => <a key={item} href="#" className={currentFilter === item ? "selected" : ""} onClick={(e) => { e.preventDefault(); selectFilter(item); }}>{item}</a>)}</div>}
-          </div> : <a key={key} href="#" className={active === key ? "active" : undefined} onClick={(e) => { e.preventDefault(); select(key); }}><span><Icon name={icon} /></span><span>{label}</span></a>)}
+          </div> : key === "tracer-study" ? <a key={key} href="#" className={location.pathname.startsWith("/alumni/tracer-study") ? "active" : undefined} onClick={(e) => { e.preventDefault(); openTracerStudy(); }}><span><Icon name={icon} /></span><span>{label}</span></a>
+          : <a key={key} href="#" className={active === key ? "active" : undefined} onClick={(e) => { e.preventDefault(); select(key); }}><span><Icon name={icon} /></span><span>{label}</span></a>)}
           </React.Fragment>)}
         </nav>
       )}

@@ -722,7 +722,15 @@
 .employment-field-hint { margin: 10px 0 0; font-size: 10px; color: #8a767c; }
 .employment-save-error { margin: 0 26px; padding: 9px 12px; border-radius: 6px; background: #f7e6e8; color: #8e1c31; font-size: 11px; font-weight: 700; }
 .avatar-cropper { width: min(340px, 92vw); border-radius: 12px; background: #fff; color: #3e3337; overflow: hidden; box-shadow: 0 20px 50px rgba(40,0,14,.35); }
-.avatar-cropper .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #eee3e6; }
+/* background explicit — admin-mod.css's generic .modal-head sets a maroon
+   background (for every OTHER modal's white-on-maroon title bar), which
+   this rule didn't override until now since it never needed to: this
+   cropper was alumni-only until AccountPanel started opening it from the
+   admin/coordinator/employer topbars too, where that generic rule is also
+   in effect. Without this, the dark-maroon h3 text below rendered on a
+   maroon background instead of the white one it was actually designed for
+   — maroon-on-maroon, unreadable. */
+.avatar-cropper .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #eee3e6; background: #fff; }
 .avatar-cropper .modal-head h3 { margin: 0; font-size: 15px; color: #5e0019; }
 .avatar-cropper .modal-head button { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #65585c; font-size: 18px; line-height: 1; cursor: pointer; }
 .avatar-cropper-hint { margin: 12px 18px 0; font-size: 10px; color: #8a767c; }
@@ -735,7 +743,7 @@
 .avatar-cropper-actions { display: flex; gap: 8px; margin: 16px 18px 18px; }
 .avatar-cropper-actions button { flex: 1; justify-content: center; }
 body.dark-mode .avatar-cropper { background: #2a1319; color: #f7edef; }
-body.dark-mode .avatar-cropper .modal-head { border-color: rgba(250,200,83,.16); }
+body.dark-mode .avatar-cropper .modal-head { background: #2a1319; border-color: rgba(250,200,83,.16); }
 body.dark-mode .avatar-cropper .modal-head h3 { color: #fac853; }
 body.dark-mode .avatar-cropper .modal-head button { color: #d4bdc3; }
 body.dark-mode .avatar-cropper-hint { color: #b99ba4; }

@@ -33,6 +33,9 @@ export default function AlumniContacts() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [saving, setSaving] = useState(false);
   const debounceRef = useRef(null);
   const requestIdRef = useRef(0);
 
@@ -75,6 +78,57 @@ export default function AlumniContacts() {
       showToast?.("Contacts exported.");
     } catch {
       showToast?.("Export failed.");
+    }
+  }
+
+  function closeProfile() {
+    setSelectedContact(null);
+    setEditing(false);
+    setEditForm(null);
+  }
+
+  // Only the actual contact-reachability fields are editable here — this is
+  // the Alumni CONTACTS page, not a full profile editor. Name/course/
+  // graduation year/position stay display-only (the backend endpoint still
+  // accepts them, it just never receives those keys from this form — see
+  // routes/coordinator.js's PATCH /alumni/:id, each field checked with
+  // `!== undefined` so omitting a key is a no-op there, not an error).
+  function startEdit() {
+    setEditForm({
+      email: selectedContact.email || "",
+      phone: selectedContact.phone || "",
+    });
+    setEditing(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!editForm.email.trim()) {
+      showToast?.("Email is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiFetch(`/coordinator/alumni/${selectedContact._id}`, {
+        method: "PATCH",
+        body: {
+          email: editForm.email.trim(),
+          phone: editForm.phone.trim(),
+        },
+      });
+      const updated = {
+        ...selectedContact,
+        email: editForm.email.trim(),
+        phone: editForm.phone.trim(),
+      };
+      setSelectedContact(updated);
+      setContacts((prev) => prev.map((c) => (c._id === updated._id ? updated : c)));
+      setEditing(false);
+      setEditForm(null);
+      showToast?.("Contact updated.");
+    } catch (err) {
+      showToast?.(err?.message || "Failed to update contact.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -168,30 +222,69 @@ export default function AlumniContacts() {
       </section>
 
       {selectedContact && (
-        <Modal open onClose={() => setSelectedContact(null)}>
+        <Modal open onClose={closeProfile}>
           <section className="tracer-modal coord-alumni-profile" role="dialog" aria-modal="true" aria-label="Alumni profile">
             <div className="modal-head">
-              <h3>Alumni Profile</h3>
-              <button type="button" aria-label="Close profile" onClick={() => setSelectedContact(null)}>×</button>
+              <h3>{editing ? "Edit Alumni Contact" : "Alumni Profile"}</h3>
+              <button type="button" aria-label="Close profile" onClick={closeProfile}>×</button>
             </div>
-            <div className="coord-profile-summary">
-              <div className="coord-profile-avatar" aria-hidden="true">
-                {selectedContact.avatarUrl ? <img src={selectedContact.avatarUrl} alt="" /> : initials(selectedContact.name)}
-              </div>
-              <div>
-                <strong>{selectedContact.name}</strong>
-                <span>{selectedContact.title || "No position provided"}</span>
-              </div>
-            </div>
-            <dl className="coord-profile-details">
-              <div><dt>Course</dt><dd><CourseBadge course={selectedContact.course} /></dd></div>
-              <div><dt>Graduation Year</dt><dd>{selectedContact.year || "—"}</dd></div>
-              <div><dt>Email</dt><dd>{selectedContact.email || "—"}</dd></div>
-              <div><dt>Phone</dt><dd>{selectedContact.phone || "—"}</dd></div>
-            </dl>
-            <div className="modal-actions coord-profile-actions">
-              <button type="button" onClick={() => setSelectedContact(null)}>Close</button>
-            </div>
+
+            {!editing ? (
+              <>
+                <div className="coord-profile-summary">
+                  <div className="coord-profile-avatar" aria-hidden="true">
+                    {selectedContact.avatarUrl ? <img src={selectedContact.avatarUrl} alt="" /> : initials(selectedContact.name)}
+                  </div>
+                  <div>
+                    <strong>{selectedContact.name}</strong>
+                    <span>{selectedContact.title || "No position provided"}</span>
+                  </div>
+                </div>
+                <dl className="coord-profile-details">
+                  <div><dt>Course</dt><dd><CourseBadge course={selectedContact.course} /></dd></div>
+                  <div><dt>Graduation Year</dt><dd>{selectedContact.year || "—"}</dd></div>
+                  <div><dt>Email</dt><dd>{selectedContact.email || "—"}</dd></div>
+                  <div><dt>Phone</dt><dd>{selectedContact.phone || "—"}</dd></div>
+                </dl>
+                <div className="modal-actions coord-profile-actions">
+                  <button type="button" onClick={closeProfile}>Close</button>
+                  <button type="button" className="btn btn-primary" onClick={startEdit}>
+                    <Icon name="icon-edit" /> Edit
+                  </button>
+                </div>
+              </>
+            ) : (
+              <form
+                className="admin-entry-form"
+                onSubmit={(e) => { e.preventDefault(); handleSaveEdit(); }}
+              >
+                <div className="admin-entry-fields">
+                  <label>Email
+                    <input
+                      type="email"
+                      value={editForm.email}
+                      onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label>Phone
+                    <input
+                      type="text"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                    />
+                  </label>
+                </div>
+                <div className="modal-actions">
+                  <button type="button" onClick={() => { setEditing(false); setEditForm(null); }} disabled={saving}>
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving}>
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </form>
+            )}
           </section>
         </Modal>
       )}

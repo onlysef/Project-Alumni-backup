@@ -24,17 +24,6 @@ function PartnershipStatus({ status }) {
   return <span className={`partnership-status-pill ${tone}`}>{status || "Pending"}</span>;
 }
 
-function inviteStatus(invite) {
-  if (invite.used) return "Used";
-  if (new Date(invite.expiresAt) < new Date()) return "Expired";
-  return "Pending";
-}
-
-function fmtInviteDate(d) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 export default function PartnershipsView() {
   const { showToast } = useOutletContext();
   const [rows, setRows]             = useState([]);
@@ -47,42 +36,9 @@ export default function PartnershipsView() {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [confirm, setConfirm]       = useState(null);
 
-  const [invites, setInvites]             = useState([]);
-  const [invitesLoading, setInvitesLoading] = useState(true);
-  const [inviteModalOpen, setInviteModalOpen] = useState(false);
-
   useEffect(() => {
       fetchPartnerships();
-      fetchInvites();
   }, []);
-
-  async function fetchInvites() {
-    setInvitesLoading(true);
-    try {
-      const res  = await fetch(`${API}/admin/employer-invites`, { headers: authHeaders() });
-      const data = await res.json();
-      if (res.ok) setInvites(data.invites || []);
-    } catch { /* ignore */ }
-    finally { setInvitesLoading(false); }
-  }
-
-  async function handleRevokeInvite(invite) {
-    setConfirm({
-      message:      `Revoke the invite sent to "${invite.email}"? The link will stop working.`,
-      confirmLabel: "Revoke",
-      danger:       true,
-      onConfirm:    async () => {
-        setConfirm(null);
-        try {
-          const res  = await fetch(`${API}/admin/employer-invites/${invite._id}`, { method: "DELETE", headers: authHeaders() });
-          const data = await res.json();
-          if (!res.ok) { showToast(data.message || "Failed to revoke invite."); return; }
-          setInvites((prev) => prev.filter((i) => i._id !== invite._id));
-          showToast("Invite revoked.");
-        } catch { showToast("Could not connect to server."); }
-      },
-    });
-  }
 
   async function fetchPartnerships() {
     setLoading(true);
@@ -226,51 +182,6 @@ export default function PartnershipsView() {
         )}
       </section>
 
-      <section className="admin-card">
-        <div className="admin-card-head admin-card-head-inline">
-          <h3>Employer Invites</h3>
-          <div>
-            <button type="button" className="add-button" onClick={() => setInviteModalOpen(true)}>Send Invite</button>
-          </div>
-        </div>
-        {invitesLoading ? (
-          <p style={{ padding: "1rem" }}>Loading...</p>
-        ) : invites.length === 0 ? (
-          <p style={{ padding: "1rem", color: "var(--muted, #76656a)", fontSize: 13 }}>No invites sent yet.</p>
-        ) : (
-          <div className="table-scroll">
-          <table className="admin-table partnership-table">
-            <thead><tr><th>Email</th><th>Status</th><th>Sent</th><th>Expires</th><th>Actions</th></tr></thead>
-            <tbody>
-              {invites.map((inv) => {
-                const status = inviteStatus(inv);
-                return (
-                  <tr key={inv._id}>
-                    <td>{inv.email}</td>
-                    <td>{status}</td>
-                    <td>{fmtInviteDate(inv.createdAt)}</td>
-                    <td>{fmtInviteDate(inv.expiresAt)}</td>
-                    <td>
-                      {status === "Pending" ? (
-                        <button type="button" className="delete-staff" onClick={() => handleRevokeInvite(inv)}>Revoke</button>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          </div>
-        )}
-      </section>
-
-      <EmployerInviteModal
-        open={inviteModalOpen}
-        onClose={() => setInviteModalOpen(false)}
-        onSent={(invite) => { setInvites((prev) => [invite, ...prev]); }}
-        showToast={showToast}
-      />
-
       <PartnershipModal
         entry={entry}
         onClose={() => setEntry(null)}
@@ -307,85 +218,6 @@ export default function PartnershipsView() {
         onCancel={() => setConfirm(null)}
       />
     </section>
-  );
-}
-
-function EmployerInviteModal({ open, onClose, onSent, showToast }) {
-  const [email, setEmail]     = useState("");
-  const [sending, setSending] = useState(false);
-  const [sentLink, setSentLink] = useState(null);
-
-  function handleClose() {
-    setEmail("");
-    setSentLink(null);
-    onClose();
-  }
-
-  async function submit(e) {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setSending(true);
-    try {
-      const res  = await fetch(`${API}/admin/employer-invites`, {
-        method:  "POST",
-        headers: authHeaders(),
-        body:    JSON.stringify({ email: email.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) { showToast(data.message || "Failed to send invite."); return; }
-      onSent(data.invite);
-      setSentLink(data.link);
-      showToast(data.message || "Invite sent.");
-    } catch {
-      showToast("Could not connect to server.");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  if (!open) return null;
-
-  return (
-    <Modal open={open} onClose={handleClose}>
-      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
-        <div className="modal-head">
-          <h3>Send Employer Invite</h3>
-          <button type="button" aria-label="Close" onClick={handleClose}>×</button>
-        </div>
-        {sentLink ? (
-          <div style={{ padding: 20 }}>
-            <p style={{ margin: "0 0 12px", fontSize: 14, lineHeight: 1.6 }}>
-              Invite sent to <strong>{email.trim()}</strong>. If the email doesn't arrive, share this link directly:
-            </p>
-            <div className="invite-link-container">
-              <input type="text" readOnly value={sentLink} onFocus={(e) => e.target.select()} />
-              <button type="button" onClick={() => { navigator.clipboard?.writeText(sentLink); showToast("Link copied."); }}>Copy</button>
-            </div>
-            <div className="modal-actions">
-              <button type="button" onClick={handleClose}>Done</button>
-            </div>
-          </div>
-        ) : (
-          <form className="admin-entry-form" onSubmit={submit}>
-            <div className="admin-entry-fields">
-              <label>Employer Email
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="employer@company.com"
-                  required
-                />
-              </label>
-            </div>
-            <div className="modal-actions">
-              <button type="button" onClick={handleClose}>Cancel</button>
-              <button type="submit" disabled={sending || !email.trim()}>{sending ? "Sending…" : "Send Invite"}</button>
-            </div>
-          </form>
-        )}
-      </section>
-    </Modal>
   );
 }
 

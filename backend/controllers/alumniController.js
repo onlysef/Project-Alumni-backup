@@ -13,6 +13,7 @@ const Resume                = require('../models/Resume');
 const JobApplication        = require('../models/JobApplication');
 const Job                   = require('../models/Job');
 const Event                = require('../models/Event');
+const EmploymentActivity    = require('../models/EmploymentActivity');
 const Notification         = require('../models/Notification');
 const { getTracerFormConfig } = require('./tracerFormConfigController');
 const { getEmbedding, getEmbeddingsBatch } = require('../services/embeddingService');
@@ -661,6 +662,30 @@ const getMyEmployment = async (req, res) => {
   }
 };
 
+// Builds the coordinator dashboard activity feed's log line for a self-
+// service employment edit ("France updated their job location") — picks the
+// single most meaningful changed field rather than listing everything that
+// changed, since this form submits the whole record on every save (most
+// fields are usually unchanged from the prior value). Checked in the same
+// order a coordinator would care about: what/where they work first, status
+// change (e.g. became unemployed) as a fallback, then a generic catch-all.
+function describeEmploymentChange(before, updates) {
+  const b = before || {};
+  if (updates.work_location && b.work_location !== updates.work_location) {
+    return `updated their job location to ${updates.work_location}`;
+  }
+  if (updates.job_title && b.job_title !== updates.job_title) {
+    return `updated their job title to ${updates.job_title}`;
+  }
+  if (updates.company_name !== 'N/A' && b.company_name !== updates.company_name) {
+    return `updated their employer to ${updates.company_name}`;
+  }
+  if (b.employment_status !== updates.employment_status) {
+    return `updated their employment status to ${updates.employment_status}`;
+  }
+  return 'updated their employment details';
+}
+
 // PUT /api/alumni/employment — self-service update of the alumnus's own record
 const updateMyEmployment = async (req, res) => {
   try {
@@ -702,6 +727,13 @@ const updateMyEmployment = async (req, res) => {
     if (date_employed) updates.date_employed = new Date(date_employed);
     else if ('date_employed' in req.body) updates.date_employed = null;
 
+    // Read before the write so describeEmploymentChange() below can tell
+    // what actually changed — findOneAndUpdate({ new: true }) only ever
+    // hands back the POST-update document.
+    const beforeEmp = await AlumniEmployment.findOne({ alumni_id: req.user.id })
+      .select('work_location job_title company_name employment_status')
+      .lean();
+
     const emp = await AlumniEmployment.findOneAndUpdate(
       { alumni_id: req.user.id },
       { $set: updates },
@@ -731,7 +763,19 @@ const updateMyEmployment = async (req, res) => {
     );
 
     try {
-      const profileUser = await User.findById(req.user.id).select('email').lean();
+      const profileUser = await User.findById(req.user.id).select('email firstName lastName').lean();
+      // Coordinator dashboard's "Activity" feed (see routes/coordinator.js's
+      // dashboard/activity) surfaces this via the same College-scoped
+      // EmploymentActivity join used for staff actions — an alumnus always
+      // has their own real college on file, so it lands in the right
+      // coordinator's feed without any extra scoping logic needed here.
+      const alumniName = profileUser ? `${profileUser.firstName} ${profileUser.lastName}` : 'An alumnus';
+      EmploymentActivity.create({
+        user_id: req.user.id,
+        user_name: alumniName,
+        action: describeEmploymentChange(beforeEmp, updates),
+      }).catch(() => {});
+
       if (profileUser?.email) {
         const graduate = await Graduate.findOne({
           $or: [{ user_id: req.user.id }, { email: profileUser.email.toLowerCase().trim() }],

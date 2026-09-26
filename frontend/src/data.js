@@ -13,10 +13,10 @@ export const employmentSets = [
 ];
 
 export const assistantGreetings = [
-  "Hello! I'm AC, your AI chatbot. How may I assist you today?\nYou may ask about alumni records, tracer surveys, or employment data.",
-  "Hi, I'm AC. I can help you review alumni records, employment status, and tracer-survey results.",
-  "Welcome back. I'm AC, your AI assistant for tracer records and graduate employment insights.",
-  "Good day! I'm AC. Ask me about alumni profiles, course alignment, survey completion, or employment outcomes.",
+  "Good day. I am AC, your AI assistant. How may I assist you today?\nYou may inquire about alumni records, tracer surveys, or employment data.",
+  "Good day. I am AC. I am able to assist you in reviewing alumni records, employment status, and tracer survey results.",
+  "Welcome back. I am AC, your AI assistant for tracer records and graduate employment insights.",
+  "Good day. I am AC. You may ask about alumni profiles, course alignment, survey completion, or employment outcomes.",
 ];
 
 export function assistantReply(message) {
@@ -103,7 +103,7 @@ export const adminMenuChoices = {
   "accounts-role": ["All", "Admin", "Alumni", "Coordinator", "Employer"],
   "accounts-status": ["All", "Active", "Pending", "Suspended"],
   "announcement-date": ["All", "Today", "This Month", "This Year"],
-  "announcement-type": ["All", "News", "Announcement", "Job Posting"],
+  "announcement-type": ["All", "News", "Announcement", "Job Posting", "Event"],
   "partner-type": [
     "All",
     "Information Technology & BPO",
@@ -137,13 +137,19 @@ export function accountActionList(status, role) {
     // "pending" for them just means "hasn't logged in yet," not "awaiting
     // review." Approve has no real effect beyond flipping status early, so
     // showing it implies it gates access the way it genuinely does for
-    // Employer accounts (blocked from login until approved). Reject is
-    // kept — it has a real effect for every role (blocks the account
-    // outright, same as a manual suspend).
+    // Employer accounts (blocked from login until approved). Reject removed
+    // per explicit request — every account type here reaches Active on its
+    // own (self-activation on first login, or admin Approve for Employer),
+    // so there's no real "review and deny" step to reject FROM; Reject was
+    // functionally just an alias for Suspend (handleAction() mapped both to
+    // the same status: "suspended" write) with no behavior of its own.
     const canApprove = role !== "Alumni" && role !== "Coordinator";
-    return canApprove ? ["edit", "approve", "reject", "resend"] : ["edit", "reject", "resend"];
+    return canApprove ? ["edit", "approve", "resend"] : ["edit", "resend"];
   }
-  if (status === "Suspended") return ["edit", "activate"];
+  // "unsuspend" (not the shared "activate" key partnerActionList/job listings
+  // use below) — a suspended ACCOUNT is being restored, not a partnership or
+  // job listing being reopened, and the label should say so.
+  if (status === "Suspended") return ["edit", "unsuspend"];
   return ["edit", "suspend"];
 }
 
@@ -160,6 +166,7 @@ export const actionLabels = {
   delete: "Delete",
   suspend: "Suspend",
   activate: "Activate",
+  unsuspend: "Unsuspend",
   view: "View",
   print: "Download",
   complete: "Complete",

@@ -152,9 +152,17 @@ router.get('/dashboard/activity', async (req, res) => {
       : {};
 
     // EmploymentActivity has no college field of its own, only `user_id`
-    // (the staff member who performed the action) — scope it the same way
+    // (whoever performed the action) — scope it the same way
     // getEmploymentActivity already does, by joining to User.college.
-    const staffInCollege = college ? await User.find({ college }).select('_id').lean() : null;
+    // role: { $ne: 'admin' } excludes admin-performed entries (e.g. "exported
+    // tracer analytics") from ever reaching a coordinator's feed — an admin
+    // account can carry a college value too (e.g. for office-assignment
+    // display purposes elsewhere), which without this filter let their
+    // system-wide actions leak into that college's coordinator dashboard as
+    // if a member of that college's own staff had done it. Coordinators and
+    // alumni (self-service employment/tracer updates — see updateMyEmployment)
+    // are exactly what SHOULD surface here, so both stay included.
+    const staffInCollege = college ? await User.find({ college, role: { $ne: 'admin' } }).select('_id').lean() : null;
     const staffMatch = staffInCollege ? { user_id: { $in: staffInCollege.map(u => u._id) } } : {};
 
     const [recentLogs, recentFeedbackDocs, recentStaffActivity] = await Promise.all([
@@ -528,10 +536,18 @@ router.get('/alumni', async (req, res) => {
       return {
         _id:    u._id,
         name:   `${u.firstName} ${u.lastName}`,
+        firstName: u.firstName,
+        lastName:  u.lastName,
         email:  u.email,
         course: u.course || '',
         year:   u.graduationYear || '',
         title:  jobTitle || emp?.employment_status || '',
+        // Raw job_title, no employment_status fallback — `title` above is a
+        // display-friendly merge ("Unemployed" shown when there's no real
+        // job title yet), which the Edit form must NOT reuse as job_title's
+        // own value, or saving unchanged would overwrite a real job_title
+        // field with the literal word "Unemployed".
+        jobTitle,
         phone,
         avatarUrl: u.avatarUrl || '',
       };
@@ -540,6 +556,83 @@ router.get('/alumni', async (req, res) => {
     res.json({ contacts, pagination: { page, limit, total, pages } });
   } catch (err) {
     console.error('coordinator /alumni error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+});
+
+// PATCH /coordinator/alumni/:id — editing a contact directly from the Alumni
+// Contacts page's profile modal. `:id` is the alumnus's own User _id (same
+// id the GET /alumni list above returns as `c._id`), not an AlumniEmployment
+// id — this is a separate, lightweight endpoint rather than a reuse of
+// updateEmploymentRecord (that one takes an AlumniEmployment _id and
+// requires a full employment-status form, far more than this modal shows).
+// Spans 3 collections since that's genuinely where each field lives: name/
+// email/course/graduationYear on User, position on AlumniEmployment, phone
+// on TracerStudyResponse.
+router.patch('/alumni/:id', async (req, res) => {
+  try {
+    const alumni = await User.findOne({ _id: req.params.id, role: 'alumni' });
+    if (!alumni) return res.status(404).json({ message: 'Alumni not found.' });
+    // Coordinators can only edit alumni from their own college — mirrors the
+    // read-side scoping the GET /alumni list above already applies.
+    if (req.user.college && alumni.college !== req.user.college) {
+      return res.status(403).json({ message: 'Access denied. This alumnus belongs to another college.' });
+    }
+
+    const { firstName, lastName, email, course, graduationYear, title, phone } = req.body;
+    const userUpdates = {};
+    if (firstName !== undefined) {
+      if (!firstName.trim()) return res.status(400).json({ message: 'First name is required.' });
+      userUpdates.firstName = firstName.trim();
+    }
+    if (lastName !== undefined) {
+      if (!lastName.trim()) return res.status(400).json({ message: 'Last name is required.' });
+      userUpdates.lastName = lastName.trim();
+    }
+    if (email !== undefined) {
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        return res.status(400).json({ message: 'Please enter a valid email address.' });
+      }
+      if (trimmedEmail !== alumni.email) {
+        const clash = await User.findOne({ email: trimmedEmail, _id: { $ne: alumni._id } }).select('_id').lean();
+        if (clash) return res.status(409).json({ message: 'This email is already used by another account.' });
+        userUpdates.email = trimmedEmail;
+      }
+    }
+    if (course !== undefined) userUpdates.course = course;
+    if (graduationYear !== undefined) userUpdates.graduationYear = graduationYear ? Number(graduationYear) : null;
+
+    if (Object.keys(userUpdates).length) {
+      await User.updateOne({ _id: alumni._id }, { $set: userUpdates });
+    }
+
+    if (title !== undefined) {
+      // $setOnInsert supplies the one field AlumniEmployment requires
+      // (employment_status has no schema default) so this upsert can't fail
+      // validation the first time a given alumnus's record is touched here.
+      await AlumniEmployment.findOneAndUpdate(
+        { alumni_id: alumni._id },
+        { $set: { job_title: title.trim() }, $setOnInsert: { employment_status: 'Not Yet Updated' } },
+        { upsert: true }
+      );
+    }
+
+    if (phone !== undefined) {
+      // Deliberately NOT upserted — TracerStudyResponse requires fields
+      // (consent, etc.) this lightweight contact edit has no business
+      // filling in, so an alumnus with no tracer submission on file simply
+      // keeps no phone number here rather than getting a broken partial
+      // tracer record created out from under them.
+      await TracerStudyResponse.updateOne(
+        { alumni_id: alumni._id },
+        { $set: { contactNumber: phone.trim() } }
+      );
+    }
+
+    res.json({ message: 'Contact updated.' });
+  } catch (err) {
+    console.error('coordinator update alumni contact error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 });

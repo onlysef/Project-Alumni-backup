@@ -7,6 +7,7 @@ const { protect } = require('../middleware/authMiddleware');
 const { loginLimiter, otpLimiter } = require('../middleware/rateLimit');
 const User     = require('../models/User');
 const { validateEmployerInviteToken } = require('../controllers/employerInviteController');
+const { updateAvatar } = require('../controllers/alumniController');
 
 router.get('/employer-invite/:token', validateEmployerInviteToken);
 router.post('/register-partner',  ctrl.registerPartner);
@@ -41,6 +42,13 @@ router.put('/settings', protect, async (req, res) => {
     res.status(500).json({ message: 'Failed to save settings' });
   }
 });
+
+// PUT /api/auth/avatar — works for every role (alumniController.updateAvatar
+// only ever writes to req.user.id, so it was never actually alumni-specific;
+// it just used to be mounted under /alumni only). Shared here the same way
+// change-password below already is, rather than duplicating the same
+// validation logic under admin/coordinator/employer route files too.
+router.put('/avatar', protect, updateAvatar);
 
 // POST /api/auth/change-password  — works for admin, coordinator, alumni
 router.post('/change-password', protect, async (req, res) => {

@@ -7,6 +7,21 @@ const Notification    = require('../models/Notification');
 const { sendApplicantMessageEmail, sendInterviewInvitationEmail } = require('../utils/emailService');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
 
+// Every employer account linked to the same partnershipId (company) shares
+// one workspace — jobs, applicants, and interviews posted/scheduled by any
+// coworker on that company are visible and manageable by all of them, not
+// just whoever personally clicked "Post" or "Schedule". `postedBy`/
+// `employer_id` are still recorded on each row for attribution, just no
+// longer used as the access-control boundary.
+async function getEmployerPartnershipId(userId) {
+  const employer = await User.findById(userId).select('partnershipId').lean();
+  return employer?.partnershipId || null;
+}
+
+async function getCompanyJobIds(partnershipId) {
+  return Job.find({ partnershipId }).distinct('_id');
+}
+
 // POST /api/employer/jobs  — employer posts a job
 const postJob = async (req, res) => {
   try {
@@ -45,10 +60,13 @@ const postJob = async (req, res) => {
   }
 };
 
-// GET /api/employer/jobs  — employer sees own jobs
+// GET /api/employer/jobs  — every job posted under this employer's company,
+// not just the ones this specific account posted.
 const getMyJobs = async (req, res) => {
   try {
-    const jobs = await Job.find({ postedBy: req.user.id })
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    if (!partnershipId) return res.json({ jobs: [] });
+    const jobs = await Job.find({ partnershipId })
       .populate('partnershipId', 'name')
       .sort({ createdAt: -1 });
     res.json({ jobs });
@@ -75,10 +93,12 @@ const getActivePartnerships = async (req, res) => {
   }
 };
 
-// PATCH /api/employer/jobs/:id  — employer edits their own job post's content
+// PATCH /api/employer/jobs/:id  — any employer account on the same company
+// can edit the post's content, not just whoever originally posted it.
 const updateJob = async (req, res) => {
   try {
-    const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const job = partnershipId ? await Job.findOne({ _id: req.params.id, partnershipId }) : null;
     if (!job) return res.status(404).json({ message: 'Job not found.' });
 
     // partnershipId is intentionally not editable here — same reasoning as
@@ -110,10 +130,12 @@ const updateJob = async (req, res) => {
   }
 };
 
-// PATCH /api/employer/jobs/:id/close  — employer closes a job
+// PATCH /api/employer/jobs/:id/close  — any employer account on the same
+// company can close a job, not just whoever originally posted it.
 const closeJob = async (req, res) => {
   try {
-    const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const job = partnershipId ? await Job.findOne({ _id: req.params.id, partnershipId }) : null;
     if (!job) return res.status(404).json({ message: 'Job not found.' });
     job.status = 'closed';
     await job.save();
@@ -124,10 +146,12 @@ const closeJob = async (req, res) => {
   }
 };
 
-// DELETE /api/employer/jobs/:id  — employer deletes own job
+// DELETE /api/employer/jobs/:id  — any employer account on the same company
+// can delete a job, not just whoever originally posted it.
 const deleteJob = async (req, res) => {
   try {
-    const job = await Job.findOne({ _id: req.params.id, postedBy: req.user.id });
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const job = partnershipId ? await Job.findOne({ _id: req.params.id, partnershipId }) : null;
     if (!job) return res.status(404).json({ message: 'Job not found.' });
 
     // Deleting a job with real applicants used to silently orphan them —
@@ -149,12 +173,13 @@ const deleteJob = async (req, res) => {
   }
 };
 
-// GET /api/employer/applicants  — every application against any of this
-// employer's own job posts (never another employer's — job_id is filtered
-// to postedBy: req.user.id below, same ownership check as closeJob/deleteJob).
+// GET /api/employer/applicants  — every application against any job posted
+// under this employer's company (never another company's — job_id is
+// filtered to the company's own job ids below, same check as closeJob/deleteJob).
 const getApplicants = async (req, res) => {
   try {
-    const myJobIds = await Job.find({ postedBy: req.user.id }).distinct('_id');
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
     const applications = await JobApplication.find({ job_id: { $in: myJobIds } })
       .populate('alumni_id', 'firstName lastName email course college graduationYear avatarUrl')
       .sort({ appliedAt: -1 })
@@ -179,7 +204,8 @@ const updateApplicantStatus = async (req, res) => {
     if (!VALID.includes(employerStatus)) {
       return res.status(400).json({ message: 'Invalid status.' });
     }
-    const myJobIds = await Job.find({ postedBy: req.user.id }).distinct('_id');
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
     const application = await JobApplication.findOne({ _id: req.params.id, job_id: { $in: myJobIds } });
     if (!application) return res.status(404).json({ message: 'Application not found.' });
 
@@ -223,7 +249,8 @@ const updateApplicantStatus = async (req, res) => {
 // because they never clicked Save.
 const getApplicantResume = async (req, res) => {
   try {
-    const myJobIds = await Job.find({ postedBy: req.user.id }).distinct('_id');
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
     const application = await JobApplication.findOne({ _id: req.params.id, job_id: { $in: myJobIds } }).lean();
     if (!application) return res.status(404).json({ message: 'Application not found.' });
     const { resume, isSaved } = await getResumeForAlumnus(application.alumni_id);
@@ -244,7 +271,8 @@ const messageApplicant = async (req, res) => {
       return res.status(400).json({ message: 'Subject and message are required.' });
     }
 
-    const myJobIds = await Job.find({ postedBy: req.user.id }).distinct('_id');
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
     const application = await JobApplication.findOne({ _id: req.params.id, job_id: { $in: myJobIds } })
       .populate('alumni_id', 'firstName lastName email')
       .lean();
@@ -289,9 +317,9 @@ function formatInterviewWhen(dateStr, timeStr) {
 // "Completed" so the list reflects reality without the employer having to
 // manually close out every past interview (same pattern as the coordinator
 // appointment system's expireStalePendingAppointments).
-async function expirePastInterviews(employerId) {
+async function expirePastInterviews(jobIds) {
   const now = Date.now();
-  const upcoming = await Interview.find({ employer_id: employerId, status: 'Upcoming' }).select('_id date time');
+  const upcoming = await Interview.find({ job_id: { $in: jobIds }, status: 'Upcoming' }).select('_id date time');
   const staleIds = upcoming.filter((i) => {
     const [y, mo, d] = i.date.split('-').map(Number);
     const [h, mi] = (i.time || '00:00').split(':').map(Number);
@@ -300,11 +328,14 @@ async function expirePastInterviews(employerId) {
   if (staleIds.length) await Interview.updateMany({ _id: { $in: staleIds } }, { status: 'Completed' });
 }
 
-// GET /api/employer/interviews
+// GET /api/employer/interviews  — every interview scheduled by any employer
+// account on this company, not just the ones this account scheduled.
 const getInterviews = async (req, res) => {
   try {
-    await expirePastInterviews(req.user.id);
-    const interviews = await Interview.find({ employer_id: req.user.id }).sort({ date: -1, time: -1 });
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
+    await expirePastInterviews(myJobIds);
+    const interviews = await Interview.find({ job_id: { $in: myJobIds } }).sort({ date: -1, time: -1 });
     res.json({ interviews });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
@@ -320,7 +351,8 @@ const scheduleInterview = async (req, res) => {
       return res.status(400).json({ message: 'Applicant, date, time, and location are required.' });
     }
 
-    const myJobIds = await Job.find({ postedBy: req.user.id }).distinct('_id');
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
     const application = await JobApplication.findOne({ _id: application_id, job_id: { $in: myJobIds } })
       .populate('alumni_id', 'firstName lastName email');
     if (!application?.alumni_id) return res.status(404).json({ message: 'Applicant not found.' });
@@ -377,7 +409,9 @@ const scheduleInterview = async (req, res) => {
 // non-editable partnershipId.
 const updateInterview = async (req, res) => {
   try {
-    const interview = await Interview.findOne({ _id: req.params.id, employer_id: req.user.id, status: 'Upcoming' });
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
+    const interview = await Interview.findOne({ _id: req.params.id, job_id: { $in: myJobIds }, status: 'Upcoming' });
     if (!interview) return res.status(404).json({ message: 'Interview not found or no longer editable.' });
 
     const { date, time, mode, location } = req.body;
@@ -395,8 +429,10 @@ const updateInterview = async (req, res) => {
 // PATCH /api/employer/interviews/:id/cancel
 const cancelInterview = async (req, res) => {
   try {
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
     const interview = await Interview.findOneAndUpdate(
-      { _id: req.params.id, employer_id: req.user.id, status: 'Upcoming' },
+      { _id: req.params.id, job_id: { $in: myJobIds }, status: 'Upcoming' },
       { status: 'Cancelled' },
       { new: true },
     );
@@ -410,7 +446,9 @@ const cancelInterview = async (req, res) => {
 // DELETE /api/employer/interviews/:id
 const deleteInterview = async (req, res) => {
   try {
-    const interview = await Interview.findOneAndDelete({ _id: req.params.id, employer_id: req.user.id });
+    const partnershipId = await getEmployerPartnershipId(req.user.id);
+    const myJobIds = partnershipId ? await getCompanyJobIds(partnershipId) : [];
+    const interview = await Interview.findOneAndDelete({ _id: req.params.id, job_id: { $in: myJobIds } });
     if (!interview) return res.status(404).json({ message: 'Interview not found.' });
     res.json({ message: 'Interview deleted.' });
   } catch (err) {

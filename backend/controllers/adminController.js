@@ -101,11 +101,17 @@ const createUser = async (req, res) => {
       email:      email.toLowerCase().trim(),
       password:   hashed,
       role:       role.toLowerCase(),
-      // Stays 'pending' even though the admin created it directly — the
-      // account still needs the alumni themselves to open it, activate it,
-      // and set their own password on first login. 'active' would skip that
-      // required first-login step entirely.
-      status:     'pending',
+      // 'pending' for alumni/coordinator — the account still needs THAT
+      // PERSON to open it, activate it, and set their own password on first
+      // login; 'active' would skip that required first-login step entirely
+      // (see login()'s own pending->active flip in authController.js).
+      // Employer is the one exception: an admin creating an employer
+      // account directly IS the approval step (unlike the self-service
+      // invite flow in registerPartner, which already goes straight to
+      // 'active' too) — there's no separate "claim the account" step this
+      // status is meant to gate, so it stays 'pending' for every role
+      // EXCEPT employer.
+      status:     role.toLowerCase() === 'employer' ? 'active' : 'pending',
       firstLogin: true,
     };
     if (role.toLowerCase() === 'coordinator') {
@@ -517,9 +523,10 @@ const importUsers = async (req, res) => {
       password:   r.hashed,
       role:       r.role,
       // Same reasoning as createUser() above — stays 'pending' so each
-      // imported alumnus still has to open their account and set their own
-      // password on first login.
-      status:     'pending',
+      // imported alumnus/coordinator still has to open their account and set
+      // their own password on first login; employer is the one exception,
+      // same as createUser().
+      status:     r.role === 'employer' ? 'active' : 'pending',
       firstLogin: true,
       ...(r.college        ? { college: r.college }               : {}),
       ...(r.course         ? { course: r.course }                : {}),
@@ -606,14 +613,17 @@ const resendCredentials = async (req, res) => {
 
     const tempPassword = crypto.randomBytes(4).toString('hex');
     user.password = await bcrypt.hash(tempPassword, 10);
-    user.status   = 'pending';
+    // Same exception as createUser()/importUsers() — an employer account is
+    // already approved and shouldn't flip back to 'pending' just because its
+    // credentials were reissued (e.g. a forgotten-password reset).
+    user.status   = user.role === 'employer' ? 'active' : 'pending';
     // The old password (and any session logged in under it) must stop
     // working the moment a new temp password is issued.
     user.tokenVersion = (user.tokenVersion || 0) + 1;
     await user.save();
 
     await sendAccountCreatedEmail(user.email, user.firstName, tempPassword);
-    res.json({ message: `Credentials resent to ${user.email}.`, status: 'Pending' });
+    res.json({ message: `Credentials resent to ${user.email}.`, status: user.status === 'active' ? 'Active' : 'Pending' });
   } catch (err) {
     console.error('resendCredentials error:', err);
     res.status(500).json({ message: 'Failed to resend credentials.' });

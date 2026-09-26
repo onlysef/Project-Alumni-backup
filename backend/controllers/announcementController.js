@@ -11,8 +11,133 @@ async function resolveUserName(userId) {
   }
 }
 
-// GET /api/admin/announcements
+// Shared projection every branch of the getAnnouncements union below must
+// end on — $unionWith requires each side to converge on the same field set,
+// or rows from whichever branch is missing a field just silently omit it
+// instead of erroring, which reads as a data bug rather than a merge bug.
+const ANNOUNCEMENT_UNION_PROJECT = {
+  title: 1, description: 1, type: 1, imageUrl: 1, location: 1,
+  createdAt: 1, updatedAt: 1, createdBy: 1, posterName: 1, source: 1,
+  likesCount: 1, commentsCount: 1, sharesCount: 1,
+  isLikedByMe: 1, isSharedByMe: 1, hasImage: 1,
+  // Event/Job-only fields, carried through so the frontend's edit modal can
+  // pre-fill them — absent on Announcement rows (and on whichever of these
+  // two the row isn't), which projects as simply missing, not an error.
+  event_datetime: 1, end_datetime: 1, capacity: 1, jobType: 1, status: 1,
+};
+
+// $lookup + $let + $concat pattern shared by every branch below to resolve
+// "posterName" from whichever ref field that collection actually uses
+// (Announcement.createdBy / Event.created_by / Job.postedBy) — factored out
+// once instead of copy-pasted three times with three different field names.
+function posterNameStages(refField) {
+  return [
+    { $lookup: { from: 'users', localField: refField, foreignField: '_id', as: '_poster' } },
+    { $addFields: {
+      posterName: {
+        $let: {
+          vars: { p: { $arrayElemAt: ['$_poster', 0] } },
+          in: { $trim: { input: { $concat: [{ $ifNull: ['$$p.firstName', ''] }, ' ', { $ifNull: ['$$p.lastName', ''] }] } } },
+        },
+      },
+    }},
+  ];
+}
+
+// GET /api/admin/announcements — merges 3 distinct collections into one feed
+// (Announcement, plus coordinator-created Event and employer-created Job)
+// via $unionWith. Coordinators/employers have no admin-style "announcement"
+// composer of their own — their real activity lives in Event/Job — so
+// admin's "Posted Announcements" only ever showed admin's OWN posts,
+// nothing coordinators or employers actually published. Event/Job rows are
+// tagged source: 'event'/'job' (vs 'announcement') so the frontend can route
+// Edit to the right modal/endpoint for each (updateEventAdmin/updateJobAdmin
+// below) — they have no likedBy/comments/sharedBy of their own, so like/
+// comment/share stay disabled for them, but title/description/etc. are
+// editable here directly, without leaving for Event Management/Job Connect.
 const getAnnouncements = async (req, res) => {
+  try {
+    const { Types } = require('mongoose');
+    const userId = req.user?.id ? new Types.ObjectId(req.user.id) : null;
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip  = (page - 1) * limit;
+
+    const unionPipeline = [
+      ...posterNameStages('createdBy'),
+      { $addFields: {
+        likesCount:    { $cond: [{ $isArray: '$likedBy' },  { $size: '$likedBy' },  0] },
+        commentsCount: { $cond: [{ $isArray: '$comments' }, { $size: '$comments' }, 0] },
+        sharesCount:   { $cond: [{ $isArray: '$sharedBy' }, { $size: '$sharedBy' }, 0] },
+        isLikedByMe:   userId ? { $in: [userId, { $ifNull: ['$likedBy',  []] }] } : false,
+        isSharedByMe:  userId ? { $in: [userId, { $ifNull: ['$sharedBy', []] }] } : false,
+        hasImage:      { $gt: [{ $strLenCP: { $ifNull: ['$imageUrl', ''] } }, 0] },
+        source:        'announcement',
+      }},
+      { $project: ANNOUNCEMENT_UNION_PROJECT },
+      { $unionWith: {
+        coll: 'events',
+        pipeline: [
+          ...posterNameStages('created_by'),
+          { $addFields: {
+            type: 'Event',
+            imageUrl: { $ifNull: ['$image', ''] },
+            createdBy: '$created_by',
+            likesCount: 0, commentsCount: 0, sharesCount: 0,
+            isLikedByMe: false, isSharedByMe: false,
+            hasImage: { $gt: [{ $strLenCP: { $ifNull: ['$image', ''] } }, 0] },
+            source: 'event',
+          }},
+          { $project: ANNOUNCEMENT_UNION_PROJECT },
+        ],
+      }},
+      { $unionWith: {
+        coll: 'jobs',
+        pipeline: [
+          ...posterNameStages('postedBy'),
+          { $addFields: {
+            type: 'Job Posting',
+            imageUrl: '',
+            createdBy: '$postedBy',
+            likesCount: 0, commentsCount: 0, sharesCount: 0,
+            isLikedByMe: false, isSharedByMe: false,
+            hasImage: false,
+            source: 'job',
+          }},
+          { $project: ANNOUNCEMENT_UNION_PROJECT },
+        ],
+      }},
+    ];
+
+    const [announcements, totalRows] = await Promise.all([
+      Announcement.aggregate([
+        ...unionPipeline,
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+      ]),
+      Announcement.aggregate([...unionPipeline, { $count: 'total' }]),
+    ]);
+    const total = totalRows[0]?.total ?? 0;
+
+    res.json({ announcements, total, page, pages: Math.ceil(total / limit) });
+  } catch (err) {
+    console.error('getAnnouncements error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// GET /api/alumni/announcements — a deliberately separate, lean function
+// from getAnnouncements above, NOT a shared call with different params.
+// routes/alumni.js used to point straight at getAnnouncements — harmless
+// before it grew the 3-collection $unionWith (Announcement + Event + Job,
+// each with its own $lookup to resolve a poster name) for the admin-only
+// merged feed, but the alumni News/Events tab doesn't show source/posterName
+// at all, so every alumni page load was paying for that admin-only join
+// work for nothing — the actual reported slowdown. Alumni only ever need
+// real Announcement documents anyway (Event/Job rows would show up as
+// out-of-place "News" cards with no like/comment/share of their own).
+const getAlumniAnnouncements = async (req, res) => {
   try {
     const { Types } = require('mongoose');
     const userId = req.user?.id ? new Types.ObjectId(req.user.id) : null;
@@ -31,13 +156,13 @@ const getAnnouncements = async (req, res) => {
           sharesCount:   { $cond: [{ $isArray: '$sharedBy' }, { $size: '$sharedBy' }, 0] },
           isLikedByMe:   userId ? { $in: [userId, { $ifNull: ['$likedBy',  []] }] } : false,
           isSharedByMe:  userId ? { $in: [userId, { $ifNull: ['$sharedBy', []] }] } : false,
+          hasImage:      { $gt: [{ $strLenCP: { $ifNull: ['$imageUrl', ''] } }, 0] },
         }},
         { $project: {
           title: 1, description: 1, type: 1, imageUrl: 1, location: 1,
-          createdAt: 1, updatedAt: 1, createdBy: 1,
+          createdAt: 1, updatedAt: 1,
           likesCount: 1, commentsCount: 1, sharesCount: 1,
-          isLikedByMe: 1, isSharedByMe: 1,
-          hasImage: { $cond: [{ $and: [{ $isArray: [{ $ifNull: ['$imageUrl', ''] }] }, false] }, true, { $gt: [{ $strLenCP: { $ifNull: ['$imageUrl', ''] } }, 0] }] },
+          isLikedByMe: 1, isSharedByMe: 1, hasImage: 1,
         }},
       ]),
       Announcement.countDocuments(),
@@ -45,7 +170,124 @@ const getAnnouncements = async (req, res) => {
 
     res.json({ announcements, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
-    console.error('getAnnouncements error:', err);
+    console.error('getAlumniAnnouncements error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// PATCH /api/admin/announcements/events/:id — lets admin edit an Event
+// (normally only its Coordinator can, scoped to their own college) directly
+// from the merged feed above. Deliberately its own admin-only function
+// rather than reusing eventController.updateEvent — that one enforces
+// college ownership whenever req.user.college is set, which is exactly the
+// restriction an admin editing ANY college's event must NOT be subject to.
+const updateEventAdmin = async (req, res) => {
+  try {
+    const Event = require('../models/Event');
+    const { title, description, location, event_datetime, end_datetime, capacity } = req.body;
+    const updates = {};
+    if (title          !== undefined) updates.title          = title.trim();
+    if (description    !== undefined) updates.description    = description.trim();
+    if (location       !== undefined) updates.location       = location.trim();
+    if (event_datetime !== undefined) updates.event_datetime = new Date(event_datetime);
+    if (end_datetime   !== undefined) updates.end_datetime   = end_datetime ? new Date(end_datetime) : null;
+    if (capacity       !== undefined) updates.capacity       = Number(capacity) || 0;
+
+    const event = await Event.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!event) return res.status(404).json({ message: 'Event not found.' });
+    res.json({ message: 'Event updated.', event });
+  } catch (err) {
+    console.error('updateEventAdmin error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// PATCH /api/admin/announcements/jobs/:id — lets admin edit a Job posting
+// (normally only the Employer who posted it can) directly from the merged
+// feed above. jobController.updateJob is scoped with
+// `Job.findOne({ _id, postedBy: req.user.id })`, which would always 404 for
+// an admin (their id never matches a real employer's postedBy) — a separate
+// admin function that looks up by id alone is needed, not a reuse.
+const updateJobAdmin = async (req, res) => {
+  try {
+    const Job = require('../models/Job');
+    const { title, description, jobType, location } = req.body;
+    const updates = {};
+    if (title       !== undefined) {
+      if (!title.trim()) return res.status(400).json({ message: 'Title is required.' });
+      updates.title = title.trim();
+    }
+    if (description !== undefined) updates.description = description;
+    if (jobType     !== undefined) updates.jobType     = jobType;
+    if (location    !== undefined) updates.location    = location;
+
+    const job = await Job.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+    // Same title-sync as the employer's own updateJob — keeps applicants'
+    // snapshotted job title from silently going stale after an admin edit.
+    if (title !== undefined) {
+      const JobApplication = require('../models/JobApplication');
+      await JobApplication.updateMany({ job_id: job._id }, { title: job.title });
+    }
+
+    res.json({ message: 'Job updated.', job });
+  } catch (err) {
+    console.error('updateJobAdmin error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// DELETE /api/admin/announcements/events/:id — admin deleting any Event from
+// the merged feed. Same cleanup as coordinator eventController.deleteEvent
+// (an Event alone left behind orphaned interest/notification/attendance/
+// feedback rows pointing at nothing), just without the college-ownership
+// check, which only ever applied to a coordinator's own scope anyway.
+const deleteEventAdmin = async (req, res) => {
+  try {
+    const Event = require('../models/Event');
+    const EventInterested = require('../models/EventInterested');
+    const Notification = require('../models/Notification');
+    const AttendanceLog = require('../models/AttendanceLog');
+    const EventFeedback = require('../models/EventFeedback');
+
+    const event = await Event.findByIdAndDelete(req.params.id);
+    if (!event) return res.status(404).json({ message: 'Event not found.' });
+    await EventInterested.deleteMany({ event_id: req.params.id });
+    await Notification.deleteMany({ event_id: req.params.id });
+    await AttendanceLog.deleteMany({ event_id: req.params.id });
+    await EventFeedback.deleteMany({ event_id: req.params.id });
+    res.json({ message: 'Event deleted.' });
+  } catch (err) {
+    console.error('deleteEventAdmin error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// DELETE /api/admin/announcements/jobs/:id — admin deleting any Job from the
+// merged feed. Keeps jobController.deleteJob's "never hard-delete a posting
+// with real applicant history" safety check (close it instead) — that rule
+// protects the applicants' own data, not the employer's ownership, so it
+// applies just as much to an admin-initiated delete.
+const deleteJobAdmin = async (req, res) => {
+  try {
+    const Job = require('../models/Job');
+    const JobApplication = require('../models/JobApplication');
+
+    const job = await Job.findById(req.params.id);
+    if (!job) return res.status(404).json({ message: 'Job not found.' });
+
+    const applicantCount = await JobApplication.countDocuments({ job_id: job._id });
+    if (applicantCount > 0) {
+      return res.status(409).json({
+        message: `This post has ${applicantCount} applicant${applicantCount === 1 ? '' : 's'}. Close it instead of deleting so applicant records aren't lost.`,
+      });
+    }
+
+    await job.deleteOne();
+    res.json({ message: 'Job deleted.' });
+  } catch (err) {
+    console.error('deleteJobAdmin error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -311,7 +553,8 @@ const getAnnouncement = async (req, res) => {
 };
 
 module.exports = {
-  getAnnouncements, getAnnouncement, getRecentAnnouncements,
+  getAnnouncements, getAlumniAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
   toggleLike, getComments, addComment, trackShare, getRecentActivity,
+  updateEventAdmin, updateJobAdmin, deleteEventAdmin, deleteJobAdmin,
 };

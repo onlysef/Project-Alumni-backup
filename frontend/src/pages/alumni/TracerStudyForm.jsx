@@ -3,8 +3,13 @@ import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 
 import { API } from "../../services/api.js";
-const MAROON = "#7b1a2e";
-const GOLD   = "#c49a2a";
+import { COLLEGE_NAMES } from "../../constants/colleges.js";
+// Matches the system-wide --maroon/--gold custom properties (admin-mod.css)
+// exactly — this form previously used its own hand-picked shades ("#7b1a2e"/
+// "#c49a2a"), close enough to look intentional but visibly off from every
+// other maroon/gold surface in the app once seen side by side.
+const MAROON = "#570013";
+const GOLD   = "#fac853";
 
 // ── Shared input styles ───────────────────────────────────────────────────────
 const inp = {
@@ -314,6 +319,11 @@ export default function TracerStudyForm() {
   }
 
   const [config, setConfig]               = useState(null);
+  // Backend-resolved college code (see tracerFormConfigController's
+  // resolveCollege) — the header used to hardcode "College of Computer
+  // Studies"/"CCS" unconditionally, so every non-CCS alumni saw the wrong
+  // college name on their own tracer form.
+  const [college, setCollege]             = useState(null);
   const [configLoading, setConfigLoading]   = useState(true);
   const [configError, setConfigError]     = useState(""); // error loading the form config
   const [step, setStep]                   = useState(() => loadDraft()?.step || 1);
@@ -345,6 +355,7 @@ export default function TracerStudyForm() {
       })
       .then((d) => {
         setConfig(d.config || null);
+        setCollege(d.college || null);
         setConfigError("");
       })
       .catch((err) => {
@@ -518,7 +529,7 @@ export default function TracerStudyForm() {
     return (
       <div style={{
         minHeight: "calc(100vh - 70px)", display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#faf8f8", fontFamily: "sans-serif",
+        justifyContent: "center", background: "#faf8f8", fontFamily: "Arial, Helvetica, sans-serif",
       }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ width: 40, height: 40, border: `4px solid ${MAROON}30`, borderTopColor: MAROON, borderRadius: "50%", margin: "0 auto 16px", animation: "spin 0.8s linear infinite" }} />
@@ -533,7 +544,7 @@ export default function TracerStudyForm() {
     return (
       <div style={{
         minHeight: "calc(100vh - 70px)", display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#faf8f8", fontFamily: "sans-serif",
+        justifyContent: "center", background: "#faf8f8", fontFamily: "Arial, Helvetica, sans-serif",
       }}>
         <div style={{ textAlign: "center", padding: 24, maxWidth: 400 }}>
           <p style={{ color: "#b91c1c", fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
@@ -566,14 +577,24 @@ export default function TracerStudyForm() {
     return (
       <div style={{
         minHeight: "calc(100vh - 70px)", display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#faf8f8", fontFamily: "sans-serif",
+        justifyContent: "center", background: "#faf8f8", fontFamily: "Arial, Helvetica, sans-serif",
       }}>
         <div style={{
           textAlign: "center", padding: "2.5rem", maxWidth: 420,
           background: "linear-gradient(135deg, rgba(255,255,255,.96), rgba(255,248,239,.92)), #fff",
           border: "1px solid #e1d4d8", borderRadius: 12, boxShadow: "0 10px 28px rgba(70,0,18,.08)",
         }}>
-          <div style={{ fontSize: 32, marginBottom: 10 }}>🕒</div>
+          <div style={{
+            width: 52, height: 52, borderRadius: "50%",
+            background: `${MAROON}0d`, border: `1.5px solid ${MAROON}30`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 14px",
+          }}>
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke={MAROON} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3.5 2" />
+            </svg>
+          </div>
           <p style={{ color: MAROON, fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
             Tracer study form not yet available
           </p>
@@ -590,16 +611,19 @@ export default function TracerStudyForm() {
 
   // ── Layout ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "calc(100vh - 70px)", background: "#faf8f8", fontFamily: "sans-serif" }}>
+    <div style={{ minHeight: "calc(100vh - 70px)", background: "#faf8f8", fontFamily: "Arial, Helvetica, sans-serif" }}>
 
-      {/* Header */}
-      <div style={{ background: `linear-gradient(135deg, ${MAROON} 0%, #9b2235 100%)`, padding: "20px 24px", color: "#fff" }}>
+      {/* Header — #3a000d is the same solid maroon every other topbar in the
+          app uses (see admin-mod.css's .topbar), so this hero banner reads
+          as one darker shade of the same system color rather than a
+          different, unrelated tone. */}
+      <div style={{ background: `linear-gradient(135deg, ${MAROON} 0%, #3a000d 100%)`, padding: "20px 24px", color: "#fff" }}>
         <div style={{ maxWidth: 760, margin: "0 auto" }}>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>
-            Tarlac State University · College of Computer Studies
+            Tarlac State University{college ? ` · ${COLLEGE_NAMES[college] || college}` : ""}
           </div>
           <div style={{ fontWeight: 700, fontSize: 17, color: GOLD, letterSpacing: "0.01em" }}>
-            TSU – CCS Graduate Tracer Study
+            TSU{college ? ` – ${college}` : ""} Graduate Tracer Study
           </div>
         </div>
       </div>
@@ -622,7 +646,7 @@ export default function TracerStudyForm() {
             <div style={{ height: 4, background: "#e5e7eb", borderRadius: 99 }}>
               <div style={{
                 height: "100%", borderRadius: 99,
-                background: `linear-gradient(90deg, ${MAROON}, #9b2235)`,
+                background: `linear-gradient(90deg, ${MAROON}, #3a000d)`,
                 width: `${((step - 1) / (TOTAL_STEPS - 1)) * 100}%`,
                 transition: "width 0.35s ease",
               }} />
@@ -710,9 +734,18 @@ export default function TracerStudyForm() {
                 </>
               ) : (
                 <div style={{ textAlign: "center", padding: "20px 10px" }}>
-                  <div style={{ fontSize: 32, marginBottom: 10 }}>✅</div>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: "50%",
+                    background: "#f0faf4", border: "1.5px solid #bfe8cf",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    margin: "0 auto 14px",
+                  }}>
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2f9e5c" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  </div>
                   <p style={{ color: MAROON, fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
-                    You're all caught up!
+                    You're all caught up
                   </p>
                   <p style={{ color: "#6b7280", fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
                     There are no new questions for you to answer right now.

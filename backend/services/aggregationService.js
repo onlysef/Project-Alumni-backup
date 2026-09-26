@@ -1591,7 +1591,7 @@ async function queryIndustry(filters, wantsHighest = true, wantsSummarySentence 
     out += `\n${sentence}`;
   }
 
-  return out;
+  return withChart(out, { type: 'bars', title: wantsHighest ? 'Top Industries' : 'Least Common Industries', rows: displayRows });
 }
 
 // "What are the most/least common job positions among alumni?" — same
@@ -1633,7 +1633,7 @@ async function queryJobPositions(filters, wantsHighest) {
   const directionLabel = wantsHighest ? 'Most common' : 'Least common';
   let out = `**${directionLabel} job positions among ${gPrefix}alumni${lbl}:**\n\n`;
   namedRows.forEach((r, i) => { out += `${i + 1}. **${r._id}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
-  return out;
+  return withChart(out, { type: 'bars', title: wantsHighest ? 'Most Common Job Positions' : 'Least Common Job Positions', rows: namedRows });
 }
 
 // "What companies employ the most/least alumni?" — same group-by-and-rank
@@ -1668,7 +1668,7 @@ async function queryTopCompanies(filters, wantsHighest) {
   const directionLabel = wantsHighest ? 'Companies employing the most' : 'Companies employing the least';
   let out = `**${directionLabel} ${gPrefix}alumni${lbl}:**\n\n`;
   namedRows.forEach((r, i) => { out += `${i + 1}. **${r._id}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
-  return out;
+  return withChart(out, { type: 'bars', title: wantsHighest ? 'Companies Employing the Most Alumni' : 'Companies Employing the Least Alumni', rows: namedRows });
 }
 
 // Maps aggregationService's own employmentStatus vocabulary ('Yes'/'No'/
@@ -1872,7 +1872,8 @@ async function querySkillsList(filters, wantsHighest = true) {
   let out = `**${headerVerb} common skills reported by${statusLabel} alumni${lbl}:**\n\n`;
   rows.forEach((r, i) => { out += `${i + 1}. **${r.isAlias ? r.display : toTitleCase(r.display)}** — ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
   out += `\n*Based on ${respondentCount} alumni who have listed skills on their profile — this is an optional profile field, separate from the tracer study survey, so coverage is still small.*`;
-  return out;
+  const chartRows = rows.map(r => ({ _id: r.isAlias ? r.display : toTitleCase(r.display), count: r.count }));
+  return withChart(out, { type: 'bars', title: `${headerVerb} Common Skills`, rows: chartRows });
 }
 
 async function queryGender(filters) {
@@ -2018,7 +2019,8 @@ async function queryJobAlignmentByProgram(filters) {
   let out = `**Job alignment to field of study, by program:**\n\n`;
   ranked.forEach(r => { out += `- **${r._id}**: ${r.related}/${r.total} job-related (${pct(r.related, r.total)})\n`; });
   out += `\n**${top._id}** has the highest rate of graduates whose job aligns with what they studied, at **${pct(top.related, top.total)}**.`;
-  return out;
+  const chartRows = ranked.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: 'Job Alignment Rate by Program (%)', rows: chartRows });
 }
 
 async function queryLicensure(filters) {
@@ -2155,11 +2157,16 @@ async function queryCompetencies(filters, wantsHighest = true) {
   if (!rows.length) return null;
 
   const r = rows[0];
-  const topRating = arr => {
+  // Returns [ratingLabel, count] — the count rides along now (previously
+  // discarded) so the 8 categories can be charted as a bars comparison, not
+  // just narrated as text. All 8 share the same unit (number of respondents
+  // giving that category's own top rating), so they're comparable side by
+  // side even though the top RATING itself can differ per category.
+  const topRatingEntry = arr => {
     const freq = {};
     arr.forEach(v => { if (v) freq[v] = (freq[v] || 0) + 1; });
     const sorted = Object.entries(freq).sort((a, b) => wantsHighest ? b[1] - a[1] : a[1] - b[1]);
-    return sorted[0]?.[0] || '—';
+    return sorted[0] || ['—', 0];
   };
 
   const headerVerb  = wantsHighest ? 'Most' : 'Least';
@@ -2168,16 +2175,25 @@ async function queryCompetencies(filters, wantsHighest = true) {
                      : filters.employmentStatus === 'Self-Employed'         ? 'self-employed '
                      : filters.employmentStatus === 'Never Employed'        ? '"never employed" '
                      : '';
+  const categories = [
+    { label: 'Technical Skills',   values: r.technical },
+    { label: 'Communication',      values: r.comm },
+    { label: 'Problem Solving',    values: r.problem },
+    { label: 'Project Management', values: r.project },
+    { label: 'Teamwork',           values: r.team },
+    { label: 'Adaptability',       values: r.adapt },
+    { label: 'Work-Life Balance',  values: r.wlb },
+    { label: 'Critical Thinking',  values: r.critical },
+  ].map(c => {
+    const [rating, count] = topRatingEntry(c.values);
+    return { ...c, rating, count };
+  });
+
   let out = `**${headerVerb} common competency self-ratings among ${gPrefix}${statusAdj}respondents${lbl} (${r.count} total):**\n\n`;
-  out += `- Technical Skills:    **${topRating(r.technical)}**\n`;
-  out += `- Communication:       **${topRating(r.comm)}**\n`;
-  out += `- Problem Solving:     **${topRating(r.problem)}**\n`;
-  out += `- Project Management:  **${topRating(r.project)}**\n`;
-  out += `- Teamwork:            **${topRating(r.team)}**\n`;
-  out += `- Adaptability:        **${topRating(r.adapt)}**\n`;
-  out += `- Work-Life Balance:   **${topRating(r.wlb)}**\n`;
-  out += `- Critical Thinking:   **${topRating(r.critical)}**\n`;
-  return out;
+  categories.forEach(c => { out += `- ${c.label}: **${c.rating}**\n`; });
+
+  const chartRows = categories.filter(c => c.count > 0).map(c => ({ _id: c.label, count: c.count }));
+  return withChart(out, { type: 'bars', title: `${headerVerb} Common Competency Ratings`, rows: chartRows });
 }
 
 async function queryWorkLocation(filters) {
@@ -2413,7 +2429,8 @@ async function queryWorkLocationByProgram(filters, location) {
   let out = `**Alumni ${label}, by program:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.matched}/${r.total} ${label} (${pct(r.matched, r.total)})\n`; });
   out += `\n**${top._id}** has the most alumni ${label}, with **${top.matched}**.`;
-  return out;
+  const chartRows = rows.map(r => ({ _id: r._id, count: Math.round((r.matched / r.total) * 100) }));
+  return withChart(out, { type: 'bars', title: `Alumni ${toTitleCase(label)} Rate by Program (%)`, rows: chartRows });
 }
 
 async function queryByYear(filters) {
@@ -2608,7 +2625,8 @@ async function queryYearJobAlignment(filters, direction) {
   let out = `**Job-course relevance rate by batch year${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **Batch ${r._id}**: ${r.related}/${r.total} job-related (${pct(r.related, r.total)})\n`; });
   out += `\n**Batch ${top._id}** had the ${direction} job-course relevance rate, at **${pct(top.related, top.total)}** (${top.related} out of ${top.total}).`;
-  return out;
+  const chartRows = [...ranked].reverse().map(r => ({ _id: `Batch ${r._id}`, count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: 'Job-Course Relevance Rate by Batch Year (%)', rows: chartRows });
 }
 
 const EMOJI_RE = /[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}]/gu;
@@ -3438,7 +3456,7 @@ async function queryEventOverview(question = '') {
   // an intentional restriction. Say so explicitly instead, same wording
   // shape as ragService.js's own cross-college tracer-study denial message.
   if (scopedCollege && requestedCollege && requestedCollege !== scopedCollege) {
-    return `As a ${scopedCollege} coordinator, you can only access ${scopedCollege}'s events — I don't have access to ${requestedCollege} or other colleges' events.`;
+    return `As a ${scopedCollege} coordinator, you may only access ${scopedCollege}'s events — access to ${requestedCollege} or other colleges' events is not available.`;
   }
   if (!scopedCollege && !requestedCollege && !ALL_COLLEGES_PATTERN.test(question)) {
     return CLARIFY_COLLEGE_QUESTION;
@@ -3536,24 +3554,37 @@ async function queryEventFeedback(question) {
   out += `- **Average rating:** ${avgRating}/5\n`;
   out += `- **Responses:** ${responses.length} of ${totalAttendees} attendees (${pct(responses.length, totalAttendees)})\n`;
 
-  const categoryLines = FEEDBACK_CATEGORY_KEYS
-    .map(key => {
-      const avg = feedbackAverage(responses.map(r => r.ratings?.[key]));
-      return avg !== null ? `- ${toTitleCase(key)}: ${avg}/5` : null;
-    })
-    .filter(Boolean)
-    .join('\n');
-  if (categoryLines) out += `\n**Category averages:**\n${categoryLines}\n`;
+  const categoryAverages = FEEDBACK_CATEGORY_KEYS
+    .map(key => ({ _id: toTitleCase(key), count: feedbackAverage(responses.map(r => r.ratings?.[key])) }))
+    .filter(r => r.count !== null);
+  if (categoryAverages.length) {
+    out += `\n**Category averages:**\n${categoryAverages.map(r => `- ${r._id}: ${r.count}/5`).join('\n')}\n`;
+  }
 
   const comments = responses.filter(r => r.feedback && r.feedback.trim()).slice(0, 5);
   if (comments.length) {
     out += `\n**Sample comments:**\n`;
     comments.forEach((c, i) => { out += `${i + 1}. "${cleanText(c.feedback)}"\n`; });
   }
-  return { text: out, eventTitle: resolved.event.title };
+  // 2+ categories with data reads as a genuine comparison worth charting —
+  // a single category (or none) is either just the overall average already
+  // stated above, or nothing to compare at all.
+  const charted = categoryAverages.length > 1
+    ? withChart(out, { type: 'bars', title: 'Feedback Category Averages (out of 5)', rows: categoryAverages })
+    : out;
+  const { text, chart } = typeof charted === 'string' ? { text: charted, chart: null } : charted;
+  return { text, eventTitle: resolved.event.title, chart };
 }
 
-async function querySimpleRate(filters, matchStage, label) {
+// chartTitle: set by the 'rate' dispatcher (see its own VISUALIZATION_REQUEST_
+// PATTERN check) when the question explicitly asks for a visualization —
+// null/omitted otherwise, since this is normally a single derived percentage
+// with no chart of its own. Same on-request wiring as queryRate()'s own
+// wantsChart param just above; every querySimpleRate() call site answers a
+// yes/no-shaped question (took the exam, pursued further studies, works
+// locally, etc.), so a plain matched/unmatched donut fits every caller alike
+// without needing a caller-specific chart shape.
+async function querySimpleRate(filters, matchStage, label, chartTitle = null) {
   const base = stablePipeline(filters);
   const [totalRows, matchRows] = await Promise.all([
     Graduate.aggregate([...base, { $count: 'total' }]),
@@ -3564,11 +3595,18 @@ async function querySimpleRate(filters, matchStage, label) {
   if (total === 0) return null;
   const lbl = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
-  return `**${pct(matched, total)}** of ${gPrefix}graduates ${label}${lbl} (${matched} out of ${total}).`;
+  const text = `**${pct(matched, total)}** of ${gPrefix}graduates ${label}${lbl} (${matched} out of ${total}).`;
+  if (!chartTitle) return text;
+  const chartRows = [
+    { _id: 'Yes', count: matched },
+    { _id: 'No', count: total - matched },
+  ].filter(r => r.count > 0);
+  return withChart(text, { type: 'donut', title: chartTitle, rows: chartRows });
 }
 
 // Percentage of exam-takers who passed or failed (denominator = those who took the exam, not all graduates)
-async function queryExamPassRate(filters, resultType) {
+// wantsChart: same on-request wiring as queryRate()/querySimpleRate() above.
+async function queryExamPassRate(filters, resultType, wantsChart = false) {
   const base = stablePipeline(filters);
   const [tookRows, resultRows] = await Promise.all([
     Graduate.aggregate([...base, { $match: { tookExam: { $regex: '^yes', $options: 'i' } } }, { $count: 'total' }]),
@@ -3580,7 +3618,14 @@ async function queryExamPassRate(filters, resultType) {
   const lbl    = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
   const verb   = resultType === 'passed' ? 'passed' : 'failed';
-  return `**${pct(result, took)}** of ${gPrefix}exam takers ${verb} the board/licensure exam${lbl} (${result} out of ${took} who took the exam).`;
+  const text = `**${pct(result, took)}** of ${gPrefix}exam takers ${verb} the board/licensure exam${lbl} (${result} out of ${took} who took the exam).`;
+  if (!wantsChart) return text;
+  const passed = resultType === 'passed' ? result : took - result;
+  const chartRows = [
+    { _id: 'Passed', count: passed },
+    { _id: 'Failed', count: took - passed },
+  ].filter(r => r.count > 0);
+  return withChart(text, { type: 'donut', title: 'Board/Licensure Exam Results', rows: chartRows });
 }
 
 // Raw numbers behind the employment rate, shared by queryRate() (single-
@@ -4301,8 +4346,8 @@ async function queryInner(question, seedFilters = {}) {
     const range = bounds[0];
     return {
       text: range
-        ? `There's no batch **${outOfRangeYearMatch[1]}** in the tracer study database — records on file span batch **${range.min}** to **${range.max}**.`
-        : `There's no batch **${outOfRangeYearMatch[1]}** in the tracer study database.`,
+        ? `There is no batch **${outOfRangeYearMatch[1]}** in the tracer study database — records on file span batch **${range.min}** to **${range.max}**.`
+        : `There is no batch **${outOfRangeYearMatch[1]}** in the tracer study database.`,
       direct: true, topic: 'out_of_scope', filters: {},
     };
   }
@@ -4748,6 +4793,13 @@ async function queryInner(question, seedFilters = {}) {
   // work_location topic, so the bug was one click away from every user).
   const isCompoundLocationQuestion = !filters.workLocation && TOPIC_PATTERNS.work_location.test(question);
 
+  // Explicit ask for a visualization on a single-percentage 'rate' answer
+  // (queryRate()/querySimpleRate()/queryExamPassRate() below) — every one of
+  // these is otherwise plain text with no chart of its own, unlike a
+  // by-program/by-year breakdown which always charts regardless of whether a
+  // visualization was asked for.
+  const wantsRateChart = VISUALIZATION_REQUEST_PATTERN.test(question);
+
   // "What is the employment trend for BSIT graduates over the past three
   // years?" / "Is employment improving or declining for BSCS graduates?" —
   // both imply a BY-YEAR breakdown showing DIRECTION OF CHANGE, not one
@@ -4905,36 +4957,36 @@ async function queryInner(question, seedFilters = {}) {
         : filters.workLocation ? queryWorkLocationByProgram(filters, filters.workLocation)
         : queryEmploymentRateByProgram(filters, programSuperlativeDirection))
       : filters.tookExam === 'passed'
-      ? queryExamPassRate(filters, 'passed')
+      ? queryExamPassRate(filters, 'passed', wantsRateChart)
       : filters.tookExam === 'failed'
-      ? queryExamPassRate(filters, 'failed')
+      ? queryExamPassRate(filters, 'failed', wantsRateChart)
       : filters.tookExam === 'yes'
-      ? querySimpleRate(filters, tookExamMatch('yes'), 'took a board/licensure exam')
+      ? querySimpleRate(filters, tookExamMatch('yes'), 'took a board/licensure exam', wantsRateChart && 'Took Board/Licensure Exam')
       : filters.tookExam === 'no'
-      ? querySimpleRate(filters, tookExamMatch('no'), 'did NOT take a board/licensure exam')
+      ? querySimpleRate(filters, tookExamMatch('no'), 'did NOT take a board/licensure exam', wantsRateChart && 'Took Board/Licensure Exam')
       : filters.furtherEducation === 'Yes'
-      ? querySimpleRate(filters, { furtherEducation: { $regex: '^yes', $options: 'i' } }, 'pursued further education')
+      ? querySimpleRate(filters, { furtherEducation: { $regex: '^yes', $options: 'i' } }, 'pursued further education', wantsRateChart && 'Pursued Further Education')
       : filters.furtherEducation === 'No'
-      ? querySimpleRate(filters, { $or: [{ furtherEducation: { $in: [null, ''] } }, { furtherEducation: { $regex: '^no', $options: 'i' } }] }, 'did not pursue further education')
+      ? querySimpleRate(filters, { $or: [{ furtherEducation: { $in: [null, ''] } }, { furtherEducation: { $regex: '^no', $options: 'i' } }] }, 'did not pursue further education', wantsRateChart && 'Pursued Further Education')
       : filters.jobRelated
-      ? querySimpleRate(filters, { jobRelated: { $regex: '^yes', $options: 'i' } }, 'have jobs related to their course')
+      ? querySimpleRate(filters, { jobRelated: { $regex: '^yes', $options: 'i' } }, 'have jobs related to their course', wantsRateChart && 'Job Related to Course')
       // Was missing entirely: filters.workLocation IS correctly extracted for
       // "what percentage work abroad/locally" questions, but with no branch
       // checking for it here, execution fell all the way through to the
       // generic queryRate() (overall employment rate) — silently dropping
       // the location filter and answering a different question.
       : filters.workLocation
-      ? querySimpleRate(filters, { workLocation: workLocationCondition(filters.workLocation, false) }, `work ${filters.workLocation === 'local' ? 'locally' : filters.workLocation}`)
+      ? querySimpleRate(filters, { workLocation: workLocationCondition(filters.workLocation, false) }, `work ${filters.workLocation === 'local' ? 'locally' : filters.workLocation}`, wantsRateChart && 'Work Location')
       // Same gap as workLocation above: filters.industry IS correctly
       // extracted for "what percentage work in the IT industry" questions,
       // but with no branch here, execution fell through to the generic
       // queryRate() (overall employment rate) — silently dropping the
       // industry filter and answering a completely different question.
       : filters.industry
-      ? querySimpleRate(filters, { industry: { $regex: filters.industry, $options: 'i' } }, `work in ${filters.industry}`)
+      ? querySimpleRate(filters, { industry: { $regex: filters.industry, $options: 'i' } }, `work in ${filters.industry}`, wantsRateChart && `Working in ${filters.industry}`)
       : filters.excludeIndustry
-      ? querySimpleRate(filters, { industry: { $nin: [null, ''], $not: { $regex: filters.excludeIndustry, $options: 'i' } } }, `do NOT work in ${filters.excludeIndustry}`)
-      : queryRate(filters, /\bunemploy(ed|ment)?\b/i.test(question), VISUALIZATION_REQUEST_PATTERN.test(question)),
+      ? querySimpleRate(filters, { industry: { $nin: [null, ''], $not: { $regex: filters.excludeIndustry, $options: 'i' } } }, `do NOT work in ${filters.excludeIndustry}`, wantsRateChart && `Not Working in ${filters.excludeIndustry}`)
+      : queryRate(filters, /\bunemploy(ed|ment)?\b/i.test(question), wantsRateChart),
     overview:        () => /\bby\s+(program|course)\b/i.test(question) ? queryByProgram(filters)
       : /\bby\s+(batch|year|graduation)\b/i.test(question) ? queryByYear(filters)
       : /\bemployment\s+(breakdown|data|statistic)/i.test(question) ? queryEmployment(filters)
@@ -5134,26 +5186,32 @@ const RELATED_TOPICS = {
   // event to anchor them to; it falls back to events_upcoming/events_past.
   events:          ['event_attendance', 'event_feedback_q', 'events_upcoming', 'events_past'],
   event_feedback:  ['event_attendance', 'event_attendees', 'events_upcoming'],
-  employment:      ['industry', 'by_program', 'by_year'],
+  employment:      ['industry', 'by_program', 'job_positions'],
   count:           ['rate', 'industry', 'by_program'],
-  rate:            ['industry', 'by_program', 'competencies'],
+  rate:            ['industry', 'by_program', 'top_companies'],
   overview:        ['industry', 'licensure', 'further_studies'],
-  industry:        ['rate', 'work_location', 'by_program'],
+  industry:        ['top_companies', 'job_positions', 'by_program'],
   work_type:       ['rate', 'industry', 'work_location'],
-  job_relevance:   ['rate', 'industry', 'by_program'],
+  job_relevance:   ['skills_list', 'industry', 'by_program'],
   further_studies: ['rate', 'licensure', 'industry'],
   licensure:       ['rate', 'further_studies', 'by_program'],
-  competencies:    ['rate', 'by_program', 'industry'],
-  work_location:   ['industry', 'rate', 'by_program'],
-  by_program:      ['rate', 'industry', 'by_year'],
+  competencies:    ['skills_list', 'by_program', 'industry'],
+  work_location:   ['top_companies', 'industry', 'by_program'],
+  by_program:      ['rate', 'job_positions', 'by_year'],
   by_year:         ['rate', 'industry', 'by_program'],
   names:           ['rate', 'industry', 'by_program'],
-  gender:          ['rate', 'by_program', 'industry'],
+  gender:          ['rate', 'by_program', 'job_positions'],
   // Not the generic tracer-study default — "who else works in X" and "what's
   // the breakdown for THIS person's program" are directly related to the
   // person just looked up, unlike a blanket employment-rate suggestion.
   person_lookup:   ['same_industry', 'by_program', 'gender'],
   comparison:      ['by_program', 'industry'],
+  // New topics get their own onward suggestions too, not just inbound links
+  // from the topics above — otherwise clicking into one of these dead-ends
+  // with no further chips at all.
+  job_positions:   ['top_companies', 'skills_list', 'industry'],
+  top_companies:   ['job_positions', 'industry', 'rate'],
+  skills_list:     ['competencies', 'job_positions', 'rate'],
 };
 
 const FOLLOWUP_QUESTION = {
@@ -5171,6 +5229,9 @@ const FOLLOWUP_QUESTION = {
   job_relevance:   (pw) => `How many ${pw}alumni have jobs related to their course?`,
   names:           (pw) => `Who are the employed ${pw}alumni?`,
   gender:          (pw) => `What is the gender breakdown of ${pw}alumni?`,
+  job_positions:   (pw) => `What are the most common job positions among ${pw}alumni?`,
+  top_companies:   (pw) => `Which companies employ the most ${pw}alumni?`,
+  skills_list:     (pw) => `What skills do ${pw}alumni have?`,
   // Event-context follow-ups — the 3 below only fire when the answer just
   // given already resolved one specific event (filters.eventTitle set by the
   // aggregationService wrapper); otherwise they return null and
@@ -5202,4 +5263,4 @@ function suggestFollowUps(topic, filters = {}) {
 // layer be verified directly, without needing a live MongoDB connection the
 // way calling query() end-to-end would. Not used by any other module; the
 // real request path still only ever calls query() from ragService.js.
-module.exports = { query, hasData, suggestFollowUps, extractPersonName, extractPersonNames, detectTopic, extractFilters, CLARIFY_COLLEGE_QUESTION, extractEventName };
+module.exports = { query, hasData, suggestFollowUps, extractPersonName, extractPersonNames, detectTopic, extractFilters, CLARIFY_COLLEGE_QUESTION, extractEventName, VISUALIZATION_REQUEST_PATTERN };

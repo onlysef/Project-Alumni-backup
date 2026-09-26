@@ -7,6 +7,7 @@ const {
   getAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
   toggleLike, getComments, addComment, trackShare, getRecentActivity,
+  updateEventAdmin, updateJobAdmin, deleteEventAdmin, deleteJobAdmin,
 } = require('../controllers/announcementController');
 const {
   getPartnerships, createPartnership, updatePartnership, deletePartnership,
@@ -55,6 +56,15 @@ router.get('/announcements/:id',               getAnnouncement);
 router.post('/announcements',                   createAnnouncement);
 router.patch('/announcements/:id',              updateAnnouncement);
 router.delete('/announcements/:id',             deleteAnnouncement);
+// Edit an Event/Job pulled into the merged feed above (see getAnnouncements'
+// $unionWith) — separate admin-only endpoints, not the coordinator/employer
+// ones, since those are hard-scoped to the college/account that owns the
+// record (see updateEventAdmin/updateJobAdmin's own comments for why reusing
+// them wasn't an option).
+router.patch('/announcements/events/:id',       updateEventAdmin);
+router.patch('/announcements/jobs/:id',         updateJobAdmin);
+router.delete('/announcements/events/:id',      deleteEventAdmin);
+router.delete('/announcements/jobs/:id',        deleteJobAdmin);
 router.post('/announcements/:id/like',          toggleLike);
 router.get('/announcements/:id/comments',       getComments);
 router.post('/announcements/:id/comment',       addComment);

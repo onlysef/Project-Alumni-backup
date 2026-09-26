@@ -3946,6 +3946,94 @@
             max-width: 100%;
         }
 
+        /* Left column used to be just post-launcher-card alone — a short bar
+           sitting on top of a lot of empty space next to the taller Recent
+           Posts column beside it. recent-activity-card (added below) is its
+           new second row, so the two columns land at roughly the same
+           height instead of that lopsided look. */
+        .announcement-left-col {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            min-width: 0;
+        }
+
+        .recent-activity-card {
+            display: flex;
+            flex-direction: column;
+            padding: 18px 20px;
+            border: 1px solid rgba(87, 0, 19, 0.25);
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .recent-activity-card h3 {
+            margin: 0 0 6px;
+            font-size: 14px;
+            color: var(--maroon);
+        }
+
+        .recent-activity-empty {
+            margin: 0;
+            color: #76656a;
+            font-size: 13px;
+            text-align: center;
+            padding: 16px 0;
+        }
+
+        .recent-activity-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 0;
+            border-top: 1px solid #ead7da;
+        }
+
+        .recent-activity-row:first-of-type {
+            border-top: none;
+            padding-top: 8px;
+        }
+
+        .recent-activity-icon {
+            display: inline-grid;
+            place-items: center;
+            width: 28px;
+            height: 28px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            background: #f5eaed;
+        }
+
+        .recent-activity-icon .admin-svg-icon {
+            width: 16px;
+            height: 16px;
+        }
+
+        .recent-activity-text {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #2d2024;
+        }
+
+        .recent-activity-link {
+            color: var(--maroon);
+            cursor: pointer;
+            text-decoration: underline;
+            text-decoration-color: transparent;
+            transition: text-decoration-color 0.15s ease;
+        }
+
+        .recent-activity-link:hover {
+            text-decoration-color: currentColor;
+        }
+
+        .recent-activity-time {
+            color: #76656a;
+            font-size: 12px;
+        }
+
         .post-form-card {
             padding: 0 28px 28px;
             background: var(--maroon);
@@ -5383,6 +5471,7 @@
             .modal-backdrop.topbar-popover .topbar-modal,
             .notifications-popover .topbar-modal,
             .settings-popover .topbar-modal,
+            .account-popover .topbar-modal,
             .profile-popover .topbar-modal {
                 top: 70px;
                 right: 8px;
@@ -5395,16 +5484,53 @@
             }
         }
 
+        /* Offsets shift right-to-left to clear each icon in .top-actions —
+           notifications, then settings, then the 34px avatar button now
+           rightmost (added for account-popover below). Each popover still
+           just needs to land roughly under its own trigger, not pixel-
+           perfect, same as this file's existing convention. */
         .notifications-popover .topbar-modal {
-            right: 56px;
+            right: 104px;
         }
 
         .settings-popover .topbar-modal {
+            right: 68px;
+        }
+
+        .account-popover .topbar-modal {
             right: 20px;
         }
 
         .profile-popover .topbar-modal {
             right: 20px;
+        }
+
+        /* .account-profile-actions itself is already styled unscoped
+           (alumni-mod.css) — only the BUTTON inside it is scoped to
+           .alumni-top-panel there, so AccountPanel's own "Upload Photo"
+           button needs its own copy of that same look here. */
+        .account-panel-modal .account-profile-actions button {
+            min-height: 36px;
+            border: 1px solid var(--maroon);
+            border-radius: 6px;
+            background: var(--maroon);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .account-panel-modal .account-profile-actions button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .account-panel-avatar-msg {
+            margin: -6px 20px 14px;
+            font-size: 11px;
+            color: var(--maroon);
+        }
+        .account-panel-password {
+            padding: 4px 20px 16px;
+            border-top: 1px solid #eee4e7;
         }
 
         .modal-backdrop.topbar-popover .topbar-modal::before {
@@ -6400,6 +6526,7 @@
 
             .notifications-popover .topbar-modal,
             .settings-popover .topbar-modal,
+            .account-popover .topbar-modal,
             .profile-popover .topbar-modal {
                 right: 8px;
                 width: min(340px, calc(100vw - 16px));
@@ -8502,7 +8629,9 @@
 
             .announcement-table td:nth-child(1)::before { content: "Post Title"; }
             .announcement-table td:nth-child(2)::before { content: "Description"; }
-            .announcement-table td:nth-child(3)::before { content: "Actions"; }
+            .announcement-table td:nth-child(3)::before { content: "Type"; }
+            .announcement-table td:nth-child(4)::before { content: "Posted By"; }
+            .announcement-table td:nth-child(5)::before { content: "Actions"; }
 
             .appointments-table td:nth-child(1)::before { content: "Date & Time"; }
             .appointments-table td:nth-child(2)::before { content: "Alumni"; }
@@ -8901,6 +9030,17 @@
 
         body.dark-mode .post-launcher-icon:hover { background: #3a1f27; }
 
+        body.dark-mode .recent-activity-card {
+            background: #2b141a;
+            border-color: rgba(250, 200, 83, 0.22);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+        }
+        body.dark-mode .recent-activity-row { border-top-color: rgba(250, 200, 83, 0.18); }
+        body.dark-mode .recent-activity-icon { background: #3a1f27; }
+        body.dark-mode .recent-activity-text { color: #f3e7ea; }
+        body.dark-mode .recent-activity-empty,
+        body.dark-mode .recent-activity-time { color: #cbb9bd; }
+
         @media (min-width: 601px) {
             /* table-layout: auto (the default) sizes columns to fit content
                on one line whenever possible, so the percentage widths below
@@ -8913,19 +9053,30 @@
             }
             .announcement-table th:nth-child(1),
             .announcement-table td:nth-child(1) {
-                width: 28%;
+                width: 20%;
                 white-space: normal;
                 overflow-wrap: break-word;
             }
             .announcement-table th:nth-child(2),
             .announcement-table td:nth-child(2) {
-                width: 58%;
+                width: 40%;
                 white-space: normal;
                 overflow-wrap: break-word;
             }
             .announcement-table th:nth-child(3),
             .announcement-table td:nth-child(3) {
-                width: 14% !important;
+                width: 12% !important;
+                text-align: center;
+            }
+            .announcement-table th:nth-child(4),
+            .announcement-table td:nth-child(4) {
+                width: 16% !important;
+                white-space: normal;
+                overflow-wrap: break-word;
+            }
+            .announcement-table th:nth-child(5),
+            .announcement-table td:nth-child(5) {
+                width: 12% !important;
                 text-align: center;
             }
         }
