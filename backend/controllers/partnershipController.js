@@ -18,11 +18,11 @@ const getPartnerships = async (req, res) => {
 // POST /api/admin/partnerships
 const createPartnership = async (req, res) => {
   try {
-    const { name, type, status, description } = req.body;
+    const { name, type, status, description, contact } = req.body;
     if (!name || !type) {
       return res.status(400).json({ message: 'name and type are required.' });
     }
-    const partnership = await Partnership.create({ name, type, status, description });
+    const partnership = await Partnership.create({ name, type, status, description, contact });
     res.status(201).json({ partnership });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
@@ -32,10 +32,10 @@ const createPartnership = async (req, res) => {
 // PATCH /api/admin/partnerships/:id
 const updatePartnership = async (req, res) => {
   try {
-    const { name, type, status, description } = req.body;
+    const { name, type, status, description, contact } = req.body;
     const partnership = await Partnership.findByIdAndUpdate(
       req.params.id,
-      { name, type, status, description },
+      { name, type, status, description, contact },
       { new: true, runValidators: true }
     );
     if (!partnership) return res.status(404).json({ message: 'Partnership not found.' });
