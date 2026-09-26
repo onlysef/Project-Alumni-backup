@@ -6,7 +6,15 @@ import { Modal } from "./Primitives.jsx";
 // (AlumniEmploymentDetails.jsx) — extracted here so admin/coordinator's
 // Edit Alumni Record modal can offer the exact same crop experience when
 // setting a photo on someone else's behalf.
-export default function AvatarCropper({ src, busy, onCancel, onSave }) {
+// `inline`: skip the self-wrapping Modal/portal and just return the crop UI
+// directly, for a caller that wants to swap it INTO an already-open modal of
+// its own (AdminTopbar's AccountPanel) instead of stacking a second modal on
+// top of the first — two same-z-index full-viewport portals landed in an
+// unreliable paint order on some mobile browsers, burying the crop stage and
+// Save/Cancel buttons behind the caller's own modal. Every other caller
+// (AlumniEmploymentDetails, CoordinatorEmploymentView, admin EmploymentView)
+// opens this as the only modal on the page, so they keep the default.
+export default function AvatarCropper({ src, busy, onCancel, onSave, inline = false }) {
   const VIEW = 260;
   const OUTPUT = 320;
   const imgRef = useRef(null);
@@ -61,35 +69,41 @@ export default function AvatarCropper({ src, busy, onCancel, onSave }) {
     onSave(canvas.toDataURL("image/jpeg", 0.9));
   }
 
+  const content = (
+    <div className="avatar-cropper" role="dialog" aria-modal="true" aria-label="Adjust profile photo">
+      <div className="modal-head"><h3>Adjust photo</h3><button type="button" aria-label="Cancel" disabled={busy} onClick={onCancel}>×</button></div>
+      <p className="avatar-cropper-hint">Drag to reposition · use the slider to zoom.</p>
+      <div
+        className="avatar-cropper-stage"
+        style={{ width: VIEW, height: VIEW }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <img
+          ref={imgRef}
+          src={src}
+          alt=""
+          draggable="false"
+          onLoad={onImgLoad}
+          style={{ width: dispW || "auto", height: dispH || "auto", transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
+        />
+        <div className="avatar-cropper-ring" />
+      </div>
+      <input type="range" min="1" max="3" step="0.01" value={zoom} disabled={busy} onChange={(e) => setZoom(Number(e.target.value))} aria-label="Zoom" />
+      <div className="avatar-cropper-actions">
+        <button type="button" className="secondary-employment-btn" disabled={busy} onClick={onCancel}>Cancel</button>
+        <button type="button" className="primary-employment-btn" disabled={busy || !nat.w} onClick={handleSave}>{busy ? "Saving…" : "Save Photo"}</button>
+      </div>
+    </div>
+  );
+
+  if (inline) return content;
+
   return (
     <Modal open onClose={busy ? () => {} : onCancel} className="avatar-cropper-modal">
-      <div className="avatar-cropper" role="dialog" aria-modal="true" aria-label="Adjust profile photo">
-        <div className="modal-head"><h3>Adjust photo</h3><button type="button" aria-label="Cancel" disabled={busy} onClick={onCancel}>×</button></div>
-        <p className="avatar-cropper-hint">Drag to reposition · use the slider to zoom.</p>
-        <div
-          className="avatar-cropper-stage"
-          style={{ width: VIEW, height: VIEW }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-        >
-          <img
-            ref={imgRef}
-            src={src}
-            alt=""
-            draggable="false"
-            onLoad={onImgLoad}
-            style={{ width: dispW || "auto", height: dispH || "auto", transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
-          />
-          <div className="avatar-cropper-ring" />
-        </div>
-        <input type="range" min="1" max="3" step="0.01" value={zoom} disabled={busy} onChange={(e) => setZoom(Number(e.target.value))} aria-label="Zoom" />
-        <div className="avatar-cropper-actions">
-          <button type="button" className="secondary-employment-btn" disabled={busy} onClick={onCancel}>Cancel</button>
-          <button type="button" className="primary-employment-btn" disabled={busy || !nat.w} onClick={handleSave}>{busy ? "Saving…" : "Save Photo"}</button>
-        </div>
-      </div>
+      {content}
     </Modal>
   );
 }

@@ -327,6 +327,31 @@ export function AccountPanel({ onClose, showToast }) {
     }
   }
 
+  const avatarInput = (
+    <input
+      ref={avatarInputRef}
+      type="file"
+      accept="image/png,image/jpeg,image/gif,image/webp"
+      hidden
+      onChange={handleAvatarChange}
+    />
+  );
+
+  // Cropping replaces this panel's own content instead of opening AvatarCropper
+  // as a second, separately-portaled modal on top of this already-open one —
+  // two same-z-index full-viewport portals stacked unreliably on some mobile
+  // browsers, burying the crop stage and Save/Cancel buttons behind this
+  // panel. Swapping content within the one modal that's already open sidesteps
+  // that entirely instead of trying to out-z-index it.
+  if (cropSrc) {
+    return (
+      <section className="tracer-modal topbar-modal account-panel-modal is-cropping" role="dialog" aria-modal="true">
+        <AvatarCropper inline src={cropSrc} busy={avatarBusy} onCancel={() => setCropSrc("")} onSave={uploadAvatar} />
+        {avatarInput}
+      </section>
+    );
+  }
+
   return (
     <section className="tracer-modal topbar-modal account-panel-modal" role="dialog" aria-modal="true">
       <div className="modal-head">
@@ -358,27 +383,13 @@ export function AccountPanel({ onClose, showToast }) {
           <button type="button" disabled={avatarBusy} onClick={() => avatarInputRef.current?.click()}>
             {avatarBusy ? "Uploading…" : "Upload Photo"}
           </button>
-          <input
-            ref={avatarInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            hidden
-            onChange={handleAvatarChange}
-          />
+          {avatarInput}
         </div>
         {avatarMsg && <p className="account-panel-avatar-msg">{avatarMsg}</p>}
         <div className="account-panel-password">
           <ChangePasswordSection showToast={showToast} />
         </div>
       </div>
-      {cropSrc && (
-        <AvatarCropper
-          src={cropSrc}
-          busy={avatarBusy}
-          onCancel={() => setCropSrc("")}
-          onSave={uploadAvatar}
-        />
-      )}
     </section>
   );
 }
