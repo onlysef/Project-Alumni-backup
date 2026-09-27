@@ -61,7 +61,7 @@ function isEventOver(ev) {
 }
 
 export default function AlumniDashboard() {
-  const { section = "home", sidebarCollapsed = false } = useOutletContext() || {};
+  const { section = "home", sidebarCollapsed = false, showToast } = useOutletContext() || {};
   const location = useLocation();
   const navigate = useNavigate();
   const filter = section === "jobconnect" ? "Job Postings" : (new URLSearchParams(location.search).get("filter") || "All");
@@ -139,12 +139,27 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   }, []);
 
   async function toggleRemind(ev) {
+    // Marking NEW interest in an already-ended event makes no sense (the
+    // backend rejects it too) — block it here so the button doesn't even
+    // flash an optimistic "interested" state before snapping back.
+    if (!ev.isInterestedByMe && isEventOver(ev)) {
+      showToast?.("This event has already ended.");
+      return;
+    }
     // Optimistic flip, same pattern as toggleLikeNews.
     setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: !e.isInterestedByMe, interested_count: e.interested_count + (e.isInterestedByMe ? -1 : 1) } : e));
     try {
       const res  = await fetch(`${API}/alumni/events/${ev._id}/interested`, { method: "POST", headers: authHeaders() });
       const data = await res.json();
-      if (res.ok) setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: data.interested } : e));
+      if (res.ok) {
+        setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: data.interested } : e));
+      } else {
+        // Revert the optimistic flip — a rejected request (e.g. the event
+        // ended in the moments since this page loaded) must not leave the
+        // button showing a state the server never actually saved.
+        setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: ev.isInterestedByMe, interested_count: ev.interested_count } : e));
+        showToast?.(data.message || "Couldn't update your interest for this event.");
+      }
     } catch { /* keep optimistic state on network failure */ }
   }
 
@@ -395,7 +410,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
         />
       ))}
       {filter === "Events" && completedEvents.length > 0 && <>
-        <h3 className="recent-title">Recently Completed</h3>
+        <h3 className="recent-title">Past Events</h3>
         {completedEvents.map((ev) => (
           <article className="completed-event" key={ev._id}>
             <EventImage date={fmtEventDate(ev.event_datetime)} image={ev.image} title={ev.title} />

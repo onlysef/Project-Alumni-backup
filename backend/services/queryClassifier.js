@@ -147,6 +147,14 @@ const HELP_PATTERNS = [
   /\bwhat (questions|topics) can (i|you)\b/i,
   /^\s*help\s*$/i,
   /\bhow does this (chat|assistant|bot) work\b/i,
+  // "what should I do here?" / "what do I do here" — a first-time user's
+  // most natural way to ask "how do I use this thing," but matched none of
+  // the alternatives above (none cover bare "what should/do I do"). Fell
+  // through to the generic UNKNOWN_RESPONSE refusal ("I'm designed to
+  // answer questions related to the Graduate Tracer Study records... unable
+  // to respond to unrelated inquiries") instead of HELP_RESPONSE's actually
+  // useful capability list with example questions.
+  /\bwhat (?:should|do) i do(?:\s+here)?\b/i,
   // "Can I ask (you) something/a question?" — a permission-seeking preamble,
   // not a real question yet, so there's nothing for the statistical/RAG
   // pipeline to search for. Previously fell all the way through to the
@@ -227,6 +235,15 @@ const INCOMPLETE_THOUGHT_PATTERNS = [
   /^\s*(how\s+many|how\s+much|total|average|count|number\s+of|percentage|ranking|breakdown|distribution|compare|graphs?|charts?|visuali[sz]e|visuali[sz]ations?|plot|ilan|porsyento|porsiyento)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
   // Qualitative-shaped bare trigger words with no named subject.
   /^\s*(why|explain|describe|summarize|suggest|recommend|feedback|bakit|ipaliwanag|mungkahi)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
+  // One step less bare than "show me"/"give me" alone above — "give me the
+  // numbers"/"show me stats"/"tell me something" still say nothing about
+  // WHAT numbers/stats/something is wanted, just with a generic filler word
+  // standing in for a real subject instead of no object at all. Without
+  // this, these fell through to the generic FALLBACK_RESPONSE refusal in
+  // ragService.js ("I could not find relevant information...") instead of
+  // this classification's own, more useful "what would you like to know?
+  // For example: employment rate, industries..." clarifying question.
+  /^\s*(?:show|give|tell)\s+me\s+(?:the\s+|some\s+)?(?:numbers?|stats?|statistics?|data|info(?:rmation)?|something|stuff|more)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
 ];
 function isIncompleteThought(q) {
   return INCOMPLETE_THOUGHT_PATTERNS.some((p) => p.test(q));

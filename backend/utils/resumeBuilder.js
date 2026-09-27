@@ -17,6 +17,20 @@ function formatEmploymentDuration(employment) {
   return employment?.years_in_current_job || '';
 }
 
+// Same idea as formatEmploymentDuration above but for a Work History entry,
+// which stores explicit start/end dates instead of a single date_employed +
+// status pair — a past job always has both, so this never has a "Present"
+// case the way the current job does.
+function formatWorkHistoryDuration(entry) {
+  const start = entry?.start_date ? new Date(entry.start_date) : null;
+  const end = entry?.end_date ? new Date(entry.end_date) : null;
+  const label = (d) => (d && !Number.isNaN(d.getTime())) ? d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '';
+  const startLabel = label(start);
+  const endLabel = label(end);
+  if (startLabel && endLabel) return `${startLabel} - ${endLabel}`;
+  return startLabel || endLabel || '';
+}
+
 // Builds every field that has a live source elsewhere in the alumnus's own
 // profile (identity, Employment Details, tracer study) — used both for the
 // no-resume-saved-yet suggestion AND to keep an already-saved Resume in sync
@@ -33,13 +47,30 @@ function deriveFromProfile(user, employment, tracer) {
   const cleanMiddleInitial = (user.middleInitial || '').replace(/\.+$/, '');
   const fullName = [user.firstName, cleanMiddleInitial ? `${cleanMiddleInitial}.` : '', user.lastName].filter(Boolean).join(' ');
 
-  const experienceLines = [];
+  // Current job first (if any), then every past position the alumnus has
+  // added under Work History — oldest-added last isn't assumed to mean
+  // oldest-worked, so entries are kept in the order the alumnus entered
+  // them rather than re-sorted by date.
+  const experience = [];
   if (employment?.job_title) {
-    const titleLine = [employment.job_title, employment.company_name].filter((v) => v && v !== 'N/A').join(' - ');
-    experienceLines.push(employment.employment_type ? `${titleLine} (${employment.employment_type})` : titleLine);
-    const meta = formatEmploymentDuration(employment);
-    if (meta) experienceLines.push(meta);
+    experience.push({
+      title:           employment.job_title,
+      company:         employment.company_name && employment.company_name !== 'N/A' ? employment.company_name : '',
+      employment_type: employment.employment_type || '',
+      meta:            formatEmploymentDuration(employment),
+      description:     '',
+    });
   }
+  (employment?.work_history || []).forEach((entry) => {
+    if (!entry?.title) return;
+    experience.push({
+      title:           entry.title,
+      company:         entry.company || '',
+      employment_type: entry.employment_type || '',
+      meta:            formatWorkHistoryDuration(entry),
+      description:     entry.description || '',
+    });
+  });
 
   const educationLines = [];
   if (user.course) educationLines.push(`${user.course} - Tarlac State University`);
@@ -69,9 +100,10 @@ function deriveFromProfile(user, employment, tracer) {
     phone:    employment?.contact_number || tracer?.contactNumber || '',
     address:  employment?.work_location  || '',
     linkedin: employment?.linkedin       || '',
+    avatarUrl: user.avatarUrl || '',
     summary,
     skills:     skillsList.join('\n'),
-    experience: experienceLines.join('\n'),
+    experience,
     education:  educationLines.join('\n'),
   };
 }
@@ -85,7 +117,7 @@ function deriveFromProfile(user, employment, tracer) {
 async function getResumeForAlumnus(alumniId) {
   const [existing, user, employment, tracer] = await Promise.all([
     Resume.findOne({ alumni_id: alumniId }).lean(),
-    User.findById(alumniId).select('firstName middleInitial lastName email course graduationYear').lean(),
+    User.findById(alumniId).select('firstName middleInitial lastName email course graduationYear avatarUrl').lean(),
     AlumniEmployment.findOne({ alumni_id: alumniId }).lean(),
     TracerStudyResponse.findOne({ alumni_id: alumniId }).lean(),
   ]);
@@ -114,7 +146,7 @@ async function getResumeForAlumnus(alumniId) {
   // Nothing at all on file for this alumnus — genuinely nothing to show,
   // as opposed to "hasn't clicked Save yet but has a real profile".
   const suggested = { ...derived, certifications: '', projects: '', languages: '' };
-  const isEmpty = !suggested.summary && !suggested.skills && !suggested.experience && !suggested.education;
+  const isEmpty = !suggested.summary && !suggested.skills && !suggested.experience.length && !suggested.education;
   return { resume: isEmpty ? null : suggested, isSaved: false };
 }
 

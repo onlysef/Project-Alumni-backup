@@ -223,11 +223,52 @@ const createUser = async (req, res) => {
   }
 };
 
-// GET /api/admin/users
+// Fields AccountsView.jsx's mapUser() actually reads — notably NOT
+// avatarUrl. This endpoint used to return every field (minus only the
+// auth/security ones already excluded via SAFE_FIELDS) for EVERY user in
+// the system, unpaginated — avatarUrl is a base64 data URI that can run to
+// 1-2MB of text per row, and AccountsView never even displays it. Hundreds
+// of users meant tens of MB downloaded and immediately discarded on every
+// single load of this page, for nothing.
+const ACCOUNT_LIST_FIELDS = 'firstName middleInitial lastName email role status college course track graduationYear company partnershipId';
+
+// GET /api/admin/users?page=&limit=&search=&role=&status=
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find({}, SAFE_FIELDS).sort({ createdAt: -1 });
-    res.json({ users });
+    const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+    // Capped generously (not at the Accounts table's own ~50/page) — this
+    // endpoint also backs a couple of "pick one from the full list" search
+    // dropdowns (AppointmentsView.jsx's admin-staff and alumnus pickers)
+    // that need every matching account in one call, not one page of them.
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const { search, role, status } = req.query;
+
+    const match = {};
+    // Case-insensitive on purpose — the frontend's filter menus show
+    // Title-Case labels ("Alumni", "Active") while role/status are stored
+    // lowercase, and this endpoint shouldn't have to know which casing
+    // convention the caller happens to use.
+    if (role   && !['role', 'all'].includes(role.toLowerCase()))   match.role   = role.toLowerCase();
+    if (status && !['status', 'all'].includes(status.toLowerCase())) match.status = status.toLowerCase();
+    if (search && search.trim()) {
+      const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      match.$or = [{ firstName: re }, { lastName: re }, { email: re }, { company: re }];
+    }
+
+    // activeCount/pendingCount are the "X Active / Y Pending" summary tiles
+    // — always the TRUE system-wide total, deliberately unfiltered by the
+    // search/role/status params above (a dashboard stat, not "count within
+    // this page of results"). Previously derived by filtering the full,
+    // unpaginated `rows` array client-side — now that only one page of rows
+    // ever reaches the client, that would have silently shrunk to "how many
+    // on this page" instead.
+    const [users, total, activeCount, pendingCount] = await Promise.all([
+      User.find(match, ACCOUNT_LIST_FIELDS).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      User.countDocuments(match),
+      User.countDocuments({ status: 'active' }),
+      User.countDocuments({ status: 'pending' }),
+    ]);
+    res.json({ users, total, totalPages: Math.max(1, Math.ceil(total / limit)), page, activeCount, pendingCount });
   } catch (err) {
     console.error('getUsers error:', err);
     res.status(500).json({ message: 'Server error.' });
