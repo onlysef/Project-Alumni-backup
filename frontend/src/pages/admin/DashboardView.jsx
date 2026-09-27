@@ -35,22 +35,24 @@ export default function DashboardView() {
 
     async function fetchTotalUsers() {
       try {
-        const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
+        // GET /admin/users is now paginated (default 50/page — see
+        // AccountsView.jsx) so `data.users` is only ONE page, not everyone.
+        // Deriving these tiles from `users.length` used to work because
+        // that endpoint returned the whole table; now it silently reported
+        // "50 Total Users" (the page size) regardless of the real count.
+        // The endpoint already computes true system-wide totals server-side
+        // for its own pagination math — `total` (unfiltered here, since no
+        // role/status/search params are sent) and `activeCount` are exactly
+        // those real numbers, so this reads them directly instead of
+        // counting whatever page happened to come back.
+        const res = await fetch(`${API}/admin/users?limit=1`, { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        const users = data.users || [];
-        // "Total Users" is every account regardless of status — the
-        // Active/Inactive tiles right next to it are the meaningful
-        // breakdown of that same total, so this must include everyone they
-        // add up to, not just the active subset (an earlier version of this
-        // tile only counted active accounts on its own, which made it
-        // silently equal the Active tile once that was added).
         // "Inactive" = anything that isn't 'active' (pending activation OR
         // suspended) — the User model only has these 3 statuses.
-        const active = users.filter(u => u.status === "active").length;
-        cachedTotalUsers    = users.length;
-        cachedActiveCount   = active;
-        cachedInactiveCount = users.length - active;
+        cachedTotalUsers    = data.total || 0;
+        cachedActiveCount   = data.activeCount || 0;
+        cachedInactiveCount = cachedTotalUsers - cachedActiveCount;
         setTotalUsers(cachedTotalUsers);
         setActiveCount(cachedActiveCount);
         setInactiveCount(cachedInactiveCount);

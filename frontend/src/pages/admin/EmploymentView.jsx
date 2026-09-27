@@ -761,16 +761,29 @@ export default function EmploymentView() {
       const wrapped = pre
         ? v.split("\n").map((l) => l.trim()).filter(Boolean).flatMap((l) => doc.splitTextToSize(l, valueWidth))
         : doc.splitTextToSize(v, valueWidth);
-      ensureSpace(Math.max(14, wrapped.length * 13));
+      // The label was drawn with NO width constraint at all — fine for a
+      // short one ("Gender"), but a long dynamic tracer-form question
+      // ("What is/are the program/s you completed after graduating?") just
+      // ran straight past its intended 150pt column and directly through
+      // the value text drawn right after it, producing overlapping,
+      // unreadable text in the downloaded PDF. Wrapped the same way the
+      // value already was, and `y` now advances by whichever side (label or
+      // value) actually has more lines — previously only the value's line
+      // count was considered, so a wrapped label's later lines could still
+      // collide with the NEXT field's value even when the value itself was
+      // short enough to fit on one line.
+      const labelWrapped = doc.splitTextToSize(label, labelColWidth - 10);
+      const lineCount = Math.max(labelWrapped.length, wrapped.length);
+      ensureSpace(Math.max(14, lineCount * 13));
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9.5);
       doc.setTextColor(138, 115, 119);
-      doc.text(label, marginX, y);
+      doc.text(labelWrapped, marginX, y);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(45, 32, 36);
       doc.text(wrapped, marginX + labelColWidth, y);
-      y += Math.max(14, wrapped.length * 13);
+      y += Math.max(14, lineCount * 13);
     }
 
     function sectionHeading(title) {

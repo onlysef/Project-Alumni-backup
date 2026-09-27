@@ -485,7 +485,16 @@ const PRONOUN_REFERENT_PATTERN = /\b(his|her|their|him|she|he|they|them|those|th
 // PRONOUN_REFERENT_PATTERN above — includes Tagalog demonstratives "yan"/
 // "iyan"/"ito"/"iyon"/"yun", not just pronouns) so this only fires for an
 // actual group-identity question, never a plain statement.
-const GROUP_REFERENT_TRIGGER = /\b(sino|who)\b/i;
+// "how many"/"ilan"/"compare"/"ihambing"/"which one"/"alin" added alongside
+// "who"/"sino" — "how many of THEM are employed?" or "compare THEM" with no
+// resolvable group in context is exactly the same guessing risk as "who are
+// THEY?" (silently answering for the wrong group, or an unfiltered dump of
+// everyone), just phrased as a count/comparison instead of an identity
+// question. Only ever consulted (see the call site below) once context
+// inheritance has ALREADY been attempted and failed — broadening this can't
+// break a follow-up that resolves correctly, since isGroupReferentFollowUp()
+// is never even reached for those (aggResult is already non-null by then).
+const GROUP_REFERENT_TRIGGER = /\b(sino|who|how\s+many|ilan(?:g)?|compare|ihambing|which\s+one|alin)\b/i;
 const GROUP_REFERENT_WORD    = /\b(yan|iyan|yun|iyon|ito|sila|nila|kanila|they|them|those|these)\b/i;
 function isGroupReferentFollowUp(question) {
   return GROUP_REFERENT_TRIGGER.test(question) && GROUP_REFERENT_WORD.test(question);
@@ -1629,6 +1638,33 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     }
     return result;
   };
+
+  // A group-referent question ("how many of them are employed?", "compare
+  // them") whose "them"/"they"/etc. has NOTHING to resolve against —
+  // contextQuestions is empty, meaning there's no prior turn to inherit a
+  // group from — must not be allowed to silently reach aggregation.
+  // extractFilters()/detectTopic() have no concept of an unresolved
+  // pronoun: they just ignore "them" entirely and answer for the WHOLE
+  // alumni population instead ("178 employed alumni" for "how many of THEM
+  // are employed?" — confidently wrong, not merely unhelpful). Caught
+  // live: this exact question, asked as a conversation's first message.
+  // The separate !aggResult check further below only catches aggregation
+  // finding NOTHING — it never fires here, because the (wrongly unscoped)
+  // query always finds something. EXPLICIT_SUBJECT_PATTERN excluded first —
+  // "who are those ALUMNI working in IT" names its own real, resolvable
+  // subject despite also containing a referent word, and must be allowed
+  // through to aggregation normally, same guard isEllipticalContinuation()
+  // already applies before ever treating a question as filter-inheriting.
+  if (
+    !contextQuestions.length &&
+    !EXPLICIT_SUBJECT_PATTERN.test(preTranslateQuestion) &&
+    isGroupReferentFollowUp(preTranslateQuestion)
+  ) {
+    await dbAnswerThinkingDelay();
+    const clarify = "I am unable to determine which group is being referred to. Could you please specify the group in question (e.g., the job title, industry, company, program, or batch)?";
+    if (onToken) onToken(clarify);
+    return finish({ answer: clarify, sources: [], type: 'statistics', suggestions: [], chart: null });
+  }
 
   // ── Offensive / greeting / unknown: answer directly, no DB or LLM call needed ──
   // Every branch below used to fire instantly (no DB query, no LLM call) —

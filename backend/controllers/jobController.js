@@ -27,6 +27,9 @@ const postJob = async (req, res) => {
   try {
     const { title, description, jobType, location } = req.body;
     if (!title) return res.status(400).json({ message: 'title is required.' });
+    if (!description || !description.trim()) {
+      return res.status(400).json({ message: 'A job description is required.' });
+    }
 
     // partnershipId always comes from the employer's own linked account, never
     // from the request body — a free-choice field here let any employer post
@@ -108,7 +111,10 @@ const updateJob = async (req, res) => {
       if (!title.trim()) return res.status(400).json({ message: 'Title is required.' });
       job.title = title.trim();
     }
-    if (description !== undefined) job.description = description;
+    if (description !== undefined) {
+      if (!description.trim()) return res.status(400).json({ message: 'A job description is required.' });
+      job.description = description;
+    }
     if (jobType !== undefined) job.jobType = jobType;
     if (location !== undefined) job.location = location;
     const titleChanged = title !== undefined;

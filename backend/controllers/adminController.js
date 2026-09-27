@@ -236,7 +236,11 @@ const ACCOUNT_LIST_FIELDS = 'firstName middleInitial lastName email role status 
 const getUsers = async (req, res) => {
   try {
     const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    // Capped generously (not at the Accounts table's own ~50/page) — this
+    // endpoint also backs a couple of "pick one from the full list" search
+    // dropdowns (AppointmentsView.jsx's admin-staff and alumnus pickers)
+    // that need every matching account in one call, not one page of them.
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const { search, role, status } = req.query;
 
     const match = {};

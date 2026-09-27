@@ -121,7 +121,12 @@ const TOPIC_PATTERNS = {
   // sa Career Fair?"); English-only matching silently fell through to a
   // college-scoped "no tracer study data matching that" refusal for a
   // question this topic can actually answer.
-  events:          /\bevents?\b|\battend(?:ed|ees|ance)?\b|\bdumalo\b|\bpagdalo\b/i,
+  // "upcoming activities"/"activity calendar" added — narrowly scoped (not
+  // a bare "activities", which would collide with the tracer form's own
+  // "professional development activities" question — a different topic
+  // entirely, further_training's territory) but still catches a natural
+  // way to ask about events without the word "event" or "attend" at all.
+  events:          /\bevents?\b|\battend(?:ed|ees|ance)?\b|\bdumalo\b|\bpagdalo\b|\bupcoming\s+activit(?:y|ies)\b|\bactivit(?:y|ies)\s+(?:calendar|schedule)\b/i,
   // "names? of" used to match bare, with zero requirement that the question
   // have anything to do with alumni — "What is the NAME OF the earthlike
   // planet..." matched it directly and returned an unrelated 50-alumni
@@ -199,7 +204,7 @@ const TOPIC_PATTERNS = {
   // live bug — it also got wrongly captured as a person-name lookup), so
   // detectTopic() fell all the way to the generic EMPLOYMENT_SIGNAL fallback
   // instead of correctly resolving to a names list.
-  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|who\s+(?:is|are)\s+(?:currently\s+|now\s+|still\s+)?(?:working|employed|unemployed|self-employed)\b|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b|\bsino[\s-]*sino\s+ang\b|\bsino\s+ang\s+mga\b|\bsaan\s+(?:sila|sina|nila|silang)\b.{0,20}\b(?:nagtatrabaho|nagwowork|naninirahan|nakatira)\b|\bwhere\s+(?:do|does)\s+they\s+work\b|\bano\s+ang\s+(?:trabaho|posisyon|position)\s+(?:nila|niya)\b|\bwhat\s+(?:is|are)\s+their\s+(?:job\s+title|position|occupation)s?\b|\bkailan\s+(?:sila|silang)\b.{0,15}\b(?:nagtapos|natapos|nag-?graduate|nagsi-?graduate)\b|\bwhen\s+did\s+they\s+graduate\b|\bsino\b.{0,15}\b(?:nagtatrabaho|nagwowork|empleyado)\s+sa\b/i,
+  names:           /\b(who\s+(?:are|is)\s+(?:the\s+|those\s+|these\s+)?(?:\w+\s+){0,4}(?:alumni|alumnus|alumna|graduates?|respondents?)|who (did|do|does|didn'?t|don'?t|doesn'?t|have|has|haven'?t|hasn'?t|were|was|weren'?t|wasn'?t|passed|failed|took|pursued|works?|worked)|who\s+(?:is|are)\s+(?:currently\s+|now\s+|still\s+)?(?:working|employed|unemployed|self-employed)\b|names?\s+of\s+(?:the\s+)?(?:\w+\s+){0,3}(?:alumni|graduates?|respondents?)|list.{0,20}(names?|alumni|graduates?)|show.{0,20}(names?|alumni|graduates?)|which alumni|which graduates?|name.{0,30}alumni|alumni.{0,30}name|graduates?.{0,30}name|name.{0,30}graduates?)\b|\bsino[\s-]*sino\s+ang\b|\bsino\s+ang\s+mga\b|\bsaan\s+(?:sila|sina|nila|silang)\b.{0,20}\b(?:nagtatrabaho|nagwowork|naninirahan|nakatira)\b|\bwhere\s+(?:do|does)\s+they\s+work\b|\bano\s+ang\s+(?:trabaho|posisyon|position)\s+(?:nila|niya)\b|\bwhat\s+(?:is|are)\s+their\s+(?:job\s+title|position|occupation)s?\b|\bkailan\s+(?:sila|silang)\b.{0,15}\b(?:nagtapos|natapos|nag-?graduate|nagsi-?graduate)\b|\bwhen\s+did\s+they\s+graduate\b|\bsino\b.{0,15}\b(?:nagtatrabaho|nagwowork|empleyado)\s+sa\b|\bpangalan\s+ng\s+(?:mga\s+)?(?:\w+\s+){0,3}(?:alumni|guraduwado|nagtapos|respondents?)\b/i,
   // "ilan"/"ilang" (Tagalog "how many") — requires an alumni-referring noun
   // nearby, same as the English alternatives above, and NOT bare — bare
   // "ilan" is common enough in casual Tagalog phrasing of every other topic
@@ -225,7 +230,9 @@ const TOPIC_PATTERNS = {
   // "how many"/"total"/"number of" right above it, but matched none of
   // them (all three require their own specific lead-in word, none of which
   // is "count").
-  count:           /\b(how many (?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?|people)|how many (passed|failed|took|pursued|work\w*|did)|total (alumni|records?|graduates?|respondents?)|number of (alumni|records?|graduates?|respondents?)|count\s+of\s+(?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?)|how many are there|how many alumni are|ilang?\b.{0,20}\b(alumni|guraduwado|nagtapos|respondents?))\b/i,
+  // "bilang ng" ("number of") added — Tagalog count phrasing that isn't
+  // "ilan"/"ilang", which was the only Tagalog trigger covered before.
+  count:           /\b(how many (?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?|people)|how many (passed|failed|took|pursued|work\w*|did)|total (alumni|records?|graduates?|respondents?)|number of (alumni|records?|graduates?|respondents?)|count\s+of\s+(?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?)|how many are there|how many alumni are|ilang?\b.{0,20}\b(alumni|guraduwado|nagtapos|respondents?))\b|\bbilang\s+ng\s+(?:mga\s+)?(?:\w+\s+){0,3}(?:alumni|guraduwado|nagtapos|respondents?|sumagot)\b/i,
   // "percentage of (?:\w+\s+){0,3}(graduates?|alumni)" — was bare-adjacent
   // only ("percentage of graduates"), so an informal, prefix-less phrasing
   // like "percentage of BSIT graduates" (a program name sitting between "of"
@@ -284,16 +291,39 @@ const TOPIC_PATTERNS = {
   // require "employ/hire" verbs or "top/most/least" directly before
   // "company"), the same "that has/with" gap as job_positions and
   // BY_PROGRAM_QUESTION_PATTERN.
-  top_companies:   /\b(?:what|which)\s+compan(?:y|ies)\b.{0,25}\b(?:employ|hire|hiring)\w*\b|\b(?:top|most|least)\s+compan(?:y|ies)\b|\bcompan(?:y|ies)\b.{0,20}\b(?:hire|hiring|employ)\w*\b.{0,15}\balumni\b|\bcompan(?:y|ies)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top)\b/i,
-  industry:        /\bindustr|industriya/i,
-  work_type:       /\b(government|private|sector|work type|type of (employment|work)|employment type|gobyerno|pribado)\b/i,
-  job_relevance:   /\b(related|relevance|relevant\s+to\s+(?:the(?:ir)?\s+)?(?:course|study|program|degree|field)|align(?:s|ed|ment)?\s+(?:with|to)\b.{0,20}\b(?:course|study|studied|program|degree|field))\b|\bkaugnay\s+(?:ng|sa)\s+(?:kurso|propesyon|larangan|programa)\b|\bmay\s+kinalaman\s+sa\s+(?:kurso|propesyon|larangan|programa)\b/i,
-  further_studies: /\b(further studies?|graduate studies?|masters?|phd|post.?grad|further education|nagpatuloy.{0,15}pag-?aaral|magpapatuloy.{0,15}pag-?aaral)\b/i,
-  licensure:       /\blicens\w*\b|\b(board\s+exam|professional\s+exam|prc|lisensya)\b|\b(tak\w*|pass\w*|fail\w*).{0,20}\bexam\b/i,
+  // "top/biggest employers" added — "employers" is as natural a synonym for
+  // "companies" as it gets, but every existing alternative required the
+  // literal word "compan(y/ies)".
+  top_companies:   /\b(?:what|which)\s+compan(?:y|ies)\b.{0,25}\b(?:employ|hire|hiring)\w*\b|\b(?:top|most|least)\s+compan(?:y|ies)\b|\bcompan(?:y|ies)\b.{0,20}\b(?:hire|hiring|employ)\w*\b.{0,15}\balumni\b|\bcompan(?:y|ies)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top)\b|\b(?:top|biggest|most\s+common)\s+employers?\b/i,
+  // "field of work" added — a common synonym for "industry".
+  industry:        /\bindustr|industriya|field\s+of\s+work\b/i,
+  // "freelance(r/rs)" added — a real employment-type category (self-employed
+  // gig work) that had no matching alternative at all.
+  work_type:       /\b(government|private|sector|work type|type of (employment|work)|employment type|freelance\w*|gobyerno|pribado)\b/i,
+  // "kaugnayan sa" (noun form "relevance to", vs. the adjective "kaugnay"
+  // already covered) and "in line with" (a natural English synonym for
+  // "related to" that isn't the word "related"/"relevant"/"align" at all)
+  // both added — same underlying question, phrasings that fell through.
+  job_relevance:   /\b(related|relevance|relevant\s+to\s+(?:the(?:ir)?\s+)?(?:course|study|program|degree|field)|align(?:s|ed|ment)?\s+(?:with|to)\b.{0,20}\b(?:course|study|studied|program|degree|field)|in\s+line\s+with\b.{0,25}\b(?:course|study|program|degree|field))\b|\bkaugnay\s+(?:ng|sa)\s+(?:kurso|propesyon|larangan|programa)\b|\bkaugnayan\s+sa\s+(?:kurso|propesyon|larangan|programa)\b|\bmay\s+kinalaman\s+sa\s+(?:kurso|propesyon|larangan|programa)\b/i,
+  // "grad school"/"masteral"/"doctorate" added — casual English and Tagalog
+  // synonyms for the same further-education concept "graduate studies"/
+  // "masters" already covered. "nag-aral ng masteral" (Tagalog "studied for
+  // a master's") had no equivalent phrasing at all before.
+  further_studies: /\b(further studies?|graduate studies?|grad\s+school|masters?|masteral|doctorate|phd|post.?grad|further education|nagpatuloy.{0,15}pag-?aaral|magpapatuloy.{0,15}pag-?aaral|nag-?aral.{0,10}(?:ng\s+)?(?:masteral|doktor|masters?))\b/i,
+  // "board passers" added — a very natural way to ask this ("board
+  // exam" alone wasn't enough; "passers" with no "exam" word matched
+  // nothing) that doesn't fit the existing "(tak|pass|fail)...exam"
+  // proximity alternative either, since there's no literal "exam" nearby.
+  licensure:       /\blicens\w*\b|\b(board\s+(?:exam|passers?)|professional\s+exam|prc|lisensya)\b|\b(tak\w*|pass\w*|fail\w*).{0,20}\bexam\b/i,
   // New topic — Graduate.hasPromotion had a real, normalized, populated
   // field (see queryPromotion()'s own comment) but no TOPIC_PATTERNS entry
   // to ever route a question to it at all.
-  promotion:       /\bpromot(?:ed|ion|ions)?\b|\bna-?promote\b|\bpinromote\b|\bnapromote\b/i,
+  // \bna-?promote\b required "na" fused directly onto "promote" (with an
+  // optional hyphen) — "na promote" (a real SPACE between them, an equally
+  // common casual-Filipino spacing of the same borrowed verb) didn't match
+  // at all. \bna\s?-?\s?promote\b covers all three spacings ("napromote",
+  // "na-promote", "na promote") with one pattern.
+  promotion:       /\bpromot(?:ed|ion|ions)?\b|\bna\s?-?\s?promote\b|\bpinromote\b/i,
   // New topic — same gap as promotion above, for Graduate.furtherTraining.
   // Distinct from further_studies (graduate school) — trainings/seminars/
   // workshops are a completely different tracer-form question with no
@@ -308,7 +338,18 @@ const TOPIC_PATTERNS = {
   // had nothing relevant either — and refused with the generic "I don't
   // have enough data" sentence for a question the competency data could
   // answer perfectly well.
-  competencies:    /\b(competenc\w*|skill\s+ratings?|ratings?|self.?assess|performance|technical\s+skills?|communication\s+skills?|problem.?solving|critical\s+thinking|teamwork|adaptability|project\s+management|kasanayan|kakayahan)\b/i,
+  // "self.?assess" ADDED \w* — the original never actually matched "self
+  // ASSESSMENT" (only bare "self assess"/"self-assess"): the alternation's
+  // own closing \b required a word boundary immediately after "assess",
+  // which "assessment" doesn't have (the word keeps going into "-ment").
+  // "skilled" added too — "how skilled are the alumni?" is a completely
+  // natural way to ask about the same competency self-ratings, distinct
+  // from bare "skill(s)" (skills_list, a different topic entirely — named,
+  // concrete skills like Python/Java, not a 1-5 self-rating).
+  // "rate themselves"/"rate their own" added — the verb form of the exact
+  // same self-rating concept the noun forms ("ratings", "self-assessment")
+  // already covered.
+  competencies:    /\b(competenc\w*|skill\s+ratings?|ratings?|self.?assess\w*|performance|technical\s+skills?|communication\s+skills?|problem.?solving|critical\s+thinking|teamwork|adaptability|project\s+management|skilled|rate\s+(?:themselves|their\s+own)|kasanayan|kakayahan)\b/i,
   // Bare "skill(s)" — checked AFTER competencies above, so a specific
   // category phrase ("technical skills", "skill ratings") still wins there
   // first; this only catches a bare, unqualified mention ("most common
@@ -353,7 +394,9 @@ const TOPIC_PATTERNS = {
   // "-ng" linker attaches directly with no boundary in modifier constructions
   // ("lalaking walang trabaho", "babaeng may trabaho"), the same agglutination
   // issue as "ilan"/"ilang" elsewhere in this file.
-  gender:          /\b(gender|\bmale\b|\bfemale\b|\bmen\b|\bwomen\b|\bqueer\b|\bgay\b|\blesbian\b|transgender|non.?binary|lalaki(?:ng)?|babae(?:ng)?)\b|lgbt\w*/i,
+  // "boys?"/"girls?" added — as casual/common a way to ask about gender
+  // split as "men"/"women" right next to it, but missing entirely before.
+  gender:          /\b(gender|\bmale\b|\bfemale\b|\bmen\b|\bwomen\b|\bboys?\b|\bgirls?\b|\bqueer\b|\bgay\b|\blesbian\b|transgender|non.?binary|lalaki(?:ng)?|babae(?:ng)?)\b|lgbt\w*/i,
 };
 
 function normalizeQuestion(q) {

@@ -357,6 +357,48 @@ const sendInterviewInvitationEmail = async (to, applicantName, companyName, posi
   });
 };
 
+// Alumni office / coordinator -> alumnus, sent the moment an appointment is
+// created for them (admin/coordinator booking it on the alumnus's behalf —
+// see createAppointmentRecord in appointmentController.js). An alumnus who
+// books their own appointment already sees an on-screen confirmation, but
+// one an ADMIN sets up on their behalf had no way to ever find out about it
+// at all — no email, no in-app notification — until this.
+const sendAppointmentScheduledEmail = async (to, alumniName, staffName, whenLabel, purpose) => {
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+      <div style="background:linear-gradient(135deg,#7B1A2E 0%,#9B2235 100%);padding:32px;text-align:center;">
+        <h1 style="color:#C49A2A;font-family:Georgia,serif;margin:0;font-size:26px;">TSU Alumni Portal</h1>
+        <p style="color:rgba(255,255,255,0.85);margin:6px 0 0;font-size:13px;">Appointment scheduled</p>
+      </div>
+      <div style="padding:32px 40px;">
+        <h2 style="color:#2d3748;margin:0 0 10px;font-size:20px;">Hi ${escapeHtml(alumniName)},</h2>
+        <p style="color:#4a5568;margin:0 0 20px;font-size:15px;line-height:1.6;">
+          The TSU Alumni Office has scheduled an appointment for you with <strong>${escapeHtml(staffName)}</strong>.
+        </p>
+        <div style="background:#f7fafc;border:2px dashed #C49A2A;border-radius:8px;padding:20px 24px;margin-bottom:24px;">
+          <p style="margin:0 0 8px;font-size:13px;color:#718096;">When</p>
+          <p style="margin:0 0 16px;font-size:15px;font-weight:600;color:#2d3748;">${escapeHtml(whenLabel)}</p>
+          <p style="margin:0 0 8px;font-size:13px;color:#718096;">Purpose</p>
+          <p style="margin:0;font-size:15px;font-weight:600;color:#2d3748;">${escapeHtml(purpose) || 'Not specified'}</p>
+        </div>
+        <p style="color:#718096;font-size:13px;margin:0;">
+          This appointment is currently Pending. Log in to the Alumni Portal to view or manage it.
+        </p>
+      </div>
+      <div style="background:#f7fafc;padding:16px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+        <p style="color:#a0aec0;font-size:12px;margin:0;">© 2026 TSU Alumni Portal · Tarlac State University</p>
+      </div>
+    </div>
+  `;
+
+  await send({
+    from:    senderOf('TSU Alumni Office'),
+    to,
+    subject: 'An appointment has been scheduled for you',
+    html,
+  });
+};
+
 // Admin -> prospective employer, the special sign-up link (see
 // EmployerInvite model / employerInviteController.js). This is the only way
 // an employer account gets created — there's no public "Sign Up" page for them.
@@ -394,4 +436,4 @@ const sendEmployerInviteEmail = async (to, link) => {
   await send({ to, subject: 'You are invited to join TSU Alumni Portal as an Employer Partner', html });
 };
 
-module.exports = { generateOTP, sendOTPEmail, sendAccountCreatedEmail, sendEmploymentReminderBulk, sendInquiryEmail, sendApplicantMessageEmail, sendAlumniMessageEmail, sendInterviewInvitationEmail, sendEmployerInviteEmail };
+module.exports = { generateOTP, sendOTPEmail, sendAccountCreatedEmail, sendEmploymentReminderBulk, sendInquiryEmail, sendApplicantMessageEmail, sendAlumniMessageEmail, sendInterviewInvitationEmail, sendEmployerInviteEmail, sendAppointmentScheduledEmail };

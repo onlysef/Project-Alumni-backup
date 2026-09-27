@@ -2194,9 +2194,21 @@ function isSameArea(jobLocation, profileLocation) {
   return profileParts.some((part) => job.includes(part));
 }
 
+// Mirrors the frontend search box's own check (JobConnect.jsx) — a query of
+// pure symbols ("***¥€$") isn't a real job title/company/skill/location, and
+// this endpoint is reachable directly, not just through that form.
+const SEARCH_HAS_ALNUM_RE = /[a-zA-Z0-9À-ÖØ-öø-ÿ]/;
+
 const searchJobs = async (req, res) => {
   try {
     const { keywords = '', location = '', type = '', proximity = '', education = '', page = 1, pagesize = 20, sort = 'relevance' } = req.query;
+
+    if (keywords.trim() && !SEARCH_HAS_ALNUM_RE.test(keywords)) {
+      return res.status(400).json({ message: 'Please enter a real job title, company, or skill — not just symbols.' });
+    }
+    if (location.trim() && !SEARCH_HAS_ALNUM_RE.test(location)) {
+      return res.status(400).json({ message: 'Please enter a real city or province — not just symbols.' });
+    }
 
     const employment = await AlumniEmployment.findOne({ alumni_id: req.user.id }).lean();
     const userSkillsText = employment?.skills || '';

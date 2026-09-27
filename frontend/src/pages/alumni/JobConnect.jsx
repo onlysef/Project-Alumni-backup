@@ -28,6 +28,15 @@ const EMPTY_RESUME = {
 
 const RESUME_FIELDS = ["name", "address", "phone", "email", "linkedin", "avatarUrl", "summary", "skills", "experience", "education", "certifications", "projects", "languages"];
 
+// A search box full of pure symbols ("***¥€$") is never a real job title,
+// company, or skill — same "at least one letter/digit" allow-list used for
+// Skills/Work-History free-text elsewhere in this app. Careerjet/the
+// internal search still technically "succeeds" on garbage input (matches
+// nothing meaningful and falls back to generic recommended postings), which
+// reads as if the search silently ignored what was typed rather than
+// rejecting it outright.
+const HAS_ALNUM_RE = /[a-zA-Z0-9À-ÖØ-öø-ÿ]/;
+
 export default function JobConnect() {
   const { showToast } = useOutletContext() || {};
   const [search, setSearch] = useState("");
@@ -67,9 +76,19 @@ export default function JobConnect() {
   const [jobAlertsEnabled, setJobAlertsEnabled] = useState(true);
 
   function runSearch(keywords = search, type = jobType, filters = {}) {
+    const nextLocation = filters.location ?? location;
+    if (keywords.trim() && !HAS_ALNUM_RE.test(keywords)) {
+      setError("Please enter a real job title, company, or skill — not just symbols.");
+      setJobs([]);
+      return;
+    }
+    if (nextLocation.trim() && !HAS_ALNUM_RE.test(nextLocation)) {
+      setError("Please enter a real city or province — not just symbols.");
+      setJobs([]);
+      return;
+    }
     setLoading(true);
     setError("");
-    const nextLocation = filters.location ?? location;
     const nextProximity = filters.proximity ?? proximity;
     const nextEducation = filters.education ?? education;
     apiFetch("/alumni/jobs/search", { params: { keywords, type, location: nextLocation, proximity: nextProximity, education: nextEducation } })
@@ -350,7 +369,7 @@ export default function JobConnect() {
           </div>
         )}
 
-        {view === "recommended" && error && <div className="job-empty"><b>{error}</b><span>Try searching again in a moment.</span></div>}
+        {view === "recommended" && error && <div className="job-empty"><b>{error}</b><span>{error.startsWith("Please enter") ? "Update your search and try again." : "Try searching again in a moment."}</span></div>}
         {view === "recommended" && !error && unavailable && sourceFilter !== "partner" && <div className="job-empty"><b>Job search is temporarily unavailable</b><span>Careerjet isn't configured or didn't respond — please try again later.</span></div>}
         {view === "recommended" && !error && recommendedLoading && <div className="job-empty"><b>Loading jobs…</b><span>Fetching recommended postings.</span></div>}
         {view === "recommended" && !error && !recommendedLoading && !results.length && !search.trim() && !hasProfile && (
