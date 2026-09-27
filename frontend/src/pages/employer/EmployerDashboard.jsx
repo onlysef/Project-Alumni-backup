@@ -23,6 +23,22 @@ function ArrowIcon() {
   );
 }
 
+// "Close posting" used to only be reachable by opening the View-details
+// modal first, then finding the right one of two buttons both literally
+// labeled "Close" (one ends the posting, the other just dismisses the
+// dialog) — an employer trying to end an Active posting had no direct way
+// to do it from the row itself, only View/Edit/Delete. This icon backs a
+// 4th row action so closing is as discoverable as the other three.
+function CloseCircleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <line x1="9" y1="9" x2="15" y2="15" />
+      <line x1="15" y1="9" x2="9" y2="15" />
+    </svg>
+  );
+}
+
 let cachedEmployerData = null;
 
 export default function EmployerDashboard() {
@@ -115,6 +131,7 @@ export default function EmployerDashboard() {
   async function saveJob(event) {
     event.preventDefault();
     if (!form.title.trim()) return;
+    if (!form.description.trim()) { showToast?.("A job description is required."); return; }
     setSaving(true);
     try {
       if (modal?.job) {
@@ -184,7 +201,7 @@ export default function EmployerDashboard() {
                 <td data-label="Status"><span className={`employer-badge ${statusLabel(job.status).toLowerCase()}`}>{statusLabel(job.status)}</span></td>
                 <td data-label="Post date">{prettyDate(job.createdAt)}</td>
                 <td data-label="Applicants">{applicantCountByJob[job._id] || 0}</td>
-                <td data-label="Actions"><div className="employer-row-actions"><button type="button" aria-label={`View ${job.title}`} onClick={() => setModal({ type: "view", job })}><Icon name="icon-view"/></button><button type="button" aria-label={`Edit ${job.title}`} onClick={() => openEdit(job)}><Icon name="icon-edit"/></button><button type="button" aria-label={`Delete ${job.title}`} onClick={() => setModal({ type: "delete", job })}><Icon name="icon-delete"/></button></div></td>
+                <td data-label="Actions"><div className="employer-row-actions"><button type="button" aria-label={`View ${job.title}`} onClick={() => setModal({ type: "view", job })}><Icon name="icon-view"/></button><button type="button" aria-label={`Edit ${job.title}`} onClick={() => openEdit(job)}><Icon name="icon-edit"/></button>{job.status === "open" && <button type="button" aria-label={`Close ${job.title}`} title="Close posting" onClick={() => setModal({ type: "close", job })}><CloseCircleIcon/></button>}<button type="button" aria-label={`Delete ${job.title}`} onClick={() => setModal({ type: "delete", job })}><Icon name="icon-delete"/></button></div></td>
               </tr>)}
               {!loading && !error && !filtered.length && <tr><td colSpan="5"><div className="employer-empty">No job posts match your filters.</div></td></tr>}
             </tbody>
@@ -224,11 +241,22 @@ export default function EmployerDashboard() {
               <label>Employment type<select value={form.jobType} onChange={(e) => setForm({ ...form, jobType: e.target.value })}><option>Full-time</option><option>Part-time</option><option>Internship</option><option>Contract</option></select></label>
               <label>Location<input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="City, hybrid, or remote"/></label>
             </div>
-            <label>Posting as<input value={partnerships[0]?.name || ""} readOnly disabled/></label>
-            <label>Description<textarea rows="4" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Describe the role and responsibilities"/></label>
+            {/* When editing, prefer the job's OWN linked company (already
+                populated via getMyJobs' .populate('partnershipId', 'name'))
+                over the "currently active partnership" list — that list
+                deliberately excludes an Archived partnership (so a NEW post
+                can't be created under one), but an existing job still
+                belongs to whatever company it was posted under regardless,
+                and this field went blank instead of showing it once that
+                partnership was later archived. partnerships[0] is still the
+                right (only) source when CREATING a post (modal.job is null
+                then, so there's no job to read a company from yet). */}
+            <label>Posting as<input value={modal.job?.partnershipId?.name || partnerships[0]?.name || ""} readOnly disabled/></label>
+            <label>Description<textarea rows="4" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Describe the role and responsibilities" required/></label>
             <div className="employer-modal-actions"><button type="button" className="employer-secondary-btn" onClick={() => setModal(null)}>Cancel</button><button className="employer-primary-btn" type="submit" disabled={saving}>{saving ? "Saving…" : modal.job ? "Save changes" : "Publish post"}</button></div>
           </form>}
-          {modal.type === "view" && <div><span className="eyebrow">Job details</span><h2 id="employer-modal-title">{modal.job.title}</h2><div className="employer-detail-grid"><div><span>Status</span><strong>{statusLabel(modal.job.status)}</strong></div><div><span>Partnership</span><strong>{modal.job.partnershipId?.name || "—"}</strong></div><div><span>Type</span><strong>{modal.job.jobType}</strong></div><div><span>Location</span><strong>{modal.job.location || "—"}</strong></div></div><p className="employer-detail-copy">{modal.job.description || "No description provided."}</p><div className="employer-modal-actions">{modal.job.status === "open" && <button className="employer-secondary-btn" type="button" onClick={() => closeJobPost(modal.job)}>Close posting</button>}<button className="employer-secondary-btn" type="button" onClick={() => setModal(null)}>Close</button><button className="employer-primary-btn" type="button" onClick={() => openEdit(modal.job)}>Edit post</button></div></div>}
+          {modal.type === "view" && <div><span className="eyebrow">Job details</span><h2 id="employer-modal-title">{modal.job.title}</h2><div className="employer-detail-grid"><div><span>Status</span><strong>{statusLabel(modal.job.status)}</strong></div><div><span>Partnership</span><strong>{modal.job.partnershipId?.name || "—"}</strong></div><div><span>Type</span><strong>{modal.job.jobType}</strong></div><div><span>Location</span><strong>{modal.job.location || "—"}</strong></div></div><p className="employer-detail-copy">{modal.job.description || "No description provided."}</p><div className="employer-modal-actions">{modal.job.status === "open" && <button className="employer-secondary-btn" type="button" onClick={() => setModal({ type: "close", job: modal.job })}>Close posting</button>}<button className="employer-secondary-btn" type="button" onClick={() => setModal(null)}>Cancel</button><button className="employer-primary-btn" type="button" onClick={() => openEdit(modal.job)}>Edit post</button></div></div>}
+          {modal.type === "close" && <div><span className="eyebrow">Close job post</span><h2 id="employer-modal-title">Close "{modal.job.title}"?</h2><p className="employer-detail-copy">New applicants won't be able to apply. This can't be undone, so make sure you're done hiring for this role.</p><div className="employer-modal-actions"><button className="employer-secondary-btn" type="button" onClick={() => setModal(null)}>Cancel</button><button className="employer-danger-btn" type="button" onClick={() => closeJobPost(modal.job)}>Close posting</button></div></div>}
           {modal.type === "delete" && <div><span className="eyebrow">Delete job post</span><h2 id="employer-modal-title">Remove "{modal.job.title}"?</h2><p className="employer-detail-copy">This permanently removes the post. This action cannot be undone.</p><div className="employer-modal-actions"><button className="employer-secondary-btn" type="button" onClick={() => setModal(null)}>Cancel</button><button className="employer-danger-btn" type="button" onClick={() => removeJob(modal.job._id)}>Delete post</button></div></div>}
         </section>
       </div>,

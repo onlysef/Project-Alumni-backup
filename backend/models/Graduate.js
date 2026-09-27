@@ -82,6 +82,11 @@ GraduateSchema.index({ name: 1 });
 // regex — a plain index still helps Mongo narrow that scan instead of a
 // full collection scan, even though the regex itself can't use a collation.
 GraduateSchema.index({ email: 1 });
+// aggregationService.js's shared DEDUP stage ({ $sort: { createdAt: -1 } },
+// used by nearly every AC chatbot query via stablePipeline()) had nothing to
+// use but an in-memory sort — this lets Mongo use the index directly for the
+// (common) case where the preceding $match has no filter narrowing it down.
+GraduateSchema.index({ createdAt: -1 });
 
 // Enforces the AC AI Assistant's college scope (see utils/collegeScope.js)
 // at the single point every query — however it was built — ultimately goes

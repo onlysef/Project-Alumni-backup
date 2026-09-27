@@ -25,6 +25,23 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
+// resume.experience is a list of {title, company, employment_type, meta,
+// description} entries (see backend resumeBuilder.deriveFromProfile), not a
+// plain string like every other resume field — flattened here into
+// pre-formatted text so it can still go through the same label/value
+// row renderers (both the PDF export and the in-app RecordMultilineField)
+// everything else here uses.
+function formatExperienceEntries(experience) {
+  if (!Array.isArray(experience)) return "";
+  return experience.map((entry) => {
+    const titleLine = [entry.title, entry.company].filter(Boolean).join(" - ") + (entry.employment_type ? ` (${entry.employment_type})` : "");
+    const lines = [titleLine];
+    if (entry.meta) lines.push(entry.meta);
+    String(entry.description || "").split("\n").map((s) => s.trim()).filter(Boolean).forEach((s) => lines.push(`• ${s}`));
+    return lines.join("\n");
+  }).join("\n\n");
+}
+
 function groupActivities(acts) {
   const now = Date.now();
   const buckets = { "Just now": [], Today: [], "This week": [], "This month": [], Older: [] };
@@ -744,16 +761,29 @@ export default function EmploymentView() {
       const wrapped = pre
         ? v.split("\n").map((l) => l.trim()).filter(Boolean).flatMap((l) => doc.splitTextToSize(l, valueWidth))
         : doc.splitTextToSize(v, valueWidth);
-      ensureSpace(Math.max(14, wrapped.length * 13));
+      // The label was drawn with NO width constraint at all — fine for a
+      // short one ("Gender"), but a long dynamic tracer-form question
+      // ("What is/are the program/s you completed after graduating?") just
+      // ran straight past its intended 150pt column and directly through
+      // the value text drawn right after it, producing overlapping,
+      // unreadable text in the downloaded PDF. Wrapped the same way the
+      // value already was, and `y` now advances by whichever side (label or
+      // value) actually has more lines — previously only the value's line
+      // count was considered, so a wrapped label's later lines could still
+      // collide with the NEXT field's value even when the value itself was
+      // short enough to fit on one line.
+      const labelWrapped = doc.splitTextToSize(label, labelColWidth - 10);
+      const lineCount = Math.max(labelWrapped.length, wrapped.length);
+      ensureSpace(Math.max(14, lineCount * 13));
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9.5);
       doc.setTextColor(138, 115, 119);
-      doc.text(label, marginX, y);
+      doc.text(labelWrapped, marginX, y);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(10);
       doc.setTextColor(45, 32, 36);
       doc.text(wrapped, marginX + labelColWidth, y);
-      y += Math.max(14, wrapped.length * 13);
+      y += Math.max(14, lineCount * 13);
     }
 
     function sectionHeading(title) {
@@ -830,7 +860,7 @@ export default function EmploymentView() {
         ["LinkedIn", resume.linkedin, false],
         ["Summary", resume.summary, true],
         ["Skills", fmtList(resume.skills), false],
-        ["Experience", resume.experience, true],
+        ["Experience", formatExperienceEntries(resume.experience), true],
         ["Education", resume.education, true],
         ["Certifications", resume.certifications, true],
         ["Projects", resume.projects, true],
@@ -1305,7 +1335,7 @@ export default function EmploymentView() {
                           <RecordField label="LinkedIn" value={resume.linkedin} />
                           <RecordMultilineField label="Summary" value={resume.summary} />
                           <RecordChips label="Skills" text={resume.skills} />
-                          <RecordMultilineField label="Experience" value={resume.experience} />
+                          <RecordMultilineField label="Experience" value={formatExperienceEntries(resume.experience)} />
                           <RecordMultilineField label="Education" value={resume.education} />
                           <RecordMultilineField label="Certifications" value={resume.certifications} />
                           <RecordMultilineField label="Projects" value={resume.projects} />

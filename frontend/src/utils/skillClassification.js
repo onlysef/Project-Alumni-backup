@@ -65,10 +65,23 @@ const KEYWORD_TYPES = [
   ...HARD_SKILL_KEYWORDS.map((keyword) => ({ keyword, type: 'hard' })),
 ].sort((a, b) => b.keyword.length - a.keyword.length);
 
+// wholeWordMatch (like backend's textContainsSkill) deliberately skips any
+// keyword that strips down to under 2 characters once punctuation is
+// removed — "c++"/"c#" both collapse to a bare "c", too short to safely
+// search for inside an arbitrary sentence without false-positiving on any
+// text containing a standalone "c". But a skill CHIP isn't a sentence to
+// search — it's the alumnus's own exact answer, so an exact (not
+// substring) match against these short symbol-only keywords is safe here
+// and doesn't carry that same false-positive risk. Without this, "C++"
+// always fell through to "other" instead of Technical/Domain Skills.
+const EXACT_SYMBOL_KEYWORDS = { 'c++': 'hard', 'c#': 'hard' };
+
 // A chip's own text is usually just the skill name itself (e.g. "Customer
 // Service"), so this only needs to check whether that short text matches a
 // known keyword — not scan a longer sentence for keywords buried inside it.
 export function classifySkill(skillText) {
+  const exact = EXACT_SYMBOL_KEYWORDS[(skillText || '').trim().toLowerCase()];
+  if (exact) return exact;
   for (const { keyword, type } of KEYWORD_TYPES) {
     if (wholeWordMatch(skillText, keyword)) return type;
   }

@@ -2977,6 +2977,12 @@
             overflow-x: auto;
         }
 
+        /* Hidden until the mobile breakpoint (see @media max-width:600px)
+           swaps places with .tracer-responses-table. */
+        .tracer-response-cards {
+            display: none;
+        }
+
         .employment-table {
             width: 100%;
             min-width: 760px;
@@ -5482,6 +5488,28 @@
             .modal-backdrop.topbar-popover .topbar-modal::before {
                 display: none;
             }
+
+            /* On desktop this floats as a small dropdown near its trigger
+               icon, close enough to the rest of the page that a dimmed
+               backdrop would feel heavy-handed. On a phone it spans nearly
+               the full width and a good chunk of the height, so with the
+               backdrop staying fully transparent the page underneath (table
+               rows, buttons) kept showing through with no visual separation
+               — looked like an unstyled/broken overlay rather than a sheet
+               that's actually open. Backdrop itself stays pointer-events:none
+               (only .topbar-modal is interactive) so this is purely visual —
+               tapping through it still closes via the existing capture-phase
+               outside-click handler, same as before.               */
+            .modal-backdrop.topbar-popover.show {
+                background: rgba(0, 0, 0, 0.45);
+                /* Base rule sets pointer-events:none (letting desktop's tiny
+                   dropdown-style popover leave the rest of the page fully
+                   clickable around it) — re-enabled here so tapping the now-
+                   visibly-dimmed area actually closes the panel instead of
+                   silently clicking through to whatever button happens to sit
+                   underneath it. */
+                pointer-events: auto;
+            }
         }
 
         /* Offsets shift right-to-left to clear each icon in .top-actions —
@@ -5572,7 +5600,13 @@
         }
 
         .topbar-modal-actions {
-            padding: 0 18px 18px;
+            padding: 14px 18px 18px;
+            border-top: 1px solid #f0e0e3;
+            margin-top: 4px;
+        }
+
+        body.dark-mode .topbar-modal-actions {
+            border-top-color: rgba(250, 200, 83, 0.16);
         }
 
         .settings-form,
@@ -7433,6 +7467,32 @@
             flex-wrap: wrap;
         }
 
+        .tracer-filter-select {
+            margin-bottom: 0;
+            min-height: 36px;
+        }
+
+        .tracer-date-range {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tracer-date-label {
+            font-size: 12px;
+            color: #76656a;
+            white-space: nowrap;
+        }
+
+        .tracer-date-input {
+            min-width: 130px;
+            flex: none;
+        }
+
+        .tracer-clear-btn {
+            margin-top: 0;
+        }
+
         .emp-search {
             flex: 1;
             min-width: 200px;
@@ -7954,8 +8014,8 @@
         }
         .action-menu-trigger .admin-svg-icon,
         .action-menu-trigger svg {
-            width: 18px;
-            height: 18px;
+            width: 22px;
+            height: 22px;
             flex: 0 0 auto;
             filter: brightness(0) invert(1);
             display: block;
@@ -8372,17 +8432,23 @@
 
             .mobile-row-actions {
                 display: block;
-                min-width: 34px !important;
+                min-width: 36px !important;
                 width: auto !important;
                 max-width: none !important;
-                justify-self: start;
+                justify-self: end;
             }
 
+            /* Matches the Announcements table's own untouched, generic
+               .action-menu-trigger size (36px) — this used to force 34px
+               specifically for the Alumni Record page's mobile trigger,
+               making that one button a slightly different (and non-square,
+               since height still came from the 36px base rule) size from
+               every other table's "..." button. */
             .mobile-row-actions .action-menu,
             .mobile-row-actions .action-menu-trigger {
-                min-width: 34px !important;
-                width: 34px !important;
-                max-width: 34px !important;
+                min-width: 36px !important;
+                width: 36px !important;
+                max-width: 36px !important;
             }
 
             .mobile-row-actions .action-menu-list {
@@ -8640,6 +8706,18 @@
             .appointments-table td:nth-child(5)::before { content: "Status"; }
             .appointments-table td:nth-child(6)::before { content: "Actions"; }
 
+            /* Actions column, right-aligned everywhere for a uniform look —
+               each table's card previously left its Actions button wherever
+               the generic td grid happened to place it (left, or centered
+               for .employment-table), so the same "..." trigger sat in a
+               different spot from one page's card list to the next. */
+            .account-table td:nth-child(5) > .action-menu,
+            .partnership-table td:nth-child(5) > .action-menu,
+            .announcement-table td:nth-child(5) > .announcement-action-menu,
+            .appointments-table td:nth-child(6) > .appointment-action-menu {
+                justify-self: end;
+            }
+
             .admin-table td::before,
             .appointments-table td::before {
                 color: var(--maroon);
@@ -8819,7 +8897,7 @@
             }
 
             .employment-table td[data-label="Actions"] {
-                justify-items: center;
+                justify-items: end;
             }
 
             .employment-table td[data-label="Actions"]::before {
@@ -8863,6 +8941,122 @@
 
             body.dark-mode .employment-table td::before {
                 color: var(--gold);
+            }
+
+            /* Tracer Responses' own mobile filter bar (admin + coordinator) —
+               .table-filter's solid maroon "button" look reads fine as one
+               chip next to other actions on desktop, but stacked full-width
+               on a phone it became a wall of heavy maroon bars. Light,
+               bordered inputs read as a filter bar instead. */
+            .tracer-filter-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .tracer-filter-row > * {
+                width: 100%;
+            }
+
+            .tracer-filter-select {
+                background: #fff;
+                color: #2d2024;
+                border: 1px solid rgba(87, 0, 19, 0.3);
+                font-weight: 600;
+                min-height: 40px;
+            }
+
+            .tracer-date-input {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .tracer-clear-btn {
+                width: 100%;
+            }
+
+            body.dark-mode .tracer-filter-select {
+                background: #2b141a;
+                color: #f7edef;
+                border-color: rgba(250, 200, 83, 0.3);
+            }
+
+            body.dark-mode .tracer-date-label {
+                color: #d4bdc3;
+            }
+
+            /* Tracer Responses' own mobile card list (admin + coordinator) —
+               a dedicated card instead of reusing .employment-table's label:value
+               row-dump, which buried the alumnus's name among four other rows
+               with no visual hierarchy. */
+            .tracer-responses-table {
+                display: none;
+            }
+
+            .tracer-response-cards {
+                display: grid;
+                gap: 10px;
+                padding: 12px 0;
+            }
+
+            .tracer-response-card {
+                border: 1px solid #ead7da;
+                border-radius: 10px;
+                background: #fff;
+                padding: 14px 16px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            }
+
+            .tracer-response-card-head {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                margin-bottom: 8px;
+            }
+
+            .tracer-response-card-head strong {
+                font-size: 15px;
+                color: #2d2024;
+            }
+
+            .tracer-response-card-meta {
+                font-size: 12px;
+                color: #76656a;
+                font-weight: 700;
+            }
+
+            .tracer-response-card-date {
+                font-size: 12px;
+                color: #8a767c;
+                margin-bottom: 12px;
+            }
+
+            .tracer-response-card-btn {
+                width: 100%;
+                background: var(--maroon);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 9px 0;
+                font-size: 13px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .tracer-response-card-btn:disabled {
+                opacity: 0.6;
+            }
+
+            body.dark-mode .tracer-response-card {
+                background: #241116;
+                border-color: #50303a;
+            }
+
+            body.dark-mode .tracer-response-card-head strong {
+                color: #f7edef;
+            }
+
+            body.dark-mode .tracer-response-card-meta {
+                color: #d4bdc3;
             }
         }
 

@@ -145,11 +145,16 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
   const [selectError, setSelectError] = useState("");
 
   useEffect(() => {
-    fetch(`${API}/admin/users`, { headers: authHeaders() })
+    // role=admin scopes this server-side (GET /admin/users is paginated —
+    // see AccountsView.jsx — a bare unscoped call only returns the newest
+    // 50 accounts of ANY role, which could easily leave an older admin
+    // account out of this picker entirely). limit=500 as a generous ceiling
+    // since this dropdown needs the full matching set, not one page of it.
+    fetch(`${API}/admin/users?role=admin&limit=500`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => {
         const list = (data.users || [])
-          .filter((u) => u.role === "admin" && u.status !== "suspended")
+          .filter((u) => u.status !== "suspended")
           .map((u) => ({
             id:    u._id,
             name:  `${u.firstName} ${u.lastName}`.trim(),
@@ -257,11 +262,16 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
   const dropRef = useRef(null);
 
   useEffect(() => {
-    fetch(`${API}/admin/users`, { headers: authHeaders() })
+    // Same reasoning as StaffModal's admin picker above — role=alumni scopes
+    // this server-side instead of relying on GET /admin/users' default
+    // (now-paginated, 50-newest-of-any-role) response, which could easily
+    // leave an alumnus who isn't among the most recently created accounts
+    // out of this search entirely.
+    fetch(`${API}/admin/users?role=alumni&limit=1000`, { headers: authHeaders() })
       .then(r => r.json())
       .then(data => {
         const list = (data.users || [])
-          .filter(u => u.role === "alumni" && u.status !== "suspended")
+          .filter(u => u.status !== "suspended")
           .map(u => ({
             id:    u._id,
             name:  `${u.firstName} ${u.lastName}`.trim(),

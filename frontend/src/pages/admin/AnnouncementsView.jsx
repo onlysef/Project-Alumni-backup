@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { Modal, ConfirmDialog, Dropdown } from "../../components/common/Primitives.jsx";
+import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
@@ -40,6 +40,27 @@ function toDatetimeLocal(value) {
   if (Number.isNaN(d.getTime())) return "";
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+// A start date already in the past, or an end date that isn't strictly
+// after the start (same instant, or earlier), produced events that posted
+// as already-"Ended" with no way for alumni to ever see them as upcoming.
+// `previousStartStr` (the datetime-local string the field held before this
+// edit began) lets the past-date floor apply only when the start is
+// actually being changed — re-saving an already-ended event's title or
+// location shouldn't be blocked by its own old date.
+function validateEventDates(startStr, endStr, previousStartStr) {
+  if (!startStr) return "";
+  const start = new Date(startStr);
+  if (isNaN(start.getTime())) return "Invalid start date & time.";
+  const startIsChanging = previousStartStr === undefined || startStr !== previousStartStr;
+  if (startIsChanging && start < new Date()) return "Event date & time cannot be in the past.";
+  if (endStr) {
+    const end = new Date(endStr);
+    if (isNaN(end.getTime())) return "Invalid end date & time.";
+    if (end <= start) return "End date & time must be after the start date & time.";
+  }
+  return "";
 }
 
 // Relative time for the Recent Activity feed — "3h ago" reads faster than a
@@ -877,27 +898,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
           <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
           <div>
             <strong>TSU Alumni Office</strong>
-            <Dropdown
-              menuClassName="filter-menu composer-category-menu"
-              active={category}
-              options={["News", "Announcement", "Job Posting"]}
-              onSelect={setCategory}
-              trigger={(toggle, open) => (
-                <button
-                  type="button"
-                  className="admin-choice composer-category"
-                  aria-expanded={open}
-                  onClick={toggle}
-                >
-                  {category}
-                  <span className="composer-category-caret" aria-hidden="true">
-                    <svg viewBox="0 0 12 8" width="10" height="7" fill="none">
-                      <path d="M1 1.25 6 6.25l5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                </button>
-              )}
-            />
+            <span className="admin-choice composer-category" aria-hidden="false">{category}</span>
           </div>
         </div>
         <div className="create-post-body">
@@ -1018,6 +1019,7 @@ function EventEditModal({ row, onClose, onSubmit }) {
   const [endDatetime, setEndDatetime] = useState("");
   const [capacity, setCapacity]       = useState("");
   const [saving, setSaving]           = useState(false);
+  const [dateError, setDateError]     = useState("");
 
   useEffect(() => {
     if (!row) return;
@@ -1028,6 +1030,7 @@ function EventEditModal({ row, onClose, onSubmit }) {
     setEndDatetime(toDatetimeLocal(row.endDatetime));
     setCapacity(row.capacity ?? "");
     setSaving(false);
+    setDateError("");
   }, [row]);
 
   if (!row) return null;
@@ -1035,6 +1038,9 @@ function EventEditModal({ row, onClose, onSubmit }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!title.trim()) return;
+    const err = validateEventDates(eventDatetime, endDatetime, toDatetimeLocal(row.eventDatetime));
+    if (err) { setDateError(err); return; }
+    setDateError("");
     setSaving(true);
     await onSubmit({
       title: title.trim(),
@@ -1069,11 +1075,12 @@ function EventEditModal({ row, onClose, onSubmit }) {
               <input type="number" min="0" placeholder="e.g. 100" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
             </label>
             <label>Start Date &amp; Time
-              <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} />
+              <input type="datetime-local" value={eventDatetime} onChange={(e) => { setEventDatetime(e.target.value); setDateError(""); }} />
             </label>
             <label>End Date &amp; Time
-              <input type="datetime-local" value={endDatetime} onChange={(e) => setEndDatetime(e.target.value)} />
+              <input type="datetime-local" value={endDatetime} onChange={(e) => { setEndDatetime(e.target.value); setDateError(""); }} />
             </label>
+            {dateError && <span className="field-error">{dateError}</span>}
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>

@@ -98,6 +98,13 @@ const QUICK_PROMPTS = [
   "What's the current employment status?",
 ];
 
+// Mirrors the backend's own MAX_QUESTION_LENGTH check (aiController.js) — a
+// message this long is never a genuine tracer-study question, and it gets
+// interpolated straight into the LLM prompt alongside retrieved context, so
+// an unbounded paste risks degrading answer quality well before any other
+// limit would kick in.
+const MAX_MESSAGE_LENGTH = 500;
+
 const FLAG_TYPE_LABEL = { injection: "Injection", fabrication: "Fabrication", unanswered: "Unanswered" };
 
 function readableParagraphs(text = "") {
@@ -789,6 +796,15 @@ export default function AiAssistantView() {
   const send = useCallback((raw) => {
     const text = (raw ?? "").trim();
     if (!text || thinking) return;
+    // The <textarea maxLength> above already stops typing/pasting past the
+    // limit — this only matters if `raw` came from somewhere else (a
+    // retried/edited message, a quick-prompt chip), so it's a backstop, not
+    // the primary defense.
+    if (text.length > MAX_MESSAGE_LENGTH) {
+      setUploadMsg({ type: "err", text: `Message is too long (max ${MAX_MESSAGE_LENGTH} characters).` });
+      setTimeout(() => setUploadMsg(null), 4000);
+      return;
+    }
 
     setSuggestions([]);
     abortRef.current?.abort();
@@ -1113,6 +1129,7 @@ export default function AiAssistantView() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                maxLength={MAX_MESSAGE_LENGTH}
                 aria-label="Message AC"
               />
               <button
@@ -1284,6 +1301,7 @@ export default function AiAssistantView() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
+                  maxLength={MAX_MESSAGE_LENGTH}
                   aria-label="Message AC"
                 />
                 <button

@@ -332,7 +332,7 @@ export default function TracerResponsesView() {
       </div>
 
       <section className="employment-card">
-        <div className="emp-search-row">
+        <div className="emp-search-row tracer-filter-row">
           <input
             type="text"
             className="emp-search"
@@ -340,39 +340,36 @@ export default function TracerResponsesView() {
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
           />
-          <select className="table-filter" style={{ marginBottom: 0, minHeight: 36 }} value={college} onChange={e => { setCollege(e.target.value); setPage(1); }}>
+          <select className="table-filter tracer-filter-select" value={college} onChange={e => { setCollege(e.target.value); setPage(1); }}>
             <option value="">All colleges</option>
             {colleges.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select className="table-filter" style={{ marginBottom: 0, minHeight: 36 }} value={batch} onChange={e => { setBatch(e.target.value); setPage(1); }}>
+          <select className="table-filter tracer-filter-select" value={batch} onChange={e => { setBatch(e.target.value); setPage(1); }}>
             <option value="">All batches</option>
             {batches.map(b => <option key={b} value={b}>Batch {b}</option>)}
           </select>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12, color: "#76656a", whiteSpace: "nowrap" }}>Date:</span>
+          <div className="tracer-date-range">
+            <span className="tracer-date-label">Date:</span>
             <input
               type="date"
               title="Date submitted from"
               value={dateFrom}
               onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-              className="emp-search"
-              style={{ minWidth: 130, flex: "none" }}
+              className="emp-search tracer-date-input"
             />
-            <span style={{ fontSize: 12, color: "#76656a" }}>–</span>
+            <span className="tracer-date-label">–</span>
             <input
               type="date"
               title="Date submitted to"
               value={dateTo}
               onChange={e => { setDateTo(e.target.value); setPage(1); }}
-              className="emp-search"
-              style={{ minWidth: 130, flex: "none" }}
+              className="emp-search tracer-date-input"
             />
           </div>
           {hasActiveFilters && (
             <button
               type="button"
-              className="see-toggle"
-              style={{ marginTop: 0 }}
+              className="see-toggle tracer-clear-btn"
               onClick={() => {
                 setCollege(""); setBatch("");
                 setDateFrom(""); setDateTo("");
@@ -385,7 +382,7 @@ export default function TracerResponsesView() {
           )}
         </div>
 
-        <table className="employment-table" style={{ width: "100%" }}>
+        <table className="employment-table tracer-responses-table" style={{ width: "100%" }}>
           <thead>
             <tr>
               <th>Name</th>
@@ -425,6 +422,34 @@ export default function TracerResponsesView() {
             ))}
           </tbody>
         </table>
+
+        {/* Mobile-only card list — a plain label:value row-dump (the table's
+            own CSS-driven mobile transform) buried the alumnus's name among
+            four other rows with no visual hierarchy. A real card, name as the
+            heading, reads the way a person list should. */}
+        <div className="tracer-response-cards">
+          {loading ? (
+            <p className="emp-loading">Loading responses…</p>
+          ) : responses.length === 0 ? (
+            <p className="emp-empty">No tracer form submissions found.</p>
+          ) : responses.map(r => (
+            <article className="tracer-response-card" key={r._id}>
+              <div className="tracer-response-card-head">
+                <strong>{r.name}</strong>
+                <span className="tracer-response-card-meta">{r.college || "—"} · {r.course || "—"}</span>
+              </div>
+              <div className="tracer-response-card-date">Submitted {fmtDate(r.submittedAt)}</div>
+              <button
+                type="button"
+                className="tracer-response-card-btn"
+                disabled={detailLoading}
+                onClick={() => handleViewAnswer(r.alumni_id)}
+              >
+                View Answer
+              </button>
+            </article>
+          ))}
+        </div>
 
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",

@@ -44,6 +44,34 @@ const upload = multer({
 
 const SAFE_FIELDS = '-password -twoFactorOTP -twoFactorOTPExpiry -twoFactorToken -twoFactorTokenExpiry -resetOTP -resetOTPExpiry -resetToken -resetTokenExpiry';
 
+// Reverse of alumniController.js's mapProgramToCourse/mapProgramToTrack.
+// Graduate.program always stores the FULL spelled-out name a tracer
+// submission wrote there ("Bachelor of Science in Information Technology -
+// Specialized in Technical Service Management"), never the short
+// User.course/track codes used in Accounts/import. Every site that seeds or
+// syncs Graduate.program off course/track must go through this instead of
+// writing the bare code directly — that literally happened once (a real
+// alumna's already-submitted full program name got silently replaced with
+// just "BSIT" the next time an admin edited her account for an unrelated
+// reason), which broke her row in every program-grouped stat/chart.
+const COURSE_BASE_NAMES = {
+  BSIT: 'Bachelor of Science in Information Technology',
+  BSCS: 'Bachelor of Science in Computer Science',
+  BSIS: 'Bachelor of Science in Information Systems',
+  BSIM: 'Bachelor of Science in Information Management',
+};
+const TRACK_NAMES = {
+  TSM: 'Technical Service Management',
+  WMA: 'Web and Mobile Application',
+  NA:  'Network Administration',
+};
+function courseCodeToProgramName(course, track) {
+  const base = COURSE_BASE_NAMES[(course || '').toUpperCase()];
+  if (!base) return course || null;
+  const trackName = TRACK_NAMES[(track || '').toUpperCase()];
+  return trackName ? `${base} - Specialized in ${trackName}` : base;
+}
+
 function generateTempPassword() {
   const upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const lower   = 'abcdefghijklmnopqrstuvwxyz';
@@ -165,7 +193,7 @@ const createUser = async (req, res) => {
           user_id:       user._id,
           name:          `${userData.firstName} ${userData.lastName}`.trim(),
           email:         userData.email,
-          program:       userData.course || null,
+          program:       courseCodeToProgramName(userData.course, userData.track),
           yearGraduated: userData.graduationYear || null,
         },
         // Graduate.data is a required field (holds the raw tracer-study row
@@ -195,11 +223,52 @@ const createUser = async (req, res) => {
   }
 };
 
-// GET /api/admin/users
+// Fields AccountsView.jsx's mapUser() actually reads — notably NOT
+// avatarUrl. This endpoint used to return every field (minus only the
+// auth/security ones already excluded via SAFE_FIELDS) for EVERY user in
+// the system, unpaginated — avatarUrl is a base64 data URI that can run to
+// 1-2MB of text per row, and AccountsView never even displays it. Hundreds
+// of users meant tens of MB downloaded and immediately discarded on every
+// single load of this page, for nothing.
+const ACCOUNT_LIST_FIELDS = 'firstName middleInitial lastName email role status college course track graduationYear company partnershipId';
+
+// GET /api/admin/users?page=&limit=&search=&role=&status=
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find({}, SAFE_FIELDS).sort({ createdAt: -1 });
-    res.json({ users });
+    const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+    // Capped generously (not at the Accounts table's own ~50/page) — this
+    // endpoint also backs a couple of "pick one from the full list" search
+    // dropdowns (AppointmentsView.jsx's admin-staff and alumnus pickers)
+    // that need every matching account in one call, not one page of them.
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const { search, role, status } = req.query;
+
+    const match = {};
+    // Case-insensitive on purpose — the frontend's filter menus show
+    // Title-Case labels ("Alumni", "Active") while role/status are stored
+    // lowercase, and this endpoint shouldn't have to know which casing
+    // convention the caller happens to use.
+    if (role   && !['role', 'all'].includes(role.toLowerCase()))   match.role   = role.toLowerCase();
+    if (status && !['status', 'all'].includes(status.toLowerCase())) match.status = status.toLowerCase();
+    if (search && search.trim()) {
+      const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      match.$or = [{ firstName: re }, { lastName: re }, { email: re }, { company: re }];
+    }
+
+    // activeCount/pendingCount are the "X Active / Y Pending" summary tiles
+    // — always the TRUE system-wide total, deliberately unfiltered by the
+    // search/role/status params above (a dashboard stat, not "count within
+    // this page of results"). Previously derived by filtering the full,
+    // unpaginated `rows` array client-side — now that only one page of rows
+    // ever reaches the client, that would have silently shrunk to "how many
+    // on this page" instead.
+    const [users, total, activeCount, pendingCount] = await Promise.all([
+      User.find(match, ACCOUNT_LIST_FIELDS).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      User.countDocuments(match),
+      User.countDocuments({ status: 'active' }),
+      User.countDocuments({ status: 'pending' }),
+    ]);
+    res.json({ users, total, totalPages: Math.max(1, Math.ceil(total / limit)), page, activeCount, pendingCount });
   } catch (err) {
     console.error('getUsers error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -304,14 +373,16 @@ const updateUser = async (req, res) => {
     // name/program/year forever. Matched by user_id first (the reliable FK,
     // unaffected by this edit) with the PRE-update email as a fallback for
     // older rows that predate user_id ever being backfilled onto them.
-    const graduateSyncFields = ['firstName', 'lastName', 'email', 'course', 'graduationYear'];
+    const graduateSyncFields = ['firstName', 'lastName', 'email', 'course', 'track', 'graduationYear'];
     if (finalRole === 'alumni' && graduateSyncFields.some((f) => updates[f] !== undefined)) {
       const graduateSet = {};
       if (updates.firstName !== undefined || updates.lastName !== undefined) {
         graduateSet.name = `${user.firstName} ${user.lastName}`.trim();
       }
-      if (updates.email          !== undefined) graduateSet.email          = user.email;
-      if (updates.course         !== undefined) graduateSet.program        = user.course || null;
+      if (updates.email !== undefined) graduateSet.email = user.email;
+      if (updates.course !== undefined || updates.track !== undefined) {
+        graduateSet.program = courseCodeToProgramName(user.course, user.track);
+      }
       if (updates.graduationYear !== undefined) graduateSet.yearGraduated  = user.graduationYear || null;
       Graduate.findOneAndUpdate(
         { $or: [{ user_id: user._id }, { email: existing.email }] },
@@ -562,7 +633,7 @@ const importUsers = async (req, res) => {
           user_id:       user._id,
           name:          `${user.firstName} ${user.lastName}`.trim(),
           email:         user.email,
-          program:       user.course || null,
+          program:       courseCodeToProgramName(user.course, user.track),
           yearGraduated: user.graduationYear || null,
         },
         $setOnInsert: { data: {} },

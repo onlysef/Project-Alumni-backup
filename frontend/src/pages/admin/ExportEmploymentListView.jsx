@@ -256,18 +256,29 @@ export default function ExportEmploymentListView() {
           <span style={{ fontSize: 13, color: "#76656a" }}>
             {counting ? "Counting matching records…" : total === null ? "" : `${total} record${total !== 1 ? "s" : ""} match these filters`}
           </span>
-          <Dropdown
-            menuClassName="admin-menu"
-            portal
-            options={["CSV", "Excel", "PDF"]}
-            onSelect={(choice) => handleExport(choice.toLowerCase())}
-            trigger={(toggle) => (
-              <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
-                <span><Icon name="icon-17" /></span>
-                <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
-              </button>
-            )}
-          />
+          {/* marginLeft:auto — the row's own space-between only pushes this to
+              the right when both items share one line; once the record-count
+              text wraps this onto its own line on a narrow screen, a single
+              flex item has nothing left to space against and space-between
+              falls back to flex-start, stranding the button on the left. This
+              also fixed the dropdown menu itself opening off-screen to the
+              left — its portal position is computed from the trigger's own
+              on-screen rect, so a left-stranded trigger anchored the menu far
+              enough left to run off the viewport edge. */}
+          <div style={{ marginLeft: "auto" }}>
+            <Dropdown
+              menuClassName="admin-menu"
+              portal
+              options={["CSV", "Excel", "PDF"]}
+              onSelect={(choice) => handleExport(choice.toLowerCase())}
+              trigger={(toggle) => (
+                <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
+                  <span><Icon name="icon-17" /></span>
+                  <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
+                </button>
+              )}
+            />
+          </div>
         </div>
       </section>
     </section>
