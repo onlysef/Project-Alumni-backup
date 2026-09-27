@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from "react";
 import { useOutletContext, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { Modal, ConfirmDialog, Dropdown } from "../../components/common/Primitives.jsx";
+import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
@@ -877,27 +877,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
           <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
           <div>
             <strong>TSU Alumni Office</strong>
-            <Dropdown
-              menuClassName="filter-menu composer-category-menu"
-              active={category}
-              options={["News", "Announcement", "Job Posting"]}
-              onSelect={setCategory}
-              trigger={(toggle, open) => (
-                <button
-                  type="button"
-                  className="admin-choice composer-category"
-                  aria-expanded={open}
-                  onClick={toggle}
-                >
-                  {category}
-                  <span className="composer-category-caret" aria-hidden="true">
-                    <svg viewBox="0 0 12 8" width="10" height="7" fill="none">
-                      <path d="M1 1.25 6 6.25l5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                </button>
-              )}
-            />
+            <span className="admin-choice composer-category" aria-hidden="false">{category}</span>
           </div>
         </div>
         <div className="create-post-body">

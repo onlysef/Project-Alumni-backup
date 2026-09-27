@@ -229,18 +229,20 @@ export default function ExportEmploymentListView() {
           <span style={{ fontSize: 13, color: "#76656a" }}>
             {counting ? "Counting matching records…" : total === null ? "" : `${total} record${total !== 1 ? "s" : ""} match these filters`}
           </span>
-          <Dropdown
-            menuClassName="admin-menu"
-            portal
-            options={["CSV", "Excel", "PDF"]}
-            onSelect={(choice) => handleExport(choice.toLowerCase())}
-            trigger={(toggle) => (
-              <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
-                <span><Icon name="icon-17" /></span>
-                <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
-              </button>
-            )}
-          />
+          <div style={{ marginLeft: "auto" }}>
+            <Dropdown
+              menuClassName="admin-menu"
+              portal
+              options={["CSV", "Excel", "PDF"]}
+              onSelect={(choice) => handleExport(choice.toLowerCase())}
+              trigger={(toggle) => (
+                <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
+                  <span><Icon name="icon-17" /></span>
+                  <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
+                </button>
+              )}
+            />
+          </div>
         </div>
       </section>
     </section>

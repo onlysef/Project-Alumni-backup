@@ -327,7 +327,50 @@ const getMyTracerResponse = async (req, res) => {
 // alumni submission gets (AlumniEmployment sync, course/track sync, AI
 // chatbot Graduate/embedding sync) since an admin correction should stay
 // consistent everywhere the alumni's own submission would.
+// Mirrors the allow-list Alumni Profile's own text fields use — every one of
+// these free-text tracer questions used to accept literally anything
+// ("77777", "#####"), same bug, same fix. contactNumber gets its own
+// numeric-only check below instead, same split as validatePage() in
+// TracerStudyForm.jsx.
+const TRACER_WORK_TEXT_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ0-9.,'&\-/() ]*$/;
+const TRACER_PHONE_CHARS_RE = /^[0-9+\-\s()]+$/;
+// Sized per field to what a real answer actually looks like — mirrors
+// TEXT_FIELD_MAX_LENGTHS in TracerStudyForm.jsx.
+const TRACER_TEXT_FIELDS = {
+  companyName:          { label: 'Company Name',            max: 100 }, // long legal entity names still fit
+  occupationTitle:      { label: 'Job title',                max: 80 },  // job titles are short phrases
+  professionalExamName: { label: 'Professional exam name',   max: 100 }, // e.g. "Certified Public Accountant (CPA) Licensure Examination"
+  furtherEducationType: { label: 'Further education type',   max: 120 }, // degree names with a major can run long
+  trainingType:         { label: 'Training type',            max: 100 },
+};
+
 async function saveTracerAnswers(alumniId, college, body) {
+    for (const [field, { label, max }] of Object.entries(TRACER_TEXT_FIELDS)) {
+      if (!body[field]) continue;
+      if (body[field].length > max) {
+        const err = new Error(`${label} is too long (max ${max} characters).`);
+        err.status = 400;
+        throw err;
+      }
+      if (!TRACER_WORK_TEXT_RE.test(body[field])) {
+        const err = new Error(`${label} contains invalid special characters.`);
+        err.status = 400;
+        throw err;
+      }
+    }
+    if (body.contactNumber) {
+      if (body.contactNumber.length > 20) {
+        const err = new Error('Contact Number is too long (max 20 characters).');
+        err.status = 400;
+        throw err;
+      }
+      if (!TRACER_PHONE_CHARS_RE.test(body.contactNumber)) {
+        const err = new Error('Contact Number should only contain numbers.');
+        err.status = 400;
+        throw err;
+      }
+    }
+
     // Separate extra (custom admin-added) answers from the fixed schema fields
     const extra_answers = {};
     for (const [key, value] of Object.entries(body)) {
@@ -523,6 +566,7 @@ const submitTracerStudy = async (req, res) => {
     await saveTracerAnswers(req.user.id, req.user.college, req.body);
     res.status(200).json({ message: 'Tracer study submitted successfully.' });
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ message: err.message });
     console.error('submitTracerStudy error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
@@ -549,6 +593,7 @@ const updateAlumniTracerData = async (req, res) => {
     await saveTracerAnswers(emp.alumni_id, alumniUser.college || '', req.body);
     res.json({ message: 'Alumni record updated.' });
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ message: err.message });
     console.error('updateAlumniTracerData error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
@@ -693,11 +738,104 @@ const updateMyEmployment = async (req, res) => {
       employment_status, company_name, job_title, industry, work_location,
       salary_range, date_employed, skills, experience,
       contact_email, contact_number, facebook, linkedin,
+      firstName, lastName, middleInitial,
     } = req.body;
 
+    // Mirrors validateProfileForm() in AlumniEmploymentDetails.jsx — kept here
+    // too since this endpoint can be hit directly, not just through that
+    // form. maxLength on the frontend inputs only stops typing past the
+    // limit; a pasted wall of text or a direct API call bypasses it.
+    const FIELD_MAX_LENGTHS = {
+      firstName: 50, lastName: 50, contact_email: 100, contact_number: 20,
+      company_name: 100, job_title: 100, work_location: 100, facebook: 200, linkedin: 200,
+    };
+    for (const [field, max] of Object.entries(FIELD_MAX_LENGTHS)) {
+      const v = req.body[field];
+      if (typeof v === 'string' && v.trim().length > max) {
+        return res.status(400).json({ message: `${field} is too long (max ${max} characters).` });
+      }
+    }
+    if (typeof skills === 'string' && skills.split(',').some((s) => s.trim().length > 50)) {
+      return res.status(400).json({ message: 'A skill is too long (max 50 characters).' });
+    }
+
     const trimmedEmail = typeof contact_email === 'string' ? contact_email.trim() : '';
-    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    if (!trimmedEmail) {
+      return res.status(400).json({ message: 'Contact email is required.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       return res.status(400).json({ message: 'Please enter a valid contact email address.' });
+    }
+
+    const trimmedNumber = typeof contact_number === 'string' ? contact_number.trim() : '';
+    if (!trimmedNumber) {
+      return res.status(400).json({ message: 'Contact number is required.' });
+    }
+    if (!/^[0-9+\-\s()]+$/.test(trimmedNumber)) {
+      return res.status(400).json({ message: 'Contact number should only contain numbers.' });
+    }
+    if (trimmedNumber.replace(/\D/g, '').length < 7) {
+      return res.status(400).json({ message: 'Please enter a valid contact number.' });
+    }
+
+    // Alumni Profile shows the account's real name right next to the fields
+    // it otherwise owns (Contact Info, Work Info) — without a way to fix a
+    // typo here, the only route was asking the admin office to edit it via
+    // Accounts. Optional: only touches User when both are actually present
+    // and non-blank, so a client that's never sent these fields at all (or
+    // sends them blank by mistake) can't silently wipe a real name.
+    const trimmedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
+    const trimmedLastName  = typeof lastName  === 'string' ? lastName.trim()  : '';
+    if (firstName !== undefined || lastName !== undefined) {
+      if (!trimmedFirstName || !trimmedLastName) {
+        return res.status(400).json({ message: 'First and last name are required.' });
+      }
+      // Letters (incl. basic accented characters), spaces, periods,
+      // apostrophes, and hyphens only — covers real names ("Dela Cruz",
+      // "D'Souza") while rejecting digits/symbols typed into a name field.
+      const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ'.\- ]+$/;
+      if (!NAME_RE.test(trimmedFirstName) || !NAME_RE.test(trimmedLastName)) {
+        return res.status(400).json({ message: 'Name should only contain letters.' });
+      }
+    }
+    // Single letter only, same as Accounts' own middle-initial field — free
+    // text here previously let an account end up with something like "A."
+    // already saved WITH a trailing period, which then produced a doubled
+    // "A.." once a "." was appended again wherever the name gets displayed.
+    const cleanMiddleInitial = typeof middleInitial === 'string'
+      ? middleInitial.replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase()
+      : undefined;
+
+    // Company/Job/Location can legitimately contain digits and a small set
+    // of real punctuation ("7-Eleven", "Brgy. 3, Quezon City", "R&D
+    // Engineer") but nothing beyond that — an earlier version of this check
+    // only rejected a value with NO letters at all, which still let
+    // "asdf@#$%" or "Manager!!!" through since they technically contain a
+    // letter somewhere.
+    const WORK_TEXT_RE = /^[A-Za-z0-9À-ÖØ-öø-ÿ.,'&\-/() ]*$/;
+    // Skills legitimately include symbols a business-text field wouldn't
+    // ("C++", "C#", "UI/UX") so this stays a looser "at least one letter"
+    // check — it only rejects an entry with NO letters at all
+    // ("88888888888"), never a real skill.
+    const HAS_LETTER_RE = /[A-Za-zÀ-ÖØ-öø-ÿ]/;
+    const trimmedCompany  = typeof company_name  === 'string' ? company_name.trim()  : '';
+    const trimmedPosition = typeof job_title     === 'string' ? job_title.trim()     : '';
+    const trimmedLocation = typeof work_location === 'string' ? work_location.trim() : '';
+    if (trimmedCompany  && !WORK_TEXT_RE.test(trimmedCompany))  return res.status(400).json({ message: 'Company Name contains invalid special characters.' });
+    if (trimmedPosition && !WORK_TEXT_RE.test(trimmedPosition)) return res.status(400).json({ message: 'Job Position contains invalid special characters.' });
+    if (trimmedLocation && !WORK_TEXT_RE.test(trimmedLocation)) return res.status(400).json({ message: 'Work Location contains invalid special characters.' });
+    const skillsList = typeof skills === 'string' ? skills.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    if (skillsList.some((s) => !HAS_LETTER_RE.test(s))) {
+      return res.status(400).json({ message: 'Skills should not be just symbols or numbers.' });
+    }
+
+    const trimmedFacebook = typeof facebook === 'string' ? facebook.trim() : '';
+    if (trimmedFacebook && !/facebook\.com|fb\.com/i.test(trimmedFacebook)) {
+      return res.status(400).json({ message: 'Please enter a valid Facebook profile link.' });
+    }
+    const trimmedLinkedin = typeof linkedin === 'string' ? linkedin.trim() : '';
+    if (trimmedLinkedin && !/linkedin\.com/i.test(trimmedLinkedin)) {
+      return res.status(400).json({ message: 'Please enter a valid LinkedIn profile link.' });
     }
 
     const updates = {
@@ -710,9 +848,9 @@ const updateMyEmployment = async (req, res) => {
       skills:            skills || '',
       experience:        experience || '',
       contact_email:     trimmedEmail,
-      contact_number:    typeof contact_number === 'string' ? contact_number.trim() : '',
-      facebook:          typeof facebook === 'string' ? facebook.trim() : '',
-      linkedin:          typeof linkedin === 'string' ? linkedin.trim() : '',
+      contact_number:    trimmedNumber,
+      facebook:          trimmedFacebook,
+      linkedin:          trimmedLinkedin,
       last_updated:      new Date(),
     };
     // Every other field above always lands in `updates`, so clearing one in
@@ -745,6 +883,12 @@ const updateMyEmployment = async (req, res) => {
     // alumnus's entry now instead of waiting out its TTL.
     bustRecommendedJobsCache(req.user.id);
 
+    if (trimmedFirstName && trimmedLastName) {
+      const nameUpdate = { firstName: trimmedFirstName, lastName: trimmedLastName };
+      if (cleanMiddleInitial !== undefined) nameUpdate.middleInitial = cleanMiddleInitial;
+      await User.findByIdAndUpdate(req.user.id, nameUpdate);
+    }
+
     // Employment Details is part of the alumnus profile. Keep the submitted
     // tracer response and the normalized Graduate profile in step with it so
     // admin/coordinator views, analytics, and recommendations do not continue
@@ -762,8 +906,9 @@ const updateMyEmployment = async (req, res) => {
       { $set: tracerPatch }
     );
 
+    let profileUser = null;
     try {
-      const profileUser = await User.findById(req.user.id).select('email firstName lastName').lean();
+      profileUser = await User.findById(req.user.id).select('email firstName middleInitial lastName').lean();
       // Coordinator dashboard's "Activity" feed (see routes/coordinator.js's
       // dashboard/activity) surfaces this via the same College-scoped
       // EmploymentActivity join used for staff actions — an alumnus always
@@ -783,6 +928,9 @@ const updateMyEmployment = async (req, res) => {
         if (graduate) {
           // Backfills user_id onto a row that was only ever matched by email.
           graduate.user_id = req.user.id;
+          // Keeps the AI chatbot/admin views from continuing to show a
+          // typo'd name the alumnus just fixed on their own profile.
+          graduate.name = alumniName;
           graduate.employmentStatus = tracerPatch.employmentStatus;
           graduate.workLocation = tracerPatch.placeOfWork || null;
           graduate.jobTitle = tracerPatch.occupationTitle || null;
@@ -806,7 +954,12 @@ const updateMyEmployment = async (req, res) => {
       console.error('Employment profile sync failed (non-blocking):', syncErr.message);
     }
 
-    res.json({ employment: emp });
+    res.json({
+      employment: emp,
+      user: profileUser
+        ? { firstName: profileUser.firstName, middleInitial: profileUser.middleInitial, lastName: profileUser.lastName }
+        : undefined,
+    });
   } catch (err) {
     console.error('updateMyEmployment error:', err);
     res.status(500).json({ message: 'Server error.' });

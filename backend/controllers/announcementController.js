@@ -63,8 +63,17 @@ const getAnnouncements = async (req, res) => {
     const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
     const skip  = (page - 1) * limit;
 
+    // The $lookup (posterNameStages) used to run here, on every document in
+    // all 3 collections, BEFORE $sort/$skip/$limit ever threw most of them
+    // away — and the whole thing ran a second time for $count. That's 6
+    // rounds of $lookup work (3 collections x 2 passes) for what's usually a
+    // 20-row page: a growing dataset means this cost scaled with the TOTAL
+    // row count, not the page size, which is exactly the wrong shape and the
+    // actual cause of admin's "Posted Announcements" getting slower over
+    // time. `createdBy` here is already normalized to the same field name
+    // across all 3 sources — the one real $lookup now runs once, only on the
+    // page actually being returned, in the section below.
     const unionPipeline = [
-      ...posterNameStages('createdBy'),
       { $addFields: {
         likesCount:    { $cond: [{ $isArray: '$likedBy' },  { $size: '$likedBy' },  0] },
         commentsCount: { $cond: [{ $isArray: '$comments' }, { $size: '$comments' }, 0] },
@@ -78,7 +87,6 @@ const getAnnouncements = async (req, res) => {
       { $unionWith: {
         coll: 'events',
         pipeline: [
-          ...posterNameStages('created_by'),
           { $addFields: {
             type: 'Event',
             imageUrl: { $ifNull: ['$image', ''] },
@@ -94,7 +102,6 @@ const getAnnouncements = async (req, res) => {
       { $unionWith: {
         coll: 'jobs',
         pipeline: [
-          ...posterNameStages('postedBy'),
           { $addFields: {
             type: 'Job Posting',
             imageUrl: '',
@@ -109,18 +116,20 @@ const getAnnouncements = async (req, res) => {
       }},
     ];
 
-    const [announcements, totalRows] = await Promise.all([
+    const [pageRows, totalRows] = await Promise.all([
       Announcement.aggregate([
         ...unionPipeline,
         { $sort: { createdAt: -1 } },
         { $skip: skip },
         { $limit: limit },
+        ...posterNameStages('createdBy'),
+        { $project: { _poster: 0 } },
       ]),
       Announcement.aggregate([...unionPipeline, { $count: 'total' }]),
     ]);
     const total = totalRows[0]?.total ?? 0;
 
-    res.json({ announcements, total, page, pages: Math.ceil(total / limit) });
+    res.json({ announcements: pageRows, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {
     console.error('getAnnouncements error:', err);
     res.status(500).json({ message: 'Server error.' });
