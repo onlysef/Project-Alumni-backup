@@ -462,7 +462,8 @@ const getAllJobs = async (req, res) => {
     const jobs = await Job.find()
       .populate('partnershipId', 'name')
       .populate('postedBy', 'firstName lastName email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ jobs });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });

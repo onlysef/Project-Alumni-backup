@@ -10,8 +10,14 @@ import { classifySkill } from "../../utils/skillClassification.js";
 // editing experience when setting this on someone else's behalf.
 // `extractEndpoint` lets each caller point at its own role's route
 // (/alumni, /admin, /coordinator all expose the same handler).
+// A real skill can contain digits/symbols ("C++", "3D Modeling") so this only
+// rejects an entry with NO letters at all ("88888888888", "#####") — never a
+// real answer, just something typed to get past the field.
+const HAS_LETTER_RE = /[A-Za-zÀ-ÖØ-öø-ÿ]/;
+
 export default function SkillsEditor({ value, onChange, extractEndpoint = "/alumni/skills/extract" }) {
   const [draft, setDraft] = useState("");
+  const [draftError, setDraftError] = useState("");
   const [sentence, setSentence] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
@@ -27,6 +33,11 @@ export default function SkillsEditor({ value, onChange, extractEndpoint = "/alum
   const addSkill = () => {
     const skill = draft.trim().replace(/,+/g, "");
     if (!skill) { setDraft(""); return; }
+    if (!HAS_LETTER_RE.test(skill)) {
+      setDraftError("A skill should include letters, not just symbols or numbers.");
+      return;
+    }
+    setDraftError("");
     addSkills([skill]);
     setDraft("");
   };
@@ -104,8 +115,9 @@ export default function SkillsEditor({ value, onChange, extractEndpoint = "/alum
     )}
 
     <div className="skills-chip-list skills-edit-list">
-      <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addSkill(); } }} placeholder={skills.length ? "Add another skill" : "e.g. Python"} />
+      <input value={draft} onChange={(event) => { setDraft(event.target.value); setDraftError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addSkill(); } }} placeholder={skills.length ? "Add another skill" : "e.g. Python"} maxLength={50} />
     </div>
     <button type="button" className="add-skill-button" onClick={addSkill}>+ Add skill</button>
+    {draftError && <p className="skills-extract-error">{draftError}</p>}
   </div>;
 }

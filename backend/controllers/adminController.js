@@ -44,6 +44,34 @@ const upload = multer({
 
 const SAFE_FIELDS = '-password -twoFactorOTP -twoFactorOTPExpiry -twoFactorToken -twoFactorTokenExpiry -resetOTP -resetOTPExpiry -resetToken -resetTokenExpiry';
 
+// Reverse of alumniController.js's mapProgramToCourse/mapProgramToTrack.
+// Graduate.program always stores the FULL spelled-out name a tracer
+// submission wrote there ("Bachelor of Science in Information Technology -
+// Specialized in Technical Service Management"), never the short
+// User.course/track codes used in Accounts/import. Every site that seeds or
+// syncs Graduate.program off course/track must go through this instead of
+// writing the bare code directly — that literally happened once (a real
+// alumna's already-submitted full program name got silently replaced with
+// just "BSIT" the next time an admin edited her account for an unrelated
+// reason), which broke her row in every program-grouped stat/chart.
+const COURSE_BASE_NAMES = {
+  BSIT: 'Bachelor of Science in Information Technology',
+  BSCS: 'Bachelor of Science in Computer Science',
+  BSIS: 'Bachelor of Science in Information Systems',
+  BSIM: 'Bachelor of Science in Information Management',
+};
+const TRACK_NAMES = {
+  TSM: 'Technical Service Management',
+  WMA: 'Web and Mobile Application',
+  NA:  'Network Administration',
+};
+function courseCodeToProgramName(course, track) {
+  const base = COURSE_BASE_NAMES[(course || '').toUpperCase()];
+  if (!base) return course || null;
+  const trackName = TRACK_NAMES[(track || '').toUpperCase()];
+  return trackName ? `${base} - Specialized in ${trackName}` : base;
+}
+
 function generateTempPassword() {
   const upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const lower   = 'abcdefghijklmnopqrstuvwxyz';
@@ -165,7 +193,7 @@ const createUser = async (req, res) => {
           user_id:       user._id,
           name:          `${userData.firstName} ${userData.lastName}`.trim(),
           email:         userData.email,
-          program:       userData.course || null,
+          program:       courseCodeToProgramName(userData.course, userData.track),
           yearGraduated: userData.graduationYear || null,
         },
         // Graduate.data is a required field (holds the raw tracer-study row
@@ -304,14 +332,16 @@ const updateUser = async (req, res) => {
     // name/program/year forever. Matched by user_id first (the reliable FK,
     // unaffected by this edit) with the PRE-update email as a fallback for
     // older rows that predate user_id ever being backfilled onto them.
-    const graduateSyncFields = ['firstName', 'lastName', 'email', 'course', 'graduationYear'];
+    const graduateSyncFields = ['firstName', 'lastName', 'email', 'course', 'track', 'graduationYear'];
     if (finalRole === 'alumni' && graduateSyncFields.some((f) => updates[f] !== undefined)) {
       const graduateSet = {};
       if (updates.firstName !== undefined || updates.lastName !== undefined) {
         graduateSet.name = `${user.firstName} ${user.lastName}`.trim();
       }
-      if (updates.email          !== undefined) graduateSet.email          = user.email;
-      if (updates.course         !== undefined) graduateSet.program        = user.course || null;
+      if (updates.email !== undefined) graduateSet.email = user.email;
+      if (updates.course !== undefined || updates.track !== undefined) {
+        graduateSet.program = courseCodeToProgramName(user.course, user.track);
+      }
       if (updates.graduationYear !== undefined) graduateSet.yearGraduated  = user.graduationYear || null;
       Graduate.findOneAndUpdate(
         { $or: [{ user_id: user._id }, { email: existing.email }] },
@@ -562,7 +592,7 @@ const importUsers = async (req, res) => {
           user_id:       user._id,
           name:          `${user.firstName} ${user.lastName}`.trim(),
           email:         user.email,
-          program:       user.course || null,
+          program:       courseCodeToProgramName(user.course, user.track),
           yearGraduated: user.graduationYear || null,
         },
         $setOnInsert: { data: {} },

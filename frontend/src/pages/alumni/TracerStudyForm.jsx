@@ -61,6 +61,19 @@ const FIXED_KEYS = new Set([
   "professionalCertifications", "professionalDevelopmentActivities",
 ]);
 
+// Sized per field to what a real answer actually looks like, not one
+// blanket number for every text question — a phone number and a degree
+// name have very different realistic lengths.
+const TEXT_FIELD_MAX_LENGTHS = {
+  contactNumber: 20,          // e.g. "+63 917 123 4567"
+  companyName: 100,           // long legal entity names still fit
+  occupationTitle: 80,        // job titles are short phrases
+  professionalExamName: 100,  // e.g. "Certified Public Accountant (CPA) Licensure Examination"
+  furtherEducationType: 120,  // degree names with a major can run long
+  trainingType: 100,
+};
+const DEFAULT_TEXT_MAX_LENGTH = 100; // any custom text question an admin adds later
+
 function isAnswerEmpty(val) {
   if (val === undefined || val === null || val === "") return true;
   if (Array.isArray(val)) return val.length === 0;
@@ -131,6 +144,11 @@ function QuestionField({ q, answers, onAnswer }) {
   }
 
   if (q.type === "text") {
+    // A one-line answer had no upper bound at all — a pasted wall of text
+    // ("isssssskfghdlblljsaaaa...") in Company Name overflowed the field and
+    // was clearly never a real answer anyway. Sized per field (see
+    // TEXT_FIELD_MAX_LENGTHS) to what a real answer actually looks like.
+    const maxLength = TEXT_FIELD_MAX_LENGTHS[q.id] || DEFAULT_TEXT_MAX_LENGTH;
     return (
       <div style={fld}>
         <label style={lbl}>{q.label}{q.required ? " *" : ""}</label>
@@ -139,6 +157,7 @@ function QuestionField({ q, answers, onAnswer }) {
           value={val || ""}
           onChange={(e) => onAnswer(q.id, e.target.value)}
           placeholder={q.placeholder || ""}
+          maxLength={maxLength}
           style={inp}
         />
       </div>
@@ -265,13 +284,35 @@ function QuestionField({ q, answers, onAnswer }) {
 }
 
 // ── Validate the current page ─────────────────────────────────────────────────
+// Every free-text question (Company Name, Job Title, Professional Exam Name,
+// Further Education/Training Type, and any custom text question an admin
+// adds later) used to accept literally anything ("77777", "#####") — same
+// allow-list Alumni Profile's own text fields use (letters, digits, and a
+// small set of real punctuation; nothing beyond that). contactNumber gets
+// its own numeric-only check instead since a phone number failing THIS
+// allow-list for a completely different reason (letters/symbols) needs a
+// clearer message than "invalid special characters".
+const WORK_TEXT_RE = /^[A-Za-z0-9À-ÖØ-öø-ÿ.,'&\-/() ]*$/;
+const PHONE_CHARS_RE = /^[0-9+\-\s()]+$/;
+
 function validatePage(page, answers) {
   for (const q of page.questions) {
     if (q.type === "static_text") continue;
     if (!isVisible(q, answers)) continue;
-    if (!q.required) continue;
 
     const val = answers[q.id];
+    if (q.type === "text" && val) {
+      const maxLength = TEXT_FIELD_MAX_LENGTHS[q.id] || DEFAULT_TEXT_MAX_LENGTH;
+      if (val.length > maxLength) return `${q.label.slice(0, 60)} is too long (max ${maxLength} characters).`;
+      if (q.id === "contactNumber") {
+        if (!PHONE_CHARS_RE.test(val)) return `${q.label.slice(0, 60)} should only contain numbers.`;
+        if (val.replace(/\D/g, "").length < 7) return `Please enter a valid ${q.label.slice(0, 60)}.`;
+      } else if (!WORK_TEXT_RE.test(val)) {
+        return `${q.label.slice(0, 60)} contains invalid special characters.`;
+      }
+    }
+
+    if (!q.required) continue;
 
     // validValues check (used for consent — must be "Agree")
     if (q.validValues && q.validValues.length > 0) {
