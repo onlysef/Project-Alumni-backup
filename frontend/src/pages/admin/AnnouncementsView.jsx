@@ -385,103 +385,6 @@ export default function AnnouncementsView() {
 
   return (
     <section className={`content admin-view announcements-view view active-view`}>
-      <section className="admin-card">
-        <div className="admin-card-head">
-          <h3>Posted Announcements</h3>
-          <div>
-            <AdminMenu menuKey="announcement-date" label={dateFilter} onSelect={setDateFilter} />
-            <AdminMenu menuKey="announcement-type" label={typeFilter} onSelect={setTypeFilter} />
-            <input
-              className="admin-search"
-              type="text"
-              placeholder="Search announcements..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="table-scroll">
-        <table className="admin-table announcement-table">
-          <thead>
-            <tr>
-              <th>Post Title</th>
-              <th>Description</th>
-              <th>Type</th>
-              <th>Posted By</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.map((r) => (
-              <tr key={r.id}>
-                <td>{toTitleCase(r.title)}</td>
-                <td>{r.description}</td>
-                <td>{r.type}</td>
-                <td>{r.posterName || "—"}</td>
-                <td>
-                  {/* Edit and Delete are both offered for all three sources,
-                      each routed to the matching modal/endpoint — see
-                      handleDelete()/the edit branches below for how an
-                      Event/Job row's real underlying record (not just an
-                      Announcement) gets updated or removed. */}
-                  <div className="announcement-action-menu">
-                    <ActionMenu
-                      actions={["edit", "delete"]}
-                      onSelect={(action) => {
-                        if (action === "edit") {
-                          if (r.source === "event") { setEventEdit(r); return; }
-                          if (r.source === "job") { setJobEdit(r); return; }
-                          setComposer({ row: r });
-                          showToast("Post loaded in composer.");
-                        } else {
-                          handleDelete(r);
-                        }
-                      }}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
-                  No announcements match the current filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        </div>
-        {totalPages > 1 && (
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
-            >
-              ‹ Prev
-            </button>
-            <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
-            >
-              Next ›
-            </button>
-          </div>
-        )}
-      </section>
-
       <div className="announcement-grid">
         <div className="announcement-left-col">
           <section
@@ -590,6 +493,103 @@ export default function AnnouncementsView() {
           )}
         </aside>
       </div>
+
+      <section className="admin-card">
+        <div className="admin-card-head">
+          <h3>Posted Announcements</h3>
+          <div>
+            <AdminMenu menuKey="announcement-date" label={dateFilter} onSelect={setDateFilter} />
+            <AdminMenu menuKey="announcement-type" label={typeFilter} onSelect={setTypeFilter} />
+            <input
+              className="admin-search"
+              type="text"
+              placeholder="Search announcements..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="table-scroll">
+        <table className="admin-table announcement-table">
+          <thead>
+            <tr>
+              <th>Post Title</th>
+              <th>Description</th>
+              <th>Type</th>
+              <th>Posted By</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && (
+              <tr>
+                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                  Loading…
+                </td>
+              </tr>
+            )}
+            {!loading && filtered.map((r) => (
+              <tr key={r.id}>
+                <td>{toTitleCase(r.title)}</td>
+                <td>{r.description}</td>
+                <td>{r.type}</td>
+                <td>{r.posterName || "—"}</td>
+                <td>
+                  {/* Edit and Delete are both offered for all three sources,
+                      each routed to the matching modal/endpoint — see
+                      handleDelete()/the edit branches below for how an
+                      Event/Job row's real underlying record (not just an
+                      Announcement) gets updated or removed. */}
+                  <div className="announcement-action-menu">
+                    <ActionMenu
+                      actions={["edit", "delete"]}
+                      onSelect={(action) => {
+                        if (action === "edit") {
+                          if (r.source === "event") { setEventEdit(r); return; }
+                          if (r.source === "job") { setJobEdit(r); return; }
+                          setComposer({ row: r });
+                          showToast("Post loaded in composer.");
+                        } else {
+                          handleDelete(r);
+                        }
+                      }}
+                    />
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!loading && filtered.length === 0 && (
+              <tr>
+                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                  No announcements match the current filter.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        </div>
+        {totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+            >
+              ‹ Prev
+            </button>
+            <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+            >
+              Next ›
+            </button>
+          </div>
+        )}
+      </section>
 
       <PostComposerModal
         composer={composer}
