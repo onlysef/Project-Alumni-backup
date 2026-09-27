@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { toBlob } from "html-to-image";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
+import acLogo from "../../assets/images/ac-logo.png";
 import { MiniDonut, DistributionBars, TrendLine } from "../../components/common/Charts.jsx";
 
 // Renders the chart data the backend attaches to breakdown-style answers
@@ -1190,7 +1191,8 @@ export default function AiAssistantView() {
                     )}
                   </div>
                 ) : (
-                  <div key={m.id} className="ac-row ac-row-ac">
+                  <div key={m.id} className="ac-row ac-row-ac ac-row-with-avatar">
+                    <img className="ac-avatar" src={acLogo} alt="" aria-hidden="true" />
                     <div className="ac-ac-text">
                       <AssistantResponse
                         text={m.text}
@@ -1230,7 +1232,8 @@ export default function AiAssistantView() {
               )}
 
               {thinking && (
-                <div className="ac-row ac-row-ac">
+                <div className="ac-row ac-row-ac ac-row-with-avatar">
+                  <img className="ac-avatar" src={acLogo} alt="" aria-hidden="true" />
                   <div className="ac-typing" aria-label="AC is thinking">
                     <span className="ac-typing-text">AC is thinking</span>
                     <span className="ac-typing-dots">

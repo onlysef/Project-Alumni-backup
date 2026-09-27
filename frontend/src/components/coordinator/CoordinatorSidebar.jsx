@@ -4,6 +4,7 @@ import Icon from "../common/Icon.jsx";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
 import toptsuLogo from "../../assets/images/tsu-top-header.webp";
+import acLogo from "../../assets/images/ac-logo.png";
 import { coordinatorNavItems } from "../../pages/coordinator/coordinatorData.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { isDrawerViewport, watchDrawerBoundary } from "../../constants/layout.js";
@@ -115,7 +116,7 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
                     if (!collapsed) setOpenMenu(isOpen ? null : item.view);
                   }}
                 >
-                  <span><Icon name={item.icon} /></span>
+                  <span>{item.view === "aiassistant" ? <img className="nav-ac-logo" src={acLogo} alt="" /> : <Icon name={item.icon} />}</span>
                   <span>{item.label}</span>
                   <span className={`nav-caret sidebar-chevron${isOpen ? " open" : ""}`} aria-hidden="true" />
                 </a>
@@ -146,7 +147,7 @@ export function CoordinatorSidebar({ collapsed, items = coordinatorNavItems, onN
               href="#"
               onClick={(e) => { e.preventDefault(); setOpenMenu(null); handleSelect(item.view); }}
             >
-              <span><Icon name={item.icon} /></span>
+              <span>{item.view === "aiassistant" ? <img className="nav-ac-logo" src={acLogo} alt="" /> : <Icon name={item.icon} />}</span>
               <span>{item.label}</span>
             </a>
             </React.Fragment>
