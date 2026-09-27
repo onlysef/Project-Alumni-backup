@@ -85,6 +85,19 @@ export default function AccountsView() {
   const [roleFilter, setRoleFilter]   = useState("Role");
   const [statusFilter, setStatusFilter] = useState("Status");
   const [search, setSearch]           = useState("");
+  // Search is debounced into `appliedSearch` (350ms) — role/status filter
+  // changes fetch immediately, but every keystroke would otherwise fire a
+  // request. Filtering/pagination all now happen server-side (see
+  // fetchUsers below) instead of loading every user in the system and
+  // filtering in memory — that used to also drag along each user's full
+  // base64 avatarUrl for every row, most of which this table never even
+  // displays.
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const searchDebounceRef = React.useRef(null);
+  const [page, setPage]               = useState(1);
+  const [totalPages, setTotalPages]   = useState(1);
+  const [activeCount, setActiveCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
   const [openMenuId, setOpenMenuId]   = useState(null);
@@ -96,7 +109,6 @@ export default function AccountsView() {
   const [partnerships, setPartnerships] = useState([]);
 
   useEffect(() => {
-      fetchUsers();
       fetch(`${API}/admin/partnerships`, { headers: authHeaders() })
         .then((res) => res.json())
         .then((data) => setPartnerships(data.partnerships ?? []))
@@ -109,39 +121,43 @@ export default function AccountsView() {
     }
   }, [roleFilterFromNav]);
 
+  function handleSearchChange(value) {
+    setSearch(value);
+    clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setAppliedSearch(value), 350);
+  }
+
+  // A role/status/search change makes "page 3 of the old filter" meaningless
+  // — reset to page 1 whenever what's being filtered changes, not just when
+  // paging through one fixed result set.
+  useEffect(() => { setPage(1); }, [appliedSearch, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, appliedSearch, roleFilter, statusFilter]);
+
   async function fetchUsers() {
     setLoading(true);
     try {
-      const res  = await fetch(`${API}/admin/users`, { headers: authHeaders() });
+      const params = new URLSearchParams();
+      params.set("page", page);
+      params.set("limit", "50");
+      if (appliedSearch.trim()) params.set("search", appliedSearch.trim());
+      if (roleFilter !== "Role" && roleFilter !== "All") params.set("role", roleFilter);
+      if (statusFilter !== "Status" && statusFilter !== "All") params.set("status", statusFilter);
+      const res  = await fetch(`${API}/admin/users?${params.toString()}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) { showToast(data.message || "Failed to load users."); return; }
       setRows(data.users.map(mapUser));
+      setTotalPages(data.totalPages || 1);
+      setActiveCount(data.activeCount || 0);
+      setPendingCount(data.pendingCount || 0);
     } catch {
       showToast("Could not connect to server.");
     } finally {
       setLoading(false);
     }
-  }
-
-  function visible(r) {
-    const roleMatch   = roleFilter === "Role"   || roleFilter === "All"   || r.role === roleFilter;
-    const statusMatch = statusFilter === "Status" || statusFilter === "All" || r.status === statusFilter;
-    const q = search.trim().toLowerCase();
-    const searchMatch = !q || r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
-    return roleMatch && statusMatch && searchMatch;
-  }
-
-  function applyFilter(choice, which) {
-    const newRole   = which === "role"   ? choice : roleFilter;
-    const newStatus = which === "status" ? choice : statusFilter;
-    if (which === "role")   setRoleFilter(choice);
-    else                    setStatusFilter(choice);
-    const count = rows.filter((r) => {
-      const roleMatch   = newRole === "Role"   || newRole === "All"   || r.role === newRole;
-      const statusMatch = newStatus === "Status" || newStatus === "All" || r.status === newStatus;
-      return roleMatch && statusMatch;
-    }).length;
-    showToast(`${count} item${count === 1 ? "" : "s"} shown.`);
   }
 
   async function handleAction(row, action) {
@@ -255,9 +271,14 @@ export default function AccountsView() {
     });
   }
 
-  const visibleRows    = rows.filter(visible);
-  const allVisSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
-  const someSelected   = visibleRows.some((r) => selected.has(r.id));
+  // Filtering/searching now all happen server-side (fetchUsers), so `rows`
+  // IS the already-filtered current page — no separate "visible" subset to
+  // derive. Select-all is scoped to the current page for the same reason:
+  // with hundreds of accounts spread across pages, "select all" can no
+  // longer mean every account matching the filter system-wide the way it
+  // did when the whole table was loaded into memory at once.
+  const allVisSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const someSelected   = rows.some((r) => selected.has(r.id));
 
   function toggleRow(id) {
     setSelected((prev) => {
@@ -271,20 +292,17 @@ export default function AccountsView() {
     if (allVisSelected) {
       setSelected((prev) => {
         const next = new Set(prev);
-        visibleRows.forEach((r) => next.delete(r.id));
+        rows.forEach((r) => next.delete(r.id));
         return next;
       });
     } else {
       setSelected((prev) => {
         const next = new Set(prev);
-        visibleRows.forEach((r) => next.add(r.id));
+        rows.forEach((r) => next.add(r.id));
         return next;
       });
     }
   }
-
-  const activeCount    = rows.filter((r) => r.status === "Active").length;
-  const pendingCount   = rows.filter((r) => r.status === "Pending").length;
 
   return (
     <section className={`content admin-view view active-view`}>
@@ -319,12 +337,12 @@ export default function AccountsView() {
                 name="accounts-search"
                 placeholder="Search accounts…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 aria-label="Search accounts by name or email"
                 autoComplete="off"
               />
               {search && (
-                <button type="button" className="accounts-search-clear" onClick={() => setSearch("")} aria-label="Clear account search">
+                <button type="button" className="accounts-search-clear" onClick={() => { clearTimeout(searchDebounceRef.current); setSearch(""); setAppliedSearch(""); }} aria-label="Clear account search">
                   ×
                 </button>
               )}
@@ -347,8 +365,8 @@ export default function AccountsView() {
             </button>
             {filtersOpen && (
               <>
-                <AdminMenu menuKey="accounts-role" label={roleFilter} onSelect={(c) => applyFilter(c, "role")} />
-                <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
+                <AdminMenu menuKey="accounts-role" label={roleFilter} onSelect={setRoleFilter} />
+                <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={setStatusFilter} />
               </>
             )}
             <button
@@ -434,7 +452,7 @@ export default function AccountsView() {
               {rows.length === 0 ? (
                 <tr><td colSpan="6" style={{ textAlign: "center", padding: "1.5rem" }}>No accounts found.</td></tr>
               ) : rows.map((r) => (
-                <tr key={r.id} className={`${visible(r) ? "" : "is-hidden"}${selected.has(r.id) ? " row-selected" : ""}`}>
+                <tr key={r.id} className={selected.has(r.id) ? "row-selected" : ""}>
                   <td>
                     {selectionMode && (
                       <input
@@ -462,6 +480,27 @@ export default function AccountsView() {
               ))}
             </tbody>
           </table>
+          </div>
+        )}
+        {totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+            >
+              ‹ Prev
+            </button>
+            <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+            >
+              Next ›
+            </button>
           </div>
         )}
       </section>

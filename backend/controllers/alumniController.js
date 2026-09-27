@@ -738,7 +738,7 @@ const updateMyEmployment = async (req, res) => {
       employment_status, company_name, job_title, industry, work_location,
       salary_range, date_employed, skills, experience,
       contact_email, contact_number, facebook, linkedin,
-      firstName, lastName, middleInitial,
+      firstName, lastName, middleInitial, work_history,
     } = req.body;
 
     // Mirrors validateProfileForm() in AlumniEmploymentDetails.jsx — kept here
@@ -838,6 +838,49 @@ const updateMyEmployment = async (req, res) => {
       return res.status(400).json({ message: 'Please enter a valid LinkedIn profile link.' });
     }
 
+    // Past jobs the alumnus adds separately from their current position
+    // (Resume's Professional Experience is built from current job + this
+    // list — see resumeBuilder.deriveFromProfile). Each entry needs a real
+    // title and a valid, non-future date range — an "ended" job that
+    // finishes in the future, or ends before it starts, doesn't make sense.
+    let normalizedWorkHistory;
+    if (work_history !== undefined) {
+      if (!Array.isArray(work_history)) {
+        return res.status(400).json({ message: 'work_history must be a list.' });
+      }
+      if (work_history.length > 20) {
+        return res.status(400).json({ message: 'You can add up to 20 work history entries.' });
+      }
+      normalizedWorkHistory = [];
+      for (const entry of work_history) {
+        const title       = typeof entry?.title === 'string' ? entry.title.trim() : '';
+        const company     = typeof entry?.company === 'string' ? entry.company.trim() : '';
+        const description = typeof entry?.description === 'string' ? entry.description.trim() : '';
+        if (!title) return res.status(400).json({ message: 'Each work history entry needs a job title.' });
+        if (title.length > 100) return res.status(400).json({ message: 'A work history job title is too long (max 100 characters).' });
+        if (company.length > 100) return res.status(400).json({ message: 'A work history company name is too long (max 100 characters).' });
+        if (description.length > 600) return res.status(400).json({ message: 'A work history description is too long (max 600 characters).' });
+        if (!WORK_TEXT_RE.test(title))   return res.status(400).json({ message: 'A work history job title contains invalid special characters.' });
+        if (company && !WORK_TEXT_RE.test(company)) return res.status(400).json({ message: 'A work history company name contains invalid special characters.' });
+
+        const start = entry?.start_date ? new Date(entry.start_date) : null;
+        const end   = entry?.end_date   ? new Date(entry.end_date)   : null;
+        if (start && Number.isNaN(start.getTime())) return res.status(400).json({ message: 'A work history start date is invalid.' });
+        if (end && Number.isNaN(end.getTime()))     return res.status(400).json({ message: 'A work history end date is invalid.' });
+        if (start && end && end < start) return res.status(400).json({ message: 'A work history end date cannot be before its start date.' });
+        if (end && end > new Date())     return res.status(400).json({ message: "A work history end date can't be in the future — it's a past position." });
+
+        normalizedWorkHistory.push({
+          title,
+          company,
+          employment_type: typeof entry?.employment_type === 'string' ? entry.employment_type.trim().slice(0, 50) : '',
+          start_date: start,
+          end_date: end,
+          description,
+        });
+      }
+    }
+
     const updates = {
       employment_status: employment_status || 'Not Yet Updated',
       company_name:      company_name || 'N/A',
@@ -853,6 +896,7 @@ const updateMyEmployment = async (req, res) => {
       linkedin:          trimmedLinkedin,
       last_updated:      new Date(),
     };
+    if (normalizedWorkHistory !== undefined) updates.work_history = normalizedWorkHistory;
     // Every other field above always lands in `updates`, so clearing one in
     // the form correctly overwrites it back to blank/null. date_employed
     // used to be skipped entirely whenever it was falsy — indistinguishable
@@ -1156,9 +1200,13 @@ const getHomeSummary = async (req, res) => {
       // literally everyone, trading a small chance of missing the single
       // best match for a bounded, predictable query cost on every Home load
       // and 30s poll.
+      // avatarUrl deliberately excluded — this endpoint is also polled every
+      // 30s from the Home dashboard, so fetching a base64 image for all 60
+      // sampled candidates just to render the 3 that survive scoring below
+      // was real, recurring waste. Fetched separately, only for the final 3.
       me?.course
         ? User.find({ role: 'alumni', course: me.course, _id: { $ne: alumniId } })
-            .select('firstName lastName course graduationYear avatarUrl')
+            .select('firstName lastName course graduationYear')
             .limit(60)
             .lean()
         : [],
@@ -1181,7 +1229,6 @@ const getHomeSummary = async (req, res) => {
       return {
         _id: a._id,
         name: `${a.firstName} ${a.lastName}`,
-        avatarUrl: a.avatarUrl || '',
         initials: `${(a.firstName || '')[0] || ''}${(a.lastName || '')[0] || ''}`.toUpperCase(),
         role: cleanEmploymentValue(emp?.job_title) || 'Role not yet updated',
         company: cleanEmploymentValue(emp?.company_name) || 'Not yet updated',
@@ -1200,6 +1247,12 @@ const getHomeSummary = async (req, res) => {
       .sort((a, b) => b.scoreNum - a.scoreNum)
       .slice(0, 3)
       .map(({ scoreNum, ...rest }) => rest);
+
+    if (similarAlumniOut.length) {
+      const similarAvatarRows = await User.find({ _id: { $in: similarAlumniOut.map((r) => r._id) } }, 'avatarUrl').lean();
+      const similarAvatarMap = new Map(similarAvatarRows.map((a) => [String(a._id), a.avatarUrl || '']));
+      similarAlumniOut.forEach((r) => { r.avatarUrl = similarAvatarMap.get(String(r._id)) || ''; });
+    }
 
     // "What needs your attention" showed only the single most recent item
     // per category, so a second/third event (or news post) within the same
@@ -1239,19 +1292,30 @@ const cleanEmploymentValue = (v) => (v && !PLACEHOLDER_EMPLOYMENT_VALUES.has(v) 
 // fake profiles with no backend behind them at all.
 const getSuggestedAlumni = async (req, res) => {
   try {
-    const { course, year, search } = req.query;
+    const { course, year, search, industry, location } = req.query;
     const limit = Math.min(600, Math.max(1, parseInt(req.query.limit, 10) || 60));
 
     const match = { role: 'alumni', status: 'active', _id: { $ne: req.user.id } };
     if (course && course !== 'All') match.course = course;
     if (year && year !== 'All') match.graduationYear = Number(year);
 
-    const [me, myEmp, users, allCourses, allYears] = await Promise.all([
+    const [me, myEmp, users, allCourses, allYears, allIndustries, allLocations] = await Promise.all([
       User.findById(req.user.id).select('course graduationYear').lean(),
       AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
-      User.find(match, 'firstName lastName email course graduationYear avatarUrl').sort({ lastName: 1 }).lean(),
+      // avatarUrl deliberately excluded here — it's a base64 data URI (can
+      // run to 1-2MB of text) and isn't used by computeMatchScore, but this
+      // query used to fetch it for EVERY matching alumnus just to score and
+      // then discard most of them (only `limit`, default 60, are ever
+      // returned). Fetched separately below, only for the alumni that
+      // actually survive scoring/filtering/pagination.
+      User.find(match, 'firstName lastName email course graduationYear').sort({ lastName: 1 }).lean(),
       User.distinct('course', { role: 'alumni', status: 'active', course: { $nin: [null, ''] } }),
       User.distinct('graduationYear', { role: 'alumni', status: 'active', graduationYear: { $ne: null } }),
+      // Industry/location only live on AlumniEmployment (not User), so the
+      // filter dropdown options come from that collection instead — same
+      // shape as the course/year distincts above.
+      AlumniEmployment.distinct('industry', { industry: { $nin: [null, ''] } }),
+      AlumniEmployment.distinct('work_location', { work_location: { $nin: [null, ''] } }),
     ]);
 
     const ids = users.map((u) => u._id);
@@ -1270,7 +1334,6 @@ const getSuggestedAlumni = async (req, res) => {
         _id: u._id,
         name: `${u.firstName} ${u.lastName}`,
         email: u.email || '',
-        avatarUrl: u.avatarUrl || '',
         role: cleanEmploymentValue(emp?.job_title) || 'Not yet updated',
         company: cleanEmploymentValue(emp?.company_name) || 'Not yet updated',
         industry: cleanEmploymentValue(emp?.industry),
@@ -1285,6 +1348,12 @@ const getSuggestedAlumni = async (req, res) => {
       };
     });
 
+    // industry/location are filtered here (post-join) rather than in the
+    // User `match` above, since both only exist on the joined
+    // AlumniEmployment record, not the User document itself.
+    if (industry && industry !== 'All') results = results.filter((r) => r.industry === industry);
+    if (location && location !== 'All') results = results.filter((r) => r.location === location);
+
     if (search) {
       const q = search.toLowerCase();
       results = results.filter((r) => `${r.name} ${r.role} ${r.company}`.toLowerCase().includes(q));
@@ -1297,12 +1366,23 @@ const getSuggestedAlumni = async (req, res) => {
     const total = results.length;
     results = results.slice(0, limit);
 
+    // avatarUrl fetched here instead — only for the alumni actually being
+    // returned, not the whole scored candidate pool (see the comment on the
+    // User.find above).
+    if (results.length) {
+      const avatarRows = await User.find({ _id: { $in: results.map((r) => r._id) } }, 'avatarUrl').lean();
+      const avatarMap = new Map(avatarRows.map((a) => [String(a._id), a.avatarUrl || '']));
+      results = results.map((r) => ({ ...r, avatarUrl: avatarMap.get(String(r._id)) || '' }));
+    }
+
     res.json({
       alumni: results,
       total,
       filters: {
         courses: allCourses.filter(Boolean).sort(),
         years: allYears.filter(Boolean).sort((a, b) => b - a),
+        industries: allIndustries.filter(Boolean).sort(),
+        locations: allLocations.filter(Boolean).sort(),
       },
     });
   } catch (err) {
@@ -2318,7 +2398,7 @@ const getMyResume = async (req, res) => {
   }
 };
 
-const RESUME_FIELDS = ['name', 'address', 'phone', 'email', 'linkedin', 'summary', 'skills', 'experience', 'education', 'certifications', 'projects', 'languages'];
+const RESUME_FIELDS = ['name', 'address', 'phone', 'email', 'linkedin', 'avatarUrl', 'summary', 'skills', 'experience', 'education', 'certifications', 'projects', 'languages'];
 
 const updateMyResume = async (req, res) => {
   try {
@@ -2413,14 +2493,10 @@ const logApplication = async (req, res) => {
       return res.status(400).json({ message: 'Job url and title are required.' });
     }
 
-    // Gate applying on a minimum skill match — the alumnus has to close the
-    // gap on their profile first. Skipped for a job already applied to (so a
-    // repeat click can't strand an existing application) and for jobs with
-    // no computed match at all.
+    // Applying is always the alumnus's own call, regardless of computed skill
+    // match — a low match is shown to them (see the match ribbon/skill-gap
+    // panel) as information, not as a gate they have to clear first.
     const alreadyLogged = await JobApplication.exists({ alumni_id: req.user.id, url });
-    if (!alreadyLogged && typeof match === 'number' && match < 50) {
-      return res.status(400).json({ message: 'You need at least a 50% skill match to apply. Add the missing skills to your profile first.' });
-    }
 
     // "internal:<jobId>" is how partner-postings (scoreInternalJobs) tag a
     // job with no real external URL — recovering the real Job's _id here is

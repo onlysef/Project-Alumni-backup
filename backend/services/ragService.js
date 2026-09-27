@@ -78,9 +78,10 @@ const IDENTITY_RESPONSE = `I am AC, the AI Assistant for the TSU Alumni Portal. 
 // metrics and never mentioned events at all, silently under-selling a real
 // capability whenever someone asked "what can you help with").
 const HELP_RESPONSE = `I am able to answer questions regarding the Graduate Tracer Study records, including:
-- Statistics: "How many graduates are employed?", "Average salary", "Graduates per program"
+- Statistics: "How many graduates are employed?", "Graduates per program"
 - Descriptive information: "What skills do graduates commonly report?", "What companies employ graduates?"
 - Demographics: employment status, industries, board examination results, further studies, competencies
+- Career growth: job promotions, trainings and seminars pursued after graduating
 - Events: upcoming and past event listings, attendance counts, attendee records, event feedback ratings and comments
 
 I am only able to answer using data available in the tracer study and event records, and I am unable to respond to questions outside this scope.`;
@@ -102,13 +103,32 @@ I am only able to answer using data available in the tracer study and event reco
 // tightened here so the help answer stops promising more than it can do.
 const HELP_CAPABILITIES = `- Tracer study statistics: employment rate, industries, board exam/licensure results, program and batch breakdowns, further studies, work location
 - Competency self-ratings: how alumni rate themselves on technical skills, communication, teamwork, problem-solving, adaptability, and similar categories
+- Career growth: job promotions, trainings and seminars pursued after graduating
 - Company lookup: which alumni work at one specific named company (not a ranked list of top employers)
 - Demographics: employment status, gender
 - Events: event listings (upcoming or past), attendance counts, who attended a specific event
 - Event feedback: ratings and comments alumni gave for a specific event
 AC only answers using Tarlac State University (TSU) alumni tracer-study and event data — it does not answer unrelated general-knowledge questions.`;
 
-const UNKNOWN_RESPONSE = `I am designed to answer questions related to the Graduate Tracer Study records only, and I am unable to respond to unrelated inquiries.`;
+// Single shared wording for every "I genuinely can't answer this" case —
+// unrecognized/gibberish input, off-topic questions, and a search (structured
+// or RAG) that came back with nothing relevant. Previously each of these had
+// its own separately-worded refusal (UNKNOWN_RESPONSE/UNCLEAR_RESPONSE/
+// LOW_SIMILARITY_RESPONSE/QUALITATIVE_REFUSAL_SENTENCE/NO_CONTEXT_RESPONSE
+// below all said something different), which reads as inconsistent behavior
+// from the outside even though every one of them is really the same
+// situation: no reliable answer to give. This does NOT touch the distinct,
+// legitimate responses that aren't this situation — a specific clarifying
+// question (e.g. "which college?"), a real zero-match answer to a
+// well-understood query ("No alumni found matching BSIT 2024."), an
+// access-denied explanation, or the offensive-language notice all stay as
+// they were.
+// "I am" not "I'm" — SYSTEM_PROMPT rule 15 below bans contractions in every
+// answer, "including refusals," so this keeps that formal register instead
+// of contradicting it.
+const FALLBACK_RESPONSE = `I am sorry, I could not find relevant information for that question. Could you please rephrase your question or ask about the system's features, alumni data, employment trends, or reports?`;
+
+const UNKNOWN_RESPONSE = FALLBACK_RESPONSE;
 
 const OFFENSIVE_RESPONSE = `Please keep this conversation respectful. I am here to assist with questions regarding the Graduate Tracer Study — kindly rephrase your message without the use of offensive language.`;
 
@@ -116,9 +136,9 @@ const OFFENSIVE_RESPONSE = `Please keep this conversation respectful. I am here 
 // keyboard-mash token) — same early-return shape as offensive/greeting
 // below: answered directly, no DB or LLM call needed, since there's no real
 // question here to search for.
-const UNCLEAR_RESPONSE = `I was unable to understand your message. Could you please rephrase your question regarding the Graduate Tracer Study records?`;
+const UNCLEAR_RESPONSE = FALLBACK_RESPONSE;
 
-const LOW_SIMILARITY_RESPONSE = `I was unable to find relevant information in the graduate records.`;
+const LOW_SIMILARITY_RESPONSE = FALLBACK_RESPONSE;
 
 // College codes recognized in a coordinator's question, purely to word the
 // college-scope refusal message accurately — see the collegeScope block in
@@ -974,8 +994,9 @@ function extractAboutPersonName(question) {
 
 // Referenced from inside SYSTEM_PROMPT below (rule 2) AND checked verbatim
 // after generation to catch (and strip) cases where the model says this AND
-// keeps talking, instead of stopping here as instructed.
-const QUALITATIVE_REFUSAL_SENTENCE = `I do not have sufficient data in the tracer study records to answer that accurately.`;
+// keeps talking, instead of stopping here as instructed. Same shared wording
+// as FALLBACK_RESPONSE above — see its comment for why.
+const QUALITATIVE_REFUSAL_SENTENCE = FALLBACK_RESPONSE;
 
 // Every LLM-facing prompt explicitly instructs "always answer in English" —
 // but a Filipino-phrased question can still pull the model into answering in
@@ -1026,7 +1047,7 @@ STRICT RULES — follow these exactly:
 14. Always answer in English, even if the user's question (or the retrieved context itself, e.g. an alumnus's own Tagalog/Taglish feedback comment) is in Tagalog, Taglish, or any other language — understand it in whatever language it's written, but always answer in English.
 15. Always respond in a formal, professional register — no contractions ("don't", "can't", "I'm"; write "do not", "cannot", "I am" instead), no exclamation marks, and no casual filler ("hey", "yeah", "gonna", "kinda"). This applies to every answer, including refusals.`;
 
-const NO_CONTEXT_RESPONSE = `I do not have sufficient information in the tracer study records to answer that accurately. You may try rephrasing your question, or inquire about employment rates, industries, board examinations, competency ratings, or program breakdowns, which I am able to answer directly.`;
+const NO_CONTEXT_RESPONSE = FALLBACK_RESPONSE;
 
 function assembleContext(chunks) {
   const groups = {
@@ -2229,9 +2250,14 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         AiFlag.create({ type: 'unanswered', question, detail: 'unknown', answer: UNKNOWN_RESPONSE, sourceType: 'chat' }).catch(() => {});
         return finish({ answer: UNKNOWN_RESPONSE, sources: [], type: 'unknown' });
       }
+      // The askedCollege branch is a genuinely distinct, specific answer
+      // (access denied to a named OTHER college) and keeps its own wording —
+      // only the generic "couldn't figure out what this question wants"
+      // case below is the same situation FALLBACK_RESPONSE covers everywhere
+      // else.
       const msg = askedCollege
         ? `As a ${collegeScope} coordinator, you may only access ${collegeScope} alumni tracer study data — access to ${askedCollege} or other colleges' records is not available.`
-        : `There is no tracer study data matching that within ${collegeScope} alumni records.`;
+        : FALLBACK_RESPONSE;
       await dbAnswerThinkingDelay();
       if (onToken) onToken(msg);
       AiFlag.create({ type: 'unanswered', question, detail: 'college_scope_no_data', answer: msg, sourceType: 'chat' }).catch(() => {});

@@ -220,7 +220,12 @@ const TOPIC_PATTERNS = {
   // phrasings (updated/not updated/recently updated/added this month) all
   // produced the identical, wrong answer.
   tracer_activity: /\b(?:updat|submitt|resubmitt|edit|modif|chang)\w*\b.{0,20}\btracer\b|\btracer\b.{0,20}\b(?:updat|submitt|resubmitt|edit|modif|chang)\w*\b|\brecords?\b.{0,15}\b(?:were|have been|got|being)?\s*added\b|\badded\s+(?:this|last)\s+(?:month|week|year)\b/i,
-  count:           /\b(how many (?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?|people)|how many (passed|failed|took|pursued|work\w*|did)|total (alumni|records?|graduates?|respondents?)|number of (alumni|records?|graduates?|respondents?)|how many are there|how many alumni are|ilang?\b.{0,20}\b(alumni|guraduwado|nagtapos|respondents?))\b/i,
+  // "count of (?:\w+\s+){0,4}(alumni|...)" added — "count of employed
+  // alumni"/"give me a count of BSIT graduates" is as natural a phrasing as
+  // "how many"/"total"/"number of" right above it, but matched none of
+  // them (all three require their own specific lead-in word, none of which
+  // is "count").
+  count:           /\b(how many (?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?|people)|how many (passed|failed|took|pursued|work\w*|did)|total (alumni|records?|graduates?|respondents?)|number of (alumni|records?|graduates?|respondents?)|count\s+of\s+(?:\w+\s+){0,4}(alumni|records?|graduates?|respondents?)|how many are there|how many alumni are|ilang?\b.{0,20}\b(alumni|guraduwado|nagtapos|respondents?))\b/i,
   // "percentage of (?:\w+\s+){0,3}(graduates?|alumni)" — was bare-adjacent
   // only ("percentage of graduates"), so an informal, prefix-less phrasing
   // like "percentage of BSIT graduates" (a program name sitting between "of"
@@ -238,7 +243,17 @@ const TOPIC_PATTERNS = {
   // this pattern entirely and fell all the way through to the generic "I
   // don't have enough data" refusal instead of answering.
   rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|(un)?employment\s+rate|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job|porsyento|porsiyento)\b/i,
-  overview:        /\b(tracer survey activity|tracer study activity|overview|summary|overall|general (data|info|result|stat)|show.*tracer|tracer.*result|employment\s+breakdown|employment\s+data|employment\s+statistic|buod)\b/i,
+  // "give me tracer study information" (and similar "tracer ... info/
+  // information/details" phrasings, either order) used to match NONE of the
+  // alternatives below — "general (data|info|...)" only fires with the
+  // literal word "general" right before it, and "tracer.*result" doesn't
+  // cover "information"/"details" at all. With no TOPIC_PATTERNS match,
+  // this fell all the way through to the college-scope "no data" fallback
+  // in ragService.js, which is actively WRONG (not merely unhelpful) — it
+  // told a CCS coordinator there was no tracer data for their own college,
+  // when the college has plenty; the question was just too generic to hit
+  // any specific stat, not actually unanswerable.
+  overview:        /\b(tracer survey activity|tracer study activity|overview|summary|overall|general (data|info|information|result|stat)|show.*tracer|tracer.*result|tracer.{0,20}\b(info|information|details)\b|\b(info|information|details)\b.{0,20}tracer|employment\s+breakdown|employment\s+data|employment\s+statistic|buod)\b/i,
   // "What are the most/least common job positions among alumni?" — checked
   // before `industry` (job titles vs industries are different fields
   // entirely) and before falling to the generic EMPLOYMENT_SIGNAL fallback
@@ -249,7 +264,12 @@ const TOPIC_PATTERNS = {
   // Yes/No/Self-Employed/Never-Employed status breakdown instead of an
   // actual ranked list of job titles — identical wrong answer either way,
   // completely ignoring what was actually asked.
-  job_positions:   /\b(?:most|least)\s+common\s+(?:job\s+)?(?:positions?|titles?|occupations?|roles?)\b|\bcommon(?:est)?\s+job\s+(?:positions?|titles?)\b|\btop\s+job\s+(?:positions?|titles?)\b|\bjob\s+(?:positions?|titles?)\b.{0,15}\b(?:most|least|common)\b/i,
+  // Last alternative added — same "X that has/with the highest/most" gap
+  // fixed for BY_PROGRAM_QUESTION_PATTERN above: "the role with the most
+  // graduates" or "the job position that has the most alumni" matched none
+  // of the "common"/"top" alternatives, which all require that specific
+  // wording adjacent to the noun.
+  job_positions:   /\b(?:most|least)\s+common\s+(?:job\s+)?(?:positions?|titles?|occupations?|roles?)\b|\bcommon(?:est)?\s+job\s+(?:positions?|titles?)\b|\btop\s+job\s+(?:positions?|titles?)\b|\bjob\s+(?:positions?|titles?)\b.{0,15}\b(?:most|least|common)\b|\b(?:job\s+)?(?:positions?|titles?|occupations?|roles?)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top)\b/i,
   // "What companies employ the most alumni?" — same gap as job_positions
   // just above: a bare "compan(y/ies)"+"employ" satisfies EMPLOYMENT_SIGNAL
   // with no dedicated topic of its own, so this fell all the way through to
@@ -259,12 +279,26 @@ const TOPIC_PATTERNS = {
   // is elsewhere ONLY ever a narrowing filter (filters.company, "how many
   // work AT Sutherland") — there was no "rank companies by headcount"
   // question shape at all before this.
-  top_companies:   /\b(?:what|which)\s+compan(?:y|ies)\b.{0,25}\b(?:employ|hire|hiring)\w*\b|\b(?:top|most|least)\s+compan(?:y|ies)\b|\bcompan(?:y|ies)\b.{0,20}\b(?:hire|hiring|employ)\w*\b.{0,15}\balumni\b/i,
+  // Last alternative added — "the company that has the most alumni"/"the
+  // company with the highest number of hires" matched nothing above (all
+  // require "employ/hire" verbs or "top/most/least" directly before
+  // "company"), the same "that has/with" gap as job_positions and
+  // BY_PROGRAM_QUESTION_PATTERN.
+  top_companies:   /\b(?:what|which)\s+compan(?:y|ies)\b.{0,25}\b(?:employ|hire|hiring)\w*\b|\b(?:top|most|least)\s+compan(?:y|ies)\b|\bcompan(?:y|ies)\b.{0,20}\b(?:hire|hiring|employ)\w*\b.{0,15}\balumni\b|\bcompan(?:y|ies)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top)\b/i,
   industry:        /\bindustr|industriya/i,
   work_type:       /\b(government|private|sector|work type|type of (employment|work)|employment type|gobyerno|pribado)\b/i,
   job_relevance:   /\b(related|relevance|relevant\s+to\s+(?:the(?:ir)?\s+)?(?:course|study|program|degree|field)|align(?:s|ed|ment)?\s+(?:with|to)\b.{0,20}\b(?:course|study|studied|program|degree|field))\b|\bkaugnay\s+(?:ng|sa)\s+(?:kurso|propesyon|larangan|programa)\b|\bmay\s+kinalaman\s+sa\s+(?:kurso|propesyon|larangan|programa)\b/i,
   further_studies: /\b(further studies?|graduate studies?|masters?|phd|post.?grad|further education|nagpatuloy.{0,15}pag-?aaral|magpapatuloy.{0,15}pag-?aaral)\b/i,
   licensure:       /\blicens\w*\b|\b(board\s+exam|professional\s+exam|prc|lisensya)\b|\b(tak\w*|pass\w*|fail\w*).{0,20}\bexam\b/i,
+  // New topic — Graduate.hasPromotion had a real, normalized, populated
+  // field (see queryPromotion()'s own comment) but no TOPIC_PATTERNS entry
+  // to ever route a question to it at all.
+  promotion:       /\bpromot(?:ed|ion|ions)?\b|\bna-?promote\b|\bpinromote\b|\bnapromote\b/i,
+  // New topic — same gap as promotion above, for Graduate.furtherTraining.
+  // Distinct from further_studies (graduate school) — trainings/seminars/
+  // workshops are a completely different tracer-form question with no
+  // overlap in wording, so this can't collide with that pattern.
+  further_training: /\btrainings?\b|\bseminars?\b|\bworkshops?\b|\bsumali\s+sa\s+training\b|\bnag-?training\b/i,
   // Bare "rating(s)" ADDED — the only thing "rating" ever refers to in this
   // dataset is the competency self-assessment scores (Excellent/Competent/
   // .../Non-Acceptable per category); there's no other "rating" concept for
@@ -288,9 +322,24 @@ const TOPIC_PATTERNS = {
   // named skills like Python/Java, not an abstract rating — this restores
   // that as its own topic pointing at the real underlying field.
   skills_list:     /\bskills?\b/i,
-  work_location:   /\b(local(?:ly)?|abroad|work location|place of work|overseas|lokal|ibang\s+bansa)\b/i,
-  by_program:      /\b(by program|by course|per program|per course|each program|program breakdown|bawat\s+(kurso|programa)|per\s+(kurso|programa))\b/i,
-  by_year:         /\b(by (batch|year|graduation)|per (batch|year)|each (batch|year)|year breakdown|batch breakdown|bawat\s+taon|kada\s+taon|per\s+taon)\b/i,
+  // "domestic(ally)"/"international(ly)"/"OFW(s)" added — real synonyms for
+  // local/abroad that never matched before ("OFW" — Overseas Filipino
+  // Worker — is the single most common everyday PH term for "works
+  // abroad," arguably more common in casual speech than the literal word
+  // "abroad" itself). \bofws?\b explicit (not folded into the shared \b...\b
+  // group) since "OFW" needs its own plural "s" handled the same way
+  // "graduates?" etc. do elsewhere in this file.
+  work_location:   /\b(local(?:ly)?|abroad|work location|place of work|overseas|domestic(?:ally)?|international(?:ly)?|lokal|ibang\s+bansa)\b|\bofws?\b/i,
+  // Last alternative on each — "the program that has the most graduates"/
+  // "which program has the most graduates"/"the batch with the most
+  // alumni" all previously required literal "by/per/each program|batch"
+  // wording to route to the per-program/per-year breakdown at all; a plain
+  // superlative headcount question with none of that wording matched
+  // nothing here (or anything else) and fell through unanswered — same
+  // "that has/with" gap as job_positions/top_companies/
+  // BY_PROGRAM_QUESTION_PATTERN above.
+  by_program:      /\b(by program|by course|per program|per course|each program|program breakdown|bawat\s+(kurso|programa)|per\s+(kurso|programa))\b|\b(?:program|course|degree)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top|more|fewer)\b/i,
+  by_year:         /\b(by (batch|year|graduation)|per (batch|year)|each (batch|year)|year breakdown|batch breakdown|bawat\s+taon|kada\s+taon|per\s+taon)\b|\b(?:batch|year)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top|more|fewer)\b/i,
   // lgbt\w* also covers "lgbtq"/"lgbtqia"/"lgbtqia+" (the actual stored
   // value) — the survey's gender field only has one umbrella option for
   // this ("LGBTQIA+"), not separate gay/lesbian/trans/etc. categories, so
@@ -714,6 +763,28 @@ function extractFilters(question) {
       filters.industry = 'private';
     }
   }
+  // Bare abbreviation captured verbatim by path 1/2 above ("in the IT
+  // industry", "working in CS") — Graduate.industry stores the same
+  // full spelled-out names as Graduate.program ("Information Technology"),
+  // which does NOT contain "IT" as a substring, so leaving the raw
+  // abbreviation in filters.industry made the later $regex match nothing
+  // even when real matching records existed (verified live: "female BSIT
+  // 2022-2024 alumni working in the IT industry" has 2 real matches but
+  // this bug reported 0). NASA_INDUSTRY_ABBR/FIELD_RELATED_ABBR above
+  // already expand this same abbreviation for other phrasings ("nasa IT",
+  // "IT jobs/related") — apply the same expansion here for whatever path
+  // 1/2 captured verbatim.
+  if (filters.industry) {
+    const BARE_INDUSTRY_ABBR = {
+      IT: 'Information Technology',
+      CS: 'Computer Science',
+      IS: 'Information Systems',
+      IM: 'Information Management',
+    };
+    const expansion = BARE_INDUSTRY_ABBR[filters.industry.toUpperCase()];
+    if (expansion) filters.industry = expansion;
+  }
+
   // "who does NOT work in IT" / "not working in the government sector" — the
   // industry was matched correctly above, but as a POSITIVE filter; if a
   // negation word sits right before the verb phrase that introduced it, the
@@ -1319,7 +1390,15 @@ function withChart(text, { type = 'donut', title, rows, labelField = '_id', limi
 // single-number queryRate() instead of the by-program ranking actually
 // asked for. The 2nd/3rd alternatives catch that shape (and "rank the
 // programs"/"programs ranked") without requiring exact adjacency.
-const BY_PROGRAM_QUESTION_PATTERN = /\b(?:which|what)\s+(?:program|course|degree)\b|\branking\s+of\s+(?:programs?|courses?)\b|\b(?:programs?|courses?)\s+(?:ranking|ranked)\b|\brank(?:ed)?\s+(?:the\s+)?(?:programs?|courses?)\b/i;
+//
+// The last alternative catches a DIFFERENT common phrasing that still
+// slipped through all of the above: "the course THAT HAS the highest
+// employment rate" / "the program WITH the lowest rate" — no "which"/"what"
+// at all, so this answered with the plain overall rate instead of ranking
+// by program. Caught live: "how about the course that has the highest
+// employment rate?" answered with the same generic 69.0% overall figure a
+// completely unfiltered "what is the employment rate" question would get.
+const BY_PROGRAM_QUESTION_PATTERN = /\b(?:which|what)\s+(?:program|course|degree)\b|\branking\s+of\s+(?:programs?|courses?)\b|\b(?:programs?|courses?)\s+(?:ranking|ranked)\b|\brank(?:ed)?\s+(?:the\s+)?(?:programs?|courses?)\b|\b(?:program|course|degree)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:highest|lowest|best|worst)\b/i;
 
 const YES_RE = /^yes\b/i;
 
@@ -2083,6 +2162,74 @@ async function queryFurtherStudies(filters) {
     { _id: 'Did not pursue', count: notPursued },
   ].filter(r => r.count > 0);
   return withChart(out, { type: 'donut', title: 'Further Education', rows: chartRows });
+}
+
+// Graduate.hasPromotion — populated from the tracer form's "Have you been
+// promoted in your current job?" Yes/No question (see
+// alumniController.js:499/aiController.js:41) but had no TOPIC_PATTERNS
+// entry or query function at all until now, so a question like "how many
+// alumni were promoted?" matched nothing and fell through to the generic
+// refusal despite the data being right there, already normalized and ready
+// to query — same shape as queryFurtherStudies() just above.
+async function queryPromotion(filters) {
+  const base = stablePipeline(filters);
+  const [totalRows, promotedRows] = await Promise.all([
+    Graduate.aggregate([...base, { $count: 'total' }]),
+    Graduate.aggregate([
+      ...base,
+      { $match: { hasPromotion: { $regex: '^yes', $options: 'i' } } },
+      { $count: 'total' },
+    ]),
+  ]);
+  const total        = totalRows[0]?.total ?? 0;
+  const promoted     = promotedRows[0]?.total ?? 0;
+  const notPromoted  = total - promoted;
+  if (total === 0) return null;
+
+  const lbl = filterLabel(filters);
+  const gPrefix = genderPrefix(filters);
+  let out = `**Job promotion statistics${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`;
+  out += `- Promoted in their current job: **${promoted}** (${pct(promoted, total)})\n`;
+  out += `- Not promoted: **${notPromoted}** (${pct(notPromoted, total)})\n`;
+  out += `\nOut of **${total}** ${gPrefix}respondents.`;
+  const chartRows = [
+    { _id: 'Promoted', count: promoted },
+    { _id: 'Not promoted', count: notPromoted },
+  ].filter(r => r.count > 0);
+  return withChart(out, { type: 'donut', title: 'Job Promotion', rows: chartRows });
+}
+
+// Graduate.furtherTraining — same gap and same fix shape as hasPromotion
+// above, populated from the "Have you pursued any trainings after
+// graduating?" Yes/No question. Distinct from `further_studies`
+// (Graduate.furtherEducation — graduate school/masters/PhD), which never
+// covered trainings/seminars/workshops at all.
+async function queryFurtherTraining(filters) {
+  const base = stablePipeline(filters);
+  const [totalRows, trainedRows] = await Promise.all([
+    Graduate.aggregate([...base, { $count: 'total' }]),
+    Graduate.aggregate([
+      ...base,
+      { $match: { furtherTraining: { $regex: '^yes', $options: 'i' } } },
+      { $count: 'total' },
+    ]),
+  ]);
+  const total       = totalRows[0]?.total ?? 0;
+  const trained      = trainedRows[0]?.total ?? 0;
+  const notTrained   = total - trained;
+  if (total === 0) return null;
+
+  const lbl = filterLabel(filters);
+  const gPrefix = genderPrefix(filters);
+  let out = `**Post-graduation training/seminar attendance${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`;
+  out += `- Pursued trainings/seminars after graduating: **${trained}** (${pct(trained, total)})\n`;
+  out += `- Did not pursue any: **${notTrained}** (${pct(notTrained, total)})\n`;
+  out += `\nOut of **${total}** ${gPrefix}respondents.`;
+  const chartRows = [
+    { _id: 'Pursued trainings/seminars', count: trained },
+    { _id: 'Did not pursue any', count: notTrained },
+  ].filter(r => r.count > 0);
+  return withChart(out, { type: 'donut', title: 'Further Training', rows: chartRows });
 }
 
 const COMP_LABEL = {
@@ -3377,7 +3524,20 @@ const EVENT_NAME_TRIGGER = /(?:attend(?:ed|ees|ance)?|about|for|of|dumalo|pagdal
 
 function extractEventName(question) {
   const m = question.match(EVENT_NAME_TRIGGER);
-  return m ? m[1].trim() : null;
+  if (!m) return null;
+  const name = m[1].trim();
+  // A generic "how many attended THE EVENT?" (no real name at all) still
+  // matches EVENT_NAME_TRIGGER, capturing the bare trigger word "event(s)"
+  // itself as if it were the title — resolveEvent() then token-matched that
+  // against every event's title looking for the literal substring "event",
+  // which silently resolved to whichever event happened to have "Event"
+  // literally in its name (e.g. one titled "Test Event") instead of
+  // recognizing the question never named a specific event and asking which
+  // one was meant. Caught live: "how many attended the event?" answered
+  // "0 alumni attended Test Event" — a real event, just not the one (any
+  // one) the question was actually about.
+  if (/^events?$/i.test(name)) return null;
+  return name;
 }
 
 // Same token-matching approach queryPersonLookup() uses for alumni names
@@ -5035,6 +5195,8 @@ async function queryInner(question, seedFilters = {}) {
     // of the same single-count shape the English phrasing got.
     further_studies: () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.furtherEducation ? queryCount(filters) : queryFurtherStudies(filters),
     licensure:       () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.tookExam ? queryCount(filters) : queryLicensure(filters),
+    promotion:        () => queryPromotion(filters),
+    further_training: () => queryFurtherTraining(filters),
     competencies:    () => queryCompetencies(filters, wantsRankHighest()),
     work_location:   () => BY_PROGRAM_QUESTION_PATTERN.test(question)
       ? queryWorkLocationByProgram(filters, filters.workLocation || 'abroad')
@@ -5212,6 +5374,8 @@ const RELATED_TOPICS = {
   job_positions:   ['top_companies', 'skills_list', 'industry'],
   top_companies:   ['job_positions', 'industry', 'rate'],
   skills_list:     ['competencies', 'job_positions', 'rate'],
+  promotion:        ['rate', 'further_training', 'by_program'],
+  further_training: ['promotion', 'competencies', 'by_program'],
 };
 
 const FOLLOWUP_QUESTION = {
@@ -5232,6 +5396,8 @@ const FOLLOWUP_QUESTION = {
   job_positions:   (pw) => `What are the most common job positions among ${pw}alumni?`,
   top_companies:   (pw) => `Which companies employ the most ${pw}alumni?`,
   skills_list:     (pw) => `What skills do ${pw}alumni have?`,
+  promotion:        (pw) => `How many ${pw}alumni were promoted in their current job?`,
+  further_training: (pw) => `How many ${pw}alumni pursued trainings or seminars after graduating?`,
   // Event-context follow-ups — the 3 below only fire when the answer just
   // given already resolved one specific event (filters.eventTitle set by the
   // aggregationService wrapper); otherwise they return null and
@@ -5252,9 +5418,27 @@ const FOLLOWUP_QUESTION = {
 
 function suggestFollowUps(topic, filters = {}) {
   const progWord = filters.program ? `${filters.programLabel || filters.program} ` : '';
+  // Gender folded into the same prefix as program ("female BSIT ") — was
+  // dropped from every suggested chip entirely before this. A question like
+  // "how many male BSIT alumni are employed?" suggested generic,
+  // gender-blind follow-ups ("What are the most common job positions among
+  // BSIT alumni?") that silently lost half of what was actually asked.
+  const pw = `${genderPrefix(filters)}${progWord}`;
+  // Batch/year — same gap as gender, just for graduation year. Reuses
+  // filterLabel()'s own "(Batch 2024)"/"(2020 to 2023)" formatting, but only
+  // fed the year-related keys (not filters.program) so program isn't
+  // mentioned a second time here on top of already being in `pw` above.
+  const yearSuffix = filterLabel({
+    yearGraduated: filters.yearGraduated, yearsGraduated: filters.yearsGraduated,
+    yearFrom: filters.yearFrom, yearTo: filters.yearTo,
+  });
   const related   = (RELATED_TOPICS[topic] || ['rate', 'industry', 'by_program'])
     .filter(t => t !== topic && FOLLOWUP_QUESTION[t]);
-  return related.map(t => FOLLOWUP_QUESTION[t](progWord, filters)).filter(Boolean).slice(0, 3);
+  return related
+    .map(t => FOLLOWUP_QUESTION[t](pw, filters))
+    .filter(Boolean)
+    .map(q => `${q}${yearSuffix}`)
+    .slice(0, 3);
 }
 
 // detectTopic/extractFilters/extractPersonNames are exported in addition to

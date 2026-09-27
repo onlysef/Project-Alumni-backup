@@ -5,6 +5,7 @@ import { jsPDF } from "jspdf";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { apiFetch } from "../../services/api.js";
 import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
+import { classifySkill } from "../../utils/skillClassification.js";
 
 // Every field below used to be an editable, SAVEABLE default (see
 // useState(EMPTY_RESUME) further down) — a brand-new alumnus with no
@@ -17,11 +18,15 @@ import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPrevi
 // duplication with none of the safety, and the real default is now
 // genuinely empty.
 const EMPTY_RESUME = {
-  name: "", address: "", phone: "", email: "", linkedin: "", summary: "",
-  skills: "", experience: "", education: "", certifications: "", projects: "", languages: "",
+  name: "", address: "", phone: "", email: "", linkedin: "", avatarUrl: "", summary: "",
+  // Unlike every other field here, "experience" is a list of entries (see
+  // resumeBuilder.deriveFromProfile on the backend) — it's built from the
+  // alumnus's current job + Work History in Employment Details, never
+  // hand-typed here, so it's never a free-text string like the rest.
+  skills: "", experience: [], education: "", certifications: "", projects: "", languages: "",
 };
 
-const RESUME_FIELDS = ["name", "address", "phone", "email", "linkedin", "summary", "skills", "experience", "education", "certifications", "projects", "languages"];
+const RESUME_FIELDS = ["name", "address", "phone", "email", "linkedin", "avatarUrl", "summary", "skills", "experience", "education", "certifications", "projects", "languages"];
 
 export default function JobConnect() {
   const { showToast } = useOutletContext() || {};
@@ -126,10 +131,6 @@ export default function JobConnect() {
   // something already applied to.
   function logApply(job) {
     const alreadyApplied = appliedUrls.has(job.url);
-    if (!alreadyApplied && typeof job.match === "number" && job.match < 50) {
-      showToast?.("You need at least 50% match to apply. Add the missing skills to your profile first.");
-      return;
-    }
     apiFetch("/alumni/applications", { method: "POST", body: job })
       .then((d) => {
         if (!d.application) return;
@@ -266,8 +267,22 @@ export default function JobConnect() {
     };
   }, [exportMenuOpen]);
 
+  // A resume missing basic contact details or any skills isn't something an
+  // employer can actually act on — export is blocked until these are filled
+  // in, rather than letting an unusably-thin file go out.
+  function validateResumeForExport(value) {
+    const missing = [];
+    if (!value.phone?.trim())    missing.push("Phone");
+    if (!value.address?.trim())  missing.push("Address");
+    if (!String(value.skills || "").trim()) missing.push("Key Skills");
+    if (!missing.length) return "";
+    return `Please fill in the following before exporting your resume: ${missing.join(", ")}.`;
+  }
+
   function exportResumeAs(format) {
     setExportMenuOpen(false);
+    const error = validateResumeForExport(resume);
+    if (error) { showToast?.(error); return; }
     if (format === "pdf") downloadResumePdf(resume);
     else downloadResumeDoc(resume);
   }
@@ -496,14 +511,7 @@ export default function JobConnect() {
               action is always visible on screen, never something the alumnus
               has to scroll a long description to find. */}
           <div className="job-details-footer">
-            {!appliedUrls.has(detailsJob.url) && typeof detailsJob.match === "number" && detailsJob.match < 50 ? (
-              <>
-                <button className="apply-job job-details-apply apply-locked" type="button" disabled aria-disabled="true">Apply now</button>
-                <p className="apply-gate-note">You need at least 50% match to apply. Add the missing skills to your profile to unlock this.</p>
-              </>
-            ) : (
-              <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
-            )}
+            <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
           </div>
         </div>
       </div>,
@@ -581,25 +589,50 @@ function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
 // its own separately hand-rolled markup — the two had drifted apart (no
 // skill chips/columns, no section accent styling on the employer side)
 // even though they're displaying the same underlying resume data.
+// Splits a flat skills list the same way Employment Details' own profile
+// view already does (see AlumniEmploymentDetails.jsx's skillGroups) —
+// Technical/Domain first, then Soft, then anything classifySkill can't
+// place in either.
+function splitSkills(skillsValue) {
+  const skillLines = String(skillsValue || "").split("\n").map((line) => line.trim()).filter(Boolean);
+  return [
+    ["Technical Skills", skillLines.filter((s) => classifySkill(s) === "hard")],
+    ["Soft Skills", skillLines.filter((s) => classifySkill(s) === "soft")],
+    ["Other", skillLines.filter((s) => classifySkill(s) === "other")],
+  ].filter(([, items]) => items.length);
+}
+
 export function ResumePreview({ resume, mode = "card" }) {
   const lines = (value) => String(value || "").split("\n").map(line => line.trim()).filter(Boolean);
-  const experienceLines = lines(resume.experience);
+  const skillGroups = splitSkills(resume.skills);
+  const experience = Array.isArray(resume.experience) ? resume.experience : [];
   return <div className={`resume-preview ${mode === "modal" ? "resume-preview-full" : ""}`} aria-label="Resume preview">
     <div className="resume-contact">
-      <strong>{resume.name}</strong>
-      <p>{[resume.address, resume.phone, resume.email, resume.linkedin].filter(Boolean).join(" | ")}</p>
+      {resume.avatarUrl && <div className="resume-photo"><img src={resume.avatarUrl} alt="" /></div>}
+      <div className="resume-contact-text">
+        <strong>{resume.name}</strong>
+        <p>{[resume.address, resume.phone, resume.email, resume.linkedin].filter(Boolean).join(" | ")}</p>
+      </div>
     </div>
     <ResumeSection title="Professional Summary" show={resume.summary}><p>{resume.summary}</p></ResumeSection>
-    {/* Skills are short one-to-three-word entries, unlike the sentence-
-        length entries in Certifications/Projects below — one per bullet
-        line down a single column turned a modest skill list into a long
-        vertical scroll. Flowing the same bullets into 2 columns instead
-        halves the height without changing how they're written. */}
-    <ResumeSection title="Key Skills" show={resume.skills}><ul className="resume-skills-list">{lines(resume.skills).map(item => <li key={item}>{item}</li>)}</ul></ResumeSection>
-    <ResumeSection title="Professional Experience" show={resume.experience}>
-      {experienceLines[0] && <b className="resume-entry-title">{experienceLines[0]}</b>}
-      {experienceLines[1] && <p className="resume-entry-meta">{experienceLines[1]}</p>}
-      <ul>{experienceLines.slice(2).map(item => <li key={item}>{item}</li>)}</ul>
+    <ResumeSection title="Key Skills" show={skillGroups.length}>
+      <div className="resume-skills-columns">
+        {skillGroups.map(([groupLabel, items]) => (
+          <div className="resume-skills-col" key={groupLabel}>
+            <h4>{groupLabel}</h4>
+            <ul className="resume-skills-list">{items.map(item => <li key={item}>{item}</li>)}</ul>
+          </div>
+        ))}
+      </div>
+    </ResumeSection>
+    <ResumeSection title="Professional Experience" show={experience.length}>
+      {experience.map((entry, i) => (
+        <div className="resume-entry" key={i}>
+          <b className="resume-entry-title">{[entry.title, entry.company].filter(Boolean).join(" - ")}{entry.employment_type ? ` (${entry.employment_type})` : ""}</b>
+          {entry.meta && <p className="resume-entry-meta">{entry.meta}</p>}
+          {entry.description && <ul>{lines(entry.description).map((item, j) => <li key={j}>{item}</li>)}</ul>}
+        </div>
+      ))}
     </ResumeSection>
     <ResumeSection title="Education" show={resume.education}>{lines(resume.education).map(item => <p key={item}>{item}</p>)}</ResumeSection>
     <ResumeSection title="Certifications" show={resume.certifications}><ul>{lines(resume.certifications).map(item => <li key={item}>{item}</li>)}</ul></ResumeSection>
@@ -617,7 +650,14 @@ function ResumeEditor({ value, onChange }) {
     <label><span>LinkedIn</span><input value={value.linkedin} onChange={e => onChange("linkedin", e.target.value)} placeholder="linkedin.com/in/juandelacruz" /></label>
     <label><span>Professional summary</span><textarea value={value.summary} onChange={e => onChange("summary", e.target.value)} placeholder="1-2 sentences on who you are professionally and what you're looking for." /></label>
     <label><span>Key skills</span><textarea value={value.skills} onChange={e => onChange("skills", e.target.value)} placeholder={"One skill per line, e.g.\nReact.js\nSQL\nProject Management"} /></label>
-    <label><span>Professional experience</span><textarea value={value.experience} onChange={e => onChange("experience", e.target.value)} placeholder={"Job Title - Company, Location\nMonth Year - Present\nWhat you did or accomplished in this role."} /></label>
+    {/* Professional experience is no longer typed here — it's built from
+        the current job + Work History entries in Employment Details (same
+        auto-sync as name/email/phone above it), so an editable textarea
+        here would just get silently overwritten on the next load. */}
+    <div className="resume-experience-note">
+      <span>Professional experience</span>
+      <p>Pulled automatically from your current job and Work History — update those under Employment Details.</p>
+    </div>
     <label><span>Education</span><textarea value={value.education} onChange={e => onChange("education", e.target.value)} placeholder={"BS Information Technology - Tarlac State University\nBatch 2024"} /></label>
     <label><span>Certifications</span><textarea value={value.certifications} onChange={e => onChange("certifications", e.target.value)} placeholder={"One certification per line, e.g.\nAWS Certified Cloud Practitioner\nTOEIC Certificate"} /></label>
     <label><span>Projects</span><textarea value={value.projects} onChange={e => onChange("projects", e.target.value)} placeholder={"Project Name\nWhat it does and your role in it."} /></label>
@@ -670,21 +710,31 @@ function buildResumeHtml(resume) {
   const bulletList = (value) => `<ul>${lines(value).map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
   const paragraphLines = (value) => lines(value).map(item => `<p>${escapeHtml(item)}</p>`).join("");
 
-  // Mirrors ResumePreview: the first line of "experience" is the job
-  // title/company, the second is the date range, and only the rest are
-  // actual bullet points — flattening all of it into one bullet list (like
-  // the other free-text fields do) loses that structure.
-  const experienceLines = lines(resume.experience);
-  const experienceHtml = `
-    ${experienceLines[0] ? `<p class="entry-title">${escapeHtml(experienceLines[0])}</p>` : ""}
-    ${experienceLines[1] ? `<p class="entry-meta">${escapeHtml(experienceLines[1])}</p>` : ""}
-    <ul>${experienceLines.slice(2).map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-  `;
+  const skillGroups = splitSkills(resume.skills);
+  const skillsHtml = `<div class="skills-columns">${skillGroups.map(([groupLabel, items]) => `
+    <div class="skills-col"><h4>${escapeHtml(groupLabel)}</h4><ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>
+  `).join("")}</div>`;
+
+  // Mirrors ResumePreview: each entry is its own title/meta/bullet block
+  // instead of one flattened list — a bare bullet list loses which company
+  // a bullet point actually belongs to once there's more than one job.
+  const experience = Array.isArray(resume.experience) ? resume.experience : [];
+  const experienceHtml = experience.map((entry) => {
+    const titleLine = [entry.title, entry.company].filter(Boolean).join(" - ") + (entry.employment_type ? ` (${entry.employment_type})` : "");
+    return `
+      <div class="entry">
+        <p class="entry-title">${escapeHtml(titleLine)}</p>
+        ${entry.meta ? `<p class="entry-meta">${escapeHtml(entry.meta)}</p>` : ""}
+        ${entry.description ? bulletList(entry.description) : ""}
+      </div>
+    `;
+  }).join("");
 
   // Mirrors ResumeSection's `show` prop — an empty field's heading doesn't
   // get printed at all, same as the on-screen preview.
   const section = (title, show, bodyHtml) => (show ? `<div class="section"><h2>${escapeHtml(title)}</h2>${bodyHtml}</div>` : "");
   const contactLine = [resume.address, resume.phone, resume.email, resume.linkedin].filter(Boolean).join(" | ");
+  const photoHtml = resume.avatarUrl ? `<img class="photo" src="${resume.avatarUrl}" alt="">` : "";
 
   return `<!doctype html>
 <html>
@@ -692,28 +742,38 @@ function buildResumeHtml(resume) {
   <meta charset="utf-8">
   <title>${escapeHtml(resume.name || "Resume")}</title>
   <style>
-    body { font-family: Arial, Helvetica, sans-serif; color: #252124; line-height: 1.5; margin: 40px; }
-    h1 { margin: 0; color: #161315; font-size: 22px; font-weight: 900; }
-    h2 { margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid #e6dee1; color: #242024; font-size: 14px; font-weight: 900; }
-    p { margin: 4px 0; color: #4d474a; font-size: 12px; }
+    body { font-family: "Times New Roman", Times, serif; color: #252124; line-height: 1.5; margin: 40px; }
+    h1 { margin: 0; color: #161315; font-size: 24px; font-weight: 700; }
+    h2 { margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid #e6dee1; color: #242024; font-size: 15px; font-weight: 700; }
+    h4 { margin: 0 0 4px; color: #4a1420; font-size: 12px; font-weight: 700; }
+    p { margin: 4px 0; color: #4d474a; font-size: 13px; }
     ul { margin: 0; padding-left: 18px; }
-    li { margin: 5px 0; color: #4d474a; font-size: 12px; line-height: 1.45; }
-    .contact { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9d1d4; text-align: center; }
+    li { margin: 4px 0; color: #4d474a; font-size: 13px; line-height: 1.5; }
+    .contact { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9d1d4; }
+    .contact-text { flex: 1 1 auto; text-align: center; }
     .contact p { margin: 4px 0 0; }
+    .photo { flex: 0 0 auto; width: 84px; height: 84px; border-radius: 50%; object-fit: cover; }
     .section { margin-top: 18px; }
-    .entry-title { margin: 0 0 2px; color: #242024; font-size: 13px; font-weight: 800; }
-    .entry-meta { margin: 0 0 6px; color: #6f6267; font-size: 11px; font-style: italic; }
+    .entry { margin-bottom: 12px; }
+    .entry:last-child { margin-bottom: 0; }
+    .entry-title { margin: 0 0 2px; color: #242024; font-size: 13px; font-weight: 700; }
+    .entry-meta { margin: 0 0 6px; color: #6f6267; font-size: 11.5px; font-style: italic; }
+    .skills-columns { display: flex; flex-wrap: wrap; gap: 18px; }
+    .skills-col { flex: 1 1 160px; }
     @media print { body { margin: 0.5in; } }
   </style>
 </head>
 <body>
   <section class="contact">
-    <h1>${escapeHtml(resume.name)}</h1>
-    <p>${escapeHtml(contactLine)}</p>
+    ${photoHtml}
+    <div class="contact-text">
+      <h1>${escapeHtml(resume.name)}</h1>
+      <p>${escapeHtml(contactLine)}</p>
+    </div>
   </section>
   ${section("Professional Summary", resume.summary, `<p>${escapeHtml(resume.summary)}</p>`)}
-  ${section("Key Skills", resume.skills, bulletList(resume.skills))}
-  ${section("Professional Experience", resume.experience, experienceHtml)}
+  ${section("Key Skills", skillGroups.length, skillsHtml)}
+  ${section("Professional Experience", experience.length, experienceHtml)}
   ${section("Education", resume.education, paragraphLines(resume.education))}
   ${section("Certifications", resume.certifications, bulletList(resume.certifications))}
   ${section("Projects", resume.projects, bulletList(resume.projects))}
@@ -739,8 +799,21 @@ function downloadResumeDoc(resume) {
 // so the output is a real, crisp, selectable-text PDF — and downloads in one
 // click via doc.save(), same as the Word export, instead of routing through
 // the browser's print dialog.
+// jsPDF's addImage needs an explicit format string it won't infer for you —
+// derived from the data: URI's MIME type. GIF isn't one of jsPDF's
+// supported embed formats, so a GIF avatar (AlumniEmploymentDetails.jsx's
+// uploader accepts one) falls through to null and the photo is silently
+// skipped rather than throwing and failing the whole export.
+function pdfImageFormat(dataUri) {
+  const match = /^data:image\/(png|jpeg|jpg|webp)/i.exec(dataUri || "");
+  if (!match) return null;
+  const type = match[1].toLowerCase();
+  return type === "png" ? "PNG" : type === "webp" ? "WEBP" : "JPEG";
+}
+
 function downloadResumePdf(resume) {
   const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const FONT = "times";
   const marginX = 56;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -754,40 +827,40 @@ function downloadResumePdf(resume) {
     }
   }
 
-  function paragraph(text) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
+  function paragraph(text, width = contentWidth, x = marginX) {
+    doc.setFont(FONT, "normal");
+    doc.setFontSize(11);
     doc.setTextColor(77, 71, 74);
-    doc.splitTextToSize(text, contentWidth).forEach((line) => {
-      ensureSpace(14);
-      doc.text(line, marginX, y);
-      y += 14;
+    doc.splitTextToSize(text, width).forEach((line) => {
+      ensureSpace(15);
+      doc.text(line, x, y);
+      y += 15;
     });
   }
 
-  function bullets(items) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
+  function bullets(items, width = contentWidth, x = marginX) {
+    doc.setFont(FONT, "normal");
+    doc.setFontSize(11);
     doc.setTextColor(77, 71, 74);
     items.forEach((item) => {
-      doc.splitTextToSize(item, contentWidth - 14).forEach((line, i) => {
-        ensureSpace(14);
-        doc.text(i === 0 ? `•  ${line}` : `    ${line}`, marginX, y);
-        y += 14;
+      doc.splitTextToSize(item, width - 14).forEach((line, i) => {
+        ensureSpace(15);
+        doc.text(i === 0 ? `•  ${line}` : `    ${line}`, x, y);
+        y += 15;
       });
     });
   }
 
   function sectionHeading(title) {
     ensureSpace(26);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
+    doc.setFont(FONT, "bold");
+    doc.setFontSize(13);
     doc.setTextColor(36, 32, 36);
     doc.text(title, marginX, y);
     y += 4;
     doc.setDrawColor(230, 222, 225);
     doc.line(marginX, y, pageWidth - marginX, y);
-    y += 14;
+    y += 15;
   }
 
   function section(title, show, renderBody) {
@@ -799,49 +872,85 @@ function downloadResumePdf(resume) {
 
   const lines = (value) => String(value || "").split("\n").map((l) => l.trim()).filter(Boolean);
 
-  // Name + contact line — centered to match the in-app Preview modal
-  // (.resume-preview-full .resume-contact { text-align: center }), which
-  // this used to leave left-aligned instead.
-  const centerX = pageWidth / 2;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(20);
-  doc.setTextColor(22, 19, 21);
-  doc.text(resume.name || "", centerX, y, { align: "center" });
-  y += 22;
+  // Photo on the side (left) with name + contact centered in whatever width
+  // remains next to it — same layout as the HTML/Word export and the
+  // in-app preview's .resume-contact flex row.
+  const photoSize = 64;
+  const photoFormat = resume.avatarUrl ? pdfImageFormat(resume.avatarUrl) : null;
+  const hasPhoto = !!photoFormat;
+  const textX = hasPhoto ? marginX + photoSize + 18 : marginX;
+  const textWidth = pageWidth - marginX - textX;
+  const textCenterX = textX + textWidth / 2;
 
+  doc.setFont(FONT, "normal");
+  doc.setFontSize(10.5);
   const contactLine = [resume.address, resume.phone, resume.email, resume.linkedin].filter(Boolean).join("   |   ");
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor(77, 71, 74);
-  const contactWrapped = doc.splitTextToSize(contactLine, contentWidth);
-  doc.text(contactWrapped, centerX, y, { align: "center" });
-  y += contactWrapped.length * 13 + 8;
+  const contactWrapped = doc.splitTextToSize(contactLine, textWidth);
+  const textBlockHeight = 24 + contactWrapped.length * 13;
+  const headerHeight = hasPhoto ? Math.max(photoSize, textBlockHeight) : textBlockHeight;
+  const headerTop = y;
 
+  if (hasPhoto) {
+    try { doc.addImage(resume.avatarUrl, photoFormat, marginX, headerTop, photoSize, photoSize); } catch { /* corrupt/unreadable image data — rest of the resume still generates */ }
+  }
+
+  doc.setFont(FONT, "bold");
+  doc.setFontSize(21);
+  doc.setTextColor(22, 19, 21);
+  doc.text(resume.name || "", textCenterX, headerTop + 18, { align: "center" });
+
+  doc.setFont(FONT, "normal");
+  doc.setFontSize(10.5);
+  doc.setTextColor(77, 71, 74);
+  doc.text(contactWrapped, textCenterX, headerTop + 40, { align: "center" });
+
+  y = headerTop + headerHeight + 16;
   doc.setDrawColor(217, 209, 212);
   doc.line(marginX, y, pageWidth - marginX, y);
   y += 18;
 
   section("Professional Summary", resume.summary, () => paragraph(resume.summary));
-  section("Key Skills", resume.skills, () => bullets(lines(resume.skills)));
-  section("Professional Experience", resume.experience, () => {
-    const expLines = lines(resume.experience);
-    if (expLines[0]) {
-      ensureSpace(14);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.setTextColor(36, 32, 36);
-      doc.text(expLines[0], marginX, y);
-      y += 13;
-    }
-    if (expLines[1]) {
-      ensureSpace(14);
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(9.5);
-      doc.setTextColor(111, 98, 103);
-      doc.text(expLines[1], marginX, y);
+
+  const skillGroups = splitSkills(resume.skills);
+  section("Key Skills", skillGroups.length, () => {
+    const colWidth = (contentWidth - 18 * (skillGroups.length - 1)) / skillGroups.length;
+    const colTop = y;
+    let maxColBottom = y;
+    skillGroups.forEach(([groupLabel, items], i) => {
+      const colX = marginX + i * (colWidth + 18);
+      y = colTop;
+      doc.setFont(FONT, "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(74, 20, 32);
+      doc.text(groupLabel, colX, y);
       y += 14;
-    }
-    bullets(expLines.slice(2));
+      bullets(items, colWidth, colX);
+      maxColBottom = Math.max(maxColBottom, y);
+    });
+    y = maxColBottom;
+  });
+
+  const experience = Array.isArray(resume.experience) ? resume.experience : [];
+  section("Professional Experience", experience.length, () => {
+    experience.forEach((entry, i) => {
+      if (i > 0) y += 6;
+      const titleLine = [entry.title, entry.company].filter(Boolean).join(" - ") + (entry.employment_type ? ` (${entry.employment_type})` : "");
+      ensureSpace(15);
+      doc.setFont(FONT, "bold");
+      doc.setFontSize(11.5);
+      doc.setTextColor(36, 32, 36);
+      doc.text(titleLine, marginX, y);
+      y += 14;
+      if (entry.meta) {
+        ensureSpace(15);
+        doc.setFont(FONT, "italic");
+        doc.setFontSize(10);
+        doc.setTextColor(111, 98, 103);
+        doc.text(entry.meta, marginX, y);
+        y += 15;
+      }
+      bullets(lines(entry.description));
+    });
   });
   section("Education", resume.education, () => lines(resume.education).forEach((l) => paragraph(l)));
   section("Certifications", resume.certifications, () => bullets(lines(resume.certifications)));

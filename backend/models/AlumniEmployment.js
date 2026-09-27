@@ -1,5 +1,19 @@
 const mongoose = require('mongoose');
 
+// One past position, entered by the alumnus separately from their CURRENT
+// job (company_name/job_title/date_employed above) — the resume's
+// Professional Experience section is built from the current job plus this
+// whole list, oldest to newest as entered, instead of only ever being able
+// to show a single job.
+const workHistoryEntrySchema = new mongoose.Schema({
+  title:           { type: String, default: '' },
+  company:         { type: String, default: '' },
+  employment_type: { type: String, default: '' },
+  start_date:      { type: Date },
+  end_date:        { type: Date },
+  description:     { type: String, default: '' },
+}, { _id: false });
+
 const alumniEmploymentSchema = new mongoose.Schema({
   alumni_id: {
     type:     mongoose.Schema.Types.ObjectId,
@@ -24,6 +38,7 @@ const alumniEmploymentSchema = new mongoose.Schema({
   reason_unemployed:     { type: String, default: null },
   skills:                { type: String, default: '' },
   experience:            { type: String, default: '' },
+  work_history:          { type: [workHistoryEntrySchema], default: [] },
   // Alumnus-managed contact details, separate from the account's login
   // email (User.email) — a preferred reachable email / phone shown on the
   // profile and to coordinators.

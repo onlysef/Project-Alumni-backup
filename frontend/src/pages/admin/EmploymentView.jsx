@@ -25,6 +25,23 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
+// resume.experience is a list of {title, company, employment_type, meta,
+// description} entries (see backend resumeBuilder.deriveFromProfile), not a
+// plain string like every other resume field — flattened here into
+// pre-formatted text so it can still go through the same label/value
+// row renderers (both the PDF export and the in-app RecordMultilineField)
+// everything else here uses.
+function formatExperienceEntries(experience) {
+  if (!Array.isArray(experience)) return "";
+  return experience.map((entry) => {
+    const titleLine = [entry.title, entry.company].filter(Boolean).join(" - ") + (entry.employment_type ? ` (${entry.employment_type})` : "");
+    const lines = [titleLine];
+    if (entry.meta) lines.push(entry.meta);
+    String(entry.description || "").split("\n").map((s) => s.trim()).filter(Boolean).forEach((s) => lines.push(`• ${s}`));
+    return lines.join("\n");
+  }).join("\n\n");
+}
+
 function groupActivities(acts) {
   const now = Date.now();
   const buckets = { "Just now": [], Today: [], "This week": [], "This month": [], Older: [] };
@@ -830,7 +847,7 @@ export default function EmploymentView() {
         ["LinkedIn", resume.linkedin, false],
         ["Summary", resume.summary, true],
         ["Skills", fmtList(resume.skills), false],
-        ["Experience", resume.experience, true],
+        ["Experience", formatExperienceEntries(resume.experience), true],
         ["Education", resume.education, true],
         ["Certifications", resume.certifications, true],
         ["Projects", resume.projects, true],
@@ -1305,7 +1322,7 @@ export default function EmploymentView() {
                           <RecordField label="LinkedIn" value={resume.linkedin} />
                           <RecordMultilineField label="Summary" value={resume.summary} />
                           <RecordChips label="Skills" text={resume.skills} />
-                          <RecordMultilineField label="Experience" value={resume.experience} />
+                          <RecordMultilineField label="Experience" value={formatExperienceEntries(resume.experience)} />
                           <RecordMultilineField label="Education" value={resume.education} />
                           <RecordMultilineField label="Certifications" value={resume.certifications} />
                           <RecordMultilineField label="Projects" value={resume.projects} />

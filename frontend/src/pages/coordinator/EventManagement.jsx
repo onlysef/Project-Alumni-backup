@@ -47,6 +47,27 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// A start date already in the past, or an end date that isn't strictly
+// after the start (same instant, or earlier), produced events that posted
+// as already-"Ended" with no way for alumni to ever see them as upcoming.
+// `previousStartStr` (the datetime-local string the field held before this
+// edit began) lets the past-date floor apply only when the start is
+// actually being changed — re-saving an already-ended event's title or
+// location shouldn't be blocked by its own old date.
+function validateEventDates(startStr, endStr, previousStartStr) {
+  if (!startStr) return "";
+  const start = new Date(startStr);
+  if (isNaN(start.getTime())) return "Invalid start date & time.";
+  const startIsChanging = previousStartStr === undefined || startStr !== previousStartStr;
+  if (startIsChanging && start < new Date()) return "Event date & time cannot be in the past.";
+  if (endStr) {
+    const end = new Date(endStr);
+    if (isNaN(end.getTime())) return "Invalid end date & time.";
+    if (end <= start) return "End date & time must be after the start date & time.";
+  }
+  return "";
+}
+
 // A coordinator's events are, by default, for their own college's alumni —
 // only an admin (no assigned college) gets "Public" as the sensible default,
 // and only an admin gets to pick any of the 10 colleges at all (see the
@@ -150,6 +171,8 @@ export default function EventManagement() {
     e.preventDefault();
     if (!form.title.trim())          { showToast?.("Title is required."); return; }
     if (!form.event_datetime)        { showToast?.("Date & time is required."); return; }
+    const dateError = validateEventDates(form.event_datetime, form.end_datetime);
+    if (dateError)                   { showToast?.(dateError); return; }
     setSubmitting(true);
     try {
       const data = await apiPost("/coordinator/events", { ...form, capacity: Number(form.capacity) || 0 });
@@ -185,6 +208,8 @@ export default function EventManagement() {
     e.preventDefault();
     if (!editForm.title.trim())       { showToast?.("Title is required."); return; }
     if (!editForm.event_datetime)     { showToast?.("Date & time is required."); return; }
+    const dateError = validateEventDates(editForm.event_datetime, editForm.end_datetime, toDatetimeLocal(editEvent.event_datetime));
+    if (dateError)                    { showToast?.(dateError); return; }
     setEditSubmitting(true);
     try {
       const data = await apiPut(`/coordinator/events/${editEvent._id}`, { ...editForm, capacity: Number(editForm.capacity) || 0 });
@@ -295,6 +320,7 @@ export default function EventManagement() {
                     type="datetime-local"
                     className="coord-datetime-input"
                     value={form.event_datetime}
+                    min={toDatetimeLocal(new Date())}
                     onChange={e => setForm(p => ({ ...p, event_datetime: e.target.value }))}
                   />
                 </label>

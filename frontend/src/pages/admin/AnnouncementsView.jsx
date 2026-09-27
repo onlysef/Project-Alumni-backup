@@ -42,6 +42,27 @@ function toDatetimeLocal(value) {
   return local.toISOString().slice(0, 16);
 }
 
+// A start date already in the past, or an end date that isn't strictly
+// after the start (same instant, or earlier), produced events that posted
+// as already-"Ended" with no way for alumni to ever see them as upcoming.
+// `previousStartStr` (the datetime-local string the field held before this
+// edit began) lets the past-date floor apply only when the start is
+// actually being changed — re-saving an already-ended event's title or
+// location shouldn't be blocked by its own old date.
+function validateEventDates(startStr, endStr, previousStartStr) {
+  if (!startStr) return "";
+  const start = new Date(startStr);
+  if (isNaN(start.getTime())) return "Invalid start date & time.";
+  const startIsChanging = previousStartStr === undefined || startStr !== previousStartStr;
+  if (startIsChanging && start < new Date()) return "Event date & time cannot be in the past.";
+  if (endStr) {
+    const end = new Date(endStr);
+    if (isNaN(end.getTime())) return "Invalid end date & time.";
+    if (end <= start) return "End date & time must be after the start date & time.";
+  }
+  return "";
+}
+
 // Relative time for the Recent Activity feed — "3h ago" reads faster than a
 // full timestamp in a short activity row, same convention social feeds use.
 function timeAgo(value) {
@@ -998,6 +1019,7 @@ function EventEditModal({ row, onClose, onSubmit }) {
   const [endDatetime, setEndDatetime] = useState("");
   const [capacity, setCapacity]       = useState("");
   const [saving, setSaving]           = useState(false);
+  const [dateError, setDateError]     = useState("");
 
   useEffect(() => {
     if (!row) return;
@@ -1008,6 +1030,7 @@ function EventEditModal({ row, onClose, onSubmit }) {
     setEndDatetime(toDatetimeLocal(row.endDatetime));
     setCapacity(row.capacity ?? "");
     setSaving(false);
+    setDateError("");
   }, [row]);
 
   if (!row) return null;
@@ -1015,6 +1038,9 @@ function EventEditModal({ row, onClose, onSubmit }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!title.trim()) return;
+    const err = validateEventDates(eventDatetime, endDatetime, toDatetimeLocal(row.eventDatetime));
+    if (err) { setDateError(err); return; }
+    setDateError("");
     setSaving(true);
     await onSubmit({
       title: title.trim(),
@@ -1049,11 +1075,12 @@ function EventEditModal({ row, onClose, onSubmit }) {
               <input type="number" min="0" placeholder="e.g. 100" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
             </label>
             <label>Start Date &amp; Time
-              <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} />
+              <input type="datetime-local" value={eventDatetime} onChange={(e) => { setEventDatetime(e.target.value); setDateError(""); }} />
             </label>
             <label>End Date &amp; Time
-              <input type="datetime-local" value={endDatetime} onChange={(e) => setEndDatetime(e.target.value)} />
+              <input type="datetime-local" value={endDatetime} onChange={(e) => { setEndDatetime(e.target.value); setDateError(""); }} />
             </label>
+            {dateError && <span className="field-error">{dateError}</span>}
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>

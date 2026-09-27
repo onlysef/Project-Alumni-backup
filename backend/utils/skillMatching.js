@@ -88,6 +88,39 @@ const SYMBOL_SKILL_PATTERNS = {
   'c#':  /(?<![a-z0-9])c#(?![a-z0-9])/i,
 };
 
+// "frontend"/"backend" are umbrella/category words pulled from job posting
+// text (part of the Web Development bucket), not real skill names anyone
+// actually lists on their own profile — nobody writes "frontend" as a
+// skill, they write "React"/"HTML"/"CSS". Literal whole-word matching
+// against these two therefore always failed, showing them as "missing"
+// even for an alumnus whose listed skills (React, HTML, CSS, PHP, Node.js)
+// obviously satisfy them. Satisfied here by checking for ANY of the
+// concrete underlying technologies each umbrella term actually covers.
+const CATEGORY_ALIASES = {
+  frontend: ['html', 'css', 'react', 'vue', 'angular', 'jquery', 'bootstrap', 'tailwind', 'next.js', 'ui', 'ux'],
+  backend:  ['node', 'php', 'django', 'flask', 'spring boot', 'asp.net', 'laravel', 'ruby on rails', 'sql', 'mysql', 'mongodb', 'postgresql', 'graphql', 'rest api', 'python', 'java', 'c#'],
+};
+
+// Several soft-skill keywords are just different grammatical forms of the
+// SAME underlying trait ("creative"/"creativity", "reliable"/"reliability",
+// "patient"/"patience", "flexible"/"flexibility", "hardworking"/"hard
+// working", "adaptable"/"adaptability", "multitask"/"multitasking",
+// "resourceful"/"resourcefulness") — SKILL_LABEL_OVERRIDES already displays
+// both forms under one identical-looking chip label, but without this they
+// were still matched as two unrelated keywords. A job posting using
+// "creative" and an alumnus's profile listing "Creativity" are the same
+// skill in different grammar, not two different skills — caught live: the
+// exact same "Creativity" chip showed matched on one job card and missing
+// on another, purely because of which word form each posting's own
+// description text happened to use, with the alumnus's own listed skills
+// never having changed at all. Built programmatically (not hand-listed) so
+// every current and future label-sharing pair gets this fix automatically.
+const SKILL_LABEL_TO_KEYWORDS = {};
+for (const kw of ALL_SKILL_KEYWORDS) {
+  const label = skillLabel(kw);
+  (SKILL_LABEL_TO_KEYWORDS[label] ||= []).push(kw);
+}
+
 // Whole-word/whole-phrase matching, not a bare substring search — the
 // previous version stripped ALL separators (including spaces) before
 // comparing, which fused "HTML, CSS, Java" into one "htmlcssjava" string.
@@ -102,10 +135,7 @@ const SYMBOL_SKILL_PATTERNS = {
 // tokenize as ["react","js"] and match on the first token alone) written
 // instead as one fused word "ReactJS"/"NodeJS"/"VueJS" with no separator at
 // all still counting as the same skill.
-function textContainsSkill(userSkillsText, skill) {
-  const symbolPattern = SYMBOL_SKILL_PATTERNS[(skill || '').trim().toLowerCase()];
-  if (symbolPattern) return symbolPattern.test(userSkillsText || '');
-
+function matchesKeywordLiterally(userSkillsText, skill) {
   const skillWords = normalizeSkillText(skill).split(' ').filter(Boolean);
   const skillFused = skillWords.join('');
   // Every other keyword shorter than 2 characters once normalized is too
@@ -119,6 +149,23 @@ function textContainsSkill(userSkillsText, skill) {
     if (skillWords.length > 1 && textWords.slice(i, i + skillWords.length).join('') === skillFused) return true;
   }
   return false;
+}
+
+function textContainsSkill(userSkillsText, skill) {
+  const key = (skill || '').trim().toLowerCase();
+  const symbolPattern = SYMBOL_SKILL_PATTERNS[key];
+  if (symbolPattern) return symbolPattern.test(userSkillsText || '');
+
+  if (CATEGORY_ALIASES[key]) {
+    return CATEGORY_ALIASES[key].some((alias) => textContainsSkill(userSkillsText, alias));
+  }
+
+  const siblings = SKILL_LABEL_TO_KEYWORDS[skillLabel(key)];
+  if (siblings && siblings.length > 1) {
+    return siblings.some((sib) => matchesKeywordLiterally(userSkillsText, sib));
+  }
+
+  return matchesKeywordLiterally(userSkillsText, key);
 }
 
 // Lets the Employment Details skills field accept a free-form sentence

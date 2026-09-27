@@ -144,13 +144,11 @@ function useSkillTip(job) {
 // requests before a ~24h lockout, which a single page of job cards would
 // blow through instantly. The TSU logo placeholder stays until there's a
 // real, reliable source of per-company logos.
-const MIN_APPLY_MATCH = 50;
 
 export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onApply }) {
   const description = descriptionPreview(job.description, 220);
   const { tip: skillTip, ref: skillGapRef } = useSkillTip(job);
   const hasMatch = job.match !== null && job.match !== undefined;
-  const locked = !applied && hasMatch && job.match < MIN_APPLY_MATCH;
   return <article className="connect-job-card">
     {hasMatch && (
       <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
@@ -165,9 +163,7 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
       <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div>{applied && <span className="connect-applied-badge">{job.internal ? "✓ Applied" : "✓ Viewed"}</span>}</div>
       {description && <p className="connect-job-description">{description}</p>}
       <div className="connect-card-buttons">
-        {locked ? (
-          <button className="apply-job apply-locked" type="button" disabled aria-disabled="true">Apply now</button>
-        ) : job.internal ? (
+        {job.internal ? (
           <button className={`apply-job${applied ? " already-applied" : ""}`} type="button" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</button>
         ) : (
           // External (Careerjet) postings only ever open the listing in a new
@@ -184,7 +180,6 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
           </button>
         )}
       </div>
-      {locked && <p className="apply-gate-note">You need at least {MIN_APPLY_MATCH}% match to apply. Add the missing skills to your profile to unlock this.</p>}
       <small className="job-partner">{job.internal ? "Posted by a TSU partner employer" : "via Careerjet"}</small>
     </div>
     {job.skills?.length > 0 && (() => {
