@@ -35,20 +35,10 @@ export default function AlumniOnboarding() {
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to change password."); return; }
 
-      // Changing the temp password invalidates it everywhere, including
-      // this session's own token — the backend hands back a fresh one in
-      // the same response. It has to be used for the very next request
-      // below (the stale `token` from context would now fail its
-      // tokenVersion check) and persisted so a later page reload doesn't
-      // pick the stale one back up from localStorage.
+      // Use and persist the fresh token; changing the temp password invalidated the old one.
       const activeToken = data.token || token;
       if (data.token) localStorage.setItem("auth_token", data.token);
 
-      // Mark onboarding complete with default employment status. The
-      // response was never checked before — if this call failed, the local
-      // session still marked onboarding done and moved on, but the server's
-      // firstLogin flag stayed true, so the very next login sent the user
-      // right back through this screen a second time.
       const completeRes = await fetch(`${API}/alumni/complete-onboarding`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeToken}` },

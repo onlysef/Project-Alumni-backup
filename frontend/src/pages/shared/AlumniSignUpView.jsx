@@ -94,10 +94,7 @@ export default function AlumniSignUpView() {
       <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
       <link rel="stylesheet" href="/assets/css/login-style.css" />
       <style>{`
-        /* Sign-up-only additions — the shared login-style.css was sized for
-           a short email+password form, not this many fields. Everything
-           else (the glass card, background, colors, inputs, button) comes
-           from that shared stylesheet untouched. */
+        /* Sign-up-only additions on top of login-style.css. */
         .right-panel.signup-panel { max-height: min(84vh, 760px); overflow-y: auto; }
         .signup-note { font-size: 11px; color: var(--gray-text); margin-top: -4px; }
       `}</style>

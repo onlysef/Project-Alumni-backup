@@ -1,19 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Modal } from "./Primitives.jsx";
 
-// Drag-to-reposition + zoom-slider cropper, producing a square JPEG data
-// URI. Originally built for the alumni's own "Upload Photo" flow
-// (AlumniEmploymentDetails.jsx) — extracted here so admin/coordinator's
-// Edit Alumni Record modal can offer the exact same crop experience when
-// setting a photo on someone else's behalf.
-// `inline`: skip the self-wrapping Modal/portal and just return the crop UI
-// directly, for a caller that wants to swap it INTO an already-open modal of
-// its own (AdminTopbar's AccountPanel) instead of stacking a second modal on
-// top of the first — two same-z-index full-viewport portals landed in an
-// unreliable paint order on some mobile browsers, burying the crop stage and
-// Save/Cancel buttons behind the caller's own modal. Every other caller
-// (AlumniEmploymentDetails, CoordinatorEmploymentView, admin EmploymentView)
-// opens this as the only modal on the page, so they keep the default.
+// Square JPEG cropper. `inline` skips the built-in modal for callers that swap it into their own open modal.
 export default function AvatarCropper({ src, busy, onCancel, onSave, inline = false }) {
   const VIEW = 260;
   const OUTPUT = 320;

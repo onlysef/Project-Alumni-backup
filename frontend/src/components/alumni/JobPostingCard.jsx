@@ -1,14 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { API, authHeaders } from "../../services/api.js";
 
-// Shared between Job Connect's own list and the Announcements page's "Job
-// Postings" preview, so both surfaces render the exact same card instead of
-// two hand-maintained designs drifting apart from each other.
-
-// Some postings list 20+ required skills — rendering every one as a chip
-// blew the card's height out far past its neighbors. Capping the chip list
-// (while keeping the "X of Y skills matched" ratio honest about the real
-// total) keeps every card a predictable height.
 export const SKILL_CHIP_LIMIT = 12;
 
 export function truncate(value, max) {
@@ -19,11 +11,7 @@ export function formatSavedDate(iso) {
   return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Careerjet's `date` field comes back as a raw server timestamp string
-// (e.g. "Sat, 15 Aug 2026 05:23:51 GMT") — shown as-is before, which meant
-// job cards displayed that literal string instead of a readable date. Falls
-// back to the raw value if it's ever unparseable rather than showing
-// "Invalid Date".
+// Careerjet dates are raw server strings; fall back to the raw value if unparseable.
 export function formatPostedDate(value) {
   if (!value) return value;
   const d = new Date(value);
@@ -32,10 +20,7 @@ export function formatPostedDate(value) {
     : d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Careerjet's description field has no real structural markup — only
-// inline <b> keyword-highlight tags — but the original paragraph/bullet
-// boundaries survive as runs of 2+ raw spaces once tags are stripped, so
-// that's the only signal available to rebuild readable structure from.
+// Careerjet descriptions: runs of 2+ spaces mark the original paragraph/bullet breaks.
 export function splitDescriptionSegments(value) {
   const withoutInlineTags = String(value || "").replace(/<\/?(b|strong|em|i)>/gi, "");
   const withoutOtherTags = withoutInlineTags.replace(/<[^>]*>/g, " ");
@@ -51,9 +36,6 @@ export function isHeaderSegment(segment) {
   return SECTION_HEADER_PATTERN.test(segment);
 }
 
-// Groups the flat segment list into intro paragraphs, then bullet lists
-// under whichever section header preceded them (postings are consistently
-// shaped: intro text, then Header, then its bullet items, repeat).
 export function structureDescription(value) {
   const segments = splitDescriptionSegments(value);
   const blocks = [];
@@ -79,9 +61,6 @@ export function structureDescription(value) {
   return blocks;
 }
 
-// Compact card preview: just the intro prose before the first section
-// header (if any), truncated — avoids gluing unrelated bullet items
-// together the way a naive whitespace-collapse would.
 export function descriptionPreview(value, max) {
   const segments = splitDescriptionSegments(value);
   const intro = [];
@@ -101,14 +80,7 @@ export function ArrowIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
 }
 
-// Skill-gap tips are personalized per job (see backend getJobSkillTip) and
-// each costs a real ~4s LLM call — a results page can list 20+ jobs at
-// once, so fetching this the moment every card mounts would fire that many
-// calls in parallel for no reason (most never get scrolled to). Instead
-// each card only asks for its tip once it actually scrolls into view, and
-// the result is cached by job URL so it isn't re-fetched if the same job
-// scrolls in and out of view again, or appears in more than one list (Job
-// Connect and the Announcements "Job Postings" preview share this card).
+// Tips are slow LLM calls: fetch only once the card scrolls into view, cached by job URL.
 const skillTipCache = new Map();
 
 function useSkillTip(job) {
@@ -164,11 +136,7 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
         {job.internal ? (
           <button className={`apply-job${applied ? " already-applied" : ""}`} type="button" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</button>
         ) : (
-          // External (Careerjet) postings only ever open the listing in a new
-          // tab — the system has no way to confirm the alumnus actually
-          // completed an application there, so it can't honestly claim
-          // "Applied" the way it can for internal/partner postings (which do
-          // create a real, employer-visible application record).
+          // External postings can't confirm an application, so they're never marked Applied.
           <a className={`apply-job${applied ? " already-applied" : ""}`} href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>{applied ? "Viewed ✓" : "Apply now"}</a>
         )}
         <button className="view-job" type="button" onClick={onViewDetails}>See details <ArrowIcon /></button>

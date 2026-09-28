@@ -60,12 +60,7 @@ export function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-// Rasterizes one of this file's own <MiniBarChart> <svg> elements to a PNG
-// data URL (for embedding into the .xlsx below, not a standalone download —
-// see downloadChartExcel). A cloned SVG serialized on its own has no access
-// to coordinator-dashboard.css (the blob it's drawn from is a standalone
-// document), so its bar/gridline/label colors are inlined here as a <style>
-// block rather than relying on the clone inheriting rules from the live page.
+// Inline the chart colors; a serialized SVG clone can't see coordinator-dashboard.css.
 function renderSvgToPng(svgEl, { scale = 2, bgColor = "#ffffff" } = {}) {
   return new Promise((resolve, reject) => {
     if (!svgEl) { reject(new Error("No chart to export.")); return; }
@@ -109,11 +104,7 @@ function renderSvgToPng(svgEl, { scale = 2, bgColor = "#ffffff" } = {}) {
   });
 }
 
-// Builds a real .xlsx (data table + an embedded picture of the chart) so the
-// exported file can be opened straight in Excel with the graph already
-// inside it, not just a separate PNG next to a CSV of numbers. Mirrors the
-// admin Tracer Dashboard's own downloadChartExcel. `exceljs` is dynamically
-// imported (~900KB) so it's only fetched when Export is actually clicked.
+// exceljs is dynamically imported (~900KB) so it only loads on export.
 export async function downloadChartExcel(filename, title, csvRows, svgEl) {
   const img = await renderSvgToPng(svgEl);
   const ExcelJS = (await import("exceljs")).default;
@@ -145,10 +136,6 @@ export async function downloadChartExcel(filename, title, csvRows, svgEl) {
   URL.revokeObjectURL(url);
 }
 
-// maxCharsPerLine used to be a flat 14 regardless of how much room a bar's
-// slot actually had — fine for a handful of bars, but with many events the
-// slot shrinks well below what 14 characters needs, so neighboring labels
-// overlapped into each other. Now driven by the caller's actual slot width.
 function wrapChartLabel(label = "", maxCharsPerLine = 14) {
   const words = String(label).split(/\s+/).filter(Boolean);
   const lines = [];
@@ -173,14 +160,7 @@ export function MiniBarChart({ title, values, labels }) {
   const max = Math.max(...values, 1);
   const count = Math.max(values.length, 1);
   const plotLeft = 50;
-  // Each bar gets a guaranteed minimum slot instead of splitting one fixed
-  // 340-unit plot width evenly across however many events there are —
-  // with more than ~5 events that even split left each slot (and its
-  // wrapped label) too narrow, so adjacent event names ran into each
-  // other. The chart now grows wider (via the viewBox + matching inline
-  // width below) instead of squeezing everything into the same footprint;
-  // the wrapping .coord-chart-box-wrap scrolls horizontally if it doesn't
-  // fit the card.
+  // Minimum slot per bar: the chart grows wider (and scrolls) instead of overlapping labels.
   const slot = Math.max(72, 340 / count);
   const plotWidth = slot * count;
   const plotRight = plotLeft + plotWidth;

@@ -4,10 +4,7 @@ import { useAuth } from "../../context/AuthContext";
 
 import { API } from "../../services/api.js";
 import { COLLEGE_NAMES } from "../../constants/colleges.js";
-// Matches the system-wide --maroon/--gold custom properties (admin-mod.css)
-// exactly — this form previously used its own hand-picked shades ("#7b1a2e"/
-// "#c49a2a"), close enough to look intentional but visibly off from every
-// other maroon/gold surface in the app once seen side by side.
+// Same values as the --maroon/--gold custom properties.
 const MAROON = "#570013";
 const GOLD   = "#fac853";
 
@@ -44,9 +41,7 @@ function CheckOpt({ checked, onChange, label }) {
   );
 }
 
-// Mirrors backend/utils/tracerFixedKeys.js — the question ids the
-// TracerStudyResponse schema stores as named fields. Anything else is a
-// custom/imported question. Keep both lists in sync.
+// Mirrors backend/utils/tracerFixedKeys.js; keep both lists in sync.
 const FIXED_KEYS = new Set([
   "consent",
   "contactNumber", "gender",
@@ -61,9 +56,6 @@ const FIXED_KEYS = new Set([
   "professionalCertifications", "professionalDevelopmentActivities",
 ]);
 
-// Sized per field to what a real answer actually looks like, not one
-// blanket number for every text question — a phone number and a degree
-// name have very different realistic lengths.
 const TEXT_FIELD_MAX_LENGTHS = {
   contactNumber: 20,          // e.g. "+63 917 123 4567"
   companyName: 100,           // long legal entity names still fit
@@ -81,12 +73,7 @@ function isAnswerEmpty(val) {
   return false;
 }
 
-// Questions to surface to an already-submitted alumni: custom/imported
-// questions they haven't answered yet (added after they last submitted), OR
-// any question — including existing/fixed ones — an admin has explicitly
-// flagged via Notify Alumni's "require specific questions" picker. The admin
-// pick can target already-answered questions (asking for a correction/
-// confirmation), which is why it's checked independently of emptiness.
+// New unanswered custom questions, plus any question an admin flagged via Notify Alumni.
 function getNewQuestions(config, answers, pendingUpdateIds = []) {
   if (!config) return [];
   const pending = new Set(pendingUpdateIds);
@@ -144,10 +131,6 @@ function QuestionField({ q, answers, onAnswer }) {
   }
 
   if (q.type === "text") {
-    // A one-line answer had no upper bound at all — a pasted wall of text
-    // ("isssssskfghdlblljsaaaa...") in Company Name overflowed the field and
-    // was clearly never a real answer anyway. Sized per field (see
-    // TEXT_FIELD_MAX_LENGTHS) to what a real answer actually looks like.
     const maxLength = TEXT_FIELD_MAX_LENGTHS[q.id] || DEFAULT_TEXT_MAX_LENGTH;
     return (
       <div style={fld}>
@@ -283,15 +266,7 @@ function QuestionField({ q, answers, onAnswer }) {
   return null;
 }
 
-// ── Validate the current page ─────────────────────────────────────────────────
-// Every free-text question (Company Name, Job Title, Professional Exam Name,
-// Further Education/Training Type, and any custom text question an admin
-// adds later) used to accept literally anything ("77777", "#####") — same
-// allow-list Alumni Profile's own text fields use (letters, digits, and a
-// small set of real punctuation; nothing beyond that). contactNumber gets
-// its own numeric-only check instead since a phone number failing THIS
-// allow-list for a completely different reason (letters/symbols) needs a
-// clearer message than "invalid special characters".
+// Validate the current page
 const WORK_TEXT_RE = /^[A-Za-z0-9À-ÖØ-öø-ÿ.,'&\-/() ]*$/;
 const PHONE_CHARS_RE = /^[0-9+\-\s()]+$/;
 
@@ -347,10 +322,7 @@ export default function TracerStudyForm() {
   const { token, user, firstLogin, setTracerStudyDone, setTracerUpdateDone } = useAuth();
   const navigate = useNavigate();
 
-  // The form has no backend draft-save — without this, refreshing mid-form
-  // (e.g. on page 2 of 6) lost every answer and the current page, dropping
-  // the alumni straight back to page 1. Persisted client-side per account so
-  // an in-progress attempt survives a refresh or an accidental tab close.
+  // No backend draft-save; persist progress locally per account.
   const draftKey = `tracerDraft_${user?.id || "anon"}`;
   function loadDraft() {
     try {
@@ -360,10 +332,6 @@ export default function TracerStudyForm() {
   }
 
   const [config, setConfig]               = useState(null);
-  // Backend-resolved college code (see tracerFormConfigController's
-  // resolveCollege) — the header used to hardcode "College of Computer
-  // Studies"/"CCS" unconditionally, so every non-CCS alumni saw the wrong
-  // college name on their own tracer form.
   const [college, setCollege]             = useState(null);
   const [configLoading, setConfigLoading]   = useState(true);
   const [configError, setConfigError]     = useState(""); // error loading the form config
@@ -373,9 +341,6 @@ export default function TracerStudyForm() {
   const [error, setError]                 = useState(""); // validation / submission errors
   const [isAlreadySubmitted, setIsAlreadySubmitted] = useState(false);
   const [existingDataLoading, setExistingDataLoading] = useState(true);
-  // An already-submitted alumni with new unanswered questions defaults to a
-  // compact "just the new stuff" view instead of the full multi-page form —
-  // this lets them opt back into editing everything if they want to.
   const [showFullForm, setShowFullForm] = useState(false);
   // Question ids an admin explicitly flagged (via Notify Alumni) for this
   // alumni to re-answer/update — can include already-answered questions.
@@ -423,11 +388,7 @@ export default function TracerStudyForm() {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [fetchConfig]);
 
-  // The visibilitychange re-fetch above only fires on a tab switch — an
-  // alumni who stays on this tab the whole time (the common case while
-  // actively filling out a form) never re-triggers it, so an admin's edit
-  // made while they're mid-form wouldn't reach them until they happened to
-  // switch tabs or refresh. Polling covers that gap.
+  // Poll so admin edits reach alumni who never switch tabs.
   useEffect(() => {
     const interval = setInterval(() => fetchConfig(true), 30000);
     return () => clearInterval(interval);
@@ -478,9 +439,7 @@ export default function TracerStudyForm() {
     try { localStorage.setItem(draftKey, JSON.stringify({ step, answers })); } catch {}
   }, [draftKey, step, answers]);
 
-  // A restored draft's page number can outlive the form it was saved
-  // against — if the admin removes pages between the alumni's visits, the
-  // saved step could point past the end and leave currentPage undefined.
+  // Clamp a restored step; pages may have been removed since the draft was saved.
   useEffect(() => {
     if (config && step > config.pages.length) setStep(Math.max(1, config.pages.length));
   }, [config, step]);
@@ -538,10 +497,6 @@ export default function TracerStudyForm() {
     }
   }
 
-  // Submits just the new-questions view. `answers` already holds every
-  // previously-saved field (loaded on mount) plus whatever was just filled
-  // in here, so this sends the same full payload handleSubmit does — the
-  // only difference is what's rendered/validated on screen.
   async function handleSubmitNewQuestions() {
     const err = validatePage({ questions: newQuestions }, answers);
     if (err) { setError(err); return; }
@@ -610,10 +565,6 @@ export default function TracerStudyForm() {
     );
   }
 
-  // A college with no tracer form authored yet returns zero pages — render
-  // an honest "not available yet" screen instead of a 0-step form with a
-  // dead progress bar and a Submit button that can never fire (currentPage
-  // would be undefined).
   if (config.pages.length === 0) {
     return (
       <div style={{
@@ -654,10 +605,6 @@ export default function TracerStudyForm() {
   return (
     <div style={{ minHeight: "calc(100vh - 70px)", background: "#faf8f8", fontFamily: "Arial, Helvetica, sans-serif" }}>
 
-      {/* Header — #3a000d is the same solid maroon every other topbar in the
-          app uses (see admin-mod.css's .topbar), so this hero banner reads
-          as one darker shade of the same system color rather than a
-          different, unrelated tone. */}
       <div style={{ background: `linear-gradient(135deg, ${MAROON} 0%, #3a000d 100%)`, padding: "20px 24px", color: "#fff" }}>
         <div style={{ maxWidth: 760, margin: "0 auto" }}>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginBottom: 2 }}>

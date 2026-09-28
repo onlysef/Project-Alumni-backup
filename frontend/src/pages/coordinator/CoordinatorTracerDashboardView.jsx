@@ -9,9 +9,7 @@ import { API, authHeaders } from "../../services/api.js";
 import { COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 
-// ── Tracer Study Analytics (accordion) ────────────────────────────────────────
-// DistributionBars, MiniDonut, and CHART_PALETTE live in Charts.jsx so the
-// AC AI Assistant chat can render the same charts inline in answers.
+// Tracer Study Analytics: shared chart components live in Charts.jsx
 
 const DURATION_ORDER = [
   "Less than 6 months", "6 months to 1 year", "1 to 2 years",
@@ -42,10 +40,6 @@ function MiniBarChart({ rows }) {
   );
 }
 
-// Tag cloud — best for many categories that would otherwise need
-// horizontal scrolling as bars (e.g. a long industry list). Uniform chip
-// size keeps the row clean and consistent; the count inside each chip
-// still shows magnitude without relying on size differences to read it.
 function TagCloud({ rows }) {
   if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
   const total = rows.reduce((a, r) => a + r.count, 0);
@@ -68,9 +62,6 @@ function TagCloud({ rows }) {
   );
 }
 
-// Trend/area line — best for ordinal data with a natural sequence (e.g.
-// duration buckets), where the shape across categories in THEIR order
-// matters more than ranking them by count.
 const TREND_W = 560, TREND_H = 190, TREND_PAD = 26;
 
 function TrendLine({ rows, order }) {
@@ -206,11 +197,7 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-// Builds a real .xlsx (data table + an embedded picture of the chart, drawn
-// by canvasCharts.js) so the exported chart can be copied out of Excel as an
-// image, not just read as numbers. `exceljs` is dynamically imported (it's a
-// large dependency, ~900KB) so it's only fetched when Export is clicked, not
-// on every dashboard page load.
+// exceljs is dynamically imported (~900KB) so it only loads on export.
 async function downloadChartExcel(filename, title, csvRows, img) {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -252,10 +239,6 @@ function downloadEmploymentDonutCsv(donutData) {
   ]);
 }
 
-// Wraps a single chart with its own title + export button. Exports a real
-// .xlsx with the data table AND an embedded picture of the chart (drawn
-// fresh from chartRows via canvasCharts.js, not a DOM screenshot — see that
-// module's own comment for why).
 function ChartBlock({ title, filename, csvRows, chartType, chartRows, chartOrder, children }) {
   return (
     <div className="tracer-chart-block">
@@ -287,10 +270,6 @@ function ChartBlock({ title, filename, csvRows, chartType, chartRows, chartOrder
   );
 }
 
-// `data` is already scoped by every applied filter (see the fetch effect in
-// the default export below) — this component just renders it, it doesn't
-// own any filter UI itself anymore (that now lives once, in
-// TracerFilterPanel, above this).
 function TracerStudyAnalytics({ data }) {
   if (!data) {
     return (
@@ -460,24 +439,11 @@ const EMPTY_TRACER_FILTERS = {
   jobRelatedToDegree: "", furtherEducation: "",
 };
 
-// BSIT is currently the only course with a specialization/track — mirrors
-// the same TSM/WMA/NA vocabulary used at signup (AlumniSignUpView.jsx) and
-// account creation (AccountsView.jsx).
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 
-// Display-only relabeling for this filter's dropdown — the option's `value`
-// stays the raw "Yes"/"No" stored on TracerStudyResponse (so filtering still
-// matches the real data), only the text shown to the coordinator reads as
-// "Employed"/"Unemployed" instead of a bare yes/no.
+// Display-only labels; values stay the stored "Yes"/"No".
 const EMPLOYMENT_STATUS_LABELS = { Yes: "Employed", No: "Unemployed" };
 
-// Course/batch filters live on User and can be validated against a known
-// vocabulary (COURSES_BY_COLLEGE, scoped to the coordinator's own college —
-// there's no College filter here since every /coordinator/employment/*
-// endpoint already forces that server-side); the remaining 6 filters are
-// free-text answers straight from TracerStudyResponse, so their option lists
-// come from the backend's tracer-filter-options endpoint (real, deduped
-// values already in the data) rather than a hardcoded guess.
 function yearRange(min, max) {
   if (!min || !max) return [];
   const out = [];
@@ -592,13 +558,7 @@ function TracerFilterPanel({ pending, onChange, options, courseOptions, onApply,
 
 // ── KPI grid ─────────────────────────────────────────────────────────────
 
-// The tiles flagged `scopeNote: true` intentionally track only the
-// Course/Batch Year filters (plus the forced college scope), not the
-// tracer-only ones (gender, employment status, etc.) — see the matching
-// comment on buildTracerFilterMatch in employmentController.js for why.
-// Icon color doesn't matter here — the `.tracer-kpi-grid .admin-svg-icon`
-// filter rule in admin-mod.css force-recolors every icon (regardless of its
-// native stroke) to a uniform maroon, so these are picked purely for shape.
+// scopeNote tiles only follow the Course/Batch filters (see buildTracerFilterMatch).
 const KPI_TILES = [
   { key: "employedRespondents",          label: "Total Employed",              icon: "icon-12" }, // briefcase
   { key: "unemployedRespondents",        label: "Total Unemployed",            icon: "icon-7"  }, // exit/log-out arrow
@@ -681,14 +641,7 @@ const PDF_RATING_COLORS = Object.fromEntries(
   Object.entries(RATING_COLORS).map(([k, v]) => [k, hexToRgb(v)])
 );
 
-// Entirely client-side, hand-drawn with plain jsPDF vector primitives —
-// deliberately NOT a DOM screenshot (html2canvas can't reliably capture the
-// CSS conic-gradient donuts or the icon <img>s here, which produced blank/
-// incomplete output). Every distribution is redrawn as a ranked horizontal
-// bar chart and the personal-growth ratings as a stacked bar + legend, so
-// the report always renders correctly and stays crisp/selectable at any
-// zoom, following the same ensureSpace()-based pagination idiom already
-// used by downloadResumePdf() in JobConnect.jsx.
+// PDF drawn with jsPDF primitives; DOM screenshots rendered the donuts blank.
 function downloadTracerAnalyticsPdf(data, filters) {
   if (!data) return;
   const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -741,9 +694,6 @@ function downloadTracerAnalyticsPdf(data, filters) {
     y += 18;
   }
 
-  // Ranked (or explicitly ordered) horizontal bar chart: label, proportional
-  // bar, count (%) — the one reusable chart shape every distribution below
-  // maps onto.
   function barChart(rows, opts = {}) {
     if (!rows || !rows.length) { emptyNote(); return; }
     const list = opts.order
@@ -927,11 +877,7 @@ function downloadTracerAnalyticsPdf(data, filters) {
 
 // ── Page ─────────────────────────────────────────────────────────────────
 
-// Module-level, not state — survives this component unmounting when the
-// coordinator navigates away and back, so returning to the Tracer Dashboard
-// shows the last-known charts instantly instead of flashing "Loading…"
-// again while a fresh copy loads silently in the background. Keyed by the
-// applied filter set, since different filters have different cached results.
+// Module-level cache, keyed by filters, so returning shows the last charts instantly.
 const cachedDonutData = new Map();
 const cachedTracerAnalytics = new Map();
 let cachedTracerFilterOptions = null;
@@ -945,11 +891,6 @@ export default function CoordinatorTracerDashboardView() {
   const [filterOptions, setFilterOptions] = useState(cachedTracerFilterOptions ?? {});
   const [tracerAnalytics, setTracerAnalytics] = useState(() => cachedTracerAnalytics.get(buildFilterQueryString(EMPTY_TRACER_FILTERS)) ?? null);
 
-  // Moved here from the main Dashboard — the employed/unemployed breakdown
-  // is a tracer-derived stat, so it belongs on the tracer dashboard
-  // alongside everything else built from the same data, and (unlike on the
-  // main Dashboard) is now scoped by the SAME applied filters as the rest
-  // of this page instead of its own separate one.
   const [donutData, setDonutData] = useState(() => cachedDonutData.get(buildFilterQueryString(EMPTY_TRACER_FILTERS)) ?? null);
 
   useEffect(() => {
@@ -971,9 +912,6 @@ export default function CoordinatorTracerDashboardView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(appliedFilters)]);
 
-  // Filter dropdown vocabularies (genders/statuses/survey years/batch
-  // bounds) — fetched once, unfiltered. See getTracerFilterOptions's own
-  // comment for why this isn't recomputed per applied filter.
   useEffect(() => {
     async function fetchFilterOptions() {
       try {
@@ -988,12 +926,7 @@ export default function CoordinatorTracerDashboardView() {
   }, []);
 
   useEffect(() => {
-    // Switching filters quickly can let an in-flight request for a
-    // PREVIOUS filter set resolve after the new one already did,
-    // overwriting the correct data with stale data. `cancelled` is
-    // flipped by this effect's own cleanup (which runs whenever
-    // appliedFilters changes), so a late response from an abandoned
-    // request is dropped instead of applied.
+    // Drop responses from a superseded filter set.
     let cancelled = false;
     const qs = buildFilterQueryString(appliedFilters);
     const cached = cachedTracerAnalytics.get(qs);

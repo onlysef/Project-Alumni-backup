@@ -300,9 +300,7 @@ function QuestionCard({ q, qIdx, pageIdx, totalQ, onUpdate, onDelete, onMove, al
       ? lines(form.optionsText)
       : [];
 
-    // A radio/checkbox/select question with zero options renders no
-    // selectable choices at all — if it's also required, alumni can never
-    // satisfy it, permanently blocking the tracer form for that college.
+    // A required choice question with no options would block the form for good.
     if (["radio", "checkbox", "select"].includes(effectiveType) && options.length === 0) {
       setError("Add at least one option (one per line) — this question type needs selectable choices.");
       return;
@@ -625,11 +623,6 @@ const COLLEGES = ["CCS","CIT","CAFA","COED","CCJE","CPAG","CBA","CASS","COS","CO
 export default function TracerFormEditorView() {
   const { showToast } = useOutletContext();
   const { user } = useAuth();
-  // A coordinator can only ever view/edit their own assigned college's
-  // tracer form — no college switcher, no copying another college's form
-  // in as a starting point (that would mean reading a college they don't
-  // manage). The backend enforces this too (resolveCollege in
-  // tracerFormConfigController.js), this just keeps the UI honest about it.
   const isCoordinator = user?.role === "coordinator";
   const apiBase = isCoordinator ? `${API}/coordinator` : `${API}/admin`;
 

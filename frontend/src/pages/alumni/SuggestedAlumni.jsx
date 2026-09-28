@@ -323,9 +323,7 @@ function SavedProfileCard({ person, onRemove, onView }) {
   </article>;
 }
 
-// Alumni type these in freely (e.g. "facebook.com/name" with no scheme), so
-// normalize before using as an href or the link silently resolves relative
-// to the current page instead of opening the external profile.
+// Add a scheme so links like "facebook.com/name" don't resolve relative to this page.
 function externalHref(value) {
   if (!value) return "";
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;

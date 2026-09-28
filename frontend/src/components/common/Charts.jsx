@@ -262,12 +262,7 @@ export function DistributionBars({ rows, limit }) {
   const shown = limit ? rows.slice(0, limit) : rows;
   const total = rows.reduce((a, r) => a + r.count, 0);
   const max   = Math.max(...shown.map((r) => r.count), 1);
-  // A "share of total" percentage is only meaningful when there's something
-  // to compare against — with a single category shown, it's mathematically
-  // always 100% regardless of the actual count, which reads as a misleading
-  // rate (e.g. "111 (100%)" can look like "100% employed") rather than the
-  // trivial fact it actually is. Suppressed for exactly that one-row case;
-  // 2+ rows still show a real, informative share.
+  // Hide share-of-total for a single row; it's always 100%.
   const showPct = shown.length > 1;
   return (
     <div className="tracer-bars">
@@ -289,14 +284,7 @@ export function DistributionBars({ rows, limit }) {
   );
 }
 
-// Line/trend chart — best for a metric tracked ACROSS an ordered sequence
-// (batch year, month, etc.), where the shape of change over time is the
-// actual point, not a ranked comparison DistributionBars' bars suit. `rows`
-// is already in the sequence's natural order (oldest -> newest) by the time
-// it gets here — see queryByYear()'s own comment on why. A row's `count`
-// may be `null` (no data for that point, e.g. a batch with zero tracer
-// responses yet) — rendered as a genuine GAP in the line rather than a
-// misleading 0, since "no data" and "confirmed zero" are different facts.
+// Trend line. A null count is drawn as a gap (no data), not zero.
 export function TrendLine({ rows, unit = '%', max = 100 }) {
   const [tip, setTip] = useState(null);
   const wrapRef = useRef(null);
@@ -304,10 +292,6 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
     return <p className="tracer-empty">No responses yet.</p>;
   }
 
-  // PAD_B (42, was 32) leaves room for the two-line axis label a gap point
-  // now gets — the year plus an explicit "no data" sub-label (see the
-  // x-axis label loop below) — without the second line clipping against the
-  // bottom edge.
   const W = 600, H = 220, PAD_L = 36, PAD_R = 16, PAD_T = 16, PAD_B = 42;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
@@ -317,9 +301,6 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
 
   const points = rows.map((r, i) => ({ ...r, x: xFor(i), y: r.count == null ? null : yFor(r.count) }));
 
-  // Break the polyline into separate contiguous segments wherever a null
-  // (no-data) point interrupts the sequence, instead of drawing a straight
-  // line across the gap as if that value were actually known.
   const segments = [];
   let current = [];
   points.forEach((p) => {
@@ -328,28 +309,7 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
   });
   if (current.length) segments.push(current);
 
-  // A gap sitting BETWEEN two known points (e.g. 3 batches where only the
-  // middle one has zero tracer responses) used to render as nothing at all —
-  // both neighbors ended up as their own 1-point "segment" (a polyline needs
-  // 2+ points to draw anything), so a short series with one interior gap
-  // showed two disconnected dots and looked completely empty/broken rather
-  // than like a real chart with one missing point. A dashed bridge across the
-  // gap shows the overall shape without a dead-looking hole in the line.
-  //
-  // Deliberately NOT a circle/dot on that bridge (an earlier version placed
-  // one, interpolated to sit visually on the dashed line) — caught live: at
-  // chat-message rendering size, a dashed-vs-solid line and a hollow-vs-
-  // filled dot are both too subtle a difference to actually notice, so that
-  // interpolated marker read as a THIRD REAL DATA POINT sitting right on the
-  // trend line, exactly the "why does 2025 have a number when there were no
-  // responses" confusion this is meant to prevent. A vertical dashed guide
-  // line (drawn further down, spanning the full plot height at the gap's x)
-  // plus an explicit "no data" sub-label under that point's year (see the
-  // x-axis label loop below) are both unambiguous regardless of render size —
-  // neither can be mistaken for a plotted value. Only bridges INTERIOR gaps
-  // (a known point on BOTH sides) — a gap at the very start or end of the
-  // series has no second known point to interpolate a bridge position from
-  // and is left as genuinely empty, same as before.
+  // Interior gaps: dashed bridge + vertical guide + "no data" label (no dot; it read as a real point).
   const bridges = [];
   {
     let i = 0;
@@ -415,11 +375,6 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
           />
         ))}
         {bridges.flatMap((b) => b.gaps.map((g) => (
-          // Full-height dashed vertical guide at the gap's x — unlike a dot
-          // ON the line, this can't be mistaken for a plotted value; it
-          // reads unambiguously as "something is marked at this position,"
-          // and the "no data" sub-label below (in the axis-label loop)
-          // explains what.
           <line
             key={`gap-guide-${g.label}`}
             x1={g.x} y1={PAD_T} x2={g.x} y2={PAD_T + plotH}
@@ -427,9 +382,6 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
           />
         )))}
         {points.map((p, i) => {
-          // Thinning long label sequences — a batch-year axis with 15+ points
-          // renders every label overlapping and unreadable at this width, so
-          // only every Nth label is drawn once there are more than ~10 points.
           const stride = n > 10 ? Math.ceil(n / 8) : 1;
           if (i % stride !== 0 && i !== n - 1) return null;
           const labelY = H - PAD_B + 14;
@@ -438,10 +390,6 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
               <text x={p.x} y={labelY} className="trend-axis-label" textAnchor="middle">
                 {String(p.label).replace(/^Batch\s+/i, '')}
               </text>
-              {/* Explicit, always-visible (no hover needed) call-out for a
-                  gap point — a static screenshot or a touch-screen viewer
-                  never sees a hover tooltip, so the missing-data fact has to
-                  be readable in the chart itself, not just on mouseover. */}
               {p.y == null && (
                 <text x={p.x} y={labelY + 12} className="trend-axis-label trend-gap-label" textAnchor="middle">
                   no data

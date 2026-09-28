@@ -29,9 +29,6 @@ const SALARY_RANGES = [
   "Prefer not to say",
 ];
 
-// Bracket-style choices so this data is directly matchable by whatever
-// career-recommendation logic reads it later — free text ("2-ish years",
-// "a few years") can't reliably be compared against a job's requirements.
 const EXPERIENCE_LEVELS = [
   "No experience yet",
   "Less than 1 year",
@@ -59,9 +56,6 @@ const INDUSTRIES = [
   "Other",
 ];
 
-// Same vocabulary the Tracer Study form's "present employment type"
-// question already uses, so a Work History entry and a tracer answer never
-// disagree on what to call the same kind of job.
 const WORK_HISTORY_TYPES = ["Regular/Permanent", "Casual/Contractual", "Part-time", "Project-based", "Self-employed"];
 
 const BLANK = {
@@ -72,10 +66,7 @@ const BLANK = {
 };
 const EMPLOYMENT_PROFILE_KEY = "alumniEmploymentProfile";
 
-// AlumniEmployment defaults company_name to 'N/A' and employment_status to
-// 'Not Yet Updated' rather than leaving them blank — those aren't real
-// answers, so they're mapped back to empty here instead of literally
-// showing "N/A" in a text input the alumnus never actually filled in.
+// 'N/A' / 'Not Yet Updated' are defaults, not answers; show them as empty.
 function mapEmploymentToForm(emp) {
   if (!emp) return BLANK;
   return {
@@ -103,30 +94,13 @@ function mapEmploymentToForm(emp) {
   };
 }
 
-// Letters (incl. basic accented characters), spaces, periods, apostrophes,
-// and hyphens only — covers real names ("Dela Cruz", "D'Souza", "Ma. Reyes")
-// while rejecting digits/other special characters typed into a text field.
 const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ'.\- ]+$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-// Digits plus the punctuation an actual phone number can legitimately use
-// (+63, spaces, hyphens, parentheses) — anything else (letters, symbols) is
-// clearly not a phone number.
 const PHONE_CHARS_RE = /^[0-9+\-\s()]+$/;
-// Company/Job/Location can legitimately contain digits and a small set of
-// real punctuation ("7-Eleven", "Brgy. 3, Quezon City", "R&D Engineer") but
-// nothing beyond that — a first pass here only rejected a value with NO
-// letters at all, which still let "asdf@#$%" or "Manager!!!" through since
-// they technically contain a letter somewhere.
 const WORK_TEXT_RE = /^[A-Za-z0-9À-ÖØ-öø-ÿ.,'&\-/() ]*$/;
-// Skills legitimately include symbols a business-text field wouldn't
-// ("C++", "C#", "UI/UX") so this stays a looser "at least one letter" check
-// instead of WORK_TEXT_RE's allow-list — it only rejects an entry with NO
-// letters at all ("88888888888"), never a real skill.
 const HAS_LETTER_RE = /[A-Za-zÀ-ÖØ-öø-ÿ]/;
 
-// maxLength on the inputs themselves only stops typing past the limit —
-// pasting or a direct API call bypasses it, so the same caps are enforced
-// here too.
+// maxLength doesn't stop pastes or API calls, so enforce the caps here too.
 const FIELD_MAX_LENGTHS = {
   firstName: 50, lastName: 50, contactEmail: 100, contactNumber: 20,
   company: 100, position: 100, location: 100, facebook: 200, linkedin: 200,
@@ -182,10 +156,6 @@ function validateProfileForm(form) {
   return null;
 }
 
-// Shared by the "Add work experience" button (immediate feedback on just
-// that entry) and validateProfileForm above (defense-in-depth on Save, same
-// as every other field here) — mirrors updateMyEmployment's own work_history
-// checks on the backend.
 function validateWorkHistoryEntry(entry) {
   const title = entry.title.trim();
   const company = entry.company.trim();
@@ -202,9 +172,6 @@ function validateWorkHistoryEntry(entry) {
 
 function mapFormToEmployment(form) {
   return {
-    // Not actually AlumniEmployment fields — updateMyEmployment also accepts
-    // these two (optional) so the whole profile page can save in one request
-    // instead of a second round-trip just for a name fix.
     firstName:     form.firstName?.trim(),
     middleInitial: form.middleInitial?.trim(),
     lastName:      form.lastName?.trim(),
@@ -213,10 +180,7 @@ function mapFormToEmployment(form) {
     job_title: form.position,
     industry: form.industry,
     work_location: form.location,
-    // null (not undefined) when cleared — JSON.stringify drops
-    // undefined-valued keys entirely, which the backend can't tell apart
-    // from this field never having been mentioned at all, so clearing an
-    // already-set date silently failed to persist.
+    // null, not undefined: JSON.stringify drops undefined, so a cleared date wouldn't persist.
     date_employed: form.hired || null,
     salary_range: form.salary,
     skills: form.skills,
@@ -294,16 +258,9 @@ export default function AlumniEmploymentDetails() {
     fetch(`${API}/alumni/employment`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => {
-        // firstName/lastName aren't part of AlumniEmployment — they come from
-        // the account itself (AuthContext), same source displayName below
-        // already reads from.
         const mapped = { ...mapEmploymentToForm(d.employment), firstName: user?.firstName || "", middleInitial: user?.middleInitial || "", lastName: user?.lastName || "" };
         setForm(mapped);
         setSaved(mapped);
-        // The profile opens in preview mode unless the caller asked to edit
-        // straight away (the topbar "Edit Profile" shortcut passes ?edit=1) —
-        // otherwise editing is an explicit action so the page doesn't look
-        // like an unfinished form before the alumnus chooses Edit Profile.
         setEditing(new URLSearchParams(window.location.search).get("edit") === "1");
       })
       .catch(() => {})
@@ -311,18 +268,12 @@ export default function AlumniEmploymentDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // Education is already collected by the Tracer Study form (Further
-  // Education Yes/No + type) — shown here read-only rather than re-asking
-  // for it in a second place that could drift out of sync with that answer.
   useEffect(() => {
     if (!token) return;
     fetch(`${API}/alumni/tracer-study`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => {
         if (!d.submitted || !d.data) { setEducation("Not yet updated"); return; }
-        // Graduating as a TSU alumnus already means a bachelor's degree was
-        // completed — "No further studies" on its own read as if nothing
-        // had been finished at all, when there's always at least that.
         setEducation(d.data.furtherEducation === "Yes" ? (d.data.furtherEducationType || "Yes") : "Bachelor's Degree");
       })
       .catch(() => setEducation("Not yet updated"));
@@ -357,9 +308,7 @@ export default function AlumniEmploymentDetails() {
       };
       setForm(mapped);
       setSaved(mapped);
-      // Patches AuthContext's own cached copy so the corrected name shows up
-      // immediately everywhere else it's read from (topbar, AC greeting,
-      // etc.) instead of only after the next full sign-in.
+      // Update AuthContext's cached name so it shows everywhere right away.
       if (data.user?.firstName) {
         updateUser?.({ firstName: data.user.firstName, middleInitial: data.user.middleInitial, lastName: data.user.lastName });
       }
@@ -449,9 +398,7 @@ export default function AlumniEmploymentDetails() {
               value={form.middleInitial}
               maxLength={1}
               placeholder="e.g. A"
-              // A single letter only — the "." is added automatically
-              // wherever this is displayed, so typing one here would just be
-              // a second, redundant period stacking on top of that.
+              // Single letter; the period is added on display.
               onChange={e => update("middleInitial", e.target.value.replace(/[^A-Za-z]/g, "").slice(0, 1).toUpperCase())}
             />
           </Field>
@@ -550,11 +497,6 @@ function WorkHistoryCard({ entry, onRemove }) {
 
 const BLANK_WORK_HISTORY_ENTRY = { title: "", company: "", employmentType: "", start: "", end: "", description: "" };
 
-// Add-only repeater (same simplicity as SkillsEditor's chip list — add and
-// remove, no in-place editing of an already-added entry) for past jobs.
-// Entries are appended to `value` and immediately handed to the parent's
-// `update()`, so they ride along with the rest of the form's
-// localStorage/save flow without any extra wiring here.
 function WorkHistoryEditor({ value, onChange }) {
   const [draft, setDraft] = useState(BLANK_WORK_HISTORY_ENTRY);
   const [draftError, setDraftError] = useState("");

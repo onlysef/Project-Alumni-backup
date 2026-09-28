@@ -13,10 +13,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-// Module-level, not state — survives this component unmounting when the
-// admin navigates away and back, so returning to the Dashboard shows the
-// last-known numbers instantly instead of flashing "—" again while a fresh
-// copy loads silently in the background.
+// Module-level cache so returning to the page shows the last numbers instantly.
 let cachedTotalUsers = null;
 let cachedActiveCount = null;
 let cachedInactiveCount = null;
@@ -35,16 +32,7 @@ export default function DashboardView() {
 
     async function fetchTotalUsers() {
       try {
-        // GET /admin/users is now paginated (default 50/page — see
-        // AccountsView.jsx) so `data.users` is only ONE page, not everyone.
-        // Deriving these tiles from `users.length` used to work because
-        // that endpoint returned the whole table; now it silently reported
-        // "50 Total Users" (the page size) regardless of the real count.
-        // The endpoint already computes true system-wide totals server-side
-        // for its own pagination math — `total` (unfiltered here, since no
-        // role/status/search params are sent) and `activeCount` are exactly
-        // those real numbers, so this reads them directly instead of
-        // counting whatever page happened to come back.
+        // /admin/users is paginated; use its server-computed totals, not users.length.
         const res = await fetch(`${API}/admin/users?limit=1`, { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
@@ -70,9 +58,6 @@ export default function DashboardView() {
     const cached = cachedPostActivities.get(activityWindow);
     if (cached) { setPostActivities(cached); setActivitiesLoading(false); }
     else setActivitiesLoading(true);
-    // Admin actions (export/print/etc.) + alumni tracer submissions —
-    // deliberately not post like/comment/share activity, which belongs in
-    // the notification bell instead of this feed.
     async function fetchActivities() {
       try {
         const limit = activityWindow === "all" ? 50 : 25;

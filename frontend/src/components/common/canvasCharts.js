@@ -1,15 +1,4 @@
-// Hand-drawn <canvas> chart renderers used to embed real chart PICTURES into
-// the per-chart Excel exports on the Tracer Dashboard. Deliberately NOT a
-// DOM screenshot (html2canvas) — that approach was tried for the PDF export
-// and failed: CSS conic-gradient donuts rendered blank, icons sometimes
-// blank. Every shape here is redrawn straight from the same data the
-// on-screen chart uses, the same philosophy as the PDF export's hand-drawn
-// jsPDF charts, just targeting the browser's native Canvas 2D API instead so
-// it can be rasterized to a PNG and embedded as a picture in the workbook.
-//
-// Plain JS, no React — only depends on CHART_PALETTE (the same color-by-index
-// system the on-screen MiniDonut/DistributionBars already use, imported here
-// so an exported image's colors match what's on screen).
+// Canvas chart renderers for the Excel exports (DOM screenshots rendered the donuts blank).
 
 import { CHART_PALETTE } from "./Charts.jsx";
 
@@ -285,9 +274,6 @@ function drawStackedBars(rows, ratingOrder, ratingColors) {
   return toResult(canvas, W, H);
 }
 
-// Dispatches to the right drawer by chart type. Returns null when there's no
-// data to draw (mirrors each on-screen chart's own "No responses yet." /
-// empty state) — the caller should skip embedding an image in that case.
 export function renderChartImage(chartType, { rows, order, ratingOrder, ratingColors } = {}) {
   switch (chartType) {
     case "donut": return drawDonut(rows);

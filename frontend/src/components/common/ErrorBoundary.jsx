@@ -1,10 +1,6 @@
 import React from "react";
 
-// Catches any render-time crash anywhere below it in the tree — without
-// this, an unhandled exception (a null field from an unusual API response,
-// a stale module reference, etc.) white-screens the entire app instead of
-// showing a recoverable fallback. Must be a class component; there is no
-// hook equivalent for componentDidCatch/getDerivedStateFromError.
+// Shows a fallback instead of white-screening on a render crash. Must be a class component.
 export class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
