@@ -608,18 +608,9 @@
         padding-right: 62px;
         font-size: 11px;
     }
-    /* Was one stacked column (Top Event label, its value, Low Response
-       label, its value, all crammed with a 2px gap) squeezed into the
-       card's left edge while the rest of the card sat empty — now each
-       stat gets its own half of the available width, matching the label-
-       above-value hierarchy the other .coord-stat cards already use. */
     .coord-highlight > .coord-highlight-item {
         flex: 1 1 0;
         min-width: 0;
-        /* Overrides the shared ".coord-stat > div, .coord-highlight > div"
-           rule's padding-right:62px (icon clearance meant for a single
-           child div) — that space is now reserved once on .coord-highlight
-           itself above, not duplicated on each of these two items. */
         padding-right: 0;
         display: grid;
         gap: 6px;
@@ -679,11 +670,7 @@
                 overflow: hidden;
             }
 
-            /* A dropdown menu (e.g. the Activity time-window filter) renders
-               absolutely-positioned below its trigger — the card's own
-               overflow:hidden above would otherwise clip it to whatever
-               height the card happens to be. Mirrors the same
-               .panel:has(.activity-window-menu) override in admin-mod.css. */
+            /* Let dropdowns overflow the card instead of being clipped. */
             .coord-card:has(.activity-window-menu) {
                 overflow: visible;
             }
@@ -731,10 +718,6 @@
                 opacity: 1 !important;
             }
 
-            /* Scrolls horizontally instead of squeezing every bar into a
-               fixed 420px footprint — a chart with many events now grows
-               wider (see MiniBarChart's dynamic viewBox) rather than
-               cramming labels until they overlap each other. */
             .coord-chart-box-wrap {
                 overflow-x: auto;
             }
@@ -1354,6 +1337,19 @@
 
             .coord-contacts-table td:last-child {
                 white-space: nowrap;
+            }
+
+            .coord-contact-position > span {
+                max-width: 220px;
+                display: -webkit-box;
+                -webkit-box-orient: vertical;
+                -webkit-line-clamp: 2;
+                line-clamp: 2;
+                overflow: hidden;
+                /* break-word, not anywhere: "anywhere" also shrinks the
+                   column's min width, splitting "Unemployed" mid-word on phones. */
+                overflow-wrap: break-word;
+                white-space: normal;
             }
 
             .coord-contacts-table td:last-child button {
@@ -2468,10 +2464,7 @@ body.dark-mode .coord-course-pill:not(.bsit):not(.bscs):not(.bsis) {
     filter: brightness(0) saturate(100%) invert(13%) sepia(94%) saturate(4000%) hue-rotate(343deg) brightness(78%);
 }
 
-/* ===================================================================
-   CONSISTENT BUTTON SYSTEM
-   .btn  + .btn-primary (solid maroon)  or  .btn-secondary (outline)
-   =================================================================== */
+/* Button system: .btn + .btn-primary (solid maroon) or .btn-secondary (outline) */
 .btn {
     display: inline-flex !important;
     align-items: center !important;
@@ -2572,9 +2565,7 @@ body.dark-mode .coord-course-pill:not(.bsit):not(.bscs):not(.bsis) {
     width: 15px;
     height: 15px;
 }
-/* ===================================================================
-   Topbar notifications + settings popovers
-   =================================================================== */
+/* Topbar notifications + settings popovers */
 .topbar-menu {
     position: relative;
     display: inline-flex;
@@ -2822,9 +2813,7 @@ body.dark-mode .coord-contacts-table h3 {
     color: var(--gold);
 }
 
-/* ===================================================================
-   Dark mode — make ALL maroon/dark text readable on dark surfaces
-   =================================================================== */
+/* Dark mode: readable text on dark surfaces */
 /* stat card numbers + labels */
 body.dark-mode .coord-stat strong,
 body.dark-mode .coord-highlight strong {
@@ -2937,10 +2926,7 @@ body.dark-mode .coord-feedback-response-head strong,
 body.dark-mode .coord-feedback-response-comment { color: #f8eef0; }
 body.dark-mode .coord-feedback-response-card time { color: #b99ba4; }
 
-/* ===================================================================
-   Dark mode — global catch-all for readable text
-   (placed last so it wins the cascade)
-   =================================================================== */
+/* Dark mode: global catch-all (keep last so it wins the cascade) */
 body.dark-mode .main,
 body.dark-mode .content,
 body.dark-mode .coordinator-content {
@@ -3021,9 +3007,7 @@ body.dark-mode .coord-chart .coord-chart-grid {
     stroke: #50303a;
 }
 
-/* ===================================================================
-   Dark mode — Event Management page (list items, posts, pills)
-   =================================================================== */
+/* Dark mode: Event Management page */
 /* event list items (List of Events) */
 body.dark-mode .coord-event-list-inner article {
     background: #2d1a20;
@@ -3099,9 +3083,7 @@ body.dark-mode .coord-highlight .admin-svg-icon {
     box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.36);
     filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
 }
-/* =====================================================================
-   RESPONSIVE PASS — coordinator pages on tablets & phones
-   ===================================================================== */
+/* Responsive: coordinator pages on tablets & phones */
 
 /* Tables: never let them break the layout; allow horizontal scroll */
 .coord-records-card table,
