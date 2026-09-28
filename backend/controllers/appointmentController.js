@@ -5,6 +5,7 @@ const User           = require('../models/User');
 const Notification   = require('../models/Notification');
 const { escapeRegex } = require('../utils/escapeRegex');
 const { sendAppointmentScheduledEmail } = require('../utils/emailService');
+const { phDateTime, todayInPH } = require('../utils/phTime');
 
 function toMinutes(t) {
   if (!t) return 0;
@@ -13,9 +14,7 @@ function toMinutes(t) {
 }
 
 function isPastDateTime(dateStr, timeStr) {
-  const [y, mo, d] = dateStr.split('-').map(Number);
-  const [h, mi] = (timeStr || '00:00').split(':').map(Number);
-  return new Date(y, mo - 1, d, h, mi).getTime() < Date.now();
+  return phDateTime(dateStr, timeStr).getTime() < Date.now();
 }
 
 // "YYYY-MM-DD" + "HH:MM" → "Jul 28, 2026 · 8:30 AM", matching the format
@@ -34,8 +33,7 @@ function formatApptDateTime(dateStr, timeStr) {
 // the time they booked. Sweep those to "Missed" so the coordinator queue
 // only shows requests that can still be acted on.
 async function expireStalePendingAppointments() {
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = todayInPH();
   const candidates = await Appointment.find({
     status: 'Pending',
     appointment_date: { $lte: todayStr },
@@ -209,8 +207,7 @@ async function createAppointmentRecord({ alumni_id, alumni_name, staff_id, appoi
     // closure) — it must not block booking a future date the office will
     // actually be open for. A planned future closure belongs in `holidays`
     // instead; see that check right below.
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayStr = todayInPH();
     if (settings.office_status === 'Closed' && appointment_date === todayStr) {
       return { ok: false, status: 400, message: 'The office is closed today. Appointments cannot be booked for today, but you can still book a future date.' };
     }
