@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
-import alumniLogo from "../../assets/images/alumni-removebg.png";
 import jobConnectLogo from "../../assets/images/jobconnect-logo.png";
 import { apiFetch } from "../../services/api.js";
-import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
+import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription, SKILL_CHIP_LIMIT } from "../../components/alumni/JobPostingCard.jsx";
 import { classifySkill } from "../../utils/skillClassification.js";
 
 // Every field below used to be an editable, SAVEABLE default (see
@@ -573,11 +572,15 @@ const APPLICATION_STATUSES = ["Applied", "Interview Scheduled", "Offer Received"
 
 function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
   const description = descriptionPreview(app.description, 220);
+  const hasMatch = app.match !== null && app.match !== undefined;
   return <article className="connect-job-card">
-    {app.match !== null && app.match !== undefined && (
-      <div className="connect-match-ribbon"><strong>{app.match}%</strong><span>Match</span></div>
-    )}
-    <div className="job-company-logo"><img src={alumniLogo} alt={`${app.company} logo`} /></div>
+    <div className={`job-match-panel${hasMatch ? "" : " job-match-panel--empty"}`}>
+      {hasMatch ? (
+        <div className="job-match-score"><strong>{app.match}%</strong><span>Match</span></div>
+      ) : (
+        <span>No match score</span>
+      )}
+    </div>
     <div className="connect-job-main">
       <span className="connect-posted">Applied {formatSavedDate(app.appliedAt || app.createdAt)}</span>
       <div className="connect-job-title">
@@ -594,14 +597,22 @@ function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
       </div>
       <small className="job-partner">via Careerjet</small>
     </div>
-    {app.skills?.length > 0 && (
-      <aside className="connect-skill-gap">
-        <b>Job Match</b>
-        <span className="skill-match-ratio">{app.skills.filter(s => s.matched).length} of {app.skills.length} skills matched</span>
-        <div>{[...app.skills].sort((a, b) => Number(b.matched) - Number(a.matched)).map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
-        <small>Based on your profile as of when you applied.</small>
-      </aside>
-    )}
+    {app.skills?.length > 0 && (() => {
+      const sorted = [...app.skills].sort((a, b) => Number(b.matched) - Number(a.matched));
+      const shown = sorted.slice(0, SKILL_CHIP_LIMIT);
+      const hidden = sorted.length - shown.length;
+      return (
+        <aside className="connect-skill-gap">
+          <b>Job Match</b>
+          <span className="skill-match-ratio">{app.skills.filter(s => s.matched).length} of {app.skills.length} skills matched</span>
+          <div>
+            {shown.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}
+            {hidden > 0 && <span className="skill-more">+{hidden} more</span>}
+          </div>
+          <small>Based on your profile as of when you applied.</small>
+        </aside>
+      );
+    })()}
   </article>;
 }
 

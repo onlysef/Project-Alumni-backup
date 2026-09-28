@@ -141,12 +141,43 @@ function isUnrecognizedInput(q) {
 }
 
 const HELP_PATTERNS = [
+  // Bare "can you help (me)?" — arguably the single most natural way
+  // someone asks for help, but every alternative below required the word
+  // "what" first ("what can you help/do"). "hiii, can you help me?" (a
+  // greeting + this, together) fell through to the generic fallback
+  // entirely, since it's not JUST a greeting either.
+  /\b(?:can|could|will)\s+you\s+help\s*(?:me)?\b/i,
   /\bwhat can you (do|help|answer)\b/i,
   /\bhow (do|can) (i|you) use\b/i,
   /\bshow (me )?(available )?(commands|capabilities|features)\b/i,
   /\bwhat (questions|topics) can (i|you)\b/i,
   /^\s*help\s*$/i,
   /\bhow does this (chat|assistant|bot) work\b/i,
+  // Proximity-based capability questions — every fixed-phrase alternative
+  // above only matched ONE specific word order ("what can you do", "how do
+  // you use"). Real phrasings vary a lot more than that: "what can you
+  // ACTUALLY do" (word wedged in), "what can AC answer" (bot's own name,
+  // not "you"), "what IS this system FOR" ("is" wasn't in the verb list at
+  // all), "how does AC work" ("AC" isn't "chat/assistant/bot" literally),
+  // "how TO use this" (verb-before-subject, opposite order from "how do
+  // you use"). All of these fell through to the generic fallback before.
+  // The (you|ac|it|this) middle requirement is what keeps this from
+  // false-positiving on a real data question — "what is the employment
+  // rate" has no "you"/"ac"/"it"/"this" for the pattern to anchor on.
+  /\bwhat\b.{0,15}\b(?:can|could|does|do|is|are)\b.{0,25}\b(?:you|ac|it|this)\b.{0,20}\b(?:do|help|answer|for|capable)\b/i,
+  /\bhow\b.{0,15}\b(?:to|do|does|is)\b.{0,25}\b(?:use|work|used)\b/i,
+  /\b(?:guide|help)\s+me\b.{0,20}\bhow\s+to\s+use\b/i,
+  // Bare "capabilities"/"commands" — the only thing either word means in
+  // this app's chat interface is asking what AC itself can do; there's no
+  // other sense of "capabilities"/"commands" a tracer-study question would
+  // ever use them in.
+  /\b(?:capabilit(?:y|ies)|commands?)\b/i,
+  // "what topics/questions do you cover" / "what kind of questions can I
+  // ask" — broader than the fixed "what (questions|topics) can (i|you)"
+  // above, which missed "cover" as a verb and "kind of questions" as an
+  // extra phrase wedged in the middle.
+  /\bwhat\b.{0,30}\b(?:topics?|questions?|kind\s+of\s+questions?)\b.{0,20}\b(?:can|cover|ask)\b/i,
+  /\bwhat\s+can\s+i\s+ask\b/i,
   // "what should I do here?" / "what do I do here" — a first-time user's
   // most natural way to ask "how do I use this thing," but matched none of
   // the alternatives above (none cover bare "what should/do I do"). Fell
@@ -155,6 +186,15 @@ const HELP_PATTERNS = [
   // to respond to unrelated inquiries") instead of HELP_RESPONSE's actually
   // useful capability list with example questions.
   /\bwhat (?:should|do) i do(?:\s+here)?\b/i,
+  // "what are the features of the system?" — asking the same "what can you
+  // do" question in different words, but only "show (me) ... features"
+  // above required the word "features"; "what ARE the features" (no
+  // "show") matched nothing and fell through to the generic fallback.
+  // Proximity-based (not a fixed phrase like "what are the features") so a
+  // possessive or extra word in between — "what are the SYSTEM'S feature"
+  // (singular, with "system's" wedged in) — still matches; a fixed-phrase
+  // version missed that exact live example.
+  /\bwhat\b.{0,20}\bfeatures?\b/i,
   // "Can I ask (you) something/a question?" — a permission-seeking preamble,
   // not a real question yet, so there's nothing for the statistical/RAG
   // pipeline to search for. Previously fell all the way through to the
@@ -171,9 +211,19 @@ const HELP_PATTERNS = [
   // (kita\/ko) gamitin ito" ("how do I use this"), "ano (pwede\|puwede) kong
   // itanong" ("what can I ask"), "pwede ba akong magtanong" ("may I ask").
   /\bano (ang )?kaya mo(ng)?\s*(gawin|sagutin|tulungan)\b/i,
+  // "ano ba magagawa mo" ("what can you actually do") — "magagawa" (the
+  // potential/future verb form) is a completely different word from "kaya
+  // mo(ng) gawin" above, not just a reordering of it; missed entirely.
+  /\bmagagawa\s+mo\b/i,
   /\bpaano (ko|kita|namin)?\s*(gamitin|magamit)\b/i,
   /\bano (ang )?(pwede|puwede) ko(ng)? (itanong|tanungin)\b/i,
   /\b(pwede|puwede)\s+(po\s+)?(ba\s+)?(ako|akong)?\s*magtanong\b/i,
+  // "tulungan mo ako" ("help me") / "pwede mo ba ako tulungan" ("can you
+  // help me") — the Tagalog equivalent of the bare "can you help me?" added
+  // above; a different verb ("tulungan") entirely from "magtanong" (to ask)
+  // right above, not just a rephrasing of it.
+  /\btulungan\s+mo\s+ako\b/i,
+  /\bpwede\s+mo\s+ba\s+ako(?:ng)?\s+tulungan\b/i,
 ];
 
 // "Who/what are you" style questions directed at AC itself — a near-universal

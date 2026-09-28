@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
-import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { API, authHeaders } from "../../services/api.js";
 
 // Shared between Job Connect's own list and the Announcements page's "Job
 // Postings" preview, so both surfaces render the exact same card instead of
 // two hand-maintained designs drifting apart from each other.
+
+// Some postings list 20+ required skills — rendering every one as a chip
+// blew the card's height out far past its neighbors. Capping the chip list
+// (while keeping the "X of Y skills matched" ratio honest about the real
+// total) keeps every card a predictable height.
+export const SKILL_CHIP_LIMIT = 12;
 
 export function truncate(value, max) {
   return value.length > max ? `${value.slice(0, max).trim()}…` : value;
@@ -138,25 +143,18 @@ function useSkillTip(job) {
   return { tip, ref };
 }
 
-// Careerjet's search API has no company-logo field, and free logo lookup
-// services aren't viable here — unavatar.io's guess-the-domain approach
-// often misses (tried and reverted), and its free tier caps out at 25
-// requests before a ~24h lockout, which a single page of job cards would
-// blow through instantly. The TSU logo placeholder stays until there's a
-// real, reliable source of per-company logos.
-
 export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onApply }) {
   const description = descriptionPreview(job.description, 220);
   const { tip: skillTip, ref: skillGapRef } = useSkillTip(job);
   const hasMatch = job.match !== null && job.match !== undefined;
   return <article className="connect-job-card">
-    {hasMatch && (
-      <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
-    )}
-    {/* Real logo only for TSU partner postings, whose employer account
-        actually uploaded one — Careerjet gives no logo or domain to look one
-        up for, so the TSU placeholder stays for those. */}
-    <div className="job-company-logo"><img src={job.companyLogo || alumniLogo} alt={`${job.company} logo`} /></div>
+    <div className={`job-match-panel${hasMatch ? "" : " job-match-panel--empty"}`}>
+      {hasMatch ? (
+        <div className="job-match-score"><strong>{job.match}%</strong><span>Match</span></div>
+      ) : (
+        <span>No match score</span>
+      )}
+    </div>
     <div className="connect-job-main">
       {job.posted && <span className="connect-posted">Posted: {formatPostedDate(job.posted)}</span>}
       {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
@@ -184,12 +182,17 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
     </div>
     {job.skills?.length > 0 && (() => {
       const sorted = [...job.skills].sort((a, b) => Number(b.matched) - Number(a.matched));
+      const shown = sorted.slice(0, SKILL_CHIP_LIMIT);
+      const hidden = sorted.length - shown.length;
       const have = job.skills.filter(s => s.matched).length;
       return (
         <aside className="connect-skill-gap" ref={skillGapRef}>
           <b>Job Match</b>
           <span className="skill-match-ratio">{have} of {job.skills.length} skills matched</span>
-          <div>{sorted.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+          <div>
+            {shown.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}
+            {hidden > 0 && <span className="skill-more">+{hidden} more</span>}
+          </div>
           <small>
             {skillTip || (have ? "The green skills are already on your profile — add the rest to raise your match." : "None of these are on your profile yet — adding them raises your match.")}
             {job.createdAt && " (based on your profile as of when you saved this job)"}
