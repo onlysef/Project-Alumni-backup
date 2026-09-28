@@ -10,10 +10,7 @@ const REPORTS = [
   { label: "Feedback Completion Report",type: "feedback-completion" },
 ];
 
-// Module-level, not state — survives this component unmounting when the
-// coordinator navigates away and back, so returning to the Event Dashboard
-// shows the last-known numbers instantly instead of flashing "…" again
-// while a fresh copy loads silently in the background.
+// Module-level cache so returning shows the last numbers instantly.
 const cachedChartEvents = new Map(); // keyed by year
 let cachedStats = null;
 
@@ -78,10 +75,6 @@ export default function EventDashboard() {
     [stats?.completedEvents ?? "—", "Annual Completed Events",    "icon-5"],
     [stats?.recentFeedbacks ?? "—", "Recent Feedback Submission", "icon-13"],
     [stats?.avgRating       ?? "—", "Avg. Event Rating",          "icon-12"],
-    // "icon-trophy" isn't a real registered icon (Icon.jsx silently renders
-    // an empty box for any unknown name) — icon-25/icon-9 are both already
-    // used elsewhere in this app for the same "recognition" / "needs
-    // attention" meaning these two cards are going for.
     [stats?.topEvent ?? "—", "Top Event",    "icon-25"],
     [stats?.lowEvent ?? "—", "Low Response", "icon-9"],
   ];
@@ -122,12 +115,12 @@ export default function EventDashboard() {
     <section className={`content coordinator-content view active-view`}>
       <div className="coord-stats">
         {statCards.map(([value, label, icon]) => (
-          <article className={`coord-stat${statsLoading ? " coord-stat-loading" : ""}`} key={label}>
+          <article className={`stat-card${statsLoading ? " coord-stat-loading" : ""}`} key={label}>
             <div>
-              <strong>{statsLoading ? "…" : value}</strong>
-              <span>{label}</span>
+              <p className="stat-value">{statsLoading ? "…" : value}</p>
+              <p className="stat-label">{label}</p>
             </div>
-            <Icon name={icon} />
+            <span><Icon name={icon} /></span>
           </article>
         ))}
       </div>
