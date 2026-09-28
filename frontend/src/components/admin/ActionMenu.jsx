@@ -20,37 +20,20 @@ const ACTION_ICONS = {
   resend:   "icon-15",
 };
 
-// Uncontrolled instances (no isOpen/onToggle passed) each track their own
-// open state, so nothing stops two rows' menus being open at once. Clicking
-// a different row's trigger calls stopPropagation() before the click can
-// bubble to `document`, so the previously-open menu's own outside-click
-// listener never fires. Broadcasting every open here lets sibling menus
-// close themselves directly instead of relying on that bubble.
+// Broadcast opens so other menus close; a trigger's stopPropagation keeps their outside-click listener from firing.
 const openListeners = new Set();
 function broadcastOpen(id) {
   openListeners.forEach((fn) => fn(id));
 }
 
-// Estimated dropdown height (item height + gap, roughly matching the CSS in
-// admin-mod.css's .action-menu-item/.action-menu-list) — used to decide
-// whether there's room to open downward before the menu actually renders
-// and has a real height to measure.
+// Estimated height (matches the .action-menu-item CSS) to decide whether to open upward.
 const MENU_ITEM_HEIGHT = 38;
 const MENU_PADDING = 14;
 const MENU_WIDTH = 160; // matches .action-menu-list's min-width in admin-mod.css
 
 export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
   const [localOpen, setLocalOpen] = useState(false);
-  // Table rows sit inside a shared stacking context, and neighboring rows'
-  // own trigger buttons (each just as "positioned" as this one, whether via
-  // position:relative or an implicit transform-based context from CSS
-  // transitions) can end up painting on top of an open dropdown that's
-  // still a normal in-row descendant — no z-index on the dropdown alone can
-  // reliably out-rank a sibling row's own content from inside a table. A
-  // portal renders the open menu directly under <body>, entirely outside
-  // the table, so it's never competing with row content for stacking at
-  // all — positioned via fixed coordinates read off the trigger instead of
-  // the CSS `top`/`bottom: 100%` anchoring that only worked in-place.
+  // Portaled to <body> so neighboring table rows can't paint over the open menu.
   const [menuPos, setMenuPos] = useState(null); // { top, left, direction } | null
   const ref = useRef(null);
   const menuRef = useRef(null);
@@ -69,13 +52,7 @@ export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
     const spaceBelow = window.innerHeight - rect.bottom;
     const direction = spaceBelow < estimatedHeight ? "up" : "down";
     const left = Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 6);
-    // .action-menu-list's own CSS class sets `top: calc(100% + 6px)` — that
-    // only made sense back when the list was positioned in-place inside
-    // .action-menu. Now that it's portaled to <body> with fixed coordinates,
-    // "up" must explicitly override it back to "auto"; leaving it
-    // undefined doesn't clear a class-level rule, it just leaves that CSS
-    // in effect (percentages resolve against the viewport for a fixed
-    // element with no positioned ancestor, so it rendered far off-screen).
+    // Reset `top` explicitly: the class's calc(100% + 6px) breaks once the menu is portaled.
     return {
       left: Math.max(6, left),
       top:    direction === "down" ? rect.bottom + 6 : "auto",
@@ -94,9 +71,6 @@ export default function ActionMenu({ actions, onSelect, isOpen, onToggle }) {
     return () => document.removeEventListener("click", onDoc);
   }, [open, setOpen]);
 
-  // Reposition (or close, if it scrolled far enough that the trigger isn't
-  // where the menu was anchored to anymore) rather than leaving a stale,
-  // detached menu floating over the wrong row.
   useEffect(() => {
     if (!open) return;
     function reposition() { setMenuPos(computeMenuPos()); }

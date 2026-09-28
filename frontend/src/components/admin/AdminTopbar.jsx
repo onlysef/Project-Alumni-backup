@@ -57,13 +57,7 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
     function closeOnOutsidePointer(e) {
       const target = e.target;
       if (!(target instanceof Element)) return;
-      // .avatar-cropper-modal — AccountPanel can open AvatarCropper as ITS
-      // OWN nested Modal (a second, separate portal into document.body, not
-      // a descendant of .topbar-modal in the DOM). Without this, clicking
-      // anything inside the cropper — including "Save Photo" — registered as
-      // "outside" the account panel on this capture-phase listener and
-      // closed (unmounted) the whole panel before the click's own bubble-
-      // phase onClick ever ran, making Save look like it silently did nothing.
+      // The cropper is its own portal; don't treat clicks inside it as outside the panel.
       if (target.closest(".topbar-modal") || target.closest(".top-actions") || target.closest(".avatar-cropper-modal")) return;
       if (panel === "settings") closeSettings();
       else setPanel(null);
@@ -240,11 +234,6 @@ export function AdminTopbar({ title, collapsed, onToggleSidebar, settings, setSe
   );
 }
 
-// Avatar button next to the notifications/settings icons — previously only
-// Alumni had this (see AlumniTopbar.jsx's own "alumni-avatar" button); added
-// here for Admin, and imported into Coordinator/Employer's own topbars, so
-// every role gets the same at-a-glance "who am I logged in as" affordance
-// instead of just the two bare icon buttons.
 export function AvatarButton({ onClick, active }) {
   const { user } = useAuth();
   const initials = `${(user?.firstName || "?")[0] || ""}${(user?.lastName || "")[0] || ""}`.toUpperCase();
@@ -260,11 +249,6 @@ export function AvatarButton({ onClick, active }) {
   );
 }
 
-// Lightweight, role-agnostic account panel — Alumni's own AccountSettingsPanel
-// (AlumniTopbar.jsx) is built entirely around employment-profile data
-// (completeness bar, job/company/skills facts) that has no equivalent for
-// Admin/Coordinator/Employer, so this is a separate, simpler component
-// rather than a reuse: just who's logged in and how to reach them.
 export function AccountPanel({ onClose, showToast }) {
   const { user, updateUser } = useAuth();
   const initials = `${(user?.firstName || "?")[0] || ""}${(user?.lastName || "")[0] || ""}`.toUpperCase();
@@ -276,9 +260,6 @@ export function AccountPanel({ onClose, showToast }) {
   const [avatarMsg, setAvatarMsg] = useState("");
   const [cropSrc, setCropSrc] = useState("");
 
-  // Same type/size checks and AvatarCropper flow as the alumni's own
-  // "Upload Photo" (AlumniEmploymentDetails.jsx) — just posted to
-  // /auth/avatar (shared across every role) instead of /alumni/avatar.
   function handleAvatarChange(e) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -313,12 +294,7 @@ export function AccountPanel({ onClose, showToast }) {
       setCropSrc("");
       showToast?.("Photo updated.");
     } catch (err) {
-      // avatarMsg alone isn't enough here — it renders inside
-      // .account-profile-panel, which sits BEHIND the still-open
-      // AvatarCropper modal on failure (cropSrc is only cleared on
-      // success), so a failed upload looked like "Save Photo" silently did
-      // nothing. showToast renders above everything, so the failure is
-      // actually visible regardless of which modal is on top.
+      // Toast, not avatarMsg: the message would be hidden behind the cropper.
       const msg = err.message || "Could not update photo.";
       setAvatarMsg(msg);
       showToast?.(msg);
@@ -337,12 +313,7 @@ export function AccountPanel({ onClose, showToast }) {
     />
   );
 
-  // Cropping replaces this panel's own content instead of opening AvatarCropper
-  // as a second, separately-portaled modal on top of this already-open one —
-  // two same-z-index full-viewport portals stacked unreliably on some mobile
-  // browsers, burying the crop stage and Save/Cancel buttons behind this
-  // panel. Swapping content within the one modal that's already open sidesteps
-  // that entirely instead of trying to out-z-index it.
+  // Crop inside this panel instead of stacking a second modal (unreliable paint order on mobile).
   if (cropSrc) {
     return (
       <section className="tracer-modal topbar-modal account-panel-modal is-cropping" role="dialog" aria-modal="true">
@@ -359,11 +330,6 @@ export function AccountPanel({ onClose, showToast }) {
         <button type="button" aria-label="Close" onClick={onClose}>×</button>
       </div>
       <div className="account-profile-panel">
-        {/* .account-profile-identity below carries a -34px top margin (see
-            alumni-mod.css) that's meant to pull the avatar up to overlap the
-            BOTTOM of a cover banner like this one — without one here, that
-            same negative margin would instead pull the avatar up into the
-            modal-head title bar above. */}
         <div className="account-profile-cover">
           <span>My Account</span>
         </div>

@@ -14,15 +14,7 @@ const ITEMS = [
   ["suggested", "Alumni Network", "alumni-suggested"],
   ["career", "Career Recommendation", "alumni-career"],
   ["jobconnect", "Job Connect", "alumni-job-connect"],
-  // Not a `?section=` view like the others above — the tracer study form is
-  // its own top-level route (see AppRoutes.jsx's "tracer-study" path), so
-  // this key is special-cased in the render loop below to navigate there
-  // directly instead of going through select()'s dashboard-section
-  // mechanism. Previously the ONLY way to reach this page at all was the
-  // single-item "restricted" nav shown during the mandatory first-time
-  // completion flow — once that flow finished, the link disappeared
-  // entirely and an alumni who wanted to review or correct their own
-  // answers later had no way back in short of typing the URL by hand.
+  // Its own route (not a ?section= view), so it's navigated to directly below.
   ["tracer-study", "Tracer Study", "alumni-tracer"],
 ];
 
@@ -40,10 +32,6 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
   const active = params.get("section") || "home";
   const currentFilter = params.get("filter") || "All";
   const [announcementsOpen, setAnnouncementsOpen] = useState(true);
-  // The brand/logo buttons above sit outside the `<nav>` that's withheld
-  // below when restricted, so without this guard they still fired a
-  // navigation — one the route guard immediately bounced back from, which
-  // just looked like the click did nothing rather than visibly doing nothing.
   const select = (section) => {
     if (restricted) return;
     navigate(section === "home" ? "/alumni/dashboard" : `/alumni/dashboard?section=${section}`);
@@ -87,12 +75,6 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
           </div>
         </div>
       </div>
-      {/* An alumni who hasn't finished onboarding/the tracer study yet
-          shouldn't see the rest of the portal's sections as available —
-          the real nav list is swapped for a single non-interactive status
-          item instead of every other section's link, so nothing else reads
-          as available during that restricted state. Brand header and
-          Logout above/below still render normally. */}
       {restricted ? (
         <nav className="nav" aria-label="Alumni navigation">
           <a href="#" className="active" onClick={(e) => e.preventDefault()}>

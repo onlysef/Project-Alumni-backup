@@ -21,11 +21,7 @@ const COLLEGES = [
 function computeStatus(event_datetime, end_datetime) {
   const now = new Date();
   const start = new Date(event_datetime);
-  // Multi-day events run "On Going" for their whole span, not just their
-  // start day — without an end bound, a 3-day event that started yesterday
-  // was marked "Ended" as soon as its start date passed, even while it was
-  // still actively running. No end_datetime falls back to end-of-start-day,
-  // matching the original single-day behavior.
+  // Multi-day events stay On Going until end_datetime (or the end of the start day).
   const end = end_datetime
     ? new Date(end_datetime)
     : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
@@ -47,13 +43,7 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// A start date already in the past, or an end date that isn't strictly
-// after the start (same instant, or earlier), produced events that posted
-// as already-"Ended" with no way for alumni to ever see them as upcoming.
-// `previousStartStr` (the datetime-local string the field held before this
-// edit began) lets the past-date floor apply only when the start is
-// actually being changed — re-saving an already-ended event's title or
-// location shouldn't be blocked by its own old date.
+// The past-date check applies only when the start is being changed.
 function validateEventDates(startStr, endStr, previousStartStr) {
   if (!startStr) return "";
   const start = new Date(startStr);
@@ -68,11 +58,6 @@ function validateEventDates(startStr, endStr, previousStartStr) {
   return "";
 }
 
-// A coordinator's events are, by default, for their own college's alumni —
-// only an admin (no assigned college) gets "Public" as the sensible default,
-// and only an admin gets to pick any of the 10 colleges at all (see the
-// "Colleges" <select> below); a coordinator's own college is the one
-// meaningful specific-college choice they'd ever have a reason to pick.
 function blankForm(myCollege) {
   return { title: "", description: "", location: "", event_datetime: "", end_datetime: "", visibility: myCollege || "Public", capacity: "", image: "" };
 }
@@ -154,10 +139,6 @@ export default function EventManagement() {
     STATUS_ORDER[computeStatus(a.event_datetime, a.end_datetime)] - STATUS_ORDER[computeStatus(b.event_datetime, b.end_datetime)]
   );
 
-  // A coordinator running the same annual event year after year (orientation,
-  // alumni reunion, etc.) ends up with a list mixing every year together —
-  // filtering to one year at a time makes a specific past run findable
-  // without scrolling past everything else.
   const [listYearFilter, setListYearFilter] = useState("");
   const eventYears = [...new Set(events.map(e => new Date(e.event_datetime).getFullYear()))].sort((a, b) => b - a);
   const visibleEvents = listYearFilter
@@ -454,14 +435,7 @@ export default function EventManagement() {
       </div>
 
       {/* EDIT MODAL */}
-      {/* Portaled straight onto <body> — this page's own root section
-          carries a page-entrance transform animation (system-motion.css),
-          and any position:fixed descendant of an element with an active
-          transform gets repositioned relative to THAT element's box
-          instead of the real viewport, per the CSS containing-block rules.
-          Rendered inline, this modal could open anywhere on the scrolled
-          page instead of centered on screen — same bug already fixed for
-          the alumni-side modals, see AlumniDashboard.jsx. */}
+      {/* Portaled to <body>; the page's entrance transform would break position: fixed. */}
       {editEvent && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setEditEvent(null)}>
           <div className="coord-modal" onClick={e => e.stopPropagation()}>
@@ -511,10 +485,7 @@ export default function EventManagement() {
                   <label className="coord-field"><span>Colleges</span>
                     <select value={editForm.visibility} onChange={e => setEditForm(p => ({ ...p, visibility: e.target.value }))}>
                       <option value="Public">All Colleges</option>
-                      {/* A legacy event's visibility can predate this college-restricted
-                          list (e.g. scoped to a different college than this coordinator's
-                          own) — keep it selectable so editing doesn't silently show a
-                          blank/mismatched value for that one event. */}
+                      {/* Keep a legacy visibility value selectable so editing doesn't blank it. */}
                       {[...new Set([...(myCollege ? [myCollege] : COLLEGES), editForm.visibility].filter((c) => c && c !== "Public"))].map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}

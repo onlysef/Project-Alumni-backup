@@ -34,14 +34,7 @@ export default function ExportEmploymentListView() {
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
-  // Both the count preview and the export itself read from the AlumniEmployment
-  // collection, not User — an alumni with no AlumniEmployment document yet
-  // (e.g. just registered) is invisible to that query no matter the filters.
-  // The Employment page papers over this by backfilling missing records (and
-  // syncing tracer-derived status) before ever loading its table. This page
-  // can be opened directly from the sidebar without ever visiting Employment
-  // first, so it has to do the same backfill+sync itself, or a fresh alumni
-  // would silently be missing from "export all users based on the filter."
+  // Backfill + sync first, or alumni without an AlumniEmployment doc are missing from the export.
   useEffect(() => {
     Promise.all([
       fetch(`${API}/admin/employment/backfill`,    { method: "POST", headers: authHeaders() }).then(r => r.ok && r.json()),
@@ -53,9 +46,6 @@ export default function ExportEmploymentListView() {
       .catch(() => {});
   }, []);
 
-  // Live preview of how many records the current filters match — fetched
-  // from the same list endpoint the Employment table itself uses, just with
-  // limit=1 so only pagination.total is needed.
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -70,11 +60,7 @@ export default function ExportEmploymentListView() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filters, refreshKey]);
 
-  // CSV/Excel carry every tracer-study answer as its own column (can run to
-  // dozens per college) — a PDF page can't reasonably fit that many columns
-  // per row and stay readable. PDF is a compact, printable overview table
-  // instead (core fields only); the full answer set is still there in
-  // CSV/Excel for anyone who needs to process the raw data.
+  // PDF is a compact overview; CSV/Excel carry every tracer answer.
   async function exportPdf() {
     const PAGE_SIZE = 200;
     let page = 1, pages = 1;
@@ -256,15 +242,7 @@ export default function ExportEmploymentListView() {
           <span style={{ fontSize: 13, color: "#76656a" }}>
             {counting ? "Counting matching records…" : total === null ? "" : `${total} record${total !== 1 ? "s" : ""} match these filters`}
           </span>
-          {/* marginLeft:auto — the row's own space-between only pushes this to
-              the right when both items share one line; once the record-count
-              text wraps this onto its own line on a narrow screen, a single
-              flex item has nothing left to space against and space-between
-              falls back to flex-start, stranding the button on the left. This
-              also fixed the dropdown menu itself opening off-screen to the
-              left — its portal position is computed from the trigger's own
-              on-screen rect, so a left-stranded trigger anchored the menu far
-              enough left to run off the viewport edge. */}
+          {/* marginLeft:auto keeps the button (and its portaled menu) on the right when the row wraps. */}
           <div style={{ marginLeft: "auto" }}>
             <Dropdown
               menuClassName="admin-menu"

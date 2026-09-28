@@ -6,6 +6,7 @@ import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
 const TYPE_ART_CLASS = { News: "" };
@@ -16,24 +17,30 @@ async function safeJson(res) {
   try { return JSON.parse(text); } catch { return { message: `Server error (${res.status})` }; }
 }
 
-// Display-only — capitalizes each word's first letter without touching the
-// rest, so acronyms already in a title (e.g. "BSIT", "CCS") survive
-// untouched. Applied only where titles are shown, never to the underlying
-// stored value, so editing a post still starts from exactly what was typed
-// rather than a silently "corrected" version. Needed because Event/Job
-// titles pulled into this feed (see getAnnouncements' union) come straight
-// from Coordinator/Employer free-text input, unlike admin's own posts which
-// are typed with a title case habit already — "web dev"/"test" read as
-// noticeably less polished sitting next to "Bar Exam Results".
+// Display-only title case; keeps acronyms and never changes the stored value.
 function toTitleCase(str = "") {
   return str.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// <input type="datetime-local"> requires "YYYY-MM-DDTHH:mm" in LOCAL time —
-// toISOString() gives UTC, which would silently shift the displayed value by
-// the browser's timezone offset every time the modal opens. Slicing off the
-// offset after subtracting it back out keeps the input showing the same
-// wall-clock time the event was actually saved with.
+const DESCRIPTION_PREVIEW_CHARS = 160;
+
+function ExpandableText({ text = "" }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return "—";
+  const isLong = text.length > DESCRIPTION_PREVIEW_CHARS;
+  return (
+    <div className="expandable-text">
+      <p className={isLong && !expanded ? "is-clamped" : ""}>{text}</p>
+      {isLong && (
+        <button type="button" className="expandable-text-toggle" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>
+          {expanded ? "See less" : "See more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// datetime-local needs local time; toISOString() is UTC.
 function toDatetimeLocal(value) {
   if (!value) return "";
   const d = new Date(value);
@@ -42,13 +49,7 @@ function toDatetimeLocal(value) {
   return local.toISOString().slice(0, 16);
 }
 
-// A start date already in the past, or an end date that isn't strictly
-// after the start (same instant, or earlier), produced events that posted
-// as already-"Ended" with no way for alumni to ever see them as upcoming.
-// `previousStartStr` (the datetime-local string the field held before this
-// edit began) lets the past-date floor apply only when the start is
-// actually being changed — re-saving an already-ended event's title or
-// location shouldn't be blocked by its own old date.
+// The past-date check applies only when the start is being changed.
 function validateEventDates(startStr, endStr, previousStartStr) {
   if (!startStr) return "";
   const start = new Date(startStr);
@@ -94,11 +95,6 @@ function mapRow(a) {
     shared:        a.isSharedByMe ?? false,
     sharesCount:   a.sharesCount  ?? 0,
     date:          a.createdAt,
-    // "announcement" (admin-authored) vs "event"/"job" (pulled in from
-    // Coordinator's Event Management / Employer's Job Connect — see
-    // announcementController's getAnnouncements union) — all three are
-    // editable here, but each routes Edit to its own modal/endpoint since
-    // they don't share a field set (see the Actions column below).
     source:         a.source || "announcement",
     posterName:     a.posterName || "",
     eventDatetime:  a.event_datetime || "",
@@ -156,12 +152,7 @@ export default function AnnouncementsView() {
       .catch(() => {});
   }, []);
 
-  // Built already (see backend's getRecentActivity), never actually surfaced
-  // anywhere in the UI — a real, useful feed (who liked/commented/shared
-  // which post, and when) sitting unused. hours=all rather than the
-  // endpoint's own 24h default, since a freshly-loaded admin panel showing
-  // "no activity" most of the time (this data is sparse) looks broken
-  // rather than genuinely empty.
+  // hours=all: the default 24h window is usually empty.
   useEffect(() => {
     fetch(`${API}/admin/announcements/activity?limit=8&hours=all`, { headers: authHeaders() })
       .then(safeJson)
@@ -240,10 +231,7 @@ export default function AnnouncementsView() {
     }
   }
 
-  // Event/Job rows come back from updateEventAdmin/updateJobAdmin as the raw
-  // Mongoose document (no source/posterName/type — those only exist on the
-  // MERGED shape mapRow() builds), so the response is folded into the
-  // existing row in place rather than replaced wholesale with mapRow(json).
+  // Event/Job updates return the raw document, so merge into the existing row instead of mapRow().
   async function handleEventSave(data) {
     try {
       const res  = await fetch(`${API}/admin/announcements/events/${eventEdit.id}`, {
@@ -353,10 +341,6 @@ export default function AnnouncementsView() {
     const post = rows.find(r => r.id === id);
     if (!post) return;
 
-    // Silently copying to the clipboard produced no visible feedback the
-    // user could actually notice besides the count changing — use the real
-    // native share sheet where supported (a clearly visible action), with
-    // clipboard-copy + toast only as the fallback for browsers without it.
     const shareUrl  = `${window.location.origin}${window.location.pathname}?post=${id}`;
     const shareText = `${post.title}\n\n${post.description}`;
     try {
@@ -453,6 +437,98 @@ export default function AnnouncementsView() {
               </div>
             ))}
           </section>
+
+          <section className="admin-card">
+            <div className="admin-card-head">
+              <h3>Posted Announcements</h3>
+              <div>
+                <AdminMenu menuKey="announcement-date" label={dateFilter} onSelect={setDateFilter} />
+                <AdminMenu menuKey="announcement-type" label={typeFilter} onSelect={setTypeFilter} />
+                <input
+                  className="admin-search"
+                  type="text"
+                  placeholder="Search announcements..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="table-scroll">
+            <table className="admin-table announcement-table">
+              <thead>
+                <tr>
+                  <th>Post Title</th>
+                  <th>Description</th>
+                  <th>Type</th>
+                  <th>Posted By</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!loading && filtered.map((r) => (
+                  <tr key={r.id}>
+                    <td>{toTitleCase(r.title)}</td>
+                    <td><ExpandableText text={r.description} /></td>
+                    <td>{r.type}</td>
+                    <td>{r.posterName || "—"}</td>
+                    <td>
+                      <div className="announcement-action-menu">
+                        <ActionMenu
+                          actions={["edit", "delete"]}
+                          onSelect={(action) => {
+                            if (action === "edit") {
+                              if (r.source === "event") { setEventEdit(r); return; }
+                              if (r.source === "job") { setJobEdit(r); return; }
+                              setComposer({ row: r });
+                              showToast("Post loaded in composer.");
+                            } else {
+                              handleDelete(r);
+                            }
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                      No announcements match the current filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            </div>
+            {totalPages > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
+                <button
+                  type="button"
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => p - 1)}
+                  style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+                >
+                  ‹ Prev
+                </button>
+                <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
+                <button
+                  type="button"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+                >
+                  Next ›
+                </button>
+              </div>
+            )}
+          </section>
         </div>
 
         <aside className="recent-posts">
@@ -474,10 +550,6 @@ export default function AnnouncementsView() {
                   </div>
                 )}
                 <div className="post-meta">
-                  {/* The title only repeats here when there's a real image —
-                      the no-image "post-art" placeholder above already shows
-                      it once as its own decorative text, so showing it AGAIN
-                      right below read as a plain, redundant duplicate. */}
                   {p.imageUrl && <span className="post-meta-title">{toTitleCase(p.title)}</span>}
                   {p.type && <span className="post-meta-type">{p.type}</span>}
                 </div>
@@ -514,103 +586,6 @@ export default function AnnouncementsView() {
           )}
         </aside>
       </div>
-
-      <section className="admin-card">
-        <div className="admin-card-head">
-          <h3>Posted Announcements</h3>
-          <div>
-            <AdminMenu menuKey="announcement-date" label={dateFilter} onSelect={setDateFilter} />
-            <AdminMenu menuKey="announcement-type" label={typeFilter} onSelect={setTypeFilter} />
-            <input
-              className="admin-search"
-              type="text"
-              placeholder="Search announcements..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="table-scroll">
-        <table className="admin-table announcement-table">
-          <thead>
-            <tr>
-              <th>Post Title</th>
-              <th>Description</th>
-              <th>Type</th>
-              <th>Posted By</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.map((r) => (
-              <tr key={r.id}>
-                <td>{toTitleCase(r.title)}</td>
-                <td>{r.description}</td>
-                <td>{r.type}</td>
-                <td>{r.posterName || "—"}</td>
-                <td>
-                  {/* Edit and Delete are both offered for all three sources,
-                      each routed to the matching modal/endpoint — see
-                      handleDelete()/the edit branches below for how an
-                      Event/Job row's real underlying record (not just an
-                      Announcement) gets updated or removed. */}
-                  <div className="announcement-action-menu">
-                    <ActionMenu
-                      actions={["edit", "delete"]}
-                      onSelect={(action) => {
-                        if (action === "edit") {
-                          if (r.source === "event") { setEventEdit(r); return; }
-                          if (r.source === "job") { setJobEdit(r); return; }
-                          setComposer({ row: r });
-                          showToast("Post loaded in composer.");
-                        } else {
-                          handleDelete(r);
-                        }
-                      }}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
-                  No announcements match the current filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        </div>
-        {totalPages > 1 && (
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
-            >
-              ‹ Prev
-            </button>
-            <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
-            >
-              Next ›
-            </button>
-          </div>
-        )}
-      </section>
 
       <PostComposerModal
         composer={composer}
@@ -657,6 +632,7 @@ export default function AnnouncementsView() {
 // ─── Comment Modal ────────────────────────────────────────────────────────────
 
 function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShare }) {
+  const { user } = useAuth();
   const postId = post?.id;
   const [fullPost, setFullPost]   = useState(null);
   const [comments, setComments]   = useState([]);
@@ -665,12 +641,14 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
   const [text, setText]           = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editing, setEditing]     = useState(null); // { id, text, saving }
 
   useEffect(() => {
     if (!postId) return;
     setFullPost(null);
     setComments([]);
     setText("");
+    setEditing(null);
     setLoading(true);
     setNotFound(false);
     fetch(`${API}/admin/announcements/${postId}`, { headers: authHeaders() })
@@ -706,6 +684,25 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
       showToast("Could not connect to server.");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editing?.text.trim() || editing.saving) return;
+    const { id, text: newText } = editing;
+    setEditing(ed => ({ ...ed, saving: true }));
+    try {
+      const res  = await fetch(`${API}/admin/announcements/${postId}/comment/${id}`, {
+        method: "PUT", headers: authHeaders(), body: JSON.stringify({ text: newText }),
+      });
+      const json = await safeJson(res);
+      if (!res.ok) { showToast(json.message || "Failed to update comment."); setEditing(ed => ed && { ...ed, saving: false }); return; }
+      setComments(prev => prev.map(c => c._id === id ? { ...c, ...json.comment } : c));
+      setEditing(null);
+      showToast("Comment updated.");
+    } catch {
+      showToast("Could not connect to server.");
+      setEditing(ed => ed && { ...ed, saving: false });
     }
   }
 
@@ -781,21 +778,55 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
                 {!loading && comments.length === 0 && (
                   <p className="comment-empty">No comments yet. Be the first!</p>
                 )}
-                {comments.map((c, i) => (
-                  <div key={c._id || i} className="comment-item">
-                    {c.avatarUrl ? (
-                      <img className="comment-avatar" src={c.avatarUrl} alt={c.userName || "Commenter"} />
-                    ) : (
-                      <div className="comment-avatar comment-avatar-fallback">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
-                    )}
-                    <div className="comment-bubble">
-                      <strong>{c.userName}</strong>
-                      <p>{c.text}</p>
-                      <time>{new Date(c.createdAt).toLocaleString()}</time>
+                {comments.map((c, i) => {
+                  const isMine    = !!user?.id && String(c.user?._id || c.user || "") === String(user.id);
+                  const isEditing = editing?.id === c._id;
+                  return (
+                    <div key={c._id || i} className="comment-item">
+                      {c.avatarUrl ? (
+                        <img className="comment-avatar" src={c.avatarUrl} alt={c.userName || "Commenter"} />
+                      ) : (
+                        <div className="comment-avatar comment-avatar-fallback">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
+                      )}
+                      <div className="comment-bubble">
+                        <strong>{c.userName}</strong>
+                        {isEditing ? (
+                          <div className="comment-edit">
+                            <textarea
+                              rows={2}
+                              value={editing.text}
+                              onChange={e => setEditing(ed => ({ ...ed, text: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
+                                if (e.key === "Escape") { e.stopPropagation(); setEditing(null); }
+                              }}
+                              autoFocus
+                            />
+                            <div className="comment-edit-actions">
+                              <button type="button" onClick={() => setEditing(null)}>Cancel</button>
+                              <button type="button" className="primary" disabled={editing.saving || !editing.text.trim()} onClick={handleSaveEdit}>
+                                {editing.saving ? "Saving…" : "Save"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p>{c.text}</p>
+                        )}
+                        <div className="comment-meta">
+                          <time>{new Date(c.createdAt).toLocaleString()}</time>
+                          {c.editedAt && <span className="comment-edited">· Edited</span>}
+                          {!isEditing && isMine && (
+                            <button type="button" className="comment-action" onClick={() => setEditing({ id: c._id, text: c.text, saving: false })}>Edit</button>
+                          )}
+                          {/* Admins moderate, so Delete shows on every comment, not just their own. */}
+                          {!isEditing && (
+                            <button type="button" className="comment-action danger" onClick={() => handleDeleteComment(c)}>Delete</button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <button type="button" className="comment-delete" aria-label="Delete comment" onClick={() => handleDeleteComment(c)}>×</button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
@@ -1043,11 +1074,6 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
 
 // ─── Event Edit Modal (admin editing a Coordinator's Event) ───────────────────
 
-// Same tracer-modal/admin-entry-modal markup PartnershipsView/AccountsView
-// already use for their own edit modals — mirrors that established admin
-// look instead of the Facebook-composer style (dark background, oversized
-// type) borrowed from PostComposerModal above, which read as visibly
-// out of place next to every other admin modal once seen side by side.
 function EventEditModal({ row, onClose, onSubmit }) {
   const [title, setTitle]             = useState("");
   const [description, setDescription] = useState("");

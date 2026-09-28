@@ -7,34 +7,15 @@ import { apiFetch } from "../../services/api.js";
 import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription, SKILL_CHIP_LIMIT } from "../../components/alumni/JobPostingCard.jsx";
 import { classifySkill } from "../../utils/skillClassification.js";
 
-// Every field below used to be an editable, SAVEABLE default (see
-// useState(EMPTY_RESUME) further down) — a brand-new alumnus with no
-// employment/tracer data yet saw this fake identity sitting in the actual
-// form fields, and clicking Save without editing anything persisted it as
-// their real resume, shown to real employers on every job application. The
-// ResumeEditor's <input>/<textarea> elements already carry the exact same
-// example text as HTML `placeholder` attributes (grey hint text that is
-// never part of the submitted value) — so this fake data was pure
-// duplication with none of the safety, and the real default is now
-// genuinely empty.
+// Real defaults are empty; example text lives only in the input placeholders.
 const EMPTY_RESUME = {
   name: "", address: "", phone: "", email: "", linkedin: "", avatarUrl: "", summary: "",
-  // Unlike every other field here, "experience" is a list of entries (see
-  // resumeBuilder.deriveFromProfile on the backend) — it's built from the
-  // alumnus's current job + Work History in Employment Details, never
-  // hand-typed here, so it's never a free-text string like the rest.
+  // A list built from Employment Details, not typed here.
   skills: "", experience: [], education: "", certifications: "", projects: "", languages: "",
 };
 
 const RESUME_FIELDS = ["name", "address", "phone", "email", "linkedin", "avatarUrl", "summary", "skills", "experience", "education", "certifications", "projects", "languages"];
 
-// A search box full of pure symbols ("***¥€$") is never a real job title,
-// company, or skill — same "at least one letter/digit" allow-list used for
-// Skills/Work-History free-text elsewhere in this app. Careerjet/the
-// internal search still technically "succeeds" on garbage input (matches
-// nothing meaningful and falls back to generic recommended postings), which
-// reads as if the search silently ignored what was typed rather than
-// rejecting it outright.
 const HAS_ALNUM_RE = /[a-zA-Z0-9À-ÖØ-öø-ÿ]/;
 
 export default function JobConnect() {
@@ -120,12 +101,7 @@ export default function JobConnect() {
   }
 
   function loadResume() {
-    // getMyResume sends `resume: resume || {}` — a brand-new alumnus with
-    // no saved resume AND no employment/tracer data to suggest from gets
-    // back `{}`, which is truthy, so a bare `!d.resume` check doesn't catch
-    // it. Checking for actual keys is what makes that case correctly leave
-    // the (now genuinely empty) default state alone instead of treating an
-    // empty object as "loaded data."
+    // `{}` is truthy; check for real keys.
     apiFetch("/alumni/resume").then((d) => {
       setResumeSaved(!!d.isSaved);
       setResumeFile(d.resume?.fileName ? { fileName: d.resume.fileName } : null);
@@ -141,13 +117,6 @@ export default function JobConnect() {
     apiFetch("/alumni/applications").then((d) => setApplications(d.applications || [])).catch(() => {});
   }
 
-  // Fired the moment "Apply now" is clicked (card and details modal both) —
-  // fire-and-forget alongside the actual navigation to Careerjet, so it
-  // never blocks or interferes with the external link opening. Internal
-  // (TSU partner) postings have no external tab opening to signal "yes,
-  // that worked" the way Careerjet applies do, so this needs its own
-  // explicit confirmation — shown once per job, not on a repeat click of
-  // something already applied to.
   function logApply(job) {
     const alreadyApplied = appliedUrls.has(job.url);
     apiFetch("/alumni/applications", { method: "POST", body: job })
@@ -180,9 +149,6 @@ export default function JobConnect() {
 
   useEffect(() => { runSearch(search, jobType); loadSavedJobs(); loadPartnerJobs(); loadJobAlertsPref(); loadResume(); loadApplications(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Careerjet + TSU partner postings shown as one ranked list instead of two
-  // stacked sections — partner postings used to end up buried below dozens
-  // of Careerjet results with no way to jump straight to them.
   const combinedJobs = useMemo(() => {
     const tagged = [
       ...partnerJobs.map((j) => ({ ...j, source: "partner" })),
@@ -204,9 +170,6 @@ export default function JobConnect() {
     const wasSaved = savedUrls.has(job.url);
     apiFetch("/alumni/jobs/saved/toggle", { method: "POST", body: job })
       .then(() => setSavedJobs(prev => wasSaved ? prev.filter(j => j.url !== job.url) : [{ ...job, createdAt: new Date().toISOString() }, ...prev]))
-      // A failed save used to be completely silent — the button's state
-      // could disagree with what's actually saved server-side until the
-      // next reload, with no indication anything went wrong.
       .catch(() => showToast?.("Could not update saved jobs. Please try again."));
   }
 
@@ -286,9 +249,6 @@ export default function JobConnect() {
     };
   }, [exportMenuOpen]);
 
-  // A resume missing basic contact details or any skills isn't something an
-  // employer can actually act on — export is blocked until these are filled
-  // in, rather than letting an unusably-thin file go out.
   function validateResumeForExport(value) {
     const missing = [];
     if (!value.phone?.trim())    missing.push("Phone");
@@ -467,12 +427,6 @@ export default function JobConnect() {
       </div>,
       document.body
     )}
-    {/* Editing used to happen inline in the narrow sidebar card — cramped
-        inputs, tiny font, and nothing like what the resume would actually
-        look like. Editing now happens in the same width/point-of-view as
-        the preview modal (reusing .resume-preview-modal), so filling in a
-        field looks and feels like editing the real document instead of a
-        squeezed side form. */}
     {editingResume && ReactDOM.createPortal(
       <div className="resume-preview-overlay" role="dialog" aria-modal="true" aria-label="Resume editor">
         <div className="resume-preview-modal resume-editor-modal">
@@ -490,10 +444,6 @@ export default function JobConnect() {
       </div>,
       document.body
     )}
-    {/* Rendered via a portal straight onto <body> — nested inside the page's
-        own scroll container, these used to inherit whatever scroll position
-        an ancestor happened to be at instead of staying fixed to the actual
-        browser viewport the alumnus is looking at. */}
     {detailsJob && ReactDOM.createPortal(
       <div className="resume-preview-overlay" role="dialog" aria-modal="true" aria-label="Job details">
         <div className="resume-preview-modal job-details-modal">
@@ -527,9 +477,6 @@ export default function JobConnect() {
               </div>
             )}
           </div>
-          {/* Kept outside the scrollable .job-details-body so the primary
-              action is always visible on screen, never something the alumnus
-              has to scroll a long description to find. */}
           <div className="job-details-footer">
             <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
           </div>
@@ -616,15 +563,7 @@ function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
   </article>;
 }
 
-// Exported so the employer side (EmployerApplicants.jsx's resume viewer)
-// renders an applicant's resume with the exact same component instead of
-// its own separately hand-rolled markup — the two had drifted apart (no
-// skill chips/columns, no section accent styling on the employer side)
-// even though they're displaying the same underlying resume data.
-// Splits a flat skills list the same way Employment Details' own profile
-// view already does (see AlumniEmploymentDetails.jsx's skillGroups) —
-// Technical/Domain first, then Soft, then anything classifySkill can't
-// place in either.
+// Exported for EmployerApplicants' resume viewer.
 function splitSkills(skillsValue) {
   const skillLines = String(skillsValue || "").split("\n").map((line) => line.trim()).filter(Boolean);
   return [
@@ -682,10 +621,6 @@ function ResumeEditor({ value, onChange }) {
     <label><span>LinkedIn</span><input value={value.linkedin} onChange={e => onChange("linkedin", e.target.value)} placeholder="linkedin.com/in/juandelacruz" /></label>
     <label><span>Professional summary</span><textarea value={value.summary} onChange={e => onChange("summary", e.target.value)} placeholder="1-2 sentences on who you are professionally and what you're looking for." /></label>
     <label><span>Key skills</span><textarea value={value.skills} onChange={e => onChange("skills", e.target.value)} placeholder={"One skill per line, e.g.\nReact.js\nSQL\nProject Management"} /></label>
-    {/* Professional experience is no longer typed here — it's built from
-        the current job + Work History entries in Employment Details (same
-        auto-sync as name/email/phone above it), so an editable textarea
-        here would just get silently overwritten on the next load. */}
     <div className="resume-experience-note">
       <span>Professional experience</span>
       <p>Pulled automatically from your current job and Work History — update those under Employment Details.</p>
@@ -734,9 +669,6 @@ function resumeFilename(resume) {
   return `${resume.name || "resume"}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "resume";
 }
 
-// Shared by both export formats so the .doc and the printed PDF stay
-// visually identical to each other (and to ResumePreview) instead of
-// drifting apart into two hand-maintained templates.
 function buildResumeHtml(resume) {
   const lines = (value) => String(value || "").split("\n").map(line => line.trim()).filter(Boolean);
   const bulletList = (value) => `<ul>${lines(value).map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
@@ -747,9 +679,6 @@ function buildResumeHtml(resume) {
     <div class="skills-col"><h4>${escapeHtml(groupLabel)}</h4><ul>${items.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>
   `).join("")}</div>`;
 
-  // Mirrors ResumePreview: each entry is its own title/meta/bullet block
-  // instead of one flattened list — a bare bullet list loses which company
-  // a bullet point actually belongs to once there's more than one job.
   const experience = Array.isArray(resume.experience) ? resume.experience : [];
   const experienceHtml = experience.map((entry) => {
     const titleLine = [entry.title, entry.company].filter(Boolean).join(" - ") + (entry.employment_type ? ` (${entry.employment_type})` : "");
@@ -827,15 +756,7 @@ function downloadResumeDoc(resume) {
   URL.revokeObjectURL(url);
 }
 
-// Built directly with jsPDF's text APIs (not an HTML-to-canvas rasterization)
-// so the output is a real, crisp, selectable-text PDF — and downloads in one
-// click via doc.save(), same as the Word export, instead of routing through
-// the browser's print dialog.
-// jsPDF's addImage needs an explicit format string it won't infer for you —
-// derived from the data: URI's MIME type. GIF isn't one of jsPDF's
-// supported embed formats, so a GIF avatar (AlumniEmploymentDetails.jsx's
-// uploader accepts one) falls through to null and the photo is silently
-// skipped rather than throwing and failing the whole export.
+// jsPDF text APIs for a crisp PDF; GIF avatars aren't supported and are skipped.
 function pdfImageFormat(dataUri) {
   const match = /^data:image\/(png|jpeg|jpg|webp)/i.exec(dataUri || "");
   if (!match) return null;
@@ -904,9 +825,6 @@ function downloadResumePdf(resume) {
 
   const lines = (value) => String(value || "").split("\n").map((l) => l.trim()).filter(Boolean);
 
-  // Photo on the side (left) with name + contact centered in whatever width
-  // remains next to it — same layout as the HTML/Word export and the
-  // in-app preview's .resume-contact flex row.
   const photoSize = 64;
   const photoFormat = resume.avatarUrl ? pdfImageFormat(resume.avatarUrl) : null;
   const hasPhoto = !!photoFormat;

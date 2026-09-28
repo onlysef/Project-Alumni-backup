@@ -5,18 +5,7 @@ import { API } from "../../services/api.js";
 import acLogo from "../../assets/images/ac-logo.png";
 import { MiniDonut, DistributionBars, TrendLine } from "../../components/common/Charts.jsx";
 
-// Renders the chart data the backend attaches to breakdown-style answers
-// ("how many are male?", employment status, industry, etc.) — dispatches by
-// chart.type onto the same chart primitives the admin Dashboard uses, so a
-// chatbot answer and the dashboard read as one consistent visual system.
-// "line" (added for trend-over-time answers like "employment by graduation
-// year") renders as an actual line chart instead of ranked bars — a bar
-// list of batch years reads as a categorical comparison, not the shape of
-// change over time the question actually asks about.
-//
-// The whole block (title + chart + legend) is rasterized on copy, not just
-// the bars/donut — a screenshot of bare bars with no labels is useless once
-// pasted into a report; capturing the labeled block keeps it self-explanatory.
+// Renders chart data attached to answers with the dashboard's chart components; copy rasterizes the whole labeled block.
 function AcChart({ chart, id, copiedChartId, onCopy }) {
   const blockRef = useRef(null);
   if (!chart || !chart.rows?.length) return null;
@@ -26,37 +15,14 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
     if (!blockRef.current) return;
     const node = blockRef.current;
     try {
-      // The donut/bars/legend all have an entrance animation (rotate + scale
-      // + clip-path reveal for the donut, ~800ms total) that plays when the
-      // chart first mounts. Capturing while any of that is still running
-      // freezes the DOM at whatever mid-transition clip-path/rotation it
-      // happened to be at — a donut caught mid-reveal looks like a rotated,
-      // partially-clipped wedge overlapping its own card once pasted as a
-      // flat image, which is exactly the "overlapping content" bug this
-      // guards against. Waiting for every running animation to finish first
-      // guarantees the capture always reflects the chart's final, settled
-      // state, however soon after mount the button gets clicked.
+      // Wait for entrance animations to finish so the capture isn't mid-transition.
       const runningAnimations = node.getAnimations?.({ subtree: true }) || [];
       await Promise.all(runningAnimations.map((a) => a.finished.catch(() => {})));
 
-      // Background is set explicitly (not left to the node's own CSS
-      // background) because toBlob() rasterizes onto a transparent canvas by
-      // default — without this, a copied chart pasted onto a light surface
-      // (Word/Slack/etc, usually white) would show whatever was BEHIND the
-      // chat panel, not the chart's own maroon-tinted card background.
+      // Explicit background; toBlob() is transparent by default.
       const isDark = document.body.classList.contains("dark-mode");
 
-      // Deliberately NOT pinning any width/height/box-sizing on the node
-      // before capture (earlier attempts did, to fight what looked like a
-      // sizing mismatch). That turned out to make things worse: forcing an
-      // explicit inline height went through a getComputedStyle round-trip
-      // that silently added the card's own padding+border on top of itself,
-      // making the clone taller than the frame html-to-image draws it into
-      // and clipping the bottom edge. Verified directly (captured output
-      // inspected pixel-by-pixel) that a plain, unmodified capture — relying
-      // on .ac-chart-block's CSS min-width floor and the donut/bars grids'
-      // minmax(N, 1fr) floors to size things correctly on their own — renders
-      // a complete, uncut card. Leave it alone.
+      // Don't pin width/height before capture; it made the clone taller than the frame and clipped it.
       const blob = await toBlob(node, {
         backgroundColor: isDark ? "#241116" : "#fdf8f8",
         pixelRatio: 2,
@@ -89,20 +55,13 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
   );
 }
 
-// Chips show the actual question, not a short category name — a chip
-// labeled just "Alumni records" made the admin guess what clicking it would
-// even ask; showing the real question upfront answers that before the click.
 const QUICK_PROMPTS = [
   "How many alumni records are there?",
   "Show me tracer survey activity.",
   "What's the current employment status?",
 ];
 
-// Mirrors the backend's own MAX_QUESTION_LENGTH check (aiController.js) — a
-// message this long is never a genuine tracer-study question, and it gets
-// interpolated straight into the LLM prompt alongside retrieved context, so
-// an unbounded paste risks degrading answer quality well before any other
-// limit would kick in.
+// Mirrors the backend's MAX_QUESTION_LENGTH (aiController.js).
 const MAX_MESSAGE_LENGTH = 500;
 
 const FLAG_TYPE_LABEL = { injection: "Injection", fabrication: "Fabrication", unanswered: "Unanswered" };
@@ -131,17 +90,7 @@ function readableParagraphs(text = "") {
     });
 }
 
-// The per-word reveal used a FIXED 24ms step with a flat 1800ms cap — fine
-// for a short sentence (a couple dozen words), but a names list or a long
-// breakdown easily runs past 75 words (75 * 24ms = 1800ms), and every word
-// after that shared the exact same capped delay — instead of continuing to
-// stagger in, the whole tail of the list popped in simultaneously the
-// moment the cap was hit, which is exactly the "not smooth" jump reported
-// for list/bullet answers. WORD_REVEAL_TARGET_MS is the total time the
-// animation now aims to finish within regardless of length; the actual
-// per-word step scales down for longer text so nothing hits a hard wall,
-// bounded by a floor (still visibly sequential, just fast) and a ceiling
-// (keeps a short answer's original, more leisurely pace).
+// The per-word step shrinks for long answers so the reveal keeps staggering within WORD_REVEAL_TARGET_MS.
 const WORD_REVEAL_TARGET_MS = 1800;
 const WORD_REVEAL_MIN_STEP  = 3;
 const WORD_REVEAL_MAX_STEP  = 24;
@@ -209,9 +158,6 @@ function beginsStructuredBlock(lines, index) {
   return line.includes("|") && next.includes("|");
 }
 
-// Used when a raw answer needs to leave the app (copy-as-text) — the
-// {{chart:N}} anchors parseAssistantBlocks() relies on are an internal
-// rendering detail, not something a pasted answer should carry along.
 function stripChartAnchors(text = "") {
   return text.replace(/\{\{chart:\d+\}\}\n?/g, "");
 }
@@ -228,11 +174,7 @@ function parseAssistantBlocks(text = "") {
       continue;
     }
 
-    // {{chart:N}} is a placement anchor the backend drops into an answer's
-    // text (see queryOverview) to say "the Nth chart in this message's
-    // `charts` array belongs right here" — swapped for the actual chart
-    // component below instead of every chart being appended after all the
-    // text, which read as disconnected from the section it illustrated.
+    // {{chart:N}} marks where the Nth chart of this message goes.
     const chartAnchor = line.match(/^\{\{chart:(\d+)\}\}$/);
     if (chartAnchor) {
       blocks.push({ type: "chart", index: Number(chartAnchor[1]) });
@@ -325,9 +267,6 @@ function parseAssistantBlocks(text = "") {
 function AssistantResponse({ text, messageId, charts, copiedChartId, onCopyChart }) {
   const blocks = parseAssistantBlocks(text);
   const wordCursor = { value: 0 };
-  // See WORD_REVEAL_TARGET_MS's comment above — a long list needs a smaller
-  // per-word step than a short answer so the whole thing keeps staggering
-  // smoothly instead of hitting a flat delay cap partway through.
   const totalWords = (text.match(/\S+/g) || []).length;
   const wordStepMs = totalWords > 0
     ? Math.max(WORD_REVEAL_MIN_STEP, Math.min(WORD_REVEAL_MAX_STEP, WORD_REVEAL_TARGET_MS / totalWords))
@@ -411,10 +350,6 @@ function AssistantResponse({ text, messageId, charts, copiedChartId, onCopyChart
         const className = /^The Bachelor|^Bachelor/i.test(plainText) ? "ac-answer-program" : undefined;
         return <p key={key} className={className}>{renderInlineText(block.text, key, wordCursor, wordStepMs)}</p>;
       })}
-      {/* Charts nobody anchored with {{chart:N}} — every answer type besides
-          queryOverview just attaches one chart with no anchor in its text,
-          so this is what keeps those still showing up (at the end, same as
-          before anchors existed). */}
       {(charts || []).map((chart, i) => (usedChartIndices.has(i) ? null : renderChart(chart, `${messageId}-chart-${i}`)))}
     </div>
   );
@@ -472,14 +407,7 @@ function loadHistory(key) {
 export default function AiAssistantView() {
   const { user } = useAuth();
   const firstName = user?.firstName || "there";
-  // Keyed by role ALONE, not by which specific account is logged in — every
-  // coordinator sharing a browser/device saw each other's chat history, and
-  // a coordinator whose assigned college changed kept seeing their OLD
-  // college's cached conversation (e.g. real CCS employment numbers) even
-  // after being reassigned, since nothing about the stored key changed.
-  // Keying by account id + college means a college reassignment always
-  // starts a fresh, correctly-scoped conversation instead of showing
-  // leftover answers from a scope the account no longer has.
+  // Keyed by account id + college so shared devices and reassigned coordinators don't see stale chats.
   const acctKey    = `${user?.id || "anon"}_${user?.college || ""}`;
   const historyKey = `acChatHistory_${user?.role || "admin"}_${acctKey}`;
   const currentKey = `acCurrentChat_${user?.role || "admin"}_${acctKey}`;
@@ -519,14 +447,7 @@ export default function AiAssistantView() {
   const [flagTypeFilter, setFlagTypeFilter] = useState(null);
   const [loadingFlags, setLoadingFlags] = useState(false);
   const [resolvingFlagId, setResolvingFlagId] = useState(null);
-  // Keyed by flag id — an optional note typed before resolving a flag (what
-  // was actually wrong, or that it's a false positive). Local-only draft
-  // state; only sent to the server at the moment that flag is resolved.
   const [flagNotes, setFlagNotes] = useState({});
-  // A note input shown on every one of 35+ rows at once (rather than only
-  // the rows someone actually wants to annotate) roughly doubled the list's
-  // height and read as cluttered — collapsed by default, toggled open per
-  // row on demand instead.
   const [noteOpenIds, setNoteOpenIds] = useState(() => new Set());
 
   const scrollRef = useRef(null);
@@ -538,14 +459,7 @@ export default function AiAssistantView() {
 
   const started = messages.length > 0;
 
-  // .content (the outer <section>) is NOT the scrollable element here — the
-  // "AC — AI ASSISTANT" CSS block sets .aiassistant-view { overflow: hidden },
-  // which wins the cascade over .content's own overflow-y: auto (same
-  // specificity, declared later). The actual scroll container is .ac-thread
-  // (scrollRef below), nested inside via its own overflow-y: auto — .content
-  // has essentially no scroll range of its own, so setting its scrollTop was
-  // a near no-op. Scroll scrollRef directly instead of hunting for an
-  // ancestor.
+  // Scroll .ac-thread (scrollRef); .content doesn't scroll on this page.
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -579,13 +493,6 @@ export default function AiAssistantView() {
     } catch { /* ignore */ }
   }
 
-  // Builds the history list with the current conversation archived onto it
-  // (if non-empty) and, optionally, a specific entry removed — lets
-  // restoreConversation drop the entry it's restoring FROM history in the
-  // same state update as archiving what's currently on screen, so restoring
-  // an old conversation and later hitting "New chat" again doesn't leave a
-  // duplicate of it sitting in history (once under its original timestamp,
-  // once re-archived under a new one).
   function buildArchivedHistory(excludeId) {
     let next = excludeId ? history.filter((h) => h.id !== excludeId) : history;
     if (messages.length > 0) {
@@ -654,10 +561,6 @@ export default function AiAssistantView() {
     const ac = new AbortController();
     abortRef.current = ac;
 
-    // A retry reuses the failed message's own id/slot in place (its fields
-    // were already reset by the caller) instead of appending a fresh
-    // bubble — keeps the transcript from growing a duplicate AC row every
-    // time the user retries the same question.
     const streamingId = reuseId || `a-${Date.now()}`;
     if (!reuseId) {
       setMessages((m) => [...m, { id: streamingId, role: "ac", text: "", time: nowTime() }]);
@@ -698,10 +601,7 @@ export default function AiAssistantView() {
           try {
             const payload = JSON.parse(line.slice(6));
             if (payload.reset) {
-              // The server discarded a partial answer and is retrying from
-              // scratch (e.g. after a rate-limit mid-stream) — clear what's
-              // shown so far instead of letting the retry's tokens pile
-              // onto it as a garbled, doubled-up answer.
+              // The server restarted the answer (e.g. after a rate limit); clear the partial text.
               fullAnswer = "";
               setMessages((m) =>
                 m.map((msg) => (msg.id === streamingId ? { ...msg, text: "" } : msg))
@@ -730,12 +630,6 @@ export default function AiAssistantView() {
               if (Array.isArray(payload.suggestions) && payload.suggestions.length) {
                 serverSuggestions = payload.suggestions;
               }
-              // Chart data (breakdown questions like "how many are male?")
-              // renders an inline graph below the text answer. `charts`
-              // (plural) is for answers with more than one distinct visual
-              // (e.g. the tracer overview's Employment Status donut +
-              // Top Industries bars) — falls back to the single `chart` for
-              // every other statistics answer, which only ever sends one.
               if (payload.charts?.length) {
                 setMessages((m) =>
                   m.map((msg) => msg.id === streamingId ? { ...msg, charts: payload.charts } : msg)
@@ -769,15 +663,7 @@ export default function AiAssistantView() {
       }
     } finally {
       setThinking(false);
-      // Prefer backend-computed suggestions (context-aware, guaranteed answerable
-      // via the same topic dispatch aggregationService just used). RAG-classified
-      // (non-statistics) answers don't get topic-driven suggestions from the
-      // backend, so fall back to the fixed QUICK_PROMPTS set instead of a
-      // separately-maintained keyword heuristic that drifts out of sync with
-      // whatever topics aggregationService actually supports (e.g. it had no
-      // awareness of the events/attendance topic added later).
-      // Skip entirely when the answer failed — suggestion chips for a
-      // question the assistant couldn't even answer are misleading.
+      // Prefer backend suggestions, fall back to QUICK_PROMPTS, and show none after a failed answer.
       setMessages((prev) => {
         const lastAc = [...prev].reverse().find((m) => m.role === "ac");
         if (lastAc?.text && !hadError) {
@@ -796,10 +682,7 @@ export default function AiAssistantView() {
   const send = useCallback((raw) => {
     const text = (raw ?? "").trim();
     if (!text || thinking) return;
-    // The <textarea maxLength> above already stops typing/pasting past the
-    // limit — this only matters if `raw` came from somewhere else (a
-    // retried/edited message, a quick-prompt chip), so it's a backstop, not
-    // the primary defense.
+    // Backstop for text that didn't come through the textarea (retries, chips).
     if (text.length > MAX_MESSAGE_LENGTH) {
       setUploadMsg({ type: "err", text: `Message is too long (max ${MAX_MESSAGE_LENGTH} characters).` });
       setTimeout(() => setUploadMsg(null), 4000);
@@ -836,11 +719,6 @@ export default function AiAssistantView() {
     } catch { /* ignore */ }
   }
 
-  // Re-runs the question behind a failed AC answer, reusing that same
-  // message's id/slot (via streamAnswer's reuseId) instead of appending a
-  // duplicate user bubble + a second AC answer. historyBefore excludes the
-  // failed turn itself so its error text never gets sent back to the
-  // backend as prior "assistant" context.
   function retryMessage(acMsg) {
     const idx = messages.findIndex((m) => m.id === acMsg.id);
     if (idx === -1) return;
@@ -1102,10 +980,7 @@ export default function AiAssistantView() {
                     >
                       {reembedding ? "Re-embedding…" : "Re-embed live data"}
                     </button>
-                    {/* "Flagged items" menu entry hidden per explicit request —
-                        the modal, fetchFlags/resolveFlag, and the whole
-                        backend flagging pipeline are all still intact; this
-                        is the one line that made it reachable from the UI. */}
+                    {/* "Flagged items" entry hidden on request; the flagging pipeline is still intact. */}
                   </>
                 )}
               </div>

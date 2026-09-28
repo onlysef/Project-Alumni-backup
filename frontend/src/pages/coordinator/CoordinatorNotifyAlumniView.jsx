@@ -6,9 +6,7 @@ import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
-// Permission to email the 254 bulk-migrated alumni accounts was granted —
-// see notifyAlumniToUpdate in employmentController.js for the backend's
-// matching copy of this flag (the real enforcement point).
+// The backend's copy of this flag is the real enforcement point (notifyAlumniToUpdate in employmentController.js).
 const NOTIFY_ALUMNI_DISABLED = false;
 
 const STATUSES = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
@@ -26,10 +24,6 @@ function NewQuestionsBadge({ count }) {
   return <span style={{ color: "#941527", fontSize: 12, fontWeight: 700 }}>{count} new question{count !== 1 ? "s" : ""}</span>;
 }
 
-// Coordinator's own take on the admin Notify Alumni page — same filter/
-// select/notify flow, but scoped to just their assigned college the whole
-// way through (no college picker; the backend forces it regardless, this
-// just keeps the UI from offering a choice that doesn't exist).
 export default function CoordinatorNotifyAlumniView() {
   const { showToast } = useOutletContext();
   const { user } = useAuth();
@@ -54,9 +48,6 @@ export default function CoordinatorNotifyAlumniView() {
   const [selected, setSelected]         = useState(new Set()); // alumni_id set
   const [selectingAll, setSelectingAll] = useState(false);
 
-  // Lets the coordinator require specific EXISTING questions be re-answered/
-  // updated (not just auto-detected new ones), scoped to their own college's
-  // tracer form — always available since college is fixed, no picker needed.
   const [questionOptions, setQuestionOptions]     = useState([]); // [{ id, label, type, pageTitle }]
   const [questionsLoading, setQuestionsLoading]   = useState(true);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState(new Set());
@@ -134,9 +125,7 @@ export default function CoordinatorNotifyAlumniView() {
     });
   }
 
-  // Walks every page matching the current filters (not just the one on
-  // screen) so "select all" can cover more than the visible 25 rows without
-  // needing a separate backend endpoint.
+  // Walks every filtered page so select-all covers more than the visible rows.
   async function selectAllMatchingFilters() {
     setSelectingAll(true);
     try {
@@ -241,13 +230,13 @@ export default function CoordinatorNotifyAlumniView() {
           </label>
         </div>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, color: "#570013", fontWeight: 600, cursor: "pointer" }}>
+        <label className="notify-new-questions-toggle" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
           <input type="checkbox" checked={newQuestionsOnly} onChange={e => setNewQuestionsOnly(e.target.checked)} />
           Only show alumni with new survey questions to answer
         </label>
 
         <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #f0e6e6" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#570013", marginBottom: 6 }}>
+          <div className="notify-questions-title" style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
             Require specific questions to be updated (optional)
           </div>
           {questionsLoading ? (

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { CoursePill, EmploymentStatusPill } from "../../components/common/TracerPills.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
 const MAROON = "#570013";
@@ -78,9 +79,7 @@ function RatingsTable({ ratings }) {
 function DetailModal({ response, onClose }) {
   const [questionLabels, setQuestionLabels] = useState({});
 
-  // extra_answers is stored keyed by each custom question's internal id —
-  // fetching the coordinator's own tracer form config (always resolved to
-  // their assigned college server-side) maps id -> current readable label.
+  // Map custom-question ids to their current labels.
   useEffect(() => {
     fetch(`${API}/coordinator/tracer-form-config`, { headers: authHeaders() })
       .then(r => r.json())
@@ -230,10 +229,7 @@ function DetailModal({ response, onClose }) {
   );
 }
 
-// ── Main Page ────────────────────────────────────────────────────────────────
-// Coordinator's own take on the admin Tracer Responses page — same browse/
-// filter/detail flow, scoped to just their assigned college (no college
-// picker; the backend forces it regardless).
+// Main Page
 
 export default function CoordinatorTracerResponsesView() {
   const { showToast } = useOutletContext();
@@ -375,19 +371,21 @@ export default function CoordinatorTracerResponsesView() {
             <tr>
               <th>Name</th>
               <th>Course</th>
+              <th>Status</th>
               <th>Date Submitted</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="emp-loading">Loading responses…</td></tr>
+              <tr><td colSpan={5} className="emp-loading">Loading responses…</td></tr>
             ) : responses.length === 0 ? (
-              <tr><td colSpan={4} className="emp-empty">No tracer form submissions found.</td></tr>
+              <tr><td colSpan={5} className="emp-empty">No tracer form submissions found.</td></tr>
             ) : responses.map(r => (
               <tr key={r._id}>
                 <td data-label="Name">{r.name}</td>
-                <td data-label="Course">{r.course || "—"}</td>
+                <td data-label="Course"><CoursePill course={r.course} /></td>
+                <td data-label="Status"><EmploymentStatusPill status={r.employmentStatus} /></td>
                 <td data-label="Date Submitted">{fmtDate(r.submittedAt)}</td>
                 <td data-label="Actions">
                   <button
@@ -419,7 +417,10 @@ export default function CoordinatorTracerResponsesView() {
             <article className="tracer-response-card" key={r._id}>
               <div className="tracer-response-card-head">
                 <strong>{r.name}</strong>
-                <span className="tracer-response-card-meta">{r.course || "—"}</span>
+                <span className="tracer-response-card-pills">
+                  <CoursePill course={r.course} />
+                  <EmploymentStatusPill status={r.employmentStatus} />
+                </span>
               </div>
               <div className="tracer-response-card-date">Submitted {fmtDate(r.submittedAt)}</div>
               <button

@@ -41,11 +41,7 @@ function todayISO() {
 // Aligned with the backend's JS_DAY_TO_LABEL (Date.getDay(): 0=Sun..6=Sat)
 const JS_DAY_TO_LABEL = [null, "M", "T", "W", "TH", "F", "S"];
 
-// Only the next `count` dates that are actually working days and not a
-// marked holiday — nothing else is selectable. `office_status: Closed` only
-// takes today off the list (an unplanned same-day closure) — it doesn't
-// block booking a future date the office will actually be open for; a
-// planned future closure belongs in the holidays list instead.
+// "Closed" only removes today; planned closures go in the holidays list.
 function generateValidDates(workingDays, holidays = [], officeClosedToday = false, count = 14) {
   const dates = [];
   const base = new Date();
@@ -306,9 +302,6 @@ function AppointmentForm({ settings }) {
       .finally(() => setLoading(false));
   }, [open]);
 
-  // "Closed" only takes today off the bookable list (see generateValidDates)
-  // — it no longer disables the whole form, since a same-day closure
-  // shouldn't stop booking a future date the office will be open for.
   const officeClosedToday = settings?.office_status === "Closed";
   const validDates = generateValidDates(settings?.working_days || [], settings?.holidays || [], officeClosedToday);
   const noDatesAvailable = !loading && validDates.length === 0;

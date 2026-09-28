@@ -14,13 +14,7 @@ function capitalize(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// A past version of this page stuffed the middle initial into the lastName
-// field itself ("A. Thora") instead of sending the backend's own dedicated
-// middleInitial field — every admin edit re-prepended it on top of
-// whatever was already there, so some stored values have several rounds of
-// "X. " baked in ("A. A. Thora"). Stripping in a loop (not just once)
-// fully recovers those on the next load, regardless of how many edits it
-// took to get there.
+// Older edits stacked "X. " into lastName; strip repeatedly.
 function splitStoredLastName(value = "") {
   let normalized = String(value).trim();
   let middleInitial = "";
@@ -33,10 +27,6 @@ function splitStoredLastName(value = "") {
 }
 
 function mapUser(u) {
-  // Always derive lastName from the stripped value, never the raw
-  // u.lastName — the dedicated u.middleInitial field can't be trusted to
-  // mean "u.lastName is already clean" (see above), so there's no safe
-  // shortcut around parsing it every time.
   const parsedLastName = splitStoredLastName(u.lastName);
   const middleInitial = (u.middleInitial || parsedLastName.middleInitial || "").replace(/\./g, "").slice(0, 1).toUpperCase();
   const lastName = parsedLastName.lastName;
@@ -45,12 +35,6 @@ function mapUser(u) {
     firstName:      u.firstName,
     middleInitial,
     lastName,
-    // Employer rows show the company name (that's what admins recognize) —
-    // but a bare firstName fallback dropped the contact's lastName entirely
-    // when no company was set, e.g. "Employer" instead of "Employer Tolentino"
-    // for an account whose firstName literally is "Employer". Every other
-    // role's fallback is the full name, so employer without a company should
-    // fall back to the same, not just firstName alone.
     name:           u.role === 'employer'
       ? (u.company || `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`)
       : `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`,
@@ -85,13 +69,7 @@ export default function AccountsView() {
   const [roleFilter, setRoleFilter]   = useState("Role");
   const [statusFilter, setStatusFilter] = useState("Status");
   const [search, setSearch]           = useState("");
-  // Search is debounced into `appliedSearch` (350ms) — role/status filter
-  // changes fetch immediately, but every keystroke would otherwise fire a
-  // request. Filtering/pagination all now happen server-side (see
-  // fetchUsers below) instead of loading every user in the system and
-  // filtering in memory — that used to also drag along each user's full
-  // base64 avatarUrl for every row, most of which this table never even
-  // displays.
+  // Search is debounced; filtering and paging happen server-side.
   const [appliedSearch, setAppliedSearch] = useState("");
   const searchDebounceRef = React.useRef(null);
   const [page, setPage]               = useState(1);
@@ -127,9 +105,6 @@ export default function AccountsView() {
     searchDebounceRef.current = setTimeout(() => setAppliedSearch(value), 350);
   }
 
-  // A role/status/search change makes "page 3 of the old filter" meaningless
-  // — reset to page 1 whenever what's being filtered changes, not just when
-  // paging through one fixed result set.
   useEffect(() => { setPage(1); }, [appliedSearch, roleFilter, statusFilter]);
 
   useEffect(() => {
@@ -271,12 +246,6 @@ export default function AccountsView() {
     });
   }
 
-  // Filtering/searching now all happen server-side (fetchUsers), so `rows`
-  // IS the already-filtered current page — no separate "visible" subset to
-  // derive. Select-all is scoped to the current page for the same reason:
-  // with hundreds of accounts spread across pages, "select all" can no
-  // longer mean every account matching the filter system-wide the way it
-  // did when the whole table was loaded into memory at once.
   const allVisSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const someSelected   = rows.some((r) => selected.has(r.id));
 
@@ -558,12 +527,7 @@ export default function AccountsView() {
               setRows((prev) => prev.map((r) =>
                 r.id === entry.row.id ? mapUser(json.user) : r
               ));
-              // Editing your OWN account here (e.g. an admin renaming
-              // themselves) updates the database, but the logged-in
-              // session's cached profile is a separate copy set once at
-              // login — without this, the old name keeps showing anywhere
-              // it's read from auth context (AC assistant greeting, etc.)
-              // until the next full sign-in.
+              // Refresh the cached session profile when editing your own account.
               if (loggedInUser?.id === entry.row.id) {
                 updateUser({
                   firstName: json.user.firstName,
@@ -837,10 +801,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
                 inputMode="text"
                 aria-label="Middle initial"
                 placeholder="e.g. A"
-                // A single letter only — the "." is added automatically
-                // wherever this is displayed (mapUser's `name` field, the
-                // account list, etc.), so typing one here would just be a
-                // second, redundant period stacking on top of that.
+                // Single letter; the period is added on display.
                 onChange={(e) => { e.target.value = e.target.value.replace(/[^A-Za-z]/g, "").slice(0, 1).toUpperCase(); }}
               />
             </label>
@@ -850,9 +811,6 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
                 name="lastName"
                 defaultValue={row?.lastName || ""}
                 required
-                // The middle initial has its own field/column — a period
-                // typed here would look like a (wrong) second initial
-                // embedded in the surname once displayed.
                 onChange={(e) => { e.target.value = e.target.value.replace(/\./g, ""); }}
               />
             </label>

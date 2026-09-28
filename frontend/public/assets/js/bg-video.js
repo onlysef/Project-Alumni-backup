@@ -1,16 +1,4 @@
-// Background video for the login / reset-password / 2FA pages.
-//
-// The <video> ships with no src (data-src + preload="none"), so nothing is
-// downloaded until this script decides the visitor should get the video:
-//   1. Data saver on, or a 2G/3G connection -> photo only, video never loaded.
-//      (navigator.connection is Chromium/Android only; Safari skips this check.)
-//   2. The video can't start within LOAD_TIMEOUT -> download is cancelled and
-//      the photo stays.
-// The photo is the <video> poster plus the <body> background, so it is what
-// shows in every fallback case.
-//
-// Looping: a plain `loop` visibly jumps from the last frame to the first, so a
-// second copy starts from 0 underneath while the ending copy fades out on top.
+// Background video for login/reset/2FA. Skipped on data saver, 2G, or a slow start (the photo stays); two copies crossfade for a seamless loop.
 (function () {
   var FADE = 0.9;            // seconds of overlap between the two copies
   var LEAD = FADE + 0.3;     // start early: timeupdate only fires every ~250ms
@@ -30,9 +18,7 @@
     return;
   }
 
-  // Only data saver and 2G skip up front. Chrome labels many ordinary
-  // connections "3g" (its estimate is rough), which was hiding the video for
-  // people whose internet handles it fine — those are left to the timeout.
+  // Only data saver/2G skip up front; Chrome often labels normal connections "3g".
   var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
   if (conn && conn.saveData) { setState("skipped: data saver"); return; }
   if (conn && /(^|-)2g$/.test(conn.effectiveType || "")) { setState("skipped: " + conn.effectiveType); return; }

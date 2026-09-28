@@ -23,12 +23,6 @@ function ArrowIcon() {
   );
 }
 
-// "Close posting" used to only be reachable by opening the View-details
-// modal first, then finding the right one of two buttons both literally
-// labeled "Close" (one ends the posting, the other just dismisses the
-// dialog) — an employer trying to end an Active posting had no direct way
-// to do it from the row itself, only View/Edit/Delete. This icon backs a
-// 4th row action so closing is as discoverable as the other three.
 function CloseCircleIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -231,14 +225,7 @@ export default function EmployerDashboard() {
         </article>
       </section>
 
-      {/* Portaled straight onto <body> — this page's own root div carries a
-          page-entrance transform animation (system-motion.css matches
-          .employer-page), and any position:fixed descendant rendered
-          inline (not portaled) gets repositioned relative to that
-          transformed ancestor's box instead of the real viewport, per the
-          CSS containing-block rules — the modal could open clipped near
-          the top of the scrolled page instead of centered on screen. Same
-          bug already fixed for the alumni- and coordinator-side modals. */}
+      {/* Portaled to <body>; the page's entrance transform would break position: fixed. */}
       {modal && ReactDOM.createPortal(
         <div className="employer-modal" role="dialog" aria-modal="true" aria-labelledby="employer-modal-title">
         <button className="employer-modal-backdrop" aria-label="Close dialog" onClick={() => setModal(null)}/>
@@ -251,16 +238,7 @@ export default function EmployerDashboard() {
               <label>Employment type<select value={form.jobType} onChange={(e) => setForm({ ...form, jobType: e.target.value })}><option>Full-time</option><option>Part-time</option><option>Internship</option><option>Contract</option></select></label>
               <label>Location<input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="City, hybrid, or remote"/></label>
             </div>
-            {/* When editing, prefer the job's OWN linked company (already
-                populated via getMyJobs' .populate('partnershipId', 'name'))
-                over the "currently active partnership" list — that list
-                deliberately excludes an Archived partnership (so a NEW post
-                can't be created under one), but an existing job still
-                belongs to whatever company it was posted under regardless,
-                and this field went blank instead of showing it once that
-                partnership was later archived. partnerships[0] is still the
-                right (only) source when CREATING a post (modal.job is null
-                then, so there's no job to read a company from yet). */}
+            {/* Editing: use the job's own linked company; archived partnerships are excluded from the list. */}
             <label>Posting as<input value={modal.job?.partnershipId?.name || partnerships[0]?.name || ""} readOnly disabled/></label>
             <label>Description<textarea rows="4" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Describe the role and responsibilities" required/></label>
             <div className="employer-modal-actions"><button type="button" className="employer-secondary-btn" onClick={() => setModal(null)}>Cancel</button><button className="employer-primary-btn" type="submit" disabled={saving}>{saving ? "Saving…" : modal.job ? "Save changes" : "Publish post"}</button></div>

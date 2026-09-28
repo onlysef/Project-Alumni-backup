@@ -5,6 +5,7 @@ const commentSchema = new mongoose.Schema({
   userName:  { type: String, required: true },
   text:      { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
+  editedAt:  { type: Date },
 });
 
 const announcementSchema = new mongoose.Schema({

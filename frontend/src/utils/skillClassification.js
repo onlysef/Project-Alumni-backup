@@ -1,9 +1,4 @@
-// Mirrors the matching rules and vocabulary of backend/utils/skillMatching.js
-// (SKILL_BUCKETS), duplicated here only so the Skills editor can group chips
-// into Soft/Technical sections client-side without a network round trip on
-// every render. This drives display grouping only — actual career
-// recommendation scoring stays backend-authoritative via textContainsSkill.
-// Keep in sync with SKILL_BUCKETS if that list changes.
+// Mirrors backend/utils/skillMatching.js SKILL_BUCKETS, for display grouping only; keep in sync.
 
 const SOFT_SKILL_KEYWORDS = [
   'communication', 'presentation', 'writing', 'leadership', 'teamwork', 'collaboration',
@@ -52,33 +47,15 @@ function wholeWordMatch(text, keyword) {
   return false;
 }
 
-// Longest keyword first, checked across BOTH lists together (not soft-list-
-// then-hard-list) — otherwise a short soft keyword that happens to also be
-// the first word of a longer hard/domain phrase wins by accident. E.g. a
-// "Patient Care" chip (Healthcare bucket, hard) contains the standalone
-// word "patient", which is also a soft-skill keyword on its own ("I am
-// patient") — checking soft first would misfile it as a soft skill. Sorting
-// everything by phrase length first means "patient care" is tested (and
-// matches) before the bare "patient" ever gets a chance to.
+// Check the longest keywords first across both lists, so "patient care" beats "patient".
 const KEYWORD_TYPES = [
   ...SOFT_SKILL_KEYWORDS.map((keyword) => ({ keyword, type: 'soft' })),
   ...HARD_SKILL_KEYWORDS.map((keyword) => ({ keyword, type: 'hard' })),
 ].sort((a, b) => b.keyword.length - a.keyword.length);
 
-// wholeWordMatch (like backend's textContainsSkill) deliberately skips any
-// keyword that strips down to under 2 characters once punctuation is
-// removed — "c++"/"c#" both collapse to a bare "c", too short to safely
-// search for inside an arbitrary sentence without false-positiving on any
-// text containing a standalone "c". But a skill CHIP isn't a sentence to
-// search — it's the alumnus's own exact answer, so an exact (not
-// substring) match against these short symbol-only keywords is safe here
-// and doesn't carry that same false-positive risk. Without this, "C++"
-// always fell through to "other" instead of Technical/Domain Skills.
+// Exact match for short symbol skills like "C++"/"C#", which wholeWordMatch skips.
 const EXACT_SYMBOL_KEYWORDS = { 'c++': 'hard', 'c#': 'hard' };
 
-// A chip's own text is usually just the skill name itself (e.g. "Customer
-// Service"), so this only needs to check whether that short text matches a
-// known keyword — not scan a longer sentence for keywords buried inside it.
 export function classifySkill(skillText) {
   const exact = EXACT_SYMBOL_KEYWORDS[(skillText || '').trim().toLowerCase()];
   if (exact) return exact;

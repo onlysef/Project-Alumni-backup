@@ -2,17 +2,7 @@ import { useState } from "react";
 import { API, authHeaders } from "../../services/api.js";
 import { classifySkill } from "../../utils/skillClassification.js";
 
-// Comma-separated skills string, edited as removable chips + an "add"
-// input, plus a "describe your skills" textarea that extracts recognized
-// skill keywords from a full sentence instead of forcing one chip at a
-// time. Originally the alumni's own Employment Details editor — shared
-// here so admin/coordinator's Edit Alumni Record modal offers the identical
-// editing experience when setting this on someone else's behalf.
-// `extractEndpoint` lets each caller point at its own role's route
-// (/alumni, /admin, /coordinator all expose the same handler).
-// A real skill can contain digits/symbols ("C++", "3D Modeling") so this only
-// rejects an entry with NO letters at all ("88888888888", "#####") — never a
-// real answer, just something typed to get past the field.
+// Chip-based skills editor shared by alumni and admin/coordinator; `extractEndpoint` picks the role's route.
 const HAS_LETTER_RE = /[A-Za-zÀ-ÖØ-öø-ÿ]/;
 
 export default function SkillsEditor({ value, onChange, extractEndpoint = "/alumni/skills/extract" }) {
@@ -68,9 +58,6 @@ export default function SkillsEditor({ value, onChange, extractEndpoint = "/alum
     }
   };
 
-  // Split for display only (soft/technical/other), so alumni and admins can
-  // scan the two skill types separately instead of one flat mixed list.
-  // Removing/adding still operates on the single comma-separated `value`.
   const softSkills = skills.filter((s) => classifySkill(s) === "soft");
   const hardSkills = skills.filter((s) => classifySkill(s) === "hard");
   const otherSkills = skills.filter((s) => classifySkill(s) === "other");

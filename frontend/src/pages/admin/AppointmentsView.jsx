@@ -105,9 +105,7 @@ const DAYS = ["M", "T", "W", "TH", "F", "S"];
 
 const TIME_OPTIONS = generateTimeSlots("06:00", "21:00");
 
-// ─────────────────────────────────────────────
 // Sub-components
-// ─────────────────────────────────────────────
 
 function ConfirmDialog({ open, message, confirmLabel = "Confirm", danger = false, onConfirm, onCancel }) {
   if (!open) return null;
@@ -145,11 +143,7 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
   const [selectError, setSelectError] = useState("");
 
   useEffect(() => {
-    // role=admin scopes this server-side (GET /admin/users is paginated —
-    // see AccountsView.jsx — a bare unscoped call only returns the newest
-    // 50 accounts of ANY role, which could easily leave an older admin
-    // account out of this picker entirely). limit=500 as a generous ceiling
-    // since this dropdown needs the full matching set, not one page of it.
+    // Role-scoped with a high limit; /admin/users is paginated.
     fetch(`${API}/admin/users?role=admin&limit=500`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((data) => {
@@ -172,9 +166,7 @@ function StaffModal({ mode, item, saving, onClose, onSubmit }) {
   }, []);
 
   const selected = adminList.find((a) => a.id === selectedId) || null;
-  // Legacy staff rows created before this dropdown existed may not match any
-  // current admin account by email — keep their original name/email visible
-  // and submittable until the admin picks a real account to replace them.
+  // Legacy staff rows may not match an admin account; keep them visible until replaced.
   const legacyFallback = isEdit && !selected && item ? { name: item.name, email: item.email } : null;
 
   return (
@@ -262,11 +254,7 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
   const dropRef = useRef(null);
 
   useEffect(() => {
-    // Same reasoning as StaffModal's admin picker above — role=alumni scopes
-    // this server-side instead of relying on GET /admin/users' default
-    // (now-paginated, 50-newest-of-any-role) response, which could easily
-    // leave an alumnus who isn't among the most recently created accounts
-    // out of this search entirely.
+    // Role-scoped; /admin/users is paginated.
     fetch(`${API}/admin/users?role=alumni&limit=1000`, { headers: authHeaders() })
       .then(r => r.json())
       .then(data => {
@@ -432,9 +420,7 @@ function AppointmentModal({ settings, staffList, saving, onClose, onSubmit }) {
   );
 }
 
-// ─────────────────────────────────────────────
 // Main component
-// ─────────────────────────────────────────────
 
 export default function AppointmentsView() {
   const { showToast } = useOutletContext();
@@ -524,10 +510,6 @@ export default function AppointmentsView() {
     }));
   }
 
-  // Specific one-off closed dates (public holidays, university-declared
-  // suspensions) on top of the recurring weekly Days above — previously
-  // this had no schema field or UI at all, so alumni could book on a
-  // holiday since nothing ever checked for one.
   const [newHolidayDate, setNewHolidayDate] = useState("");
 
   function addHoliday() {

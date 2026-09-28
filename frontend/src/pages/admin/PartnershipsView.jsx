@@ -225,9 +225,6 @@ const PARTNER_TYPES = adminMenuChoices["partner-type"].filter((t) => t !== "All"
 
 function PartnershipModal({ entry, onClose, onSubmit }) {
   const row = entry?.row;
-  // A saved type outside the preset list (from a prior "Others" submission)
-  // means the dropdown should reopen on "Others" with that value pre-filled,
-  // not silently fall back to the first preset option.
   const rowTypeIsCustom = !!row?.type && !PARTNER_TYPES.includes(row.type);
   const [typeChoice, setTypeChoice] = useState(rowTypeIsCustom ? "Others" : (row?.type || PARTNER_TYPES[0]));
   const [customType, setCustomType] = useState(rowTypeIsCustom ? row.type : "");

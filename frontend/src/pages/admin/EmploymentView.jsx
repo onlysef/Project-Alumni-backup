@@ -25,12 +25,7 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-// resume.experience is a list of {title, company, employment_type, meta,
-// description} entries (see backend resumeBuilder.deriveFromProfile), not a
-// plain string like every other resume field — flattened here into
-// pre-formatted text so it can still go through the same label/value
-// row renderers (both the PDF export and the in-app RecordMultilineField)
-// everything else here uses.
+// resume.experience is a list; flattened to text for the row renderers.
 function formatExperienceEntries(experience) {
   if (!Array.isArray(experience)) return "";
   return experience.map((entry) => {
@@ -76,9 +71,7 @@ const INDUSTRIES = [
   "Other",
 ];
 const EMPTY_FILTERS   = { status: "", college: "", course: "", batch_year: "", date_updated: "" };
-// Same fixed lists the alumni's own Employment Details form uses — kept
-// identical so an admin editing this on their behalf sees the exact same
-// choices, not a different set that silently diverges over time.
+// Same lists as the alumni's Employment Details form; keep in sync.
 const SALARY_RANGES = [
   "Below PHP 15,000",
   "PHP 15,000 - PHP 25,000",
@@ -93,12 +86,7 @@ const EMPTY_ADD_FORM  = { alumni_id: "", employment_status: "", company_name: ""
 
 const MAROON = "#570013";
 
-// ── Alumni Record detail helpers (mirrors TracerResponsesView's DetailModal,
-// duplicated rather than shared since that page's own modal is unrelated in
-// scope and already works — this one additionally leads with a profile
-// picture and the employment-specific summary). Each section renders as its
-// own card, and fields inside as zebra-striped rows, instead of a single
-// flat list of label/value pairs. ────────────────────────────────────────────
+// Alumni Record detail helpers
 function RecordGroup({ title, children }) {
   const kids = Array.isArray(children) ? children : [children];
   return (
@@ -164,9 +152,6 @@ function RecordMultilineField({ label, value }) {
   );
 }
 
-// Skills/Languages are stored as one big string, newline- or comma/semicolon-
-// separated (same convention the Job Connect resume editor writes) — shown
-// as chips instead of one long run-on line.
 function RecordChips({ label, text }) {
   const items = String(text || "").split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
   if (!items.length) return null;
@@ -184,10 +169,6 @@ function RecordChips({ label, text }) {
   );
 }
 
-// `rows` is the question's own row definitions ([{ key, label }, ...]) from
-// the live form config — labels are looked up from there instead of a
-// hardcoded dictionary, so this renders correctly for ANY rating_table
-// question on ANY college's form, not just the seeded personal-growth one.
 function RecordRatingsTable({ ratings, rows }) {
   const entries = Object.entries(ratings || {}).filter(([, v]) => v);
   if (!entries.length) return null;
@@ -246,10 +227,6 @@ function StatusBadge({ status }) {
   return <span className={`status-badge ${cls}`}>{status || "Not Yet Updated"}</span>;
 }
 
-// Small tag marking a question as newly-added/unanswered (or explicitly
-// flagged via Notify Alumni) — same "new questions" concept already used on
-// the Notify Alumni list and the alumni's own post-login gate, surfaced here
-// too so these don't just blend in with every other already-answered field.
 function NewQuestionTag() {
   return (
     <span style={{ background: "#941527", color: "#fff", fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 999, marginLeft: 8 }}>
@@ -258,10 +235,6 @@ function NewQuestionTag() {
   );
 }
 
-// Renders one editable input for a tracer-form question inside the Edit
-// Record modal, matching whichever type the question actually is (mirrors
-// the alumni-facing TracerStudyForm's own QuestionField, but with the
-// plainer admin form styling already used elsewhere in this modal).
 function EditQuestionField({ q, value, onChange, isNew }) {
   if (q.type === "static_text") return null;
 
@@ -405,12 +378,7 @@ export default function EmploymentView() {
   const [editForm, setEditForm]       = useState({});
   const [editErrors, setEditErrors]   = useState({});
   const [editSaving, setEditSaving]   = useState(false);
-  // Flat question-id -> value map for the FULL tracer study record (fixed
-  // fields and custom/imported ones alike), edited alongside the existing
-  // AlumniEmployment fields above and saved via a separate request to
-  // /admin/employment/:id/tracer. Empty ({}) when this alumnus has never
-  // submitted a tracer response — editing is limited to the employment
-  // fields only in that case (no tracer response exists yet to correct).
+  // Full tracer record as a flat question-id map; empty if the alumnus never submitted.
   const [editTracerForm, setEditTracerForm] = useState({});
   // Question ids new_question_ids flagged as "new" for this specific alumni
   // (see getEmploymentRecord) — drives the "NEW" tag on EditQuestionField.
@@ -530,20 +498,10 @@ export default function EmploymentView() {
       .finally(() => setViewDetailLoading(false));
   }, [viewRecord]);
 
-  // The Alumni Record's tracer-study sections are rendered straight off this
-  // — the alumni's college's CURRENT live form config — rather than a fixed
-  // set of hardcoded sections, so every page (however many, however titled,
-  // whatever custom questions were added to it) shows up correctly for any
-  // college, not just the ones with pages happening to match a guessed
-  // naming convention. A custom question's id never changes even if the
-  // admin later edits its wording or moves it to a different page, so this
-  // has to be looked up live rather than baked into the stored answer.
+  // Sections come from the college's live form config, not a hardcoded list.
   const [tracerConfig, setTracerConfig] = useState(null);
   useEffect(() => {
-    // Edit Record opens by closing View Record first (setViewRecord(null)),
-    // which would otherwise clear viewDetail (and this college lookup) right
-    // as the Edit modal needs it — falling back to editRecord's own college
-    // keeps this populated across that handoff instead of resetting to null.
+    // Fall back to editRecord's college; opening Edit clears viewDetail.
     const college = viewDetail?.college || editRecord?.college;
     if (!college) { setTracerConfig(null); return; }
     fetch(`${API}/admin/tracer-form-config?college=${encodeURIComponent(college)}`, { headers: authHeaders() })
@@ -562,9 +520,7 @@ export default function EmploymentView() {
       company_name:          tracerData?.companyName      || r.company_name          || "",
       job_title:             tracerData?.occupationTitle  || r.job_title             || "",
       industry:              tracerData?.industryField    || r.industry              || "",
-      // r.work_location (the actual specific place, e.g. "Clark") takes
-      // priority — tracerData.placeOfWork is only ever a "Local"/"Abroad"
-      // radio choice, not a real location, and shouldn't overwrite it.
+      // Prefer r.work_location; tracerData.placeOfWork is only Local/Abroad.
       work_location:         r.work_location || tracerData?.resolvedWorkLocation || "",
       job_related_to_course: !!r.job_related_to_course,
       employment_type:       tracerData?.presentEmploymentType || r.employment_type      || "",
@@ -581,11 +537,6 @@ export default function EmploymentView() {
     });
     setEditErrors({});
 
-    // Flatten the full tracer record the same way the alumni's own form
-    // submits it — fixed-schema fields at the top level, custom/imported
-    // ones merged in by their own id — so this can be saved back through
-    // the exact same path (saveTracerAnswers) a real resubmission uses.
-    // Left empty if this alumnus has never submitted one at all.
     const flat = {};
     if (tracerData) {
       Object.entries(tracerData).forEach(([k, v]) => {
@@ -684,19 +635,7 @@ export default function EmploymentView() {
     }
   }
 
-  // Takes just the bare row (only _id/name guaranteed) and fetches the full
-  // record + that college's live form config itself — this used to only
-  // download whatever the caller already had in hand, so the row-level
-  // "quick download" button (which only ever loaded the bare list row)
-  // silently produced an incomplete record with no picture, no tracer
-  // pages, and no resume, while downloading from inside the Alumni Record
-  // modal looked complete. Fetching fresh here every time makes both entry
-  // points produce the exact same, always-complete PDF.
-  //
-  // Built with jsPDF's text APIs directly (not an HTML-to-canvas
-  // rasterization or the browser print dialog) — same pattern as
-  // downloadResumePdf in JobConnect.jsx — so it's a real, crisp,
-  // selectable-text PDF that downloads in one click via doc.save().
+  // Fetches the full record + form config itself so every download entry point gives a complete PDF.
   async function printRecord(rowRecord) {
     let r;
     try {
@@ -749,11 +688,6 @@ export default function EmploymentView() {
       }
     }
 
-    // Single label/value row — skips itself entirely when empty, same as
-    // the old row()/rowPre() helpers, since a section shouldn't show a
-    // blank line for a field the alumnus never answered. pre=true keeps
-    // the value's own line breaks (matching white-space:pre-line in the
-    // old HTML version) instead of treating it as one wrappable paragraph.
     function field(label, value, pre = false) {
       const v = fmt(value);
       if (!v) return;
@@ -761,17 +695,7 @@ export default function EmploymentView() {
       const wrapped = pre
         ? v.split("\n").map((l) => l.trim()).filter(Boolean).flatMap((l) => doc.splitTextToSize(l, valueWidth))
         : doc.splitTextToSize(v, valueWidth);
-      // The label was drawn with NO width constraint at all — fine for a
-      // short one ("Gender"), but a long dynamic tracer-form question
-      // ("What is/are the program/s you completed after graduating?") just
-      // ran straight past its intended 150pt column and directly through
-      // the value text drawn right after it, producing overlapping,
-      // unreadable text in the downloaded PDF. Wrapped the same way the
-      // value already was, and `y` now advances by whichever side (label or
-      // value) actually has more lines — previously only the value's line
-      // count was considered, so a wrapped label's later lines could still
-      // collide with the NEXT field's value even when the value itself was
-      // short enough to fit on one line.
+      // Wrap the label too, and advance by whichever side has more lines.
       const labelWrapped = doc.splitTextToSize(label, labelColWidth - 10);
       const lineCount = Math.max(labelWrapped.length, wrapped.length);
       ensureSpace(Math.max(14, lineCount * 13));
@@ -1238,10 +1162,6 @@ export default function EmploymentView() {
                   const isUnemployed = r.employment_status === "Unemployed";
                   const isNoRecord   = r.employment_status === "Not Yet Updated";
 
-                  // Looks up any question's current answer regardless of
-                  // whether it's a fixed-schema field (td.gender, etc.) or a
-                  // custom/imported one (td.extra_answers[id]) — the same
-                  // lookup works for every page on every college's form.
                   const answerFor = (q) => {
                     if (!td) return undefined;
                     if (Object.prototype.hasOwnProperty.call(td, q.id)) return td[q.id];
@@ -1259,12 +1179,7 @@ export default function EmploymentView() {
                         </div>
                       );
                     }
-                    // RecordField renders nothing for an empty value too, but
-                    // that check has to happen here as well — otherwise a
-                    // page whose only questions are unanswered still counts
-                    // as "has content" at the array level (a real <RecordField>
-                    // element isn't null even though it renders as one), and
-                    // its section header shows with an empty card beneath it.
+                    // Filter empty values here too, or a page with no answers shows an empty section.
                     const isEmpty = Array.isArray(val) ? val.length === 0 : (!val && val !== 0);
                     if (isEmpty) return null;
                     return <RecordField key={q.id} label={q.label} value={val} />;

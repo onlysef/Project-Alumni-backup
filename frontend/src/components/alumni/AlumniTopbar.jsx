@@ -125,9 +125,7 @@ export function AlumniTopbar({ title, titleLogo = null, collapsed, onToggleSideb
 function TwoFactorToggle() {
   const { user, updateUser } = useAuth();
   const saved = !!user?.isTwoFactorEnabled;
-  // Checking the box only changes this local draft — nothing is sent to the
-  // server until Save is clicked, so an accidental click doesn't instantly
-  // flip a security setting.
+  // Local draft only; nothing is saved until Save.
   const [checked, setChecked] = useState(saved);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -299,10 +297,7 @@ function AccountSecurityForm() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Failed to update password.");
-      // The backend invalidates every other session on the account by
-      // bumping its token version, and issues this session a fresh token
-      // carrying the new version — without storing it, the very next
-      // authenticated request from this tab would fail with "invalid token".
+      // Store the fresh token; the backend invalidated the old one.
       if (data.token) localStorage.setItem("auth_token", data.token);
       setMessage("Password updated.");
       setCurrentPassword("");

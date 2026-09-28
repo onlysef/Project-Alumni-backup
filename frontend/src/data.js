@@ -133,22 +133,10 @@ export const reportFilters = [
 
 export function accountActionList(status, role) {
   if (status === "Pending") {
-    // Alumni/Coordinator accounts activate themselves on first login —
-    // "pending" for them just means "hasn't logged in yet," not "awaiting
-    // review." Approve has no real effect beyond flipping status early, so
-    // showing it implies it gates access the way it genuinely does for
-    // Employer accounts (blocked from login until approved). Reject removed
-    // per explicit request — every account type here reaches Active on its
-    // own (self-activation on first login, or admin Approve for Employer),
-    // so there's no real "review and deny" step to reject FROM; Reject was
-    // functionally just an alias for Suspend (handleAction() mapped both to
-    // the same status: "suspended" write) with no behavior of its own.
+    // No Approve/Reject for alumni/coordinator accounts; they activate on first login.
     const canApprove = role !== "Alumni" && role !== "Coordinator";
     return canApprove ? ["edit", "approve", "resend"] : ["edit", "resend"];
   }
-  // "unsuspend" (not the shared "activate" key partnerActionList/job listings
-  // use below) — a suspended ACCOUNT is being restored, not a partnership or
-  // job listing being reopened, and the label should say so.
   if (status === "Suspended") return ["edit", "unsuspend"];
   return ["edit", "suspend"];
 }

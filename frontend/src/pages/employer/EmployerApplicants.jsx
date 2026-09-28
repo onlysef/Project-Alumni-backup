@@ -141,10 +141,7 @@ export default function EmployerApplicants() {
       </table></div>
     </section>
 
-    {/* Portaled to <body> — see EmployerDashboard.jsx's matching comment:
-        this page's root div carries a page-entrance transform animation
-        that breaks position:fixed for any modal rendered inline instead
-        of portaled out. */}
+    {/* Portaled to <body>; the page's entrance transform would break position: fixed. */}
     {selected && ReactDOM.createPortal(<div className="employer-modal applicant-profile-layer" role="dialog" aria-modal="true" aria-labelledby="applicant-name"><button className="employer-modal-backdrop" aria-label="Close applicant profile" onClick={() => setSelected(null)}/><section className="employer-modal-card applicant-profile-card"><button className="employer-modal-close" type="button" onClick={() => setSelected(null)} aria-label="Close">×</button>
       <div className="applicant-profile-identity"><ApplicantPortrait avatarUrl={selected.alumni_id?.avatarUrl} name={`${selected.alumni_id?.firstName || ""} ${selected.alumni_id?.lastName || ""}`.trim()}/><div><h2 id="applicant-name">{selected.alumni_id?.firstName} {selected.alumni_id?.lastName}</h2><a href={`mailto:${selected.alumni_id?.email}`}>{selected.alumni_id?.email}</a><strong>{[selected.alumni_id?.college, selected.alumni_id?.course, selected.alumni_id?.graduationYear].filter(Boolean).join(" · ")}</strong></div></div>
       <div className="applicant-profile-facts">
@@ -182,10 +179,6 @@ export default function EmployerApplicants() {
           <a className="employer-primary-btn" href={resumeApplicant.resume.fileData} download={resumeApplicant.resume.fileName || "resume"} target="_blank" rel="noopener noreferrer">Download resume</a>
         </div>
       )}
-      {/* Same ResumePreview component the alumni side uses for their own
-          resume — an applicant's resume here is exactly the same data,
-          rendered by a separately hand-maintained markup before, which had
-          drifted from the real one (no skill chips, no section styling). */}
       {!resumeLoading && resumeApplicant.resume && !resumeApplicant.resume.fileData && (<>
         {!resumeApplicant.resumeIsSaved && (
           <p className="resume-derived-note">Built from {resumeApplicant.alumni_id?.firstName}'s alumni profile — they haven't saved a formal resume through Job Connect yet.</p>
