@@ -43,6 +43,23 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// The reverse of toDatetimeLocal(): a bare "YYYY-MM-DDTHH:mm" <input
+// type="datetime-local"> value has no timezone of its own — the BROWSER
+// correctly reads it as this user's own local wall-clock time (`new Date()`
+// here runs client-side), but sending that raw string to the backend as-is
+// left the SAME ambiguous string for Node to parse — which it does using
+// the SERVER's own local timezone instead. On localhost that's usually
+// the same machine/timezone as the browser (so it accidentally worked),
+// but Railway's containers default to UTC — 8 hours off Philippine time —
+// so every save silently shifted the stored date by +8h, drifting further
+// with each subsequent edit. Converting to a real UTC instant here, before
+// it ever leaves the browser, makes the value unambiguous no matter what
+// timezone the server happens to run in.
+function toUtcIso(datetimeLocalStr) {
+  if (!datetimeLocalStr) return "";
+  return new Date(datetimeLocalStr).toISOString();
+}
+
 // The past-date check applies only when the start is being changed.
 function validateEventDates(startStr, endStr, previousStartStr) {
   if (!startStr) return "";
@@ -156,7 +173,12 @@ export default function EventManagement() {
     if (dateError)                   { showToast?.(dateError); return; }
     setSubmitting(true);
     try {
-      const data = await apiPost("/coordinator/events", { ...form, capacity: Number(form.capacity) || 0 });
+      const data = await apiPost("/coordinator/events", {
+        ...form,
+        capacity: Number(form.capacity) || 0,
+        event_datetime: toUtcIso(form.event_datetime),
+        end_datetime: toUtcIso(form.end_datetime),
+      });
       if (data.event) {
         setEvents(prev => [data.event, ...prev]);
         setForm(blankForm(myCollege));
@@ -193,7 +215,12 @@ export default function EventManagement() {
     if (dateError)                    { showToast?.(dateError); return; }
     setEditSubmitting(true);
     try {
-      const data = await apiPut(`/coordinator/events/${editEvent._id}`, { ...editForm, capacity: Number(editForm.capacity) || 0 });
+      const data = await apiPut(`/coordinator/events/${editEvent._id}`, {
+        ...editForm,
+        capacity: Number(editForm.capacity) || 0,
+        event_datetime: toUtcIso(editForm.event_datetime),
+        end_datetime: toUtcIso(editForm.end_datetime),
+      });
       if (data.event) {
         setEvents(prev => prev.map(ev => ev._id === data.event._id ? data.event : ev));
         setEditEvent(null);

@@ -6,6 +6,7 @@ const Interview       = require('../models/Interview');
 const Notification    = require('../models/Notification');
 const { sendApplicantMessageEmail, sendInterviewInvitationEmail } = require('../utils/emailService');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
+const { phDateTime } = require('../utils/phTime');
 
 // Every employer account linked to the same partnershipId (company) shares
 // one workspace — jobs, applicants, and interviews posted/scheduled by any
@@ -331,11 +332,7 @@ function formatInterviewWhen(dateStr, timeStr) {
 async function expirePastInterviews(jobIds) {
   const now = Date.now();
   const upcoming = await Interview.find({ job_id: { $in: jobIds }, status: 'Upcoming' }).select('_id date time');
-  const staleIds = upcoming.filter((i) => {
-    const [y, mo, d] = i.date.split('-').map(Number);
-    const [h, mi] = (i.time || '00:00').split(':').map(Number);
-    return new Date(y, mo - 1, d, h, mi).getTime() < now;
-  }).map((i) => i._id);
+  const staleIds = upcoming.filter((i) => phDateTime(i.date, i.time).getTime() < now).map((i) => i._id);
   if (staleIds.length) await Interview.updateMany({ _id: { $in: staleIds } }, { status: 'Completed' });
 }
 
