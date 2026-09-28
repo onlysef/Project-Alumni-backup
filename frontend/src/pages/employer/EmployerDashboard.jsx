@@ -45,6 +45,7 @@ export default function EmployerDashboard() {
   const { showToast } = useOutletContext() || {};
   const [jobs, setJobs] = useState(cachedEmployerData?.jobs ?? []);
   const [partnerships, setPartnerships] = useState(cachedEmployerData?.partnerships ?? []);
+  const [linkedPartnership, setLinkedPartnership] = useState(cachedEmployerData?.linkedPartnership ?? null);
   const [applicants, setApplicants] = useState(cachedEmployerData?.applicants ?? []);
   const [interviews, setInterviews] = useState(cachedEmployerData?.interviews ?? []);
   const [loading, setLoading] = useState(!cachedEmployerData);
@@ -69,12 +70,14 @@ export default function EmployerDashboard() {
         const next = {
           jobs: jobsData.jobs ?? [],
           partnerships: partnershipsData.partnerships ?? [],
+          linkedPartnership: partnershipsData.linkedPartnership ?? null,
           applicants: applicantsData.applicants ?? [],
           interviews: interviewsData.interviews ?? [],
         };
         cachedEmployerData = next;
         setJobs(next.jobs);
         setPartnerships(next.partnerships);
+        setLinkedPartnership(next.linkedPartnership);
         setApplicants(next.applicants);
         setInterviews(next.interviews);
       })
@@ -209,7 +212,14 @@ export default function EmployerDashboard() {
         </div>
       </section>
 
-      <button className="employer-primary-btn create-job-btn" type="button" onClick={openCreate} disabled={loading || !partnerships.length} title={!loading && !partnerships.length ? "No active partnership on file yet — contact the admin office." : undefined}><span>＋</span> Create post</button>
+      <button className="employer-primary-btn create-job-btn" type="button" onClick={openCreate} disabled={loading || !partnerships.length}><span>＋</span> Create post</button>
+      {!loading && !partnerships.length && (
+        <p className="employer-inline-notice">
+          {linkedPartnership?.status === "Archived"
+            ? `Your partner company, ${linkedPartnership.name}, has been archived, so posting is turned off. Contact the admin office to get it reactivated.`
+            : "Your account isn't linked to a partner company yet, so posting is turned off. Contact the admin office to get this set up."}
+        </p>
+      )}
 
       <section className="employer-dashboard-lower" aria-label="Hiring overview">
         <article className="employer-insight-card employer-quick-card">

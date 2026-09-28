@@ -85,12 +85,17 @@ const getMyJobs = async (req, res) => {
 const getActivePartnerships = async (req, res) => {
   try {
     const employer = await User.findById(req.user.id).select('partnershipId').lean();
-    if (!employer?.partnershipId) return res.json({ partnerships: [] });
-    const partnership = await Partnership.findOne(
-      { _id: employer.partnershipId, status: { $ne: 'Archived' } },
-      'name type'
-    );
-    res.json({ partnerships: partnership ? [partnership] : [] });
+    if (!employer?.partnershipId) return res.json({ partnerships: [], linkedPartnership: null });
+    const partnership = await Partnership.findById(employer.partnershipId, 'name type status');
+    const isUsable = partnership && partnership.status !== 'Archived';
+    // linkedPartnership always reflects the raw record (even Archived) so
+    // the frontend can tell "never linked to a company" apart from "linked,
+    // but that company's partnership was archived" and show the right copy
+    // instead of one generic "not linked" message for both.
+    res.json({
+      partnerships: isUsable ? [partnership] : [],
+      linkedPartnership: partnership ? { name: partnership.name, status: partnership.status } : null,
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
   }
