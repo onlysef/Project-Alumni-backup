@@ -9,6 +9,8 @@
 <script src="/config.js"></script>
 </head>
 <body>
+<video class="page-bg-video" muted playsinline preload="none" poster="/assets/images/alumni-center.jpg?v=2" data-src="/assets/videos/login-bg.mp4" aria-hidden="true" tabindex="-1"></video>
+<script src="/assets/js/bg-video.js?v=3" defer></script>
 
 <div class="page">
   <div class="card">
@@ -16,6 +18,12 @@
     <!-- Left -->
     <div class="left-panel">
       <div class="welcome-copy tfa-welcome">
+        <div class="welcome-banner">
+          <div class="welcome-banner-logos">
+            <img src="/assets/images/tsu-logo.png" alt="Tarlac State University" width="64" height="64">
+            <img src="/assets/images/alumni-logo.png" alt="TSU Alumni Association" width="64" height="64">
+          </div>
+        </div>
         <div class="tfa-delivery is-loading" id="tfa-delivery" aria-live="polite" aria-label="Sending verification code">
           <div class="tfa-phone" aria-hidden="true">
             <span class="tfa-speaker"></span>
@@ -76,7 +84,7 @@
   </div>
 </div>
 
-<footer>© 2026 Alumni Portal &nbsp;·&nbsp; Tarlac State University</footer>
+<footer class="login-footer">© 2026 Alumni Portal &nbsp;·&nbsp; Tarlac State University</footer>
 
 <script>
   const API = window.APP_CONFIG.API;

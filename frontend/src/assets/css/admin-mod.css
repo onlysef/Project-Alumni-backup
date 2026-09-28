@@ -11645,3 +11645,89 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
         animation: none !important;
     }
 }
+
+/* AC logo used as the AI Assistant nav icon (admin + coordinator sidebars) */
+.nav-ac-logo {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 0 0 1px rgba(237, 196, 94, 0.55);
+}
+
+/* AC avatar beside each assistant response */
+.ac-row-with-avatar {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: start;
+}
+
+.ac-row-with-avatar > :not(.ac-avatar) {
+    grid-column: 2;
+}
+
+.ac-avatar {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 34px;
+    height: 34px;
+    margin-top: 2px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 2px 6px rgba(76, 8, 10, 0.25);
+}
+
+@media (max-width: 620px) {
+    .ac-row-with-avatar {
+        grid-template-columns: 28px minmax(0, 1fr);
+        column-gap: 9px;
+    }
+
+    .ac-avatar {
+        width: 28px;
+        height: 28px;
+    }
+}
+
+/* Sidebar scrollbar (admin, coordinator, alumni, employer): a thin glassy
+   thumb on a transparent track so it sits in the maroon sidebar instead of
+   the browser's default grey/white bar. */
+/* Firefox only: in Chrome/Edge 121+ setting scrollbar-color switches off the
+   ::-webkit-scrollbar styling below, which is what draws the glass thumb. */
+@supports not selector(::-webkit-scrollbar) {
+    .sidebar,
+    .sidebar .nav {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.32) transparent;
+    }
+}
+
+.sidebar::-webkit-scrollbar,
+.sidebar .nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track,
+.sidebar .nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-thumb,
+.sidebar .nav::-webkit-scrollbar-thumb {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(237, 196, 94, 0.28));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover,
+.sidebar .nav::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(237, 196, 94, 0.45));
+}
+
+.sidebar::-webkit-scrollbar-button,
+.sidebar .nav::-webkit-scrollbar-button {
+    display: none;
+    height: 0;
+}

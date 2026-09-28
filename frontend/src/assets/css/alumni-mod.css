@@ -1071,10 +1071,13 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
   .profile-summary-card { position: static; }
   .employment-fields, .employment-fields.two-columns { grid-template-columns: 1fr; }
   .directory-toolbar { align-items: stretch; flex-direction: column; gap: 12px; padding: 13px; }
-  .directory-filters { flex-wrap: wrap; }
-  .directory-filters > span { flex-basis: 100%; }
-  .directory-filter-field { flex: 0 1 98px; }
-  .directory-filters select { width: 98px; max-width: 98px; }
+  /* Five labeled filters: two per row, each filling its column so labels like
+     "Best match" are not cut off; the odd last one (Sort by) spans the row. */
+  .directory-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .directory-filters > span { grid-column: 1 / -1; }
+  .directory-filter-field { min-width: 0; }
+  .directory-filter-field:last-child:nth-of-type(odd) { grid-column: 1 / -1; }
+  .directory-filters select { width: 100%; max-width: none; min-width: 0; text-overflow: ellipsis; }
   .directory-search { width: 100%; max-width: none; flex-basis: auto; }
   .alumni-directory-grid { grid-template-columns: 1fr; }
   .alumni-person-card { grid-template-columns: 54px minmax(0, 1fr); }
@@ -1083,6 +1086,12 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
   .office-hero { align-items: flex-start; flex-direction: column; padding: 24px; }
   .office-layout { grid-template-columns: 1fr; }
   .service-grid { grid-template-columns: 1fr 1fr; }
+  .career-hero { flex-direction: column; align-items: flex-start; gap: 18px; padding: 22px 20px; }
+  .career-hero h1 { font-size: 22px; }
+  .career-score { flex: none; display: flex; align-items: center; gap: 14px; }
+  .career-score-ring { width: 72px; height: 72px; }
+  .career-score-ring strong { font-size: 18px; }
+  .career-score > span { text-align: left; }
   .career-layout { grid-template-columns: 1fr; }
   .career-card { grid-template-columns: 35px minmax(0, 1fr); }
   .career-details { grid-column: 2; justify-self: start; padding-left: 0; }
@@ -3281,4 +3290,14 @@ body.dark-mode .network-profile-modal .coord-profile-details a { color: #fac853;
    plain `.job-search-bar{grid-template-columns:1fr}` in the ~600px block loses. */
 @media (max-width: 620px) {
   .alumni-app .job-search-bar { grid-template-columns: 1fr; }
+}
+
+/* JobConnect branding — topbar mark + hero logo on the Job Connect section */
+.topbar-title-logo { flex: 0 0 auto; width: 38px; height: 38px; margin-right: -14px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px rgba(237,196,94,.55); }
+.job-connect-hero { gap: 18px; }
+.job-connect-hero-logo { flex: 0 0 auto; width: 76px; height: 76px; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+.job-connect-hero-copy { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 760px) {
+  .topbar-title-logo { width: 30px; height: 30px; margin-right: -8px; }
+  .job-connect-hero-logo { width: 60px; height: 60px; }
 }

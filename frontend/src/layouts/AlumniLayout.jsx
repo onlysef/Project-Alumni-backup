@@ -5,6 +5,7 @@ import { AlumniTopbar } from "../components/alumni/AlumniTopbar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch } from "../services/api.js";
 import { isDrawerViewport, watchDrawerBoundary } from "../constants/layout.js";
+import jobConnectLogo from "../assets/images/jobconnect-logo.png";
 
 const TITLES = { home: "Home", announcements: "Announcements", employment: "Alumni Profile", office: "Alumni Office", suggested: "Alumni Network", career: "Career Recommendation", jobconnect: "Job Connect" };
 
@@ -64,7 +65,7 @@ export default function AlumniLayout() {
       <AlumniSidebar collapsed={collapsed} restricted={restricted} restrictedLabel={restrictedStep} onNavigate={() => isDrawerViewport() && setCollapsed(true)} />
       {!collapsed && <div className="sidebar-backdrop" onClick={() => setCollapsed(true)} aria-hidden="true" />}
       <main className="main">
-        <AlumniTopbar title={restrictedStep || title} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} showToast={showToast} restricted={restricted} />
+        <AlumniTopbar title={restrictedStep || title} titleLogo={!restrictedStep && title === TITLES.jobconnect ? jobConnectLogo : null} collapsed={collapsed} onToggleSidebar={() => setCollapsed(v => !v)} settings={settings} setSettings={setSettings} showToast={showToast} restricted={restricted} />
         <Outlet context={{ section, sidebarCollapsed: collapsed, settings, setSettings, showToast }} />
       </main>
       <div className={`toast${toast ? " show" : ""}`} role="status" aria-live="polite">{toast}</div>

@@ -3,6 +3,7 @@ import ReactDOM from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
+import jobConnectLogo from "../../assets/images/jobconnect-logo.png";
 import { apiFetch } from "../../services/api.js";
 import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
 import { classifySkill } from "../../utils/skillClassification.js";
@@ -308,7 +309,8 @@ export default function JobConnect() {
 
   return <div className="alumni-page-content job-connect-page">
     <section className="job-connect-hero">
-      <div><span>Opportunities for TSU alumni</span><h1>Find your next opportunity</h1><p>Discover roles matched to your profile, experience, and career interests.</p></div>
+      <img className="job-connect-hero-logo" src={jobConnectLogo} alt="JobConnect" />
+      <div className="job-connect-hero-copy"><span>Opportunities for TSU alumni</span><h1>Find your next opportunity</h1><p>Discover roles matched to your profile, experience, and career interests.</p></div>
       <button type="button" className={`job-alerts-toggle${jobAlertsEnabled ? " on" : ""}`} onClick={toggleJobAlerts}>Job alerts: {jobAlertsEnabled ? "On" : "Off"}</button>
     </section>
 
