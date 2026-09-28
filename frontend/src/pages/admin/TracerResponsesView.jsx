@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
+import { CollegePill, CoursePill, EmploymentStatusPill } from "../../components/common/TracerPills.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
 const MAROON = "#570013";
@@ -80,13 +81,7 @@ function DetailModal({ response, onClose }) {
   const [questionLabels, setQuestionLabels] = useState({});
   const college = response?.alumni?.college;
 
-  // extra_answers is stored keyed by each custom question's internal id
-  // (e.g. "q_newQuestion_lz3k9f2", auto-generated once at creation and never
-  // updated to track the label the admin later types) — showing that raw key
-  // as-is made a newly-added question's answer look like it never made it
-  // into the database, when it actually had, it just had no readable label.
-  // Fetching the form config and mapping id -> current label fixes the display
-  // without changing how/where the answer itself is stored.
+  // Map custom-question ids to their current labels.
   useEffect(() => {
     if (!college) { setQuestionLabels({}); return; }
     fetch(`${API}/admin/tracer-form-config?college=${encodeURIComponent(college)}`, { headers: authHeaders() })
@@ -388,20 +383,22 @@ export default function TracerResponsesView() {
               <th>Name</th>
               <th>College</th>
               <th>Course</th>
+              <th>Status</th>
               <th>Date Submitted</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="emp-loading">Loading responses…</td></tr>
+              <tr><td colSpan={6} className="emp-loading">Loading responses…</td></tr>
             ) : responses.length === 0 ? (
-              <tr><td colSpan={5} className="emp-empty">No tracer form submissions found.</td></tr>
+              <tr><td colSpan={6} className="emp-empty">No tracer form submissions found.</td></tr>
             ) : responses.map(r => (
               <tr key={r._id}>
                 <td data-label="Name">{r.name}</td>
-                <td data-label="College">{r.college || "—"}</td>
-                <td data-label="Course">{r.course || "—"}</td>
+                <td data-label="College"><CollegePill college={r.college} /></td>
+                <td data-label="Course"><CoursePill course={r.course} /></td>
+                <td data-label="Status"><EmploymentStatusPill status={r.employmentStatus} /></td>
                 <td data-label="Date Submitted">{fmtDate(r.submittedAt)}</td>
                 <td data-label="Actions">
                   <button
@@ -423,10 +420,6 @@ export default function TracerResponsesView() {
           </tbody>
         </table>
 
-        {/* Mobile-only card list — a plain label:value row-dump (the table's
-            own CSS-driven mobile transform) buried the alumnus's name among
-            four other rows with no visual hierarchy. A real card, name as the
-            heading, reads the way a person list should. */}
         <div className="tracer-response-cards">
           {loading ? (
             <p className="emp-loading">Loading responses…</p>
@@ -436,7 +429,11 @@ export default function TracerResponsesView() {
             <article className="tracer-response-card" key={r._id}>
               <div className="tracer-response-card-head">
                 <strong>{r.name}</strong>
-                <span className="tracer-response-card-meta">{r.college || "—"} · {r.course || "—"}</span>
+                <span className="tracer-response-card-pills">
+                  <CollegePill college={r.college} />
+                  <CoursePill course={r.course} />
+                  <EmploymentStatusPill status={r.employmentStatus} />
+                </span>
               </div>
               <div className="tracer-response-card-date">Submitted {fmtDate(r.submittedAt)}</div>
               <button
