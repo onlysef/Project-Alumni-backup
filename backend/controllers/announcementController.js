@@ -458,6 +458,33 @@ const addComment = async (req, res) => {
   }
 };
 
+// PUT /api/{admin,alumni}/announcements/:id/comment/:commentId — unlike
+// delete, editing is owner-only even for admins: moderating means removing
+// a comment, never putting words in someone else's mouth.
+const updateComment = async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !text.trim()) return res.status(400).json({ message: 'Comment text is required.' });
+
+    const ann = await Announcement.findById(req.params.id).select('comments');
+    if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
+
+    const comment = ann.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found.' });
+    if (String(comment.user) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'You can only edit your own comment.' });
+    }
+
+    comment.text     = text.trim();
+    comment.editedAt = new Date();
+    await ann.save();
+    res.json({ comment: { _id: comment._id, text: comment.text, editedAt: comment.editedAt } });
+  } catch (err) {
+    console.error('updateComment error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // DELETE /api/{admin,alumni}/announcements/:id/comment/:commentId — admins
 // moderate, so any comment (alumni, coordinator, or another admin) can be
 // removed; everyone else may only remove their own.
@@ -593,6 +620,6 @@ const getAnnouncement = async (req, res) => {
 module.exports = {
   getAnnouncements, getAlumniAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
-  toggleLike, getComments, addComment, deleteComment, trackShare, getRecentActivity,
+  toggleLike, getComments, addComment, updateComment, deleteComment, trackShare, getRecentActivity,
   updateEventAdmin, updateJobAdmin, deleteEventAdmin, deleteJobAdmin,
 };
