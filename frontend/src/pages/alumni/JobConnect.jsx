@@ -4,7 +4,7 @@ import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import jobConnectLogo from "../../assets/images/jobconnect-logo.png";
 import { apiFetch } from "../../services/api.js";
-import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
+import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription, SKILL_CHIP_LIMIT } from "../../components/alumni/JobPostingCard.jsx";
 import { classifySkill } from "../../utils/skillClassification.js";
 
 // Every field below used to be an editable, SAVEABLE default (see
@@ -597,14 +597,22 @@ function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
       </div>
       <small className="job-partner">via Careerjet</small>
     </div>
-    {app.skills?.length > 0 && (
-      <aside className="connect-skill-gap">
-        <b>Job Match</b>
-        <span className="skill-match-ratio">{app.skills.filter(s => s.matched).length} of {app.skills.length} skills matched</span>
-        <div>{[...app.skills].sort((a, b) => Number(b.matched) - Number(a.matched)).map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
-        <small>Based on your profile as of when you applied.</small>
-      </aside>
-    )}
+    {app.skills?.length > 0 && (() => {
+      const sorted = [...app.skills].sort((a, b) => Number(b.matched) - Number(a.matched));
+      const shown = sorted.slice(0, SKILL_CHIP_LIMIT);
+      const hidden = sorted.length - shown.length;
+      return (
+        <aside className="connect-skill-gap">
+          <b>Job Match</b>
+          <span className="skill-match-ratio">{app.skills.filter(s => s.matched).length} of {app.skills.length} skills matched</span>
+          <div>
+            {shown.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}
+            {hidden > 0 && <span className="skill-more">+{hidden} more</span>}
+          </div>
+          <small>Based on your profile as of when you applied.</small>
+        </aside>
+      );
+    })()}
   </article>;
 }
 

@@ -5,6 +5,12 @@ import { API, authHeaders } from "../../services/api.js";
 // Postings" preview, so both surfaces render the exact same card instead of
 // two hand-maintained designs drifting apart from each other.
 
+// Some postings list 20+ required skills — rendering every one as a chip
+// blew the card's height out far past its neighbors. Capping the chip list
+// (while keeping the "X of Y skills matched" ratio honest about the real
+// total) keeps every card a predictable height.
+export const SKILL_CHIP_LIMIT = 12;
+
 export function truncate(value, max) {
   return value.length > max ? `${value.slice(0, max).trim()}…` : value;
 }
@@ -176,12 +182,17 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
     </div>
     {job.skills?.length > 0 && (() => {
       const sorted = [...job.skills].sort((a, b) => Number(b.matched) - Number(a.matched));
+      const shown = sorted.slice(0, SKILL_CHIP_LIMIT);
+      const hidden = sorted.length - shown.length;
       const have = job.skills.filter(s => s.matched).length;
       return (
         <aside className="connect-skill-gap" ref={skillGapRef}>
           <b>Job Match</b>
           <span className="skill-match-ratio">{have} of {job.skills.length} skills matched</span>
-          <div>{sorted.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+          <div>
+            {shown.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}
+            {hidden > 0 && <span className="skill-more">+{hidden} more</span>}
+          </div>
           <small>
             {skillTip || (have ? "The green skills are already on your profile — add the rest to raise your match." : "None of these are on your profile yet — adding them raises your match.")}
             {job.createdAt && " (based on your profile as of when you saved this job)"}
