@@ -5,9 +5,7 @@ import { ConfirmDialog } from "../../components/common/Primitives.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { COLLEGE_CODES as COLLEGES, COLLEGE_NAMES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
-// Permission to email the 254 bulk-migrated alumni accounts was granted —
-// see notifyAlumniToUpdate in employmentController.js for the backend's
-// matching copy of this flag (the real enforcement point).
+// The backend's copy of this flag is the real enforcement point (notifyAlumniToUpdate in employmentController.js).
 const NOTIFY_ALUMNI_DISABLED = false;
 
 const STATUSES = ["Not Yet Updated", "Employed", "Unemployed", "Self-employed"];
@@ -48,9 +46,6 @@ export default function NotifyAlumniView() {
   const [selected, setSelected]         = useState(new Set()); // alumni_id set
   const [selectingAll, setSelectingAll] = useState(false);
 
-  // Lets admin require specific EXISTING questions be re-answered/updated
-  // (not just auto-detected new ones) — scoped to one college at a time
-  // since question ids only make sense within that college's own form.
   const [questionOptions, setQuestionOptions]     = useState([]); // [{ id, label, type, pageTitle }]
   const [questionsLoading, setQuestionsLoading]   = useState(false);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState(new Set());
@@ -130,11 +125,7 @@ export default function NotifyAlumniView() {
     });
   }
 
-  // Walks every page matching the current filters (not just the one on
-  // screen) so "select all" can cover more than the visible 25 rows without
-  // needing a separate backend endpoint — the existing paginated list is
-  // capped at 100/page server-side, so large result sets are gathered a
-  // page at a time instead of in one request.
+  // Walks every filtered page (server caps at 100/page) so select-all covers more than the visible rows.
   async function selectAllMatchingFilters() {
     setSelectingAll(true);
     try {
@@ -253,13 +244,13 @@ export default function NotifyAlumniView() {
           </label>
         </div>
 
-        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, color: "#570013", fontWeight: 600, cursor: "pointer" }}>
+        <label className="notify-new-questions-toggle" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
           <input type="checkbox" checked={newQuestionsOnly} onChange={e => setNewQuestionsOnly(e.target.checked)} />
           Only show alumni with new survey questions to answer
         </label>
 
         <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid #f0e6e6" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#570013", marginBottom: 6 }}>
+          <div className="notify-questions-title" style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
             Require specific questions to be updated (optional)
           </div>
           {!filters.college ? (
