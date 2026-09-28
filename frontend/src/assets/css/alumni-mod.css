@@ -220,8 +220,11 @@
 .guidance-image div { font-size: 70px; color: #92674d; }
 .comments { padding: 8px 20px 14px; border-top: 1px solid #ddd; }
 .comment-row { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
-.comment-row > i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #eadcff; color: #7048c6; font-style: normal; }
-.comment-row p { margin: 0; padding: 9px 14px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+.comment-row > i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #eadcff; color: #7048c6; font-style: normal; flex-shrink: 0; }
+.comment-row-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.comment-row p { flex: 1; min-width: 0; margin: 0; padding: 9px 14px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+.comment-row-delete { flex-shrink: 0; border: 0; background: transparent; color: #a08f94; font-size: 18px; line-height: 1; cursor: pointer; opacity: .6; transition: opacity .15s, color .15s; }
+.comment-row-delete:hover { opacity: 1; color: #70001d; }
 .comment-input { flex: 1; display: flex; justify-content: space-between; border: 0; padding: 13px 18px; border-radius: 24px; background: #e6e6e6; color: #999; font-size: 12px; cursor: pointer; }
 .comment-input b { color: #70001d; }
 .alumni-comment-composer { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -256,6 +259,23 @@
    line breaks instead of collapsing them into one run-on paragraph. */
 .alumni-action-modal p { margin: 0; color: #54484c; font-size: 13px; line-height: 1.6; white-space: pre-line; }
 .alumni-action-modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+.alumni-confirm-overlay { position: fixed; inset: 0; z-index: 190; display: grid; place-items: center; padding: 24px; background: rgba(33, 11, 18, .55); animation: alumni-overlay-in 150ms ease both; }
+.alumni-confirm-card { width: min(320px, 90vw); padding: 24px; border: 1px solid #e2d3d7; border-radius: 10px; background: #fff; text-align: center; box-shadow: 0 22px 55px rgba(32, 0, 9, .3); }
+.alumni-confirm-card h3 { margin: 0 0 6px; color: #620019; font-size: 16px; }
+.alumni-confirm-card p { margin: 0; color: #75686c; font-size: 12px; }
+.alumni-confirm-actions { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
+.alumni-confirm-actions button { padding: 9px 20px; border-radius: 20px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.alumni-confirm-cancel { border: 1px solid #d9cbcf; background: #fff; color: #65575b; }
+.alumni-confirm-cancel:hover { border-color: #70001d; color: #70001d; }
+.alumni-confirm-delete { border: 1px solid #70001d; background: #70001d; color: #fff; }
+.alumni-confirm-delete:hover { background: #560015; }
+body.dark-mode .alumni-confirm-overlay { background: rgba(10, 2, 5, .7); }
+body.dark-mode .alumni-confirm-card { border-color: rgba(250, 200, 83, .18); background: #241116; }
+body.dark-mode .alumni-confirm-card h3 { color: #fff6f8; }
+body.dark-mode .alumni-confirm-card p { color: #d4bdc3; }
+body.dark-mode .alumni-confirm-cancel { border-color: #4a3d41; background: #2a2226; color: #d4bdc3; }
+body.dark-mode .alumni-confirm-delete { border-color: #fac853; background: #7a0f2c; }
 .event-image.second { background: linear-gradient(135deg, #b9d9ed, #f1d8b6 50%, #26466a); }
 .recent-title { margin-top: 28px !important; text-transform: none !important; }
 /* Was a CSS grid with a fixed 130px image column and min-height:120px that

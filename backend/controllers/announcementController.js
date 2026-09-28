@@ -401,17 +401,21 @@ const getComments = async (req, res) => {
   try {
     const ann = await Announcement.findById(req.params.id)
       .select('comments')
-      .populate('comments.user', 'firstName lastName');
+      .populate('comments.user', 'firstName lastName avatarUrl');
     if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
 
     // `userName` on each comment is a plain string frozen at post time — if
     // that commenter later changes their name (e.g. via Accounts), every
     // past comment kept showing the old name forever. Resolving the live
     // User record here reflects a name change retroactively, falling back
-    // to the frozen text only if the commenter's account was deleted.
+    // to the frozen text only if the commenter's account was deleted. Same
+    // reasoning applies to avatarUrl, which isn't stored on the comment at
+    // all — always read live so a profile photo added/changed after the
+    // comment was posted still shows up.
     const comments = ann.comments.map((c) => {
       const obj = c.toObject();
       if (c.user && c.user.firstName) obj.userName = `${c.user.firstName} ${c.user.lastName}`;
+      obj.avatarUrl = c.user?.avatarUrl || '';
       return obj;
     });
     res.json({ comments });
@@ -427,7 +431,7 @@ const addComment = async (req, res) => {
     const { text } = req.body;
     if (!text || !text.trim()) return res.status(400).json({ message: 'Comment text is required.' });
 
-    const user = await User.findById(req.user.id).select('firstName lastName');
+    const user = await User.findById(req.user.id).select('firstName lastName avatarUrl');
     const userName = user ? `${user.firstName} ${user.lastName}` : 'Admin';
 
     const ann = await Announcement.findByIdAndUpdate(
@@ -437,7 +441,7 @@ const addComment = async (req, res) => {
     );
     if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
 
-    const newComment = ann.comments[ann.comments.length - 1];
+    const newComment = { ...ann.comments[ann.comments.length - 1].toObject(), avatarUrl: user?.avatarUrl || '' };
 
     ActivityLog.create({
       user_id:            req.user.id,
@@ -450,6 +454,29 @@ const addComment = async (req, res) => {
     res.json({ comment: newComment, commentsCount: ann.comments.length });
   } catch (err) {
     console.error('addComment error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+// DELETE /api/{admin,alumni}/announcements/:id/comment/:commentId — admins
+// moderate, so any comment (alumni, coordinator, or another admin) can be
+// removed; everyone else may only remove their own.
+const deleteComment = async (req, res) => {
+  try {
+    const ann = await Announcement.findById(req.params.id).select('comments');
+    if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
+
+    const comment = ann.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: 'Comment not found.' });
+    if (req.user.role !== 'admin' && String(comment.user) !== String(req.user.id)) {
+      return res.status(403).json({ message: 'You can only delete your own comment.' });
+    }
+
+    comment.deleteOne();
+    await ann.save();
+    res.json({ commentsCount: ann.comments.length });
+  } catch (err) {
+    console.error('deleteComment error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
 };
@@ -542,12 +569,14 @@ const getAnnouncement = async (req, res) => {
   try {
     const ann = await Announcement.findById(req.params.id)
       .select('title description type imageUrl location createdAt updatedAt likedBy sharedBy comments')
+      .populate('comments.user', 'avatarUrl')
       .lean();
     if (!ann) return res.status(404).json({ message: 'Announcement not found.' });
     const userId = String(req.user?.id || '');
     res.json({
       announcement: {
         ...ann,
+        comments:      ann.comments.map((c) => ({ ...c, avatarUrl: c.user?.avatarUrl || '' })),
         likesCount:    ann.likedBy?.length  ?? 0,
         commentsCount: ann.comments?.length ?? 0,
         sharesCount:   ann.sharedBy?.length ?? 0,
@@ -564,6 +593,6 @@ const getAnnouncement = async (req, res) => {
 module.exports = {
   getAnnouncements, getAlumniAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
-  toggleLike, getComments, addComment, trackShare, getRecentActivity,
+  toggleLike, getComments, addComment, deleteComment, trackShare, getRecentActivity,
   updateEventAdmin, updateJobAdmin, deleteEventAdmin, deleteJobAdmin,
 };
