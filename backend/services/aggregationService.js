@@ -3689,10 +3689,75 @@ async function queryEventOverview(question = '') {
   events.forEach((e, i) => {
     out += `${i + 1}. **${e.title}** on ${new Date(e.event_datetime).toLocaleDateString()}${e.location ? ` at ${e.location}` : ''}\n`;
   });
+
+  // A list of events has no single numeric field to chart on its own — but
+  // grouped by month, "how many events happened when" is a real, meaningful
+  // bar chart. Skipped for a single event (nothing to compare across
+  // months) and only built when actually asked for, same on-request wiring
+  // as every other VISUALIZATION_REQUEST_PATTERN check in this file.
+  if (VISUALIZATION_REQUEST_PATTERN.test(question) && events.length > 1) {
+    const monthCounts = {};
+    events.forEach(e => {
+      const key = new Date(e.event_datetime).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      monthCounts[key] = (monthCounts[key] || 0) + 1;
+    });
+    const rows = Object.entries(monthCounts)
+      .map(([label, count]) => ({ label, count, _sortKey: new Date(label).getTime() }))
+      .sort((a, b) => a._sortKey - b._sortKey);
+    return withChart(out, { type: 'bars', title: `${heading}${college ? ` for ${college}` : ''} by Month`, rows });
+  }
+  return out;
+}
+
+// "attendance of the past events" / "attendance for all events" — no single
+// event named at all, a genuinely different question ("how did attendance
+// look across every event") from "how many attended EVENT X". Without this
+// check, extractEventName()/resolveEvent() tried to resolve the plural
+// phrase itself as if it were one literal event title and failed with a
+// confusing "No event matching 'attendance of the past events' found."
+const GENERIC_EVENTS_PATTERN = /\b(all|past|upcoming|previous|every)\s+events?\b|\bevents?\s+(overall|in\s+general)\b/i;
+
+async function queryEventAttendanceOverview(question) {
+  const scopedCollege = getCollegeScope();
+  const requestedCollege = extractRequestedCollege(question);
+  if (scopedCollege && requestedCollege && requestedCollege !== scopedCollege) {
+    return `As a ${scopedCollege} coordinator, you may only access ${scopedCollege}'s events — access to ${requestedCollege} or other colleges' events is not available.`;
+  }
+  if (!scopedCollege && !requestedCollege && !ALL_COLLEGES_PATTERN.test(question)) {
+    return CLARIFY_COLLEGE_QUESTION;
+  }
+  const college = scopedCollege || requestedCollege;
+  const isUpcoming = /\b(upcoming|forthcoming|future|next)\b/i.test(question);
+  const isPast     = /\b(past|previous|completed|already\s+(held|happened|occurred)|finished)\b/i.test(question);
+  const dateFilter = isUpcoming ? { event_datetime: { $gte: new Date() } }
+                    : isPast    ? { event_datetime: { $lt: new Date() } }
+                    : {};
+  const events = await Event.find({ ...(college ? { college } : {}), ...dateFilter })
+    .select('title event_datetime')
+    .sort({ event_datetime: -1 })
+    .limit(15)
+    .lean();
+  const scopeLabel = isUpcoming ? 'upcoming ' : isPast ? 'past ' : '';
+  if (!events.length) return `No ${scopeLabel}events found${college ? ` for ${college}` : ''}.`;
+
+  const counts = await Promise.all(events.map(e =>
+    AttendanceLog.countDocuments({ event_id: e._id, status: { $in: ATTENDED_STATUSES } })
+  ));
+  const heading = `${isUpcoming ? 'Upcoming' : isPast ? 'Past' : ''} Event Attendance${college ? ` for ${college}` : ''}`.replace(/\s+/g, ' ').trim();
+  let out = `**${heading}${events.length === 15 ? ' (latest 15)' : ''}:**\n\n`;
+  events.forEach((e, i) => { out += `${i + 1}. **${e.title}**: ${counts[i]} attended\n`; });
+
+  if (VISUALIZATION_REQUEST_PATTERN.test(question) && events.length > 1) {
+    return withChart(out, {
+      type: 'bars', title: heading,
+      rows: events.map((e, i) => ({ label: e.title, count: counts[i] })),
+    });
+  }
   return out;
 }
 
 async function queryEventAttendanceCount(question) {
+  if (GENERIC_EVENTS_PATTERN.test(question)) return queryEventAttendanceOverview(question);
   const resolved = await resolveEvent(question);
   if (resolved.none) return queryEventOverview(question);
   if (resolved.error) return resolved.error;
@@ -3704,7 +3769,28 @@ async function queryEventAttendanceCount(question) {
   // eventTitle rides along so suggestFollowUps() can offer contextual
   // "Who attended X?" / "What's the feedback for X?" chips instead of the
   // generic tracer-study defaults or no chips at all.
-  return { text: `**${count}** alumni attended **${resolved.event.title}**.`, eventTitle: resolved.event.title };
+  const text = `**${count}** alumni attended **${resolved.event.title}**.`;
+
+  // A bare attendance count has nothing of its own to chart — but the full
+  // Present/Late/Excused/Absent status breakdown behind it does, and is
+  // exactly what "show me a visualization" for this question reasonably
+  // means. Same on-request wiring as queryCount()/queryRate() elsewhere in
+  // this file: only computed when actually asked for, since it's an extra
+  // query most attendance-count questions never need.
+  if (VISUALIZATION_REQUEST_PATTERN.test(question)) {
+    const statusRows = await AttendanceLog.aggregate([
+      { $match: { event_id: resolved.event._id } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+    if (statusRows.length) {
+      const charted = withChart(text, { type: 'donut', title: `Attendance — ${resolved.event.title}`, rows: statusRows });
+      return typeof charted === 'string'
+        ? { text: charted, eventTitle: resolved.event.title }
+        : { text: charted.text, chart: charted.chart, eventTitle: resolved.event.title };
+    }
+  }
+  return { text, eventTitle: resolved.event.title };
 }
 
 async function queryEventAttendees(question) {
@@ -3727,6 +3813,23 @@ async function queryEventAttendees(question) {
   logs.forEach((l, i) => {
     out += `${i + 1}. **${nameById[String(l.alumni_id)] || 'Unknown Alumni'}** (${l.status})\n`;
   });
+
+  // A name list has nothing to chart — but the same full status breakdown
+  // queryEventAttendanceCount() charts on request applies here too, since
+  // both answer questions about the same event's AttendanceLog rows.
+  if (VISUALIZATION_REQUEST_PATTERN.test(question)) {
+    const statusRows = await AttendanceLog.aggregate([
+      { $match: { event_id: resolved.event._id } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+    if (statusRows.length) {
+      const charted = withChart(out, { type: 'donut', title: `Attendance — ${resolved.event.title}`, rows: statusRows });
+      return typeof charted === 'string'
+        ? { text: charted, eventTitle: resolved.event.title }
+        : { text: charted.text, chart: charted.chart, eventTitle: resolved.event.title };
+    }
+  }
   return { text: out, eventTitle: resolved.event.title };
 }
 
@@ -4046,7 +4149,13 @@ function extractCompanyName(question) {
   return (m[1] || m[2] || m[3] || '').trim();
 }
 
-async function queryCount(filters) {
+// wantsChart: set by the 'count' dispatcher when the question explicitly
+// asks for a visualization/chart/graph (VISUALIZATION_REQUEST_PATTERN) — a
+// plain count has no breakdown of its own to chart, but "how many are
+// employed? show me a visualization" reasonably means "chart that count
+// against the rest of the cohort" (e.g. Employed vs. everyone else), same
+// on-request wiring as queryRate()/queryEmployment() above.
+async function queryCount(filters, wantsChart = false) {
   const stable = stablePipeline(filters);
 
   // Variable filters applied after dedup
@@ -4200,6 +4309,23 @@ async function queryCount(filters) {
     const directly = dirRows[0]?.total ?? 0;
     const somewhat = somRows[0]?.total ?? 0;
     out += `\n- Directly related: **${directly}**\n- Somewhat related: **${somewhat}**`;
+  }
+
+  // Only charts a single named status/filter against "the rest of the same
+  // cohort" — statusLabel is null for a plain unfiltered count (nothing
+  // meaningful to contrast against), and the jobRelated directly/somewhat
+  // breakdown just above already has its own two numbers better suited to a
+  // chart than a generic "matches vs. rest" split would be.
+  if (wantsChart && statusLabel && total > 0 && stableTotal > total) {
+    const label = statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1);
+    return withChart(out, {
+      type: 'donut',
+      title: `${label} vs. Rest${lbl}`,
+      rows: [
+        { label, count: total },
+        { label: 'Rest', count: stableTotal - total },
+      ],
+    });
   }
 
   return out;
@@ -4391,7 +4517,21 @@ async function queryTracerActivity(question, inheritedAction = null) {
     if (windowStart) match.createdAt = { $gte: windowStart };
     const total = await TracerStudyResponse.countDocuments(match);
     const windowLabel = windowDays ? ` in the last ${windowDays === 1 ? 'day' : `${windowDays} days`}` : '';
-    return `${total} tracer study record${total === 1 ? '' : 's'} ${total === 1 ? 'was' : 'were'} added${windowLabel}.`;
+    const text = `${total} tracer study record${total === 1 ? '' : 's'} ${total === 1 ? 'was' : 'were'} added${windowLabel}.`;
+    // Only meaningful against the rest of the same scoped record set, and
+    // only when there's a real window narrowing it down — an unfiltered
+    // "how many were added" has no "rest" to contrast against (every record
+    // was, by definition, added at some point).
+    if (VISUALIZATION_REQUEST_PATTERN.test(question) && windowStart) {
+      const allTotal = await TracerStudyResponse.countDocuments(alumniScope || {});
+      if (allTotal > total) {
+        return withChart(text, {
+          type: 'donut', title: 'Tracer Records Added',
+          rows: [{ label: `Added${windowLabel}`, count: total }, { label: 'Older', count: allTotal - total }],
+        });
+      }
+    }
+    return text;
   }
 
   // A real update/resubmission: submittedAt (last save) sits clearly after
@@ -4413,7 +4553,14 @@ async function queryTracerActivity(question, inheritedAction = null) {
   ]);
   const verb = negated ? 'have not updated' : 'have updated';
   const windowLabel = windowDays ? ` in the last ${windowDays === 1 ? 'day' : `${windowDays} days`}` : '';
-  return `${total} out of ${allTotal} alumni who submitted the tracer study ${verb} their answers since their first submission${windowLabel}.`;
+  const text = `${total} out of ${allTotal} alumni who submitted the tracer study ${verb} their answers since their first submission${windowLabel}.`;
+  if (VISUALIZATION_REQUEST_PATTERN.test(question) && allTotal > total) {
+    return withChart(text, {
+      type: 'donut', title: 'Tracer Record Updates',
+      rows: [{ label: negated ? 'Not Updated' : 'Updated', count: total }, { label: 'Rest', count: allTotal - total }],
+    });
+  }
+  return text;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -5151,7 +5298,7 @@ async function queryInner(question, seedFilters = {}) {
     // the moment it got routed here, collapsing back to the plain
     // industry-wide "49" total regardless of directly/somewhat/not related.
     // queryCount() already applies both filters correctly together.
-    count:           () => isSectorQuestion ? querySector(filters) : filters.employmentStatuses ? queryEmployment(filters) : (filters.workLocation || isCompoundLocationQuestion) ? queryWorkLocation(filters) : ((filters.industry || filters.excludeIndustry) && !filters.company && !filters.jobRelated) ? queryIndustry(filters) : queryCount(filters),
+    count:           () => isSectorQuestion ? querySector(filters) : filters.employmentStatuses ? queryEmployment(filters) : (filters.workLocation || isCompoundLocationQuestion) ? queryWorkLocation(filters) : ((filters.industry || filters.excludeIndustry) && !filters.company && !filters.jobRelated) ? queryIndustry(filters) : queryCount(filters, wantsRateChart),
     rate:            () => isCompoundLocationQuestion
       ? queryWorkLocation(filters)
       : BY_PROGRAM_QUESTION_PATTERN.test(question)
@@ -5227,7 +5374,7 @@ async function queryInner(question, seedFilters = {}) {
     // dispatch already gives filters.industry over its own default.
     work_type:       () => isSectorQuestion ? querySector(filters) : (filters.industry || filters.excludeIndustry) ? queryIndustry(filters) : queryWorkType(filters),
     job_relevance:   () => BY_PROGRAM_QUESTION_PATTERN.test(question) ? queryJobAlignmentByProgram(filters)
-      : filters.jobRelated ? queryCount(filters) : queryJobRelevance(filters),
+      : filters.jobRelated ? queryCount(filters, wantsRateChart) : queryJobRelevance(filters),
     // filters.furtherEducation checked first — same reasoning as
     // licensure's own filters.tookExam check just below: an English "how
     // many did NOT pursue further studies" happens to also match the
@@ -5236,8 +5383,8 @@ async function queryInner(question, seedFilters = {}) {
     // ("ilan ang hindi nagpatuloy ng pag-aaral") only ever matches THIS
     // topic — without this check it always got the full breakdown instead
     // of the same single-count shape the English phrasing got.
-    further_studies: () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.furtherEducation ? queryCount(filters) : queryFurtherStudies(filters),
-    licensure:       () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.tookExam ? queryCount(filters) : queryLicensure(filters),
+    further_studies: () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.furtherEducation ? queryCount(filters, wantsRateChart) : queryFurtherStudies(filters),
+    licensure:       () => /\bwho\b/i.test(question) ? queryNames(filters) : filters.tookExam ? queryCount(filters, wantsRateChart) : queryLicensure(filters),
     promotion:        () => queryPromotion(filters),
     further_training: () => queryFurtherTraining(filters),
     competencies:    () => queryCompetencies(filters, wantsRankHighest()),
@@ -5258,7 +5405,7 @@ async function queryInner(question, seedFilters = {}) {
         || filters.industry || filters.excludeIndustry || filters.furtherEducation || filters.tookExam
         || filters.jobRelated || filters.workLocation;
       if (filters.employmentStatuses) return queryEmployment(filters);
-      return hasOtherFilter ? queryCount(filters) : queryGender(filters);
+      return hasOtherFilter ? queryCount(filters, wantsRateChart) : queryGender(filters);
     },
     employment:      () => {
       // "employed including self-employed" / "employed and self-employed" —
@@ -5277,9 +5424,9 @@ async function queryInner(question, seedFilters = {}) {
           ? queryWorkLocationByProgram(filters, filters.workLocation)
           : queryEmploymentRateByProgram(filters, programSuperlativeDirection);
       }
-      if (isCombinedEmployedQuery) return queryRate(filters);
+      if (isCombinedEmployedQuery) return queryRate(filters, false, wantsRateChart);
       if (filters.industry || filters.excludeIndustry) return queryIndustry(filters);
-      if (filters.employmentStatus || filters.excludeEmploymentStatus) return queryCount(filters);
+      if (filters.employmentStatus || filters.excludeEmploymentStatus) return queryCount(filters, wantsRateChart);
       return queryEmployment(filters);
     },
     tracer_activity: () => queryTracerActivity(question),
