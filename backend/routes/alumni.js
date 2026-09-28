@@ -2,7 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { changePassword, updatePassword, updateAvatar, sendInquiry, completeOnboarding, submitTracerStudy, getMyTracerResponse, getTracerFormConfig, getHomeSummary, getMyEmployment, updateMyEmployment, getSuggestedAlumni, messageAlumnus, getCareerRecommendations, getCareerNextStep, getCareerFitExplanation, extractSkills, searchJobs, getPartnerJobPostings, getJobSkillTip, getSavedJobs, toggleSavedJob, getJobAlertsPref, updateJobAlertsPref, getMyResume, updateMyResume, deleteMyResume, updateMyResumeFile, deleteMyResumeFile, getApplications, logApplication, updateApplicationStatus, deleteApplication } = require('../controllers/alumniController');
-const { getAlumniAnnouncements, toggleLike, getComments, addComment, trackShare } = require('../controllers/announcementController');
+const { getAlumniAnnouncements, toggleLike, getComments, addComment, deleteComment, trackShare } = require('../controllers/announcementController');
 const { getAlumniEvents, toggleInterested, getCoordinatorNotifications, markNotificationsRead } = require('../controllers/eventController');
 const { getOfficeSettings, getAvailableStaff, bookAppointment, getBookedSlots } = require('../controllers/appointmentController');
 const { submitEventFeedback, getMyEventFeedback } = require('../controllers/feedbackController');
@@ -51,6 +51,7 @@ router.get('/announcements',                protect, authorize('alumni'), getAlu
 router.post('/announcements/:id/like',      protect, authorize('alumni'), toggleLike);
 router.get('/announcements/:id/comments',   protect, authorize('alumni'), getComments);
 router.post('/announcements/:id/comment',   protect, authorize('alumni'), addComment);
+router.delete('/announcements/:id/comment/:commentId', protect, authorize('alumni'), deleteComment);
 router.post('/announcements/:id/share',     protect, authorize('alumni'), trackShare);
 
 router.get('/events',                       protect, authorize('alumni'), getAlumniEvents);

@@ -664,6 +664,7 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
   const [notFound, setNotFound]   = useState(false);
   const [text, setText]           = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   useEffect(() => {
     if (!postId) return;
@@ -708,9 +709,31 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
     }
   }
 
+  function handleDeleteComment(comment) {
+    setDeleteConfirm({
+      message: "Delete this comment? This cannot be undone.",
+      onConfirm: async () => {
+        setDeleteConfirm(null);
+        try {
+          const res  = await fetch(`${API}/admin/announcements/${postId}/comment/${comment._id}`, {
+            method: "DELETE", headers: authHeaders(),
+          });
+          const json = await safeJson(res);
+          if (!res.ok) { showToast(json.message || "Failed to delete comment."); return; }
+          setComments(prev => prev.filter(c => c._id !== comment._id));
+          onCommentAdded?.(postId, json.commentsCount);
+          showToast("Comment deleted.");
+        } catch {
+          showToast("Could not connect to server.");
+        }
+      },
+    });
+  }
+
   if (!postId) return null;
 
   return (
+    <>
     <Modal open={!!postId} onClose={onClose}>
       <section className="tracer-modal post-viewer" role="dialog" aria-modal="true">
         <div className="modal-head">
@@ -760,12 +783,17 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
                 )}
                 {comments.map((c, i) => (
                   <div key={c._id || i} className="comment-item">
-                    <div className="comment-avatar">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
+                    {c.avatarUrl ? (
+                      <img className="comment-avatar" src={c.avatarUrl} alt={c.userName || "Commenter"} />
+                    ) : (
+                      <div className="comment-avatar comment-avatar-fallback">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
+                    )}
                     <div className="comment-bubble">
                       <strong>{c.userName}</strong>
                       <p>{c.text}</p>
                       <time>{new Date(c.createdAt).toLocaleString()}</time>
                     </div>
+                    <button type="button" className="comment-delete" aria-label="Delete comment" onClick={() => handleDeleteComment(c)}>×</button>
                   </div>
                 ))}
               </div>
@@ -796,6 +824,15 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
         )}
       </section>
     </Modal>
+    <ConfirmDialog
+      open={!!deleteConfirm}
+      message={deleteConfirm?.message}
+      confirmLabel="Delete"
+      danger
+      onConfirm={deleteConfirm?.onConfirm}
+      onCancel={() => setDeleteConfirm(null)}
+    />
+    </>
   );
 }
 

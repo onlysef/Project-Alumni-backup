@@ -7014,7 +7014,7 @@
 
         .comment-item {
             display: grid;
-            grid-template-columns: 36px 1fr;
+            grid-template-columns: 36px 1fr auto;
             gap: 10px;
             align-items: start;
         }
@@ -7023,6 +7023,11 @@
             width: 36px;
             height: 36px;
             border-radius: 50%;
+            flex-shrink: 0;
+            object-fit: cover;
+        }
+
+        .comment-avatar-fallback {
             background: var(--maroon);
             color: #fff;
             display: grid;
@@ -7030,7 +7035,25 @@
             font-size: 14px;
             font-weight: 800;
             text-transform: uppercase;
-            flex-shrink: 0;
+        }
+
+        .comment-delete {
+            align-self: start;
+            margin-top: 2px;
+            padding: 0 4px;
+            border: 0;
+            background: transparent;
+            color: var(--muted);
+            font-size: 18px;
+            line-height: 1;
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity .15s, color .15s;
+        }
+
+        .comment-delete:hover {
+            opacity: 1;
+            color: var(--maroon);
         }
 
         .comment-bubble {

@@ -78,10 +78,12 @@ export default function AlumniDashboard() {
 }
 
 function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
+  const { user } = useAuth();
   const [modal, setModal] = useState(null);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(true);
   const [commentsModal, setCommentsModal] = useState(null);
+  const [deleteCommentId, setDeleteCommentId] = useState(null);
   const [appliedUrls, setAppliedUrls] = useState([]);
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -290,6 +292,22 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     }
   }
 
+  async function deleteComment(commentId) {
+    if (!commentsModal) return;
+    const annId = commentsModal.announcement._id;
+    try {
+      const res  = await fetch(`${API}/alumni/announcements/${annId}/comment/${commentId}`, {
+        method: "DELETE", headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) return;
+      setCommentsModal((m) => (m && m.announcement._id === annId) ? { ...m, comments: m.comments.filter((c) => c._id !== commentId) } : m);
+      setNews((prev) => prev.map((a) => a._id === annId ? { ...a, commentsCount: data.commentsCount } : a));
+    } catch {
+      // Silently ignored — the comment simply stays visible, and the alumnus can retry.
+    }
+  }
+
   const visible = (type) => filter === "All" || filter === type;
   const setFilter = (item) => navigate(item === "All" ? "/alumni/dashboard?section=announcements" : `/alumni/dashboard?section=announcements&filter=${encodeURIComponent(item)}`);
   const openJobDetails = (job) => setModal({
@@ -439,7 +457,22 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
         onClose={() => setCommentsModal(null)}
         onChangeText={(text) => setCommentsModal((m) => ({ ...m, text }))}
         onSubmit={submitComment}
+        onDelete={(commentId) => setDeleteCommentId(commentId)}
+        currentUserId={user?.id}
       />
+    )}
+    {deleteCommentId && ReactDOM.createPortal(
+      <div className="alumni-confirm-overlay" role="dialog" aria-modal="true" aria-label="Delete comment">
+        <div className="alumni-confirm-card">
+          <h3>Delete comment?</h3>
+          <p>This can't be undone.</p>
+          <div className="alumni-confirm-actions">
+            <button type="button" className="alumni-confirm-cancel" onClick={() => setDeleteCommentId(null)}>Cancel</button>
+            <button type="button" className="alumni-confirm-delete" onClick={() => { deleteComment(deleteCommentId); setDeleteCommentId(null); }}>Delete</button>
+          </div>
+        </div>
+      </div>,
+      document.body
     )}
   </div>;
 }
@@ -731,7 +764,7 @@ function ActionModal({ modal, onClose }) {
 
 const COMMENT_EMOJIS = ["😀", "😂", "😍", "👍", "❤️", "🎉"];
 
-function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
+function CommentsModal({ state, onClose, onChangeText, onSubmit, onDelete, currentUserId }) {
   const { announcement, comments, loading, text, submitting } = state;
   return ReactDOM.createPortal(
     <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label="Comments">
@@ -740,12 +773,22 @@ function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
       <div style={{ flex: 1, overflowY: "auto", margin: "12px 0", minHeight: 60 }}>
         {loading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading…</p>}
         {!loading && comments.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No comments yet. Be the first!</p>}
-        {comments.map((c, i) => (
-          <div className="comment-row" key={c._id || i}>
-            <i>{(c.userName || "?")[0]}</i>
-            <p><b>{c.userName}</b><br />{c.text}</p>
-          </div>
-        ))}
+        {comments.map((c, i) => {
+          const isMine = currentUserId && String(c.user?._id || c.user || "") === String(currentUserId);
+          return (
+            <div className="comment-row" key={c._id || i}>
+              {c.avatarUrl ? (
+                <img className="comment-row-avatar" src={c.avatarUrl} alt={c.userName || "Commenter"} />
+              ) : (
+                <i>{(c.userName || "?")[0]}</i>
+              )}
+              <p><b>{c.userName}</b><br />{c.text}</p>
+              {isMine && (
+                <button type="button" className="comment-row-delete" aria-label="Delete comment" onClick={() => onDelete(c._id)}>×</button>
+              )}
+            </div>
+          );
+        })}
       </div>
       <div className="alumni-comment-composer">
         <div className="alumni-comment-emojis" aria-label="Add emoji">
