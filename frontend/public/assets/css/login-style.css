@@ -341,6 +341,47 @@ input::placeholder {
 
 #info-modal-content p { margin: 0 0 14px; }
 
+/* About Us — official TSU Facebook pages + website, under the modal copy. */
+.info-modal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #eee3e6;
+}
+
+.info-modal-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #e2d3d7;
+  border-radius: 999px;
+  color: var(--maroon);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.info-modal-links a:hover,
+.info-modal-links a:focus-visible {
+  border-color: var(--maroon);
+  background: #f7eef0;
+  outline: none;
+}
+
+.info-modal-links svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Facebook's own blue on its logo so the two FB links read at a glance. */
+.info-modal-links a[href*="facebook.com"] svg { color: #1877f2; }
+
 .info-modal-close {
   position: absolute;
   top: 14px;
@@ -991,10 +1032,7 @@ input[type="text"] {
   }
 }
 
-/* Background video (login, reset password, 2FA). Two copies of it take
-   z-index 0/1 while crossfading (see /assets/js/bg-video.js). The photo on <body> stays
-   as the fallback: it shows while the video loads, if the file is missing,
-   and when the visitor prefers reduced motion. */
+/* Background video crossfade (see /assets/js/bg-video.js); the <body> photo is the fallback. */
 .page-bg-video {
   position: fixed;
   inset: 0;
@@ -1039,9 +1077,6 @@ body::before {
     justify-content: stretch;
   }
 
-  /* The hand sits in the same grid row as "Welcome! TSUsian", so it stays
-     level with the heading at every size (it used to be absolutely
-     positioned at a guessed offset, which drifted as the text reflowed). */
   .welcome-copy {
     flex: 1;
     display: grid;
