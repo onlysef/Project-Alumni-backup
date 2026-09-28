@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
-import alumniLogo from "../../assets/images/alumni-removebg.png";
 import jobConnectLogo from "../../assets/images/jobconnect-logo.png";
 import { apiFetch } from "../../services/api.js";
 import { JobCard, ArrowIcon, formatSavedDate, formatPostedDate, descriptionPreview, structureDescription } from "../../components/alumni/JobPostingCard.jsx";
@@ -573,11 +572,15 @@ const APPLICATION_STATUSES = ["Applied", "Interview Scheduled", "Offer Received"
 
 function ApplicationCard({ app, onStatusChange, onViewDetails, onCancel }) {
   const description = descriptionPreview(app.description, 220);
+  const hasMatch = app.match !== null && app.match !== undefined;
   return <article className="connect-job-card">
-    {app.match !== null && app.match !== undefined && (
-      <div className="connect-match-ribbon"><strong>{app.match}%</strong><span>Match</span></div>
-    )}
-    <div className="job-company-logo"><img src={alumniLogo} alt={`${app.company} logo`} /></div>
+    <div className={`job-match-panel${hasMatch ? "" : " job-match-panel--empty"}`}>
+      {hasMatch ? (
+        <div className="job-match-score"><strong>{app.match}%</strong><span>Match</span></div>
+      ) : (
+        <span>No match score</span>
+      )}
+    </div>
     <div className="connect-job-main">
       <span className="connect-posted">Applied {formatSavedDate(app.appliedAt || app.createdAt)}</span>
       <div className="connect-job-title">

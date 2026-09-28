@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { API, authHeaders } from "../../services/api.js";
 
 // Shared between Job Connect's own list and the Announcements page's "Job
@@ -138,25 +137,18 @@ function useSkillTip(job) {
   return { tip, ref };
 }
 
-// Careerjet's search API has no company-logo field, and free logo lookup
-// services aren't viable here — unavatar.io's guess-the-domain approach
-// often misses (tried and reverted), and its free tier caps out at 25
-// requests before a ~24h lockout, which a single page of job cards would
-// blow through instantly. The TSU logo placeholder stays until there's a
-// real, reliable source of per-company logos.
-
 export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onApply }) {
   const description = descriptionPreview(job.description, 220);
   const { tip: skillTip, ref: skillGapRef } = useSkillTip(job);
   const hasMatch = job.match !== null && job.match !== undefined;
   return <article className="connect-job-card">
-    {hasMatch && (
-      <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
-    )}
-    {/* Real logo only for TSU partner postings, whose employer account
-        actually uploaded one — Careerjet gives no logo or domain to look one
-        up for, so the TSU placeholder stays for those. */}
-    <div className="job-company-logo"><img src={job.companyLogo || alumniLogo} alt={`${job.company} logo`} /></div>
+    <div className={`job-match-panel${hasMatch ? "" : " job-match-panel--empty"}`}>
+      {hasMatch ? (
+        <div className="job-match-score"><strong>{job.match}%</strong><span>Match</span></div>
+      ) : (
+        <span>No match score</span>
+      )}
+    </div>
     <div className="connect-job-main">
       {job.posted && <span className="connect-posted">Posted: {formatPostedDate(job.posted)}</span>}
       {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
