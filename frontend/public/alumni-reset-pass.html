@@ -94,12 +94,12 @@
         <p class="form-hint">We sent a 6-digit code to your email.<br>Enter it below to continue.</p>
 
         <div class="otp-row">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)" onpaste="otpPaste(event, 0)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)" onpaste="otpPaste(event, 1)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)" onpaste="otpPaste(event, 2)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)" onpaste="otpPaste(event, 3)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)" onpaste="otpPaste(event, 4)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)" onpaste="otpPaste(event, 5)">
         </div>
 
         <div class="otp-resend">Didn't receive it? <a href="#" id="resend-link" onclick="resendCode(); return false;">Resend Code</a></div>
@@ -409,6 +409,24 @@
     el.value = el.value.replace(/[^0-9]/g, '');
     const inputs = document.querySelectorAll('.otp-input');
     if (el.value && idx < 5) inputs[idx + 1].focus();
+  }
+
+  // maxlength="1" only stops typed keystrokes — a paste still lands as the
+  // full clipboard string in a single box (browsers apply maxlength after
+  // paste truncates the *displayed* value, not the digits themselves), which
+  // is why copy-pasting a 6-digit code used to only fill the first box.
+  function otpPaste(e, idx) {
+    e.preventDefault();
+    const digits = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+    if (!digits) return;
+    const inputs = document.querySelectorAll('.otp-input');
+    let i = idx;
+    for (const d of digits) {
+      if (i > 5) break;
+      inputs[i].value = d;
+      i++;
+    }
+    inputs[Math.min(i, 5)].focus();
   }
 
   document.addEventListener('keydown', function(e) {
