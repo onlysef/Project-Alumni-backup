@@ -472,6 +472,7 @@ export default function AiAssistantView() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+
   useEffect(() => {
     try { localStorage.setItem(currentKey, JSON.stringify(messages)); } catch { /* ignore */ }
   }, [messages, currentKey]);
@@ -623,6 +624,16 @@ export default function AiAssistantView() {
               if (sources.length) {
                 setMessages((m) =>
                   m.map((msg) => msg.id === streamingId ? { ...msg, sources } : msg)
+                );
+              }
+              // How many retrieved records this qualitative answer is actually
+              // grounded in — previously invisible; "3 alumni said X" and "80
+              // alumni said X" used to render as identically-confident prose.
+              // Carried the same way `sources` already is (captured on the
+              // message, surfaced in the export text) rather than new UI.
+              if (payload.sampleSize) {
+                setMessages((m) =>
+                  m.map((msg) => msg.id === streamingId ? { ...msg, sampleSize: payload.sampleSize } : msg)
                 );
               }
               // Backend-computed suggestions (statistics answers) are context-aware
@@ -877,7 +888,7 @@ export default function AiAssistantView() {
   function exportChat() {
     const lines = messages.map((m) => {
       const who = m.role === "user" ? "You" : "AC";
-      return `[${m.time}] ${who}:\n${m.text}${m.sources?.length ? `\nSources: ${m.sources.join(", ")}` : ""}`;
+      return `[${m.time}] ${who}:\n${m.text}${m.sources?.length ? `\nSources: ${m.sources.join(", ")}` : ""}${m.sampleSize ? `\nBased on ${m.sampleSize} matching record${m.sampleSize === 1 ? "" : "s"}` : ""}`;
     });
     const blob = new Blob([lines.join("\n\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);

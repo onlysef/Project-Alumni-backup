@@ -307,7 +307,20 @@ function parseExcel(buffer, fileName) {
     const columnMap = type === 'tracer'
       ? { ...ROSTER_COLUMNS, ...TRACER_COLUMNS }
       : type === 'roster' ? ROSTER_COLUMNS : SUMMARY_COLUMNS;
-    const BATCH_SIZE = type === 'tracer' ? 3 : 15;
+    // Tracer rows are one per chunk (not batched) — batching 3 respondents
+    // into a single newline-joined chunk previously caused a documented live
+    // bug (ragService.js's isolatePerson() comment): one alumnus's job title
+    // and tenure bled into an answer correctly labeled with a DIFFERENT,
+    // similarly-processed alumnus's name. isolatePerson() only mitigates this
+    // on the person-lookup path — a general qualitative question ("what
+    // challenges do unemployed graduates face") still retrieved the full
+    // blended chunk with no isolation. One row per chunk costs more embedding
+    // calls at ingest time (a one-time cost, already bounded by
+    // EMBED_CONCURRENCY) in exchange for removing that bleed risk from every
+    // qualitative question going forward. Roster/summary rows are lower-risk
+    // (short structured listings, not free-text per-person narrative) and
+    // stay batched.
+    const BATCH_SIZE = type === 'tracer' ? 1 : 15;
     let   batchLines = [];
 
     const flushBatch = () => {

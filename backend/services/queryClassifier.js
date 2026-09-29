@@ -146,11 +146,11 @@ const HELP_PATTERNS = [
   // "what" first ("what can you help/do"). "hiii, can you help me?" (a
   // greeting + this, together) fell through to the generic fallback
   // entirely, since it's not JUST a greeting either.
-  /\b(?:can|could|will)\s+you\s+help\s*(?:me)?\b/i,
-  /\bwhat can you (do|help|answer)\b/i,
-  /\bhow (do|can) (i|you) use\b/i,
+  /\b(?:can|could|will)\s+(?:you|u)\s+help\s*(?:me)?\b/i,
+  /\bwhat can (?:you|u) (do|help|answer)\b/i,
+  /\bhow (do|can) (i|you|u) use\b/i,
   /\bshow (me )?(available )?(commands|capabilities|features)\b/i,
-  /\bwhat (questions|topics) can (i|you)\b/i,
+  /\bwhat (questions|topics) can (i|you|u)\b/i,
   /^\s*help\s*$/i,
   /\bhow does this (chat|assistant|bot) work\b/i,
   // Proximity-based capability questions — every fixed-phrase alternative
@@ -161,10 +161,14 @@ const HELP_PATTERNS = [
   // all), "how does AC work" ("AC" isn't "chat/assistant/bot" literally),
   // "how TO use this" (verb-before-subject, opposite order from "how do
   // you use"). All of these fell through to the generic fallback before.
-  // The (you|ac|it|this) middle requirement is what keeps this from
+  // The (you|u|ac|it|this) middle requirement is what keeps this from
   // false-positiving on a real data question — "what is the employment
-  // rate" has no "you"/"ac"/"it"/"this" for the pattern to anchor on.
-  /\bwhat\b.{0,15}\b(?:can|could|does|do|is|are)\b.{0,25}\b(?:you|ac|it|this)\b.{0,20}\b(?:do|help|answer|for|capable)\b/i,
+  // rate" has no "you"/"u"/"ac"/"it"/"this" for the pattern to anchor on.
+  // "u" for "you" (chat shorthand, e.g. "what can u do") matched none of
+  // this file's other capability patterns either, since they all spell
+  // "you" out in full — the same gap IDENTITY_PATTERNS below already closed
+  // for "who are you/u" but this list never got the same treatment.
+  /\bwhat\b.{0,15}\b(?:can|could|does|do|is|are)\b.{0,25}\b(?:you|u|ac|it|this)\b.{0,20}\b(?:do|help|answer|for|capable)\b/i,
   /\bhow\b.{0,15}\b(?:to|do|does|is)\b.{0,25}\b(?:use|work|used)\b/i,
   /\b(?:guide|help)\s+me\b.{0,20}\bhow\s+to\s+use\b/i,
   // Bare "capabilities"/"commands" — the only thing either word means in
@@ -239,8 +243,18 @@ const HELP_PATTERNS = [
 // own friendly self-introduction instead.
 const IDENTITY_PATTERNS = [
   /\bwho\s+are\s+(?:you|u)\b/i,
-  /\bwhat\s+are\s+(?:you|u)\b/i,
-  /\bwhat('?s|\s+is)\s+your\s+name\b/i,
+  // "who r u" / "wat r u" — texting shorthand for "are", same convention as
+  // the existing "u" (for "you") shorthand just above, just never extended
+  // to "are" itself.
+  /\bwho\s+r\s+u\b/i,
+  /\bwhat\s+r\s+u\b(?!\s+(?:for\b|capable|able|good\s+for))/i,
+  // Negative lookahead excludes "what are you FOR/capable of/good for" —
+  // HELP_PATTERNS has its own dedicated match for that exact capability-
+  // question shape, but classify() checks IDENTITY_PATTERNS first, so this
+  // broad prefix used to swallow it and reply with a self-introduction
+  // instead of the actual capability list the user asked for.
+  /\bwhat\s+are\s+(?:you|u)\b(?!\s+(?:for\b|capable|able|good\s+for))/i,
+  /\bwhat('?s|\s+is)\s+(?:your|ur)\s+name\b/i,
   /\btell\s+me\s+(about\s+)?yourself\b/i,
   /\bintroduce\s+yourself\b/i,
   /\bsino\s+ka(\s+ba)?\b/i,
@@ -421,7 +435,7 @@ const UNKNOWN_PATTERNS = [
   // me", "will you marry me") — same reasoning as the AI-identity meta
   // questions above: not a tracer-study question, and this assistant has no
   // feelings to report on regardless of scope.
-  /\bdo\s+(?:you|u)\s+(love|like|hate|miss)\s+me\b|\bwill\s+you\s+marry\s+me\b|\bare\s+(?:you|u)\s+(?:my\s+)?(friend|boyfriend|girlfriend)\b|\bcan\s+(?:you|u)\s+be\s+my\s+(friend|girlfriend|boyfriend)\b/i,
+  /\bdo\s+(?:you|u)\s+(love|like|hate|miss)\s+me\b|\bwill\s+(?:you|u)\s+marry\s+me\b|\bare\s+(?:you|u)\s+(?:my\s+)?(friend|boyfriend|girlfriend)\b|\bcan\s+(?:you|u)\s+be\s+my\s+(friend|girlfriend|boyfriend)\b/i,
   // Religion/spirituality.
   /\bis\s+god\s+real\b|\bwhat\s+religion\b|\bbible\s+verse\b|\bquran\b|\bhoroscope\s+reading\b|\bmeaning\s+of\s+life\b/i,
   // General programming/coding HELP (explaining a concept), distinct from
@@ -575,8 +589,20 @@ function classify(question) {
   if (IDENTITY_PATTERNS.some(p => p.test(q))) return 'identity';
   if (HELP_PATTERNS.some(p => p.test(q))) return 'help';
   if (isIncompleteThought(q)) return 'incomplete';
-  if (UNKNOWN_PATTERNS.some(p => p.test(q))) return 'unknown';
-  if (ARITHMETIC_PATTERN.test(q.replace(INLINE_DATE_PATTERN, ''))) return 'unknown';
+  // A message combining a genuine in-scope question with an off-topic one
+  // ("How many alumni? Also what's the capital of France?") used to have the
+  // WHOLE thing swallowed here — UNKNOWN_PATTERNS.some() only needs ONE
+  // pattern to match ANYWHERE in the text, so the off-topic half alone
+  // classified the entire message 'unknown' and refused it outright, even
+  // though "how many alumni" sitting right next to it is a completely
+  // ordinary, answerable question. If a real domain signal is ALSO present,
+  // prefer answering that part over refusing the whole message — the
+  // off-topic half is simply never addressed (not answered from general
+  // knowledge, not explicitly declined either), which is the safe outcome:
+  // no hallucinated "the capital of France is Paris" slipping in.
+  const hasDomainSignal = STATISTICAL_PATTERNS.some(p => p.test(q)) || QUALITATIVE_PATTERNS.some(p => p.test(q));
+  if (UNKNOWN_PATTERNS.some(p => p.test(q)) && !hasDomainSignal) return 'unknown';
+  if (ARITHMETIC_PATTERN.test(q.replace(INLINE_DATE_PATTERN, '')) && !hasDomainSignal) return 'unknown';
 
   const isStat = STATISTICAL_PATTERNS.some(p => p.test(q));
   const isQual = QUALITATIVE_PATTERNS.some(p => p.test(q));
@@ -585,4 +611,16 @@ function classify(question) {
   return 'statistical';
 }
 
-module.exports = { classify };
+// Exposed separately from classify() itself — a message can carry a real,
+// answerable domain question alongside an off-topic one in the same breath
+// ("How many alumni? Also what's the capital of France?"). classify() now
+// correctly answers the in-scope half instead of refusing the whole message
+// (see its own comment on hasDomainSignal), but silently dropping the
+// off-topic half reads as if it were never noticed — callers use this to
+// append an explicit, honest decline for that part instead of just leaving
+// it unaddressed.
+function hasOffTopicComponent(question) {
+  return UNKNOWN_PATTERNS.some(p => p.test((question || '').trim()));
+}
+
+module.exports = { classify, hasOffTopicComponent };

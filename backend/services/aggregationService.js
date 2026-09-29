@@ -1511,6 +1511,30 @@ function stablePipeline(filters) {
   return [{ $match: match }, ...DEDUP];
 }
 
+// Groups by a case/whitespace-insensitive key while keeping the majority
+// casing as the display label — the same fix queryEmployment() applies to
+// employmentStatus, generalized so every categorical breakdown (industry,
+// employmentType, jobRelated, jobTitle, companyName...) merges data-entry
+// variants like "yes"/"Yes" or "IT"/"it" instead of splitting them into
+// separate rows. Audited this session: six sibling functions were each
+// hand-rolling the same plain `{ $group: { _id: '$field' } }` without this
+// merge — a shared helper stops the next new breakdown function from
+// repeating that bug. Returns count as `count` and the display value as
+// `_id`, matching what every existing display loop already expects.
+function caseMergeGroup(fieldExpr) {
+  return [
+    { $addFields: { __cmg_trim: { $trim: { input: fieldExpr } } } },
+    { $group: { _id: { norm: { $toLower: '$__cmg_trim' }, orig: '$__cmg_trim' }, count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $group: { _id: '$_id.norm', label: { $first: '$_id.orig' }, count: { $sum: '$count' } } },
+  ];
+}
+// caseMergeGroup() outputs {_id: norm, label, count} — most display loops
+// expect {_id: displayValue, count}; this remaps in one place.
+function toDisplayRows(rows) {
+  return rows.map((r) => ({ _id: r.label, count: r.count }));
+}
+
 // ─── Query Functions ──────────────────────────────────────────────────────────
 
 async function queryEmployment(filters) {
@@ -1619,14 +1643,14 @@ async function queryIndustry(filters, wantsHighest = true, wantsSummarySentence 
   // down can re-run JUST the grouping — without $sort/$limit — to find the
   // TRUE number of industries tied at the extreme value, not just how many
   // happened to survive the display list's $limit: 10.
-  const groupedPipeline = [...pipeline, { $group: { _id: '$industry', count: { $sum: 1 } } }];
+  const groupedPipeline = [...pipeline, ...caseMergeGroup('$industry')];
   pipeline.push(
-    { $group: { _id: '$industry', count: { $sum: 1 } } },
+    ...caseMergeGroup('$industry'),
     { $sort: { count: wantsHighest ? -1 : 1 } },
   );
   if (!filters.industry && !filters.excludeIndustry && !filters.showAllIndustries) pipeline.push({ $limit: 10 });
 
-  const rows = await Graduate.aggregate(pipeline);
+  const rows = toDisplayRows(await Graduate.aggregate(pipeline));
   if (!rows.length) return null;
 
   const lbl = filterLabel(filters);
@@ -1699,7 +1723,7 @@ async function queryIndustry(filters, wantsHighest = true, wantsSummarySentence 
     // false uniqueness, and even a "10 industries are tied" sentence derived
     // from the truncated list would still have understated the real number
     // (15).
-    tiedRows = await Graduate.aggregate([...groupedPipeline, { $match: { count: extremeCount } }]);
+    tiedRows = toDisplayRows(await Graduate.aggregate([...groupedPipeline, { $match: { count: extremeCount } }]));
     if (filters.showAllIndustries) displayRows = tiedRows;
   }
   displayRows.forEach((r, i) => { out += `${i + 1}. **${r._id}** with ${r.count} graduate${r.count > 1 ? 's' : ''}\n`; });
@@ -1741,12 +1765,12 @@ async function queryJobPositions(filters, wantsHighest) {
   if (filters.workLocation) pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
 
   pipeline.push(
-    { $group: { _id: '$jobTitle', count: { $sum: 1 } } },
+    ...caseMergeGroup('$jobTitle'),
     { $sort: { count: wantsHighest ? -1 : 1 } },
     { $limit: 10 },
   );
 
-  const rows = await Graduate.aggregate(pipeline);
+  const rows = toDisplayRows(await Graduate.aggregate(pipeline));
   if (!rows.length) return null;
 
   const lbl = filterLabel(filters);
@@ -1776,12 +1800,12 @@ async function queryTopCompanies(filters, wantsHighest) {
   if (filters.workLocation) pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
 
   pipeline.push(
-    { $group: { _id: '$companyName', count: { $sum: 1 } } },
+    ...caseMergeGroup('$companyName'),
     { $sort: { count: wantsHighest ? -1 : 1 } },
     { $limit: 10 },
   );
 
-  const rows = await Graduate.aggregate(pipeline);
+  const rows = toDisplayRows(await Graduate.aggregate(pipeline));
   if (!rows.length) return null;
 
   const lbl = filterLabel(filters);
@@ -2050,12 +2074,12 @@ async function queryGender(filters) {
 }
 
 async function queryWorkType(filters) {
-  const rows = await Graduate.aggregate([
+  const rows = toDisplayRows(await Graduate.aggregate([
     ...stablePipeline(filters),
     { $match: { employmentType: { $nin: [null, ''] } } },
-    { $group: { _id: '$employmentType', count: { $sum: 1 } } },
+    ...caseMergeGroup('$employmentType'),
     { $sort: { count: -1 } },
-  ]);
+  ]));
   if (!rows.length) return null;
   const total = rows.reduce((s, r) => s + r.count, 0);
 
@@ -2067,12 +2091,12 @@ async function queryWorkType(filters) {
 }
 
 async function querySector(filters) {
-  const rows = await Graduate.aggregate([
+  const rows = toDisplayRows(await Graduate.aggregate([
     ...stablePipeline(filters),
     { $match: { employmentType: { $nin: [null, ''] } } },
-    { $group: { _id: '$employmentType', count: { $sum: 1 } } },
+    ...caseMergeGroup('$employmentType'),
     { $sort: { count: -1 } },
-  ]);
+  ]));
   if (!rows.length) return null;
   const total = rows.reduce((s, r) => s + r.count, 0);
 
@@ -2087,12 +2111,12 @@ async function querySector(filters) {
 }
 
 async function queryJobRelevance(filters) {
-  const rows = await Graduate.aggregate([
+  const rows = toDisplayRows(await Graduate.aggregate([
     ...stablePipeline(filters),
     { $match: { jobRelated: { $nin: [null, ''] } } },
-    { $group: { _id: '$jobRelated', count: { $sum: 1 } } },
+    ...caseMergeGroup('$jobRelated'),
     { $sort: { count: -1 } },
-  ]);
+  ]));
   if (!rows.length) return null;
   const total = rows.reduce((s, r) => s + r.count, 0);
   const yes   = rows.filter(r => /yes/i.test(r._id)).reduce((s, r) => s + r.count, 0);
@@ -2847,7 +2871,12 @@ const PERSON_LOOKUP_PATTERNS = [
   // that fell all the way through to the generic employment breakdown with
   // no match at all before this.
   /\bwhere\s+does\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+(?:currently\s+)?work\b/i,
-  /\bwhat\s+(?:is|does)\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})(?:'s)?\s+(?:job|occupation|position|current\s+job|current\s+role|working\s+as|company|employer|(?:contact|phone|cell(?:phone)?|mobile)\s+number|number|contact\s+(?:info|information|details)|email(?:\s+address)?)\b/i,
+  // "what's X's phone number" — the contraction "what's" is at least as
+  // common as spelled-out "what is", but only "what is|does" was ever
+  // matched here. Caught live: "What's Maria Santos's phone number?" matched
+  // nothing in this whole array and fell all the way through to the generic
+  // fallback instead of a real (or honest "no record of") lookup.
+  /\bwhat(?:'s|\s+(?:is|does))\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})(?:'s)?\s+(?:job|occupation|position|current\s+job|current\s+role|working\s+as|company|employer|(?:contact|phone|cell(?:phone)?|mobile)\s+number|number|contact\s+(?:info|information|details)|email(?:\s+address)?)\b/i,
   /\bis\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+(?:currently\s+)?employed\b/i,
   /\bwhat\s+company\s+does\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\s+work\s+(?:for|at)\b/i,
   // "who is X working for/with/at" is now handled by WHO_IS_PATTERN below
@@ -2869,6 +2898,12 @@ const PERSON_LOOKUP_PATTERNS = [
   // right after one of these trigger phrases.
   /\b(?:give\s+me|show\s+me|what\s+is)?\s*(?:the\s+)?(?:info(?:rmation)?|details?)\s+(?:about|on|for|of)\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
   /\btell\s+me\s+about\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
+  // "what can you/u say about X" / "what do you/u know about X" — same
+  // broadest-generic-phrasing shape as "tell me about X" right above, just a
+  // different verb. Missed live: "what can u say about Gilbert Gonzales"
+  // matched no pattern here at all and fell through to the generic
+  // statistical/RAG fallback refusal instead of a real person lookup.
+  /\bwhat\s+(?:can|do)\s+(?:you|u)\s+(?:say|tell\s+me|know)\s+about\s+([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){0,4})\b/i,
 ];
 
 // "Is there an alumni/alumnus named vincent?" / "Do you have a graduate
@@ -3026,8 +3061,11 @@ const NI_POSSESSIVE_PATTERN = /\bni\s+([a-zA-Z][a-zA-Z.'-]*(?:\s+[a-zA-Z][a-zA-Z
 // "current employment status") instead of being eligible for capture.
 const STATUS_EXCLUDE_WORDS = 'the|a|an|this|that|each|every|overall|current|general|my|our|your|his|her|its|their|employment|job|marital|civil|account|graduates?|alumni|alumnus|alumna|is|does|do|are|was|were|status';
 const STATUS_NAME_WORD = String.raw`(?!(?:${STATUS_EXCLUDE_WORDS})\b)[a-zA-Z][a-zA-Z.'-]*`;
+// "what's X's status" — same contraction gap as the phone-number pattern
+// above ("what's" doesn't match a literal "what\s+" + optional "is/does",
+// since there's no space between "what" and "'s").
 const STATUS_LOOKUP_PATTERN = new RegExp(
-  String.raw`\bwhat\s+(?:is\s+|does\s+)?(${STATUS_NAME_WORD}(?:\s+${STATUS_NAME_WORD}){1,3})(?:'s)?\s+(?:(?:employment|job|marital|civil|account|current)\s+)*status\b`,
+  String.raw`\bwhat(?:'s|\s+(?:is|does))?\s+(${STATUS_NAME_WORD}(?:\s+${STATUS_NAME_WORD}){1,3})(?:'s)?\s+(?:(?:employment|job|marital|civil|account|current)\s+)*status\b`,
   'i'
 );
 
@@ -4341,16 +4379,12 @@ async function queryOverview(filters) {
   // Grouped case-insensitively (same fix as queryEmployment()) so data-entry
   // variants like "yes" vs "Yes" merge into one row instead of splitting the
   // same status across two separate breakdown lines.
-  const empRowsRaw = await Graduate.aggregate([
+  const empRows = toDisplayRows(await Graduate.aggregate([
     ...base,
     { $match: { employmentStatus: { $nin: [null, ''] } } },
-    { $addFields: { _status: { $trim: { input: '$employmentStatus' } } } },
-    { $group: { _id: { norm: { $toLower: '$_status' }, orig: '$_status' }, count: { $sum: 1 } } },
+    ...caseMergeGroup('$employmentStatus'),
     { $sort: { count: -1 } },
-    { $group: { _id: '$_id.norm', label: { $first: '$_id.orig' }, count: { $sum: '$count' } } },
-    { $sort: { count: -1 } },
-  ]);
-  const empRows = empRowsRaw.map(r => ({ _id: r.label, count: r.count }));
+  ]));
   // Denominator matches queryEmployment()/queryRate()'s own denominator (only
   // respondents with a non-null employmentStatus) — using the all-respondents
   // `total` here instead would silently disagree with those functions whenever
@@ -4360,12 +4394,12 @@ async function queryOverview(filters) {
   const selfEmp  = empRows.filter(r => /^self.?employed$/i.test(r._id)).reduce((s, r) => s + r.count, 0);
   const employed = formal + selfEmp;
 
-  const indRows = await Graduate.aggregate([
+  const indRows = toDisplayRows(await Graduate.aggregate([
     ...base,
     { $match: { industry: { $nin: [null, ''] } } },
-    { $group: { _id: '$industry', count: { $sum: 1 } } },
+    ...caseMergeGroup('$industry'),
     { $sort: { count: -1 } }, { $limit: 3 },
-  ]);
+  ]));
 
   const locRows = await Graduate.aggregate([
     ...base,
@@ -4576,7 +4610,33 @@ async function hasData() {
   return count > 0;
 }
 
+// "What is the purpose/objective of the tracer study/survey?" — a real,
+// in-scope question about the survey ITSELF, not a request for any alumni
+// DATA, so it has no Graduate/EmbeddingDocument row to retrieve at all.
+// Previously fell through every aggregation topic (nothing matched "why do
+// we run this survey") and every RAG chunk (the informed-consent text below
+// was never ingested into EmbeddingDocument — it only ever lived in the
+// tracer form's own UI), landing on the fully generic "I could not find
+// relevant information" fallback for a question the system actually has a
+// real, correct answer to. Answered directly and deterministically — this
+// is the exact wording alumni themselves see on the Tracer Study form's own
+// Electronic Informed Consent page (see
+// tracerFormConfigController.js's DEFAULT_CONFIG, mirrored in
+// TracerStudyForm.jsx), not a paraphrase, so it can never drift out of sync
+// with what alumni actually agreed to.
+const TRACER_PURPOSE_PATTERN = /\b(?:what|ano)\b.{0,15}\b(?:purpose|objectives?|goals?|layunin)\b.{0,20}\b(?:tracer\s+(?:study|survey)|survey|study)\b|\bwhy\b.{0,20}\b(?:do\s+we|does\s+tsu|conduct|run|have)\b.{0,20}\btracer\s+(?:study|survey)\b/i;
+function tracerStudyPurposeAnswer(question) {
+  if (!TRACER_PURPOSE_PATTERN.test(question)) return null;
+  return {
+    text: 'The Graduate Tracer Study is conducted to track the career progress and professional development of TSU graduates. It aims to gather feedback on how the university\'s educational programs have impacted alumni career paths and job satisfaction, so the institution can enhance its curriculum and better support future students. Participation is voluntary, and all responses are kept confidential, anonymized, and aggregated for research purposes.',
+    direct: true, topic: 'about_tracer_study', filters: {},
+  };
+}
+
 async function queryInner(question, seedFilters = {}) {
+  const purposeAnswer = tracerStudyPurposeAnswer(question);
+  if (purposeAnswer) return purposeAnswer;
+
   // Events/AttendanceLog/EventFeedback are separate collections with no
   // dependency on the Graduate collection at all — a college can have real,
   // upcoming events scheduled while having zero registered/graduated alumni
@@ -4692,11 +4752,27 @@ async function queryInner(question, seedFilters = {}) {
   // instead of ever acknowledging "2099" was typed. Caught live: asked for
   // no real reason other than robustness-testing, and got back the exact
   // same "262 graduates" a completely unqualified question would.
+  // "grads/alumni/graduates FROM 2050" is just as unambiguous a year-context
+  // phrasing as "batch 2050"/"class of 2050" above but was missing from this
+  // list — caught live: "How many BSIT grads from 2050 are employed?" fell
+  // through this whole check silently (no alternative here matched "from"),
+  // then extractFilters()'s own capped year regex also didn't match 2050, so
+  // the question answered with the unfiltered all-years BSIT/IT employed
+  // count as if "2050" had never been typed, instead of the honest "no batch
+  // 2050 on file" this exact function already gives for the other phrasings.
   const outOfRangeYearMatch = question.match(/\b(?:batch|class\s+of|graduated?\s+in)\s+(\d{4})\b/i)
-    || question.match(/\b(\d{4})\s+batch\b/i);
+    || question.match(/\b(\d{4})\s+batch\b/i)
+    || question.match(/\b(?:grads?|alumni|graduates?)\s+from\s+(\d{4})\b/i);
   if (outOfRangeYearMatch && !/\b(199\d|20[0-3]\d)\b/.test(outOfRangeYearMatch[1])) {
+    // Bounded to the same plausible 1990-2039 range extractFilters()'s own
+    // year regex enforces (not just $ne: null) — a bad ingested value (e.g.
+    // a truncated "2004" stored as "4") would otherwise leak straight into
+    // this user-facing message as if it were a real batch, answering "records
+    // span batch 4 to 2026" instead of the actual real range. This computes
+    // the honest bounds of ACTUAL plausible years on file; it does not fix
+    // the underlying bad record itself.
     const bounds = await Graduate.aggregate([
-      { $match: { yearGraduated: { $ne: null } } },
+      { $match: { yearGraduated: { $gte: 1990, $lte: 2039 } } },
       { $group: { _id: null, min: { $min: '$yearGraduated' }, max: { $max: '$yearGraduated' } } },
     ]);
     const range = bounds[0];
@@ -5496,8 +5572,25 @@ function buildSeedFilters(contextQuestions) {
 }
 
 async function query(question, options = {}) {
-  const { college, contextQuestions } = options;
+  const { contextQuestions } = options;
+  let { college } = options;
   const seedFilters = buildSeedFilters(contextQuestions);
+
+  // An admin's `college` option is null by design (unrestricted — see
+  // aiController.js) — but the admin can still name a specific college
+  // directly in the QUESTION itself ("employment breakdown by program on
+  // CASS"). Previously that mention was only ever recognized by the events/
+  // attendance-overview functions (extractRequestedCollege() above); every
+  // other question type — employment, program breakdown, industry, etc. —
+  // silently ignored it and answered across every college's alumni combined,
+  // which for a program breakdown reads as one college's real numbers
+  // (whichever college happens to dominate the unfiltered dataset) presented
+  // as if they were specific to the college the admin actually asked about.
+  // A coordinator's own account-level scope is set directly by the caller
+  // and always wins — this only ever fires when `college` arrives unset.
+  const collegeFromAccount = !!college;
+  if (!college) college = extractRequestedCollege(question);
+
   if (!college) return queryInner(question, seedFilters);
 
   const alumni = await User.find({ role: 'alumni', college }).select('email').lean();
@@ -5517,13 +5610,43 @@ async function query(question, options = {}) {
   // every OTHER account, just not this one.
   if (!emails.length) {
     return {
-      text: `Your coordinator account is scoped to college "${college}", but there are no alumni records under that college in the system. Every question will come up empty until this is fixed — please ask an admin to check that your account's college matches how alumni records are actually labeled.`,
+      // Two different real causes, so two different messages: a
+      // coordinator's own account scope being wrong is an account
+      // misconfiguration (every future question fails identically); an
+      // admin naming a college in their own question just means that
+      // specific college has no alumni records on file yet — a normal,
+      // one-off answer, not something to report to another admin.
+      text: collegeFromAccount
+        ? `Your coordinator account is scoped to college "${college}", but there are no alumni records under that college in the system. Every question will come up empty until this is fixed — please ask an admin to check that your account's college matches how alumni records are actually labeled.`
+        : `There are no alumni records under college "${college}" in the system.`,
       direct: true,
       topic: 'scope_misconfigured',
       filters: {},
     };
   }
-  return runWithCollegeScope(emails, college, () => queryInner(question, seedFilters));
+  const result = await runWithCollegeScope(emails, college, () => queryInner(question, seedFilters));
+  // Only for a college the ADMIN named in their own question (not a
+  // coordinator's account-level scope, whose null-result handling is
+  // unchanged) — queryInner() returning null here doesn't mean "off-topic,"
+  // it means this SPECIFIC college has no data for whatever the question
+  // asked (e.g. no completed tracer records with both program and
+  // employment status filled in for that college). Left as null, this used
+  // to fall through to the qualitative RAG path next, which also finds
+  // nothing (EmbeddingDocument has no per-college tag to search by), and the
+  // message that actually reached the user was the fully generic,
+  // doesn't-mention-any-college fallback ("ask about the system's features,
+  // alumni data, or employment trends") — reading as if the question weren't
+  // understood at all, when college AND topic were both recognized
+  // correctly and simply have no matching data on file yet.
+  if (!result && !collegeFromAccount) {
+    return {
+      text: `No matching tracer study data was found for college "${college}" for that question.`,
+      direct: true,
+      topic: 'scope_no_data',
+      filters: {},
+    };
+  }
+  return result;
 }
 
 // ─── Follow-up suggestions ──────────────────────────────────────────────────
