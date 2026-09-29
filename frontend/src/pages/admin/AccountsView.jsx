@@ -273,20 +273,22 @@ export default function AccountsView() {
     }
   }
 
+  const roleScope = roleFilter !== "Role" && roleFilter !== "All" ? roleFilter : "All";
+
   return (
     <section className={`content admin-view view active-view`}>
       <div className="admin-kpis">
         <article>
           <div>
             <strong>{activeCount}</strong>
-            <span>All Active Accounts</span>
+            <span>{roleScope} Active Accounts</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-11" /></span>
         </article>
         <article>
           <div>
             <strong>{pendingCount}</strong>
-            <span>All Pending Activation</span>
+            <span>{roleScope} Pending Activation</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-13" /></span>
         </article>

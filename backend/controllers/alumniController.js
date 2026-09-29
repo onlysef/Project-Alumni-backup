@@ -1059,7 +1059,7 @@ async function scoreCareerjetJobs(rawJobs, { userId, userSkillsText, location, t
 // posting to link to) is what JobCard uses to render "Apply now" as an
 // in-app application instead of an outbound link.
 async function scoreInternalJobs(rawJobs, { userId, userSkillsText }) {
-  const jobTexts = rawJobs.map((job) => `${job.title || ''} ${job.description || ''}`);
+  const jobTexts = rawJobs.map((job) => `${job.title || ''} ${job.jobDescription || ''} ${job.keyResponsibilities || ''} ${job.qualifications || ''} ${job.preferredSkills || ''}`);
   const cosineScores = await withTimeout(
     computeJobCosineScores(jobTexts, userId, userSkillsText).catch((err) => {
       console.error('Job cosine scoring failed, falling back to skill-ratio only:', err.message);
@@ -1079,8 +1079,11 @@ async function scoreInternalJobs(rawJobs, { userId, userSkillsText }) {
       type: job.jobType || '',
       posted: job.createdAt || '',
       url: `internal:${job._id}`,
-      description: job.description || '',
-      salary: '',
+      description: job.jobDescription || '',
+      keyResponsibilities: job.keyResponsibilities || '',
+      qualifications: job.qualifications || '',
+      preferredSkills: job.preferredSkills || '',
+      salary: job.salaryRange || '',
       match,
       skills,
       internal: true,

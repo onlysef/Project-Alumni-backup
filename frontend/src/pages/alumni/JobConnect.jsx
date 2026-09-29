@@ -458,7 +458,14 @@ export default function JobConnect() {
             {detailsJob.match !== null && detailsJob.match !== undefined && (
               <p className="job-details-match"><strong>{detailsJob.match}%</strong> match to your profile</p>
             )}
-            {descriptionBlocks.length ? (
+            {detailsJob.internal ? (
+              <div className="job-details-description">
+                <p>{detailsJob.description || "No description provided."}</p>
+                {detailsJob.keyResponsibilities && <><h4>Key Responsibilities</h4><p>{detailsJob.keyResponsibilities}</p></>}
+                {detailsJob.qualifications && <><h4>Qualifications &amp; Requirements</h4><p>{detailsJob.qualifications}</p></>}
+                {detailsJob.preferredSkills && <><h4>Preferred Skills (Plus)</h4><p>{detailsJob.preferredSkills}</p></>}
+              </div>
+            ) : descriptionBlocks.length ? (
               <div className="job-details-description">
                 {descriptionBlocks.map((block, i) => {
                   if (block.type === "header") return <h4 key={i}>{block.text}</h4>;
@@ -478,7 +485,11 @@ export default function JobConnect() {
             )}
           </div>
           <div className="job-details-footer">
-            <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
+            {detailsJob.internal ? (
+              <button className={`apply-job job-details-apply${appliedUrls.has(detailsJob.url) ? " already-applied" : ""}`} type="button" onClick={() => setConfirmJob(detailsJob)}>{appliedUrls.has(detailsJob.url) ? "Applied ✓" : "Apply now"}</button>
+            ) : (
+              <a className="apply-job job-details-apply" href={detailsJob.url} target="_blank" rel="noopener noreferrer" onClick={() => logApply(detailsJob)}>Apply now on Careerjet <ArrowIcon /></a>
+            )}
           </div>
         </div>
       </div>,
@@ -710,10 +721,10 @@ function buildResumeHtml(resume) {
     p { margin: 4px 0; color: #4d474a; font-size: 13px; }
     ul { margin: 0; padding-left: 18px; }
     li { margin: 4px 0; color: #4d474a; font-size: 13px; line-height: 1.5; }
-    .contact { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9d1d4; }
+    .contact { display: flex; flex-direction: row-reverse; align-items: center; gap: 18px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9d1d4; }
     .contact-text { flex: 1 1 auto; text-align: center; }
     .contact p { margin: 4px 0 0; }
-    .photo { flex: 0 0 auto; width: 84px; height: 84px; border-radius: 50%; object-fit: cover; }
+    .photo { flex: 0 0 auto; width: 84px; height: 84px; border-radius: 8px; object-fit: cover; }
     .section { margin-top: 18px; }
     .entry { margin-bottom: 12px; }
     .entry:last-child { margin-bottom: 0; }
@@ -828,9 +839,10 @@ function downloadResumePdf(resume) {
   const photoSize = 64;
   const photoFormat = resume.avatarUrl ? pdfImageFormat(resume.avatarUrl) : null;
   const hasPhoto = !!photoFormat;
-  const textX = hasPhoto ? marginX + photoSize + 18 : marginX;
-  const textWidth = pageWidth - marginX - textX;
+  const textX = marginX;
+  const textWidth = pageWidth - marginX * 2 - (hasPhoto ? photoSize + 18 : 0);
   const textCenterX = textX + textWidth / 2;
+  const photoX = pageWidth - marginX - photoSize;
 
   doc.setFont(FONT, "normal");
   doc.setFontSize(10.5);
@@ -841,7 +853,10 @@ function downloadResumePdf(resume) {
   const headerTop = y;
 
   if (hasPhoto) {
-    try { doc.addImage(resume.avatarUrl, photoFormat, marginX, headerTop, photoSize, photoSize); } catch { /* corrupt/unreadable image data — rest of the resume still generates */ }
+    // No border-radius clipping in jsPDF's addImage, so this already renders
+    // as a square/box — only the position (now the right edge) needed to
+    // change to match the on-screen preview's photo-on-the-right layout.
+    try { doc.addImage(resume.avatarUrl, photoFormat, photoX, headerTop, photoSize, photoSize); } catch { /* corrupt/unreadable image data — rest of the resume still generates */ }
   }
 
   doc.setFont(FONT, "bold");

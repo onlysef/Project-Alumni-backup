@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { useOutletContext, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
@@ -9,6 +9,46 @@ import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { useAuth } from "../../context/AuthContext.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
+import { isJunkText } from "../../utils/textQuality.js";
+
+const JOB_JUNK_FIELD_RULES = {
+  title:               { requireWord: true,  minLength: 3, blockAtSymbol: true },
+  jobDescription:      { requireWord: true,  minLength: 15, requireMultiWord: true },
+  keyResponsibilities: { requireWord: true,  requireMultiWord: true },
+  qualifications:      { requireWord: true,  requireMultiWord: true },
+  preferredSkills:     { requireWord: true,  requireMultiWord: true },
+  location:            { requireWord: true,  blockAtSymbol: true, blockLongDigitRun: true },
+  salaryRange:         { requireWord: false, requireDigitOrPhrase: true },
+};
+const JOB_JUNK_FIELD_MESSAGES = {
+  title: "That doesn't look like a real job title.",
+  jobDescription: "The job description looks like random text. Please write an actual description of the role.",
+  keyResponsibilities: "Key responsibilities looks like random text. Please list the actual duties for this role.",
+  qualifications: "Qualifications & requirements looks like random text. Please list the actual qualifications needed.",
+  preferredSkills: "Preferred skills looks like random text. Please list actual skills.",
+  location: "That doesn't look like a real location.",
+  salaryRange: "That doesn't look like a real salary range.",
+};
+// Matches the modal's visual top-to-bottom field order, used to pick which
+// field to scroll into view when more than one has an error.
+const JOB_FIELD_ORDER = ["title", "location", "salaryRange", "jobDescription", "keyResponsibilities", "qualifications", "preferredSkills"];
+
+// Returns every invalid field at once (not just the first) so each one can
+// show its own message under its own box instead of one banner the admin
+// has to match back to whichever field it's actually about.
+function validateJobFields(fields) {
+  const errors = {};
+  if (!fields.title.trim()) errors.title = "Job title is required.";
+  else if (isJunkText(fields.title, JOB_JUNK_FIELD_RULES.title)) errors.title = JOB_JUNK_FIELD_MESSAGES.title;
+
+  if (!fields.jobDescription.trim()) errors.jobDescription = "A job description is required.";
+  else if (isJunkText(fields.jobDescription, JOB_JUNK_FIELD_RULES.jobDescription)) errors.jobDescription = JOB_JUNK_FIELD_MESSAGES.jobDescription;
+
+  ["keyResponsibilities", "qualifications", "preferredSkills", "location", "salaryRange"].forEach((f) => {
+    if (fields[f] && isJunkText(fields[f], JOB_JUNK_FIELD_RULES[f])) errors[f] = JOB_JUNK_FIELD_MESSAGES[f];
+  });
+  return errors;
+}
 const TYPE_ART_CLASS = { News: "" };
 const COMMENT_EMOJIS = ["😀", "😂", "😍", "👍", "❤️", "🎉"];
 
@@ -85,6 +125,11 @@ function mapRow(a) {
     id:            String(a._id),
     title:         a.title,
     description:   a.description,
+    jobDescription:      a.jobDescription || "",
+    keyResponsibilities: a.keyResponsibilities || "",
+    qualifications:      a.qualifications || "",
+    preferredSkills:     a.preferredSkills || "",
+    salaryRange:         a.salaryRange || "",
     type:          a.type,
     imageUrl:      a.imageUrl || "",
     location:      a.location || "",
@@ -253,23 +298,30 @@ export default function AnnouncementsView() {
     }
   }
 
+  // Returns an error message string on failure (so JobEditModal can show it
+  // inline, scrolled into view) or null on success — a thrown/toasted error
+  // alone left the modal open with no visible reason why, same issue fixed
+  // on the employer's own Create/Edit modal.
   async function handleJobSave(data) {
     try {
       const res  = await fetch(`${API}/admin/announcements/jobs/${jobEdit.id}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify(data),
       });
       const json = await safeJson(res);
-      if (!res.ok) { showToast(json.message || "Failed to save job."); return; }
+      if (!res.ok) return json.message || "Failed to save job.";
       const j = json.job;
       setRows((prev) => prev.map((r) => r.id === jobEdit.id ? {
         ...r,
-        title: j.title, description: j.description, location: j.location || "",
-        jobType: j.jobType || "",
+        title: j.title, location: j.location || "", jobType: j.jobType || "",
+        jobDescription: j.jobDescription || "", keyResponsibilities: j.keyResponsibilities || "",
+        qualifications: j.qualifications || "", preferredSkills: j.preferredSkills || "",
+        salaryRange: j.salaryRange || "",
       } : r));
       showToast("Job updated.");
       setJobEdit(null);
+      return null;
     } catch {
-      showToast("Could not connect to server.");
+      return "Could not connect to server.";
     }
   }
 
@@ -475,7 +527,7 @@ export default function AnnouncementsView() {
                 {!loading && filtered.map((r) => (
                   <tr key={r.id}>
                     <td>{toTitleCase(r.title)}</td>
-                    <td><ExpandableText text={r.description} /></td>
+                    <td><ExpandableText text={r.description ?? r.jobDescription} /></td>
                     <td>{r.type}</td>
                     <td>{r.posterName || "—"}</td>
                     <td>
@@ -1160,63 +1212,132 @@ function EventEditModal({ row, onClose, onSubmit }) {
 const JOB_TYPES = ["Full-time", "Part-time", "Internship", "Contract"];
 
 function JobEditModal({ row, onClose, onSubmit }) {
-  const [title, setTitle]             = useState("");
-  const [description, setDescription] = useState("");
-  const [location, setLocation]       = useState("");
-  const [jobType, setJobType]         = useState("Full-time");
-  const [saving, setSaving]           = useState(false);
+  const [title, setTitle]                             = useState("");
+  const [jobDescription, setJobDescription]           = useState("");
+  const [keyResponsibilities, setKeyResponsibilities] = useState("");
+  const [qualifications, setQualifications]           = useState("");
+  const [preferredSkills, setPreferredSkills]         = useState("");
+  const [salaryRange, setSalaryRange]                 = useState("");
+  const [location, setLocation]                       = useState("");
+  const [jobType, setJobType]                         = useState("Full-time");
+  const [saving, setSaving]                           = useState(false);
+  const [error, setError]                             = useState("");
+  const [fieldErrors, setFieldErrors]                 = useState({});
+  const modalRef = useRef(null);
+  const fieldRefs = useRef({});
+
+  // Same reasoning as the employer's own Create/Edit modal: the form body
+  // scrolls independently, so an error on a field the admin has scrolled
+  // past can render off-screen unless it's scrolled into view.
+  function reportError(message) {
+    setError(message);
+    modalRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function scrollToField(name) {
+    fieldRefs.current[name]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  const setters = {
+    title: setTitle, jobDescription: setJobDescription, keyResponsibilities: setKeyResponsibilities,
+    qualifications: setQualifications, preferredSkills: setPreferredSkills, salaryRange: setSalaryRange,
+    location: setLocation,
+  };
+  function updateField(field, value) {
+    setters[field](value);
+    setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+  }
 
   useEffect(() => {
     if (!row) return;
     setTitle(row.title || "");
-    setDescription(row.description || "");
+    setJobDescription(row.jobDescription || "");
+    setKeyResponsibilities(row.keyResponsibilities || "");
+    setQualifications(row.qualifications || "");
+    setPreferredSkills(row.preferredSkills || "");
+    setSalaryRange(row.salaryRange || "");
     setLocation(row.location || "");
     setJobType(row.jobType || "Full-time");
     setSaving(false);
+    setError("");
+    setFieldErrors({});
   }, [row]);
 
   if (!row) return null;
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!title.trim()) return;
+    const fields = { title, jobDescription, keyResponsibilities, qualifications, preferredSkills, salaryRange, location };
+    const errors = validateJobFields(fields);
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      scrollToField(JOB_FIELD_ORDER.find((f) => errors[f]));
+      return;
+    }
+    setFieldErrors({});
+    setError("");
     setSaving(true);
-    await onSubmit({
+    const failMessage = await onSubmit({
       title: title.trim(),
-      description: description.trim(),
+      jobDescription: jobDescription.trim(),
+      keyResponsibilities: keyResponsibilities.trim(),
+      qualifications: qualifications.trim(),
+      preferredSkills: preferredSkills.trim(),
+      salaryRange: salaryRange.trim(),
       location: location.trim(),
       jobType,
     });
     setSaving(false);
+    if (failMessage) reportError(failMessage);
   }
 
   return (
     <Modal open={!!row} onClose={onClose}>
-      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
+      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true" ref={modalRef}>
         <div className="modal-head">
           <h3>Edit Job Posting</h3>
           <button type="button" aria-label="Close" onClick={onClose}>×</button>
         </div>
         <form className="admin-entry-form" onSubmit={handleSubmit}>
+          {error && <p className="field-error">{error}</p>}
           <div className="admin-entry-fields">
-            <label>Job Title
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <label ref={(el) => (fieldRefs.current.title = el)}>Job Title
+              <input type="text" value={title} onChange={(e) => updateField("title", e.target.value)} />
+              {fieldErrors.title && <span className="field-error">{fieldErrors.title}</span>}
             </label>
             <label>Employment Type
               <select value={jobType} onChange={(e) => setJobType(e.target.value)}>
                 {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </label>
-            <label>Location
-              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City, hybrid, or remote" />
+            <label ref={(el) => (fieldRefs.current.location = el)}>Location
+              <input type="text" value={location} onChange={(e) => updateField("location", e.target.value)} placeholder="City, hybrid, or remote" />
+              {fieldErrors.location && <span className="field-error">{fieldErrors.location}</span>}
             </label>
-            <label>Description
-              <textarea rows="4" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label ref={(el) => (fieldRefs.current.salaryRange = el)}>Salary Range
+              <input type="text" value={salaryRange} onChange={(e) => updateField("salaryRange", e.target.value)} placeholder="e.g. ₱25,000 - ₱35,000 /month" />
+              {fieldErrors.salaryRange && <span className="field-error">{fieldErrors.salaryRange}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.jobDescription = el)}>Job Description
+              <textarea rows="4" value={jobDescription} onChange={(e) => updateField("jobDescription", e.target.value)} />
+              {fieldErrors.jobDescription && <span className="field-error">{fieldErrors.jobDescription}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.keyResponsibilities = el)}>Key Responsibilities
+              <textarea rows="4" value={keyResponsibilities} onChange={(e) => updateField("keyResponsibilities", e.target.value)} />
+              {fieldErrors.keyResponsibilities && <span className="field-error">{fieldErrors.keyResponsibilities}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.qualifications = el)}>Qualifications &amp; Requirements
+              <textarea rows="4" value={qualifications} onChange={(e) => updateField("qualifications", e.target.value)} />
+              {fieldErrors.qualifications && <span className="field-error">{fieldErrors.qualifications}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.preferredSkills = el)}>Preferred Skills (Plus)
+              <textarea rows="3" value={preferredSkills} onChange={(e) => updateField("preferredSkills", e.target.value)} />
+              {fieldErrors.preferredSkills && <span className="field-error">{fieldErrors.preferredSkills}</span>}
             </label>
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving || !title.trim()}>{saving ? "Saving…" : "Save"}</button>
+            <button type="submit" disabled={saving || !title.trim() || !jobDescription.trim()}>{saving ? "Saving…" : "Save"}</button>
           </div>
         </form>
       </section>
