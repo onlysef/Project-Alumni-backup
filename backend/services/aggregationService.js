@@ -4338,13 +4338,19 @@ async function queryOverview(filters) {
   const total = countRows[0]?.total ?? 0;
   if (total === 0) return null;
 
-  const empRows = await Graduate.aggregate([
+  // Grouped case-insensitively (same fix as queryEmployment()) so data-entry
+  // variants like "yes" vs "Yes" merge into one row instead of splitting the
+  // same status across two separate breakdown lines.
+  const empRowsRaw = await Graduate.aggregate([
     ...base,
     { $match: { employmentStatus: { $nin: [null, ''] } } },
     { $addFields: { _status: { $trim: { input: '$employmentStatus' } } } },
-    { $group: { _id: '$_status', count: { $sum: 1 } } },
+    { $group: { _id: { norm: { $toLower: '$_status' }, orig: '$_status' }, count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $group: { _id: '$_id.norm', label: { $first: '$_id.orig' }, count: { $sum: '$count' } } },
     { $sort: { count: -1 } },
   ]);
+  const empRows = empRowsRaw.map(r => ({ _id: r.label, count: r.count }));
   // Denominator matches queryEmployment()/queryRate()'s own denominator (only
   // respondents with a non-null employmentStatus) — using the all-respondents
   // `total` here instead would silently disagree with those functions whenever
