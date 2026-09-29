@@ -222,6 +222,22 @@ label {
   pointer-events: none;
 }
 
+/* Without an explicit appearance reset, mobile WebKit (iOS Safari, in-app
+   browsers like Messenger) ignores a select's padding-left and renders its
+   own chrome, which visually collides with the absolutely-positioned
+   .input-icon on top of it. Desktop browsers mostly honor padding-left
+   regardless of appearance, so this bug is mobile-only and easy to miss
+   testing on desktop. */
+.input-wrap select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 16px;
+}
+
 input[type="email"],
 input[type="password"],
 input[type="text"] {

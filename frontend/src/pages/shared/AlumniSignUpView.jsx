@@ -179,7 +179,7 @@ export default function AlumniSignUpView() {
                   <div className="form-group">
                     <label htmlFor="college">College</label>
                     <div className="input-wrap">
-                      <select id="college" value={form.college} onChange={handleCollegeChange} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                      <select id="college" value={form.college} onChange={handleCollegeChange} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                         <option value="">— Select college —</option>
                         {COLLEGES.map((c) => <option key={c}>{c}</option>)}
                       </select>
@@ -197,7 +197,7 @@ export default function AlumniSignUpView() {
                         value={form.course}
                         onChange={update("course")}
                         disabled={!form.college}
-                        style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}
+                        style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}
                       >
                         <option value="">{form.college ? "— Select course —" : "Select a college first"}</option>
                         {(COURSES_BY_COLLEGE[form.college] || []).map((c) => <option key={c}>{c}</option>)}
@@ -212,7 +212,7 @@ export default function AlumniSignUpView() {
                     <div className="form-group">
                       <label htmlFor="track">BSIT Track <span className="signup-note">(optional)</span></label>
                       <div className="input-wrap">
-                        <select id="track" value={form.track} onChange={update("track")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                        <select id="track" value={form.track} onChange={update("track")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 16px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                           <option value="">— Select track —</option>
                           {BSIT_TRACKS.map((t) => <option key={t}>{t}</option>)}
                         </select>
@@ -226,7 +226,7 @@ export default function AlumniSignUpView() {
                       <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      <select id="gradyear" value={form.graduationYear} onChange={update("graduationYear")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                      <select id="gradyear" value={form.graduationYear} onChange={update("graduationYear")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                         <option value="">— Select year —</option>
                         {BATCH_YEARS.map((y) => <option key={y}>{y}</option>)}
                       </select>

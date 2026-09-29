@@ -208,7 +208,7 @@ export default function EmployerSignUpView() {
                   <div className="form-group">
                     <label htmlFor="partnerType">Industry Type</label>
                     <div className="input-wrap">
-                      <select id="partnerType" value={form.partnerType} onChange={update("partnerType")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                      <select id="partnerType" value={form.partnerType} onChange={update("partnerType")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                         <option value="">— Select industry —</option>
                         {PARTNER_TYPES.map((t) => <option key={t}>{t}</option>)}
                       </select>
