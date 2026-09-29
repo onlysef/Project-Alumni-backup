@@ -255,18 +255,18 @@ const getUsers = async (req, res) => {
       match.$or = [{ firstName: re }, { lastName: re }, { email: re }, { company: re }];
     }
 
-    // activeCount/pendingCount are the "X Active / Y Pending" summary tiles
-    // — always the TRUE system-wide total, deliberately unfiltered by the
-    // search/role/status params above (a dashboard stat, not "count within
-    // this page of results"). Previously derived by filtering the full,
-    // unpaginated `rows` array client-side — now that only one page of rows
-    // ever reaches the client, that would have silently shrunk to "how many
-    // on this page" instead.
+    // activeCount/pendingCount are the "X Active / Y Pending" summary tiles.
+    // Scoped to the role filter (so switching the role dropdown to "Alumni"
+    // shows how many alumni accounts are active/pending, not the system-wide
+    // total) but NOT to search/status, since those tiles are always "how
+    // many are Active" / "how many are Pending" regardless of what status
+    // tab or search text the table itself is currently showing.
+    const roleMatch = role && !['role', 'all'].includes(role.toLowerCase()) ? { role: role.toLowerCase() } : {};
     const [users, total, activeCount, pendingCount] = await Promise.all([
       User.find(match, ACCOUNT_LIST_FIELDS).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
       User.countDocuments(match),
-      User.countDocuments({ status: 'active' }),
-      User.countDocuments({ status: 'pending' }),
+      User.countDocuments({ ...roleMatch, status: 'active' }),
+      User.countDocuments({ ...roleMatch, status: 'pending' }),
     ]);
     res.json({ users, total, totalPages: Math.max(1, Math.ceil(total / limit)), page, activeCount, pendingCount });
   } catch (err) {

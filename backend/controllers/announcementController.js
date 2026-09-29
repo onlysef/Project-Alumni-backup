@@ -1,6 +1,7 @@
 const Announcement = require('../models/Announcement');
 const ActivityLog  = require('../models/ActivityLog');
 const User = require('../models/User');
+const { isJunkText } = require('../utils/textQuality');
 
 async function resolveUserName(userId) {
   try {
@@ -24,6 +25,10 @@ const ANNOUNCEMENT_UNION_PROJECT = {
   // pre-fill them — absent on Announcement rows (and on whichever of these
   // two the row isn't), which projects as simply missing, not an error.
   event_datetime: 1, end_datetime: 1, capacity: 1, jobType: 1, status: 1,
+  // Job-only structured fields (replaced the single free-text `description`
+  // a Job posting used to have — Announcement/Event still use `description`
+  // above, unaffected).
+  jobDescription: 1, keyResponsibilities: 1, qualifications: 1, preferredSkills: 1, salaryRange: 1,
 };
 
 // $lookup + $let + $concat pattern shared by every branch below to resolve
@@ -220,13 +225,56 @@ const updateEventAdmin = async (req, res) => {
 const updateJobAdmin = async (req, res) => {
   try {
     const Job = require('../models/Job');
-    const { title, description, jobType, location } = req.body;
+    // Mirrors jobController.postJob/updateJob's own checks — this admin path
+    // bypasses those (it goes through Job.findByIdAndUpdate directly, not
+    // the employer controller), so without repeating the same validation
+    // here an admin edit could blank out the description or set a bogus
+    // jobType that Mongoose's enum would otherwise reject with an opaque 500.
+    const JOB_TYPES = ['Full-time', 'Part-time', 'Internship', 'Contract'];
+    const OPTIONAL_TEXT_FIELDS = ['keyResponsibilities', 'qualifications', 'preferredSkills', 'salaryRange', 'location'];
+    const { title, jobDescription, keyResponsibilities, qualifications, preferredSkills, salaryRange, jobType, location } = req.body;
+    if (jobType !== undefined && !JOB_TYPES.includes(jobType)) {
+      return res.status(400).json({ message: `Invalid job type. Must be one of: ${JOB_TYPES.join(', ')}.` });
+    }
+    const invalidField = OPTIONAL_TEXT_FIELDS.find((f) => req.body[f] !== undefined && typeof req.body[f] !== 'string');
+    if (invalidField) return res.status(400).json({ message: `${invalidField} must be text.` });
+    if (jobDescription !== undefined && (typeof jobDescription !== 'string' || !jobDescription.trim())) {
+      return res.status(400).json({ message: 'A job description is required.' });
+    }
+    // Same keyboard-mashing guard as jobController.postJob/updateJob.
+    const JUNK_FIELD_RULES = {
+      title:               { requireWord: true,  minLength: 3, blockAtSymbol: true },
+      jobDescription:      { requireWord: true,  minLength: 15, requireMultiWord: true },
+      keyResponsibilities: { requireWord: true,  requireMultiWord: true },
+      qualifications:      { requireWord: true,  requireMultiWord: true },
+      preferredSkills:     { requireWord: true,  requireMultiWord: true },
+      location:            { requireWord: true,  blockAtSymbol: true, blockLongDigitRun: true },
+      salaryRange:         { requireWord: false, requireDigitOrPhrase: true },
+    };
+    const JUNK_FIELD_MESSAGES = {
+      title: 'That doesn\'t look like a real job title.',
+      jobDescription: 'The job description looks like random text. Please write an actual description of the role.',
+      keyResponsibilities: 'Key responsibilities looks like random text. Please list the actual duties for this role.',
+      qualifications: 'Qualifications & requirements looks like random text. Please list the actual qualifications needed.',
+      preferredSkills: 'Preferred skills looks like random text. Please list actual skills.',
+      location: 'That doesn\'t look like a real location.',
+      salaryRange: 'That doesn\'t look like a real salary range.',
+    };
+    const junkField = Object.keys(JUNK_FIELD_RULES).find(
+      (f) => req.body[f] !== undefined && req.body[f] !== '' && isJunkText(req.body[f], JUNK_FIELD_RULES[f])
+    );
+    if (junkField) return res.status(400).json({ message: JUNK_FIELD_MESSAGES[junkField] });
+
     const updates = {};
     if (title       !== undefined) {
-      if (!title.trim()) return res.status(400).json({ message: 'Title is required.' });
+      if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
       updates.title = title.trim();
     }
-    if (description !== undefined) updates.description = description;
+    if (jobDescription      !== undefined) updates.jobDescription      = jobDescription;
+    if (keyResponsibilities !== undefined) updates.keyResponsibilities = keyResponsibilities;
+    if (qualifications      !== undefined) updates.qualifications      = qualifications;
+    if (preferredSkills     !== undefined) updates.preferredSkills     = preferredSkills;
+    if (salaryRange         !== undefined) updates.salaryRange         = salaryRange;
     if (jobType     !== undefined) updates.jobType     = jobType;
     if (location    !== undefined) updates.location    = location;
 

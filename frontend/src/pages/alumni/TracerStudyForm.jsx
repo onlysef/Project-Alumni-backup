@@ -565,7 +565,13 @@ export default function TracerStudyForm() {
     );
   }
 
-  if (config.pages.length === 0) {
+  // A college can have a page saved (e.g. left over from the admin editor
+  // with its default "New Page" title) but no actual questions added to it
+  // yet — that's just as unusable to an alumnus as having zero pages at all,
+  // so it gets the same "not yet available" message instead of a page that
+  // renders as an empty box with only Back/Submit buttons.
+  const hasAnyQuestions = config.pages.some((p) => (p.questions || []).length > 0);
+  if (config.pages.length === 0 || !hasAnyQuestions) {
     return (
       <div style={{
         minHeight: "calc(100vh - 70px)", display: "flex", alignItems: "center",
@@ -591,7 +597,7 @@ export default function TracerStudyForm() {
             Tracer study form not yet available
           </p>
           <p style={{ color: "#6b7280", fontSize: 13, lineHeight: 1.6 }}>
-            Your college's tracer study form hasn't been set up yet. Please check back later —
+            Your college's tracer study form hasn't been set up yet. Please check back later,
             we'll notify you once it's ready.
           </p>
         </div>
