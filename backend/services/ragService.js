@@ -881,9 +881,27 @@ function resolveCollegeClarification(question, chatHistory) {
   if (lastTurn && lastTurn.role === 'assistant' && lastTurn.content === aggregationService.CLARIFY_COLLEGE_QUESTION) {
     const priorUserTurn = chatHistory[chatHistory.length - 3];
     if (priorUserTurn && priorUserTurn.role === 'user') {
-      const college = COLLEGE_CODES.find(c => new RegExp(`\\b${c}\\b`, 'i').test(question));
+      // Must be a genuine BARE reply ("CCS", "how about COE") — not just any
+      // question that happens to MENTION a college anywhere in its text.
+      // The old "college code found anywhere in `question`" check below used
+      // to merge a real, complete, unrelated new question ("what are the
+      // events in CCS") onto the STALE prior pending question instead of
+      // letting it stand on its own — caught live: that exact question,
+      // asked right after a college-picker prompt from an EARLIER unrelated
+      // events question, got silently rewritten into "<old question> for
+      // CCS" and then failed with a garbled "No event matching '...' found."
+      // extractBareCollegeReply() (below) already enforces the WHOLE message
+      // reduces to just a college code — reused here instead of duplicating
+      // a looser version of the same check.
+      const college = extractBareCollegeReply(question);
       if (college) return `${priorUserTurn.content} for ${college}`;
-      if (ALL_COLLEGES_PATTERN.test(question)) return `${priorUserTurn.content} for all colleges`;
+      // Same narrowness for the "all colleges" opt-out reply — only a short,
+      // bare "all colleges"/"TSU-wide" reply, not any sentence that merely
+      // contains that phrase somewhere.
+      const strippedForAll = question.trim().replace(/[?.!]+$/, '').replace(BARE_COLLEGE_PREFIX, '').trim();
+      if (ALL_COLLEGES_PATTERN.test(strippedForAll) && strippedForAll.split(/\s+/).length <= 4) {
+        return `${priorUserTurn.content} for all colleges`;
+      }
     }
   }
 
@@ -942,6 +960,25 @@ function resolveEventDisambiguation(question, chatHistory) {
   return priorUserTurn.content.replace(originalName, reply);
 }
 
+// A short affirmative reply ("yes", "sige", "oo") right after
+// aggregationService.CLARIFY_CURRICULUM_RELEVANCE means "show me that
+// closest-available data after all" — merged into a fresh, self-contained
+// job-relevance question here (same deterministic merge-before-aggregation
+// shape as resolveCollegeClarification()/resolveEventDisambiguation() above)
+// since aggregationService.js is stateless and has no way to resolve a bare
+// "yes" against its own prior turn on its own. Deliberately does NOT reuse
+// the word "curriculum" in the rewritten question — doing so would just
+// trigger CLARIFY_CURRICULUM_RELEVANCE all over again instead of actually
+// answering.
+const AFFIRMATIVE_REPLY_PATTERN = /^\s*(?:yes|yeah|yep|yup|sure|ok(?:ay)?|please|go\s*ahead|show\s*(?:it|me)?|sige|oo|opo|pwede)\b/i;
+function resolveCurriculumRelevanceClarification(question, chatHistory) {
+  if (chatHistory.length < 2) return question;
+  const lastTurn = chatHistory[chatHistory.length - 2];
+  if (!(lastTurn && lastTurn.role === 'assistant' && lastTurn.content === aggregationService.CLARIFY_CURRICULUM_RELEVANCE)) return question;
+  if (!AFFIRMATIVE_REPLY_PATTERN.test(question)) return question;
+  return 'What is the job relevance to course of study?';
+}
+
 // A short reply naming only a college — "COE", "how about COE", "what about
 // COE?" — with nothing else worth parsing as its own question. Deliberately
 // requires the WHOLE message to reduce to just a college code after
@@ -979,6 +1016,44 @@ function replaceOrAppendCollege(question, college) {
   const existing = COLLEGE_CODES.find(c => new RegExp(`\\b${c}\\b`, 'i').test(question));
   if (existing) return question.replace(new RegExp(`\\b${existing}\\b`, 'i'), college);
   return `${question} for ${college}`;
+}
+
+// "who submitted feedback in THAT event?" / "who attended THIS event?" — a
+// referent to whichever specific event the assistant's own PREVIOUS reply
+// just resolved and named, not a real event name of its own.
+// aggregationService.js is stateless and never sees chatHistory (its own
+// EVENT_NAME_TRIGGER has no concept of "that"/"this" at all), so this has to
+// be resolved here, the same deterministic merge-before-aggregation shape as
+// resolveCollegeClarification()/resolveEventDisambiguation() above. Without
+// this, "who submitted feedback in that event?" reached aggregationService
+// with a literal, unresolvable "that event", extractEventName() found no
+// real name to extract, fell to the generic queryEventOverview() event list,
+// and the LLM was asked to answer a specific-person question from a list
+// that names no people at all — confirmed live fabricating a made-up
+// "John Doe, Software Engineer at Google" out of nothing.
+//
+// Scoped to only the IMMEDIATELY preceding assistant turn (not a deeper
+// walk-back like findLastEventsQuestion() above) to minimize the risk of
+// picking up an unrelated bolded phrase from further back in the
+// conversation. Every event-answering function bolds the resolved event's
+// own title as the FIRST bold span in its reply ("**CCS Tech Summit
+// 2026...** received the most feedback...", "**Attendees of X (N
+// total)**") — later bold spans in the same reply are numbers/labels
+// (**1**, **Present**, **50%**), not titles, so only the first candidate
+// that isn't purely numeric/a percentage is used. Tagalog equivalents added
+// — "nasabing event" (the aforementioned event), "ganoong"/"parehong event"
+// (that same event) — same referent shape, phrased in Filipino.
+const EVENT_REFERENT_PATTERN = /\b(?:that|this|the\s+same|said)\s+event\b|\b(?:nasabing|ganoong|parehong)\s+(?:event|kaganapan)\b/i;
+function resolveEventReferent(question, chatHistory) {
+  if (!EVENT_REFERENT_PATTERN.test(question)) return question;
+  const lastTurn = chatHistory[chatHistory.length - 1]?.role === 'user'
+    ? chatHistory[chatHistory.length - 2]
+    : chatHistory[chatHistory.length - 1];
+  if (!lastTurn || lastTurn.role !== 'assistant') return question;
+  const boldMatches = [...lastTurn.content.matchAll(/\*\*([^*]{4,100}?)\*\*/g)];
+  const titleCandidate = boldMatches.find(m => !/^\d+%?$/.test(m[1].trim()));
+  if (!titleCandidate) return question;
+  return question.replace(EVENT_REFERENT_PATTERN, titleCandidate[1].trim());
 }
 
 // Mirrors aggregationService.TOPIC_PATTERNS.events/event_feedback narrowly
@@ -1583,7 +1658,9 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // combined question is a normal sentence and flows through typo-correction
   // and pronoun resolution exactly like any other question.
   question = resolveCollegeClarification(question, chatHistory);
+  question = resolveCurriculumRelevanceClarification(question, chatHistory);
   question = resolveEventDisambiguation(question, chatHistory);
+  question = resolveEventReferent(question, chatHistory);
   question = correctTypos(question);
 
   // Kept (typo-corrected, still-Tagalog-if-it-was) alongside the translated
@@ -1626,7 +1703,22 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // own SECOND argument below stays rawQuestion on purpose — it's matched
   // against chatHistory's own (unprocessed) duplicated-current-message
   // entry, see that function's comment for why.
-  const contextQuestions = isEllipticalContinuation(preTranslateQuestion)
+  // EVENT_OR_FEEDBACK_HINT (declared further down this file) is ORed in
+  // ONLY at this top-level trigger, not inside isEllipticalContinuation()
+  // itself — that function is also reused by buildContextQuestions()'s own
+  // MULTI-HOP walk-back loop below to decide whether an already-collected
+  // ancestor turn needs yet another hop further back. Events only ever need
+  // ONE hop (to inherit a college named the turn before — see
+  // aggregationService.js's filters.college), never a whole chain the way
+  // alumni-filter follow-ups do; folding the event hint into the shared
+  // function made an EARLIER, unrelated event-shaped turn ("what event has
+  // gain most feedback?") look like ITS OWN continuation too, walking back
+  // an extra hop and pulling in whatever filter (e.g. a stale gender
+  // mention) happened to sit before it — caught live: "how many feedback is
+  // there?" right after that turn inherited a leftover gender filter from
+  // two turns back and confidently answered with an unrelated single-gender
+  // graduate count instead of a feedback-related refusal/clarify.
+  const contextQuestions = (isEllipticalContinuation(preTranslateQuestion) || EVENT_OR_FEEDBACK_HINT.test(preTranslateQuestion))
     ? buildContextQuestions(chatHistory, rawQuestion)
     : [];
 
@@ -1938,8 +2030,16 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       trigger: /\bworking\b/i,
       // Explicit self-employed/status/breakdown wording already answers the
       // ambiguity itself — only the bare verb with none of these present is
-      // actually unclear about which count is wanted.
-      qualifiers: /\bself[- ]?employed\b|\bformally\s+employed\b|\bbreakdown\b|\bemployment\s+status(es)?\b/i,
+      // actually unclear about which count is wanted. Work-LOCATION words
+      // (abroad/locally/overseas/etc — same vocabulary TOPIC_PATTERNS.
+      // work_location already recognizes) added after a live false-positive:
+      // "how many alumni are working abroad?" is a complete, unambiguous
+      // work-location question (extractFilters() already resolves
+      // filters.workLocation='abroad' correctly on its own) with nothing
+      // ambiguous about employment STATUS at all — "working" here just
+      // happens to co-occur with "abroad," it isn't the bare status-only verb
+      // this clarify exists for.
+      qualifiers: /\bself[- ]?employed\b|\bformally\s+employed\b|\bbreakdown\b|\bemployment\s+status(es)?\b|\b(local(?:ly)?|abroad|overseas|domestic(?:ally)?|international(?:ly)?|lokal|ibang\s+bansa)\b|\bofws?\b/i,
       clarify: "Do you mean the total number of employed alumni (including self-employed), or would you like it broken down by employment status (Employed, Self-Employed, Never Employed) separately?",
     },
   ];
@@ -2054,21 +2154,23 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       // batch-year-naming follow-up as a fresh, non-inheriting question.
       const suggestions = aggResult.suggestions || aggregationService.suggestFollowUps(aggResult.topic, aggResult.filters);
 
-      // A single-fact answer ("There are **149** graduates...") is already
-      // one readable sentence — sending it to the LLM just to get the same
-      // fact back in different words costs a full external API round trip
-      // (regularly 3-14s, sometimes a timeout) for no real readability gain.
-      // Plain single-fact counts are served instantly, straight from MongoDB.
+      // A single-fact answer ("There are **149** graduates...") now goes
+      // through LLM narration too, same as generic multi-line stats and
+      // person lookups below.
       //
       // Multi-line BULLETED breakdowns (by-program, by-year, rankings — one
-      // clearly-labeled data point per line) used to still get sent through
-      // LLM narration on the theory that raw bullets read "awkwardly" — in
-      // practice the model collapses them into one dense run-on paragraph
-      // ("Among the graduates, 37 out of 59 ... In contrast, 39 out of 54
-      // ... Similarly, 33 out of 48 ...") that's genuinely harder to read
-      // than the bullets it started from, not easier. The already-computed
-      // aggText is guaranteed complete and correctly formatted, so bulleted
-      // answers skip narration entirely now, the same as isListTopic below.
+      // clearly-labeled data point per line) and "list topic" answers
+      // (isListTopic below) skip narration and return the already-computed
+      // aggText verbatim — tried narrating these via a dedicated list-
+      // preserving prompt, but even with an explicit "reproduce verbatim"
+      // instruction the extra LLM round trip made these specific answers
+      // noticeably slower with no real readability gain (the raw text is
+      // already a clean, correctly-formatted breakdown). Also avoids the
+      // original regression this skip existed to prevent in the first
+      // place: STATS_NARRATIVE_PROMPT's rule 4 collapsing a breakdown into
+      // one dense run-on paragraph ("Among the graduates, 37 out of 59 ...
+      // In contrast, 39 out of 54 ...") that's harder to read than the
+      // bullets it started from.
       const aggLineCount   = aggText.split('\n').filter(l => l.trim()).length;
       // Dash/asterisk bullets AND numbered lists ("1. **X** — Y graduates",
       // used by ranking-style breakdowns like queryIndustry()) both count —
@@ -2094,41 +2196,71 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       // 2+ people too, so — unlike single-fact "list" topics (isListTopic) —
       // person_lookup always narrates, never returns aggText directly here.
       const personLookupCount = isPersonLookup ? (aggText.match(/\n\n---\n\n/g) || []).length + 1 : 1;
-      if (queryType === 'statistical' && !isPersonLookup && (aggLineCount <= 1 || isListTopic || bulletLineCount >= 2)) {
+      // A ranking/breakdown topic (industry, job_positions, top_companies,
+      // etc.) that happens to have only ONE real row this time (e.g. one
+      // industry holding ~100% share) produces aggText with only a single
+      // numbered line — bulletLineCount stays at 1, missing the >=2
+      // threshold below, even though the user explicitly asked for a LIST.
+      // Caught live: "List top industries where CCS alumni work" (one
+      // dominant industry, no real ranking to show) got narrated into "CCS
+      // alumni are predominantly employed in the Information Technology
+      // industry, with 85% of respondents working in this sector." — a
+      // paraphrase that silently dropped the numbered-list format the
+      // question explicitly asked for by name. An explicit "list"/"bullet
+      // points"/"itemize" request in the question is just as strong a signal
+      // as bulletLineCount>=2 that the answer must stay in its own verbatim
+      // format, not be rewritten as prose.
+      const explicitlyRequestedList = /\b(list|bullet\s*points?|itemize)\b/i.test(question);
+      // A fixed clarify-question STRING (CLARIFY_COLLEGE_QUESTION,
+      // CLARIFY_CURRICULUM_RELEVANCE) must survive verbatim — resolveCollege
+      // Clarification()/resolveCurriculumRelevanceClarification() above both
+      // recognize a short affirmative/one-word next turn by comparing the
+      // ASSISTANT's own previous message against this exact constant; if
+      // narration paraphrased it even slightly, that comparison would silently
+      // stop matching and the merge-the-reply-into-a-real-question mechanism
+      // would quietly break. CLARIFY_COLLEGE_QUESTION happens to already
+      // survive today (its topic, 'events', is in isListTopic above) but that
+      // was incidental, not a guarantee for every clarify constant — checked
+      // explicitly here so this protection doesn't depend on which topic
+      // happened to produce it.
+      const isFixedClarifyMessage = aggText === aggregationService.CLARIFY_COLLEGE_QUESTION || aggText === aggregationService.CLARIFY_CURRICULUM_RELEVANCE;
+      const isBulletedOrList = isListTopic || bulletLineCount >= 2 || (explicitlyRequestedList && bulletLineCount >= 1) || isFixedClarifyMessage;
+
+      // "predict"/"most likely" stays a genuine early return — see
+      // PREDICTION_LEAD_IN_PROMPT's own comment above for why this asks for
+      // a SEPARATE short sentence instead of routing the whole bulleted
+      // breakdown through full list narration below (would double up LLM
+      // calls / produce a conflicting framing sentence). Scoped to
+      // bulletLineCount >= 2 specifically (a ranked breakdown with a real
+      // "top" row) — single-fact/isListTopic answers aren't rankings, so
+      // "predict" framing doesn't apply the same way. A failed/refused/
+      // non-English lead-in is silently dropped — the plain breakdown is
+      // already a complete, correct answer without it.
+      if (queryType === 'statistical' && !isPersonLookup && bulletLineCount >= 2 &&
+          /\b(predict|prediction|forecast|projection)\b|\bmost\s+likely\b|\bwould\s+likely\b/i.test(question)) {
         await dbAnswerThinkingDelay();
         let listAnswer = aggText;
-        // "predict"/"most likely" — see PREDICTION_LEAD_IN_PROMPT's own
-        // comment above for why this asks for a SEPARATE short sentence
-        // instead of routing the whole bulleted breakdown through full
-        // narration. Scoped to bulletLineCount >= 2 specifically (a ranked
-        // breakdown with a real "top" row) — aggLineCount<=1/isListTopic
-        // answers aren't rankings, so "predict" framing doesn't apply the
-        // same way. A failed/refused/non-English lead-in is silently
-        // dropped — the plain breakdown is already a complete, correct
-        // answer without it.
-        if (bulletLineCount >= 2 && /\b(predict|prediction|forecast|projection)\b|\bmost\s+likely\b|\bwould\s+likely\b/i.test(question)) {
-          try {
-            const leadInMessages = [
-              { role: 'system', content: `${PREDICTION_LEAD_IN_PROMPT}\n\nData:\n${aggText}` },
-              { role: 'user', content: question },
-            ];
-            let leadIn = (await streamHF(leadInMessages, null, 2, 80)).trim();
-            // Rule 3 (write ONLY the lead-in sentence) isn't reliably
-            // followed — observed live re-emitting a truncated copy of the
-            // bulleted breakdown right after its own sentence, which would
-            // otherwise double up with the real, untouched aggText appended
-            // below. Cut off at the first sign it started doing that (a
-            // bullet/numbered line, or a **bold** heading/label) before
-            // validating the rest — the genuine lead-in sentence(s) that
-            // came before that point are still used normally.
-            const breakdownStartMatch = leadIn.match(/\n\s*(?:[-*]\s|\d+\.\s|\*\*)/);
-            if (breakdownStartMatch) leadIn = leadIn.slice(0, breakdownStartMatch.index).trim();
-            if (leadIn && leadIn.length <= 400 && !REFUSAL_PATTERN.test(leadIn) && !looksNonEnglish(leadIn)) {
-              listAnswer = `${leadIn}\n\n${aggText}`;
-            }
-          } catch (err) {
-            logger.warn('prediction_lead_in_failed', { question, error: err.message });
+        try {
+          const leadInMessages = [
+            { role: 'system', content: `${PREDICTION_LEAD_IN_PROMPT}\n\nData:\n${aggText}` },
+            { role: 'user', content: question },
+          ];
+          let leadIn = (await streamHF(leadInMessages, null, 2, 80)).trim();
+          // Rule 3 (write ONLY the lead-in sentence) isn't reliably
+          // followed — observed live re-emitting a truncated copy of the
+          // bulleted breakdown right after its own sentence, which would
+          // otherwise double up with the real, untouched aggText appended
+          // below. Cut off at the first sign it started doing that (a
+          // bullet/numbered line, or a **bold** heading/label) before
+          // validating the rest — the genuine lead-in sentence(s) that
+          // came before that point are still used normally.
+          const breakdownStartMatch = leadIn.match(/\n\s*(?:[-*]\s|\d+\.\s|\*\*)/);
+          if (breakdownStartMatch) leadIn = leadIn.slice(0, breakdownStartMatch.index).trim();
+          if (leadIn && leadIn.length <= 400 && !REFUSAL_PATTERN.test(leadIn) && !looksNonEnglish(leadIn)) {
+            listAnswer = `${leadIn}\n\n${aggText}`;
           }
+        } catch (err) {
+          logger.warn('prediction_lead_in_failed', { question, error: err.message });
         }
         // A message combining this real, answerable question with an
         // off-topic one ("How many alumni? Also what's the capital of
@@ -2138,6 +2270,36 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         // at all. Appended (not silently dropped, not hallucinated from
         // training knowledge) so the user knows that part was seen and is
         // simply out of scope.
+        if (hasOffTopicComponent(question)) {
+          listAnswer += '\n\nI am not able to help with questions outside the Alumni Tracer Study system, such as general knowledge questions.';
+        }
+        if (onToken) onToken(listAnswer);
+        return finish({ answer: listAnswer, sources: ['graduate_records'], type: 'statistics', suggestions, chart: aggResult.chart || null, charts: aggResult.charts || null });
+      }
+
+      // Bulleted/ranked breakdowns and list-topic answers (isListTopic /
+      // bulletLineCount>=2) skip narration entirely and return the already-
+      // computed aggText verbatim — see the aggLineCount comment above for
+      // why (an extra LLM round trip here was noticeably slower with no
+      // readability gain, and risked the original bullets-collapsed-into-
+      // prose regression this skip exists to prevent).
+      //
+      // Deliberately NOT gated on queryType === 'statistical' — a bare
+      // "feedback"/"event" word makes classify() read plenty of genuinely
+      // structured event/attendee/feedback answers as 'qualitative' (see
+      // EVENT_OR_FEEDBACK_HINT's own comment above for why those still reach
+      // aggregation at all despite that misclassification). isBulletedOrList
+      // itself (topic-based or a real bulleted shape) is already a strong
+      // enough signal that this is a pre-formatted, verified answer — caught
+      // live: "who submitted feedback in that event?" (queryType
+      // 'qualitative') narrated "**Feedback for X** was submitted by **1**
+      // alumnus:\n\n1. Rain Thora" down into "was submitted by 1 person,"
+      // silently dropping the one actual name the question asked for — a
+      // failure none of the verification checks below catch, since they only
+      // watch for dropped/fabricated NUMBERS, not names.
+      if (!isPersonLookup && isBulletedOrList) {
+        await dbAnswerThinkingDelay();
+        let listAnswer = aggText;
         if (hasOffTopicComponent(question)) {
           listAnswer += '\n\nI am not able to help with questions outside the Alumni Tracer Study system, such as general knowledge questions.';
         }
@@ -2429,6 +2591,13 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         }
       }
 
+      // hasOffTopicComponent's disclaimer used to only be appended on the
+      // raw-aggText early-return path (single-fact / list-topic / bulleted
+      // answers) — applied once here instead so every statistical answer
+      // gets it consistently now that those cases flow through narration.
+      if (hasOffTopicComponent(question)) {
+        finalAnswer += '\n\nI am not able to help with questions outside the Alumni Tracer Study system, such as general knowledge questions.';
+      }
       if (onToken) {
         for (const line of finalAnswer.split('\n')) onToken(line + '\n');
       }

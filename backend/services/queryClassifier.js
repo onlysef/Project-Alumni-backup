@@ -307,7 +307,16 @@ const INCOMPLETE_THOUGHT_PATTERNS = [
   // ragService.js ("I could not find relevant information...") instead of
   // this classification's own, more useful "what would you like to know?
   // For example: employment rate, industries..." clarifying question.
-  /^\s*(?:show|give|tell)\s+me\s+(?:the\s+|some\s+)?(?:numbers?|stats?|statistics?|data|info(?:rmation)?|something|stuff|more)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
+  // "me" is optional ("show graph" as well as "show me the graph") and the
+  // filler-noun list includes graph/chart/visualization/plot — without
+  // those, "show me the graph"/"show graph" (no data ever specified) fell
+  // through every other pattern here (297 requires bare "show me" alone,
+  // 299 requires a BARE "graph"/"chart" with no "show"/"give"/"tell" verb at
+  // all) all the way to the generic "I could not find relevant information"
+  // refusal instead of ragService.js's purpose-built "which data would you
+  // like visualized?" clarify text (see its own VISUALIZATION_REQUEST_PATTERN
+  // branch for that more specific wording).
+  /^\s*(?:show|give|tell)(?:\s+me)?\s+(?:the\s+|some\s+|a\s+)?(?:numbers?|stats?|statistics?|data|info(?:rmation)?|something|stuff|more|graphs?|charts?|visuali[sz]ations?|plots?)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
 ];
 function isIncompleteThought(q) {
   return INCOMPLETE_THOUGHT_PATTERNS.some((p) => p.test(q));

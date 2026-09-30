@@ -76,6 +76,144 @@ function workLocationCondition(location, negate) {
 
 // ─── Intent Detection ─────────────────────────────────────────────────────────
 
+// Any TWO (or more) of the real employmentType categories mentioned
+// together — "Regular/Permanent vs Casual/Contractual", "part-time or
+// project-based", "regular vs contractual vs part-time" — reads as a request
+// to COMPARE across types, not to filter down to a single one. Confirmed
+// against the actual tracer form's "present employment type" dropdown:
+// Regular/Permanent, Casual/Contractual, Part-time, Project-based,
+// Self-employed (Graduate.employmentType stores these strings verbatim —
+// see backend/models/Graduate.js). "full-time" is kept as a recognized
+// keyword even though it isn't one of the 5 real stored values (users
+// naturally phrase the comparison that way) — queryWorkType()'s real
+// breakdown, not a fabricated "full-time" count, is what actually answers it.
+// A REGEX alone can't reliably tell "regular or permanent" (one filter, two
+// words for the SAME value) apart from "regular or part-time" (a genuine
+// two-value comparison) — this counts DISTINCT normalized keywords instead
+// of just testing for a connector word, treating "regular"/"permanent" as
+// the same underlying value (they're stored as one combined string,
+// "Regular/Permanent") so that exact phrase still correctly resolves to the
+// single-value COUNT path a live test case already depends on, not this
+// multi-type comparison path.
+//
+// Shared by TOPIC_PATTERNS.work_type's early detectTopic() special-case
+// below (routes to queryWorkType()'s full, always-charted employmentType
+// breakdown) and extractFilters() further down (which must NOT narrow
+// filters.employmentType to just one side of a real comparison — see that
+// call site's own comment for the live bug this avoids: "part-time" alone in
+// the WORK_TYPE_MAP loop would otherwise filter the whole breakdown down to
+// Part-time only, defeating the comparison).
+const WORK_TYPE_KEYWORD_PATTERN = /\b(regular|permanent|part-?time|full-?time|casual|contractual|project-?based|self-?employed|temporary|probationary|trainee|job\s*order|on\s+training|gip)\b/gi;
+function isWorkTypeComparisonQuestion(question) {
+  const matches = question.match(WORK_TYPE_KEYWORD_PATTERN) || [];
+  const normalize = (w) => /^(?:regular|permanent)$/i.test(w) ? 'regular/permanent' : w.toLowerCase().replace(/[\s-]/g, '');
+  return new Set(matches.map(normalize)).size >= 2;
+}
+
+// Shared by extractFilters() (single-value filters.employmentType, and the
+// comparison-mode filters.employmentTypesRequested list) and queryWorkType()
+// (which filters its real DB-grouped rows down to just the requested labels
+// for a comparison, instead of always dumping the full ~12-category
+// breakdown). Patterns are tested directly against the REAL stored
+// employmentType strings too (not just the question text) — "contractual"
+// substring-matches both the legacy standalone "Contractual" row and the
+// current form's combined "Casual/Contractual" row, which is deliberate:
+// asking about "contractual" alumni should surface either real spelling
+// without the caller needing to know which one is actually in the database.
+const WORK_TYPE_MAP = [
+  [/\b(?:regular|permanent)\b/i, 'Regular/Permanent'],
+  [/\bjob\s*order\b/i,           'Job Order'],
+  [/\bpart-?time\b/i,            'Part-time'],
+  [/\bcontractual\b/i,           'Contractual'],
+  [/\btemporary\b/i,             'Temporary'],
+  [/\bprobationary\b/i,          'Probationary'],
+  [/\bcasual\b/i,                'Casual'],
+  [/\bproject-?based\b/i,        'Project-based'],
+  [/\bself-?employed\b/i,        'Self-employed'],
+  [/\btrainee\b/i,               'Trainee'],
+  [/\bon\s+training\b/i,         'On Training'],
+  [/\b(?:gip|government\s+internship)\b/i, 'GIP'],
+];
+
+// "full-time vs part-time" — "full-time" has no WORK_TYPE_MAP entry (no
+// distinct stored value corresponds to it), so a comparison naming it needs
+// to say so explicitly rather than silently act as if only "part-time" was
+// ever asked about.
+const FULL_TIME_PATTERN = /\bfull-?time\b/i;
+
+// Every WORK_TYPE_MAP label the question mentions, deduped — used for
+// comparison-mode questions ("Regular/Permanent vs Casual/Contractual") to
+// know exactly which rows to keep, as opposed to isWorkTypeComparisonQuestion()
+// above, which only needs to know THAT two or more are mentioned, not which.
+function matchedWorkTypeLabels(question) {
+  return [...new Set(WORK_TYPE_MAP.filter(([pat]) => pat.test(question)).map(([, label]) => label))];
+}
+
+// None of these have a dedicated tracer-study question OR a reasonable
+// closest-available proxy (confirmed against tracerFormConfigController.js's
+// full question list) — unlike "curriculum relevance" (which has a genuine
+// proxy in jobRelatedToDegree/job_relevance), there's nothing meaningfully
+// close to substitute here, so these decline plainly instead of asking
+// "would you like to see X instead?" for an X that doesn't really answer the
+// question either. Without this, all three fell through to bare
+// EMPLOYMENT_SIGNAL (\bjob\b/\bwork\b) and silently answered with the
+// generic Employed/Unemployed/Self-Employed breakdown — a confidently wrong
+// answer to a completely different question, with no disclaimer at all
+// (worse than the curriculum-relevance case, which at least explained
+// itself before this fix).
+// NOTE: "work-life balance" briefly sat in this list too — WRONG, it's a
+// real tracked rating category (Graduate.competencies.workLifeBalance, part
+// of the tracer form's "Personal Growth" ratings — see TOPIC_PATTERNS.
+// competencies' own "personal/professional growth" trigger below). Removed
+// once that was confirmed against the actual live form, not just this file.
+// "salary" (and its synonyms/Tagalog forms) doesn't satisfy EMPLOYMENT_SIGNAL
+// at all (no "job"/"work"/"employ"/"status" substring), so a bare "What is
+// the average salary of alumni?" matched NO topic here whatsoever and fell
+// all the way through to the generic RAG/vector-search fallback — which
+// correctly declines (no embedded salary content exists to hallucinate
+// from), but with the same vague "I could not find relevant information...
+// rephrase your question" text every OTHER unrelated failure gets, instead
+// of clearly saying salary specifically isn't tracked. detectTopic() below
+// has its own early special-case routing this straight to 'employment' (see
+// that function's own comment) so it reaches this same untracked-concept
+// decline instead of the RAG path at all.
+// "suweldo" (alt spelling of "sweldo") and "buwanang kita"/"kita sa trabaho"
+// added — bare "kita" alone is deliberately excluded (it's also the common
+// Tagalog word for "see"/"visible" — "makikita", "kita kita" — too ambiguous
+// on its own; only the income-specific compound phrases are safe).
+const SALARY_PATTERN = /\bsalar(?:y|ies)\b|\bincome\b|\bcompensation\b|\bwages?\b|\bearn(?:ings?|s)?\b|\bsahod\b|\bs(?:uw|w)eldo\b|\b(?:buwanang|buwan-buwan(?:g)?)\s+kita\b|\bkita\s+sa\s+trabaho\b/i;
+
+// Shared by TOPIC_PATTERNS.competencies below, queryInner()'s trend-detection
+// bypass (isPersonalOrProfessionalGrowth), and detectTopic()'s own early
+// special-case — kept as one constant so a Tagalog phrasing added here
+// doesn't need to be duplicated three times and risk drifting out of sync.
+// "paglago"/"pag-unlad" are the natural Tagalog nouns for "growth"; "bilang
+// tao/indibidwal/propesyonal" ("as a person/individual/professional") covers
+// the verb-phrase form ("paano lumago...") without the noun "paglago" itself.
+const PERSONAL_GROWTH_PATTERN = /\b(?:personal|professional)\s+growth\b|\b(?:personal|propesyonal)\s+na\s+(?:paglago|pag-?unlad)\b|\bpaglago\s+(?:bilang\s+)?(?:tao|indibidwal|propesyonal)\b/i;
+
+// Shared by TOPIC_PATTERNS.competencies below and extractFilters()'s COMP_MAP
+// (the filters.competency='workLifeBalance' extraction) — same reasoning as
+// PERSONAL_GROWTH_PATTERN just above.
+const WORK_LIFE_BALANCE_PATTERN = /\bwork.?life\s+balance\b|\bbalans[e]?\s+(?:ng|sa)\s+(?:buhay\s+at\s+trabaho|trabaho\s+at\s+buhay|buhay(?:\s+at)?\s*trabaho)\b|\bbalanse\s+ng\s+buhay\b/i;
+
+const UNTRACKED_EMPLOYMENT_CONCEPTS = [
+  {
+    pattern: /\bjob\s+satisfaction\b|\bsatisf(?:ied|action)\b.{0,25}\b(?:jobs?|work)\b|\b(?:jobs?|work)\b.{0,25}\bsatisf(?:ied|action)\b|\bkasiyahan\b.{0,40}\btrabaho\b/i,
+    label: 'job satisfaction',
+  },
+  {
+    pattern: /\bhow\s+long\b.{0,25}\b(?:find|land|get|secure|got)\b.{0,20}\b(?:first\s+)?(?:jobs?|employ\w*)\b|\btime\s+to\b.{0,15}\b(?:first\s+)?(?:jobs?|employ\w*)\b|\bgaano\s+katagal\b.{0,25}\b(?:makahanap|nakahanap|makakuha|nakakuha)\b.{0,15}\btrabaho\b/i,
+    label: 'how long it takes alumni to find their first job',
+  },
+  { pattern: SALARY_PATTERN, label: 'salary/income/compensation' },
+];
+function untrackedEmploymentConceptMessage(question) {
+  const match = UNTRACKED_EMPLOYMENT_CONCEPTS.find(({ pattern }) => pattern.test(question));
+  if (!match) return null;
+  return `The tracer study does not track ${match.label} as its own question. What IS available: employment status, employment type, industry, work location, job relevance to course of study, and further studies/training. Please ask about one of those instead.`;
+}
+
 const TOPIC_PATTERNS = {
   // Checked before `events` below — "what's the feedback for the Job Fair"
   // contains no literal "event"/"attend*" word, but DOES contain "for the Job
@@ -102,7 +240,18 @@ const TOPIC_PATTERNS = {
   // English "feedback for/on/about" — same reasoning as above: a bare
   // "puna"/"komento" trigger would hijack genuine qualitative tracer-study
   // questions phrased with those words too.
-  event_feedback:  /\bfeedback\s+(?:for|on|about|regarding)\b|\b(?:rated|rating)\b.{0,25}\bevent\b|\bevent\b.{0,25}\b(?:rated|rating)\b|\bpuna\s+(?:para\s+sa|tungkol\s+sa|sa)\b|\bkomento\s+(?:para\s+sa|tungkol\s+sa|sa)\b|\brating\s+(?:ng|para\s+sa)\b/i,
+  // Negative lookahead added — "feedback on/about CURRICULUM (relevance)"/
+  // "teaching quality"/"training received"/"the tracer study" are real
+  // tracer-study qualitative subjects that happen to use the exact same
+  // "feedback for/on/about X" adjacency this trigger otherwise correctly
+  // relies on. Caught live: "show feedback on curriculum relevance" matched
+  // this topic, resolveEvent() found no event named "curriculum relevance",
+  // fell to queryEventOverview(), and an unscoped admin got the college-
+  // picker CLARIFY_COLLEGE_QUESTION for a question that has nothing to do
+  // with events at all. Optional "the/our/this" filler before each excluded
+  // noun handles "feedback about THE curriculum" the same as bare
+  // "feedback about curriculum".
+  event_feedback:  /\bfeedback\s+(?:for|on|about|regarding)\b(?!\s+(?:the\s+|our\s+|this\s+)?(?:curriculum|kurikulum|course\s+(?:content|quality)|program\s+quality|teaching|training(?:\s+received)?|their\s+(?:experience|learning)|the\s+tracer\s+study))|\b(?:rated|rating)\b.{0,25}\bevent\b|\bevent\b.{0,25}\b(?:rated|rating)\b|\bpuna\s+(?:para\s+sa|tungkol\s+sa|sa)\b|\bkomento\s+(?:para\s+sa|tungkol\s+sa|sa)\b|\brating\s+(?:ng|para\s+sa)\b/i,
   // Must be checked before `count`/`names` below — "how many alumni attended
   // the job fair" would otherwise match count's "how many...alumni" bare
   // alternative first (object key order = detectTopic()'s iteration/match
@@ -126,7 +275,21 @@ const TOPIC_PATTERNS = {
   // "professional development activities" question — a different topic
   // entirely, further_training's territory) but still catches a natural
   // way to ask about events without the word "event" or "attend" at all.
-  events:          /\bevents?\b|\battend(?:ed|ees|ance)?\b|\bdumalo\b|\bpagdalo\b|\bupcoming\s+activit(?:y|ies)\b|\bactivit(?:y|ies)\s+(?:calendar|schedule)\b/i,
+  // "kaganapan" (Tagalog "event") added — the Tagalog attend*/dumalo/pagdalo
+  // triggers already here covered ATTENDING an event, but nothing covered
+  // the noun "event" itself in Tagalog, so a purely-Tagalog question with no
+  // English "event(s)"/"attend*" word at all ("ilang feedback ang natanggap
+  // ng lahat ng KAGANAPAN?") never reached this topic in the first place.
+  // "participants?" added — this app's own coordinator UI calls event
+  // attendees "Participants"/"Event Participation" (see EventParticipation.jsx),
+  // but nothing here recognized that word at all. Caught live: "list the
+  // participants for CCS Tech Summit 2026: AI & Web Innovation" matched NO
+  // topic here, fell to the generic null-topic rescue further down (which
+  // reads extractFilters()'s "answerShape" instead), and extractFilters()
+  // separately parsed the bare "2026" IN THE EVENT'S OWN TITLE as a batch/
+  // graduation year filter — answering with "Alumni Batch 2026" (a single,
+  // unrelated graduate) instead of the event's real attendees.
+  events:          /\bevents?\b|\bkaganapan\b|\bparticipants?\b|\battend(?:ed|ees|ance)?\b|\bdumalo\b|\bpagdalo\b|\bupcoming\s+activit(?:y|ies)\b|\bactivit(?:y|ies)\s+(?:calendar|schedule)\b/i,
   // "names? of" used to match bare, with zero requirement that the question
   // have anything to do with alumni — "What is the NAME OF the earthlike
   // planet..." matched it directly and returned an unrelated 50-alumni
@@ -299,6 +462,17 @@ const TOPIC_PATTERNS = {
   industry:        /\bindustr|industriya|field\s+of\s+work\b/i,
   // "freelance(r/rs)" added — a real employment-type category (self-employed
   // gig work) that had no matching alternative at all.
+  // "full-time vs part-time" ALSO resolves to this topic (queryWorkType()'s
+  // full employmentType breakdown chart — Regular/Permanent, Casual/
+  // Contractual, Part-time, Project-based, Self-employed, confirmed against
+  // the actual tracer form's "present employment type" dropdown) but is
+  // matched as its own early special-case in detectTopic() below, NOT as
+  // part of this pattern — 'count' (checked before this topic in object
+  // order, same reason 'names'/tracer_activity's own comments explain) would
+  // otherwise always win "how many alumni are employed full-time vs
+  // part-time?" via its bare "how many...alumni" alternative first, so the
+  // comparison needs to be decided before the main topic loop even runs,
+  // not by trying to out-order it within this same object.
   work_type:       /\b(government|private|sector|work type|type of (employment|work)|employment type|freelance\w*|gobyerno|pribado)\b/i,
   // "kaugnayan sa" (noun form "relevance to", vs. the adjective "kaugnay"
   // already covered) and "in line with" (a natural English synonym for
@@ -349,7 +523,25 @@ const TOPIC_PATTERNS = {
   // "rate themselves"/"rate their own" added — the verb form of the exact
   // same self-rating concept the noun forms ("ratings", "self-assessment")
   // already covered.
-  competencies:    /\b(competenc\w*|skill\s+ratings?|ratings?|self.?assess\w*|performance|technical\s+skills?|communication\s+skills?|problem.?solving|critical\s+thinking|teamwork|adaptability|project\s+management|skilled|rate\s+(?:themselves|their\s+own)|kasanayan|kakayahan)\b/i,
+  // "personal growth"/"professional growth" added — the tracer form's own
+  // section names for this exact rating data (see TracerStudyResponse.js's
+  // "Personal Growth (C)"/"Professional Growth (D)" comments) had no trigger
+  // here at all, so a question phrased with the form's own terminology
+  // ("show personal growth of alumni") never reached this topic — see the
+  // isPersonalOrProfessionalGrowth guard in queryInner()'s trend-detection
+  // bypass above for the other (worse) half of this same live bug.
+  // "work-life balance" added — one of the 8 real rating categories
+  // (Graduate.competencies.workLifeBalance) but, unlike "teamwork"/
+  // "adaptability"/etc. just above, had no trigger word of its own at all —
+  // it doesn't contain "competenc"/"skill"/"rating"/any of the other
+  // alternatives here, so a bare "what is the work-life balance of alumni?"
+  // matched nothing in this topic even with the personal/professional
+  // growth fix above.
+  competencies:    new RegExp(
+    '\\b(competenc\\w*|skill\\s+ratings?|ratings?|self.?assess\\w*|performance|technical\\s+skills?|communication\\s+skills?|problem.?solving|critical\\s+thinking|teamwork|adaptability|project\\s+management|skilled|rate\\s+(?:themselves|their\\s+own)|kasanayan|kakayahan)\\b|' +
+    PERSONAL_GROWTH_PATTERN.source + '|' + WORK_LIFE_BALANCE_PATTERN.source,
+    'i'
+  ),
   // Bare "skill(s)" — checked AFTER competencies above, so a specific
   // category phrase ("technical skills", "skill ratings") still wins there
   // first; this only catches a bare, unqualified mention ("most common
@@ -447,6 +639,37 @@ const VISUALIZATION_REQUEST_PATTERN = /\b(visuals?|visuali[sz]e|visuali[sz]ation
 
 function detectTopic(question) {
   question = normalizeQuestion(question);
+  // Decided before the main loop below, not as part of TOPIC_PATTERNS.
+  // work_type itself — 'count' sits earlier in that object and its own bare
+  // "how many (?:\w+\s+){0,4}alumni" alternative wins "how many alumni are
+  // employed full-time vs part-time?" outright before work_type's pattern
+  // ever gets a turn (same object-order collision 'names'/tracer_activity's
+  // own comments already document for their "ilan ang alumni"/"updated
+  // tracer" phrasings — checked live: without this, the question answered
+  // with an unrelated "181 employed alumni" total instead of the real
+  // Regular/Permanent vs Casual/Contractual vs Part-time vs Project-based vs
+  // Self-employed breakdown queryWorkType() actually has).
+  if (isWorkTypeComparisonQuestion(question)) return 'work_type';
+  // "salary"/"income"/"compensation" doesn't satisfy EMPLOYMENT_SIGNAL below
+  // at all (no job/work/employ/status substring) — a bare "What is the
+  // average salary of alumni?" matched no topic here whatsoever and fell all
+  // the way to the generic RAG fallback's vague "I could not find relevant
+  // information... rephrase your question" text, instead of clearly saying
+  // salary specifically isn't tracked (see UNTRACKED_EMPLOYMENT_CONCEPTS's
+  // own comment). Routed to 'employment' — untrackedEmploymentConceptMessage()
+  // there is checked before that topic's normal Employed/Unemployed
+  // breakdown and catches this via the same SALARY_PATTERN.
+  if (SALARY_PATTERN.test(question)) return 'employment';
+  // 'names' sits earlier than 'competencies' in TOPIC_PATTERNS below, and its
+  // own broad "show...alumni"/"show...graduates" alternative (any occurrence
+  // of "alumni"/"graduates" within 20 chars of "show", regardless of what's
+  // actually between them) wins "show personal growth of alumni after
+  // graduation" outright before competencies' own new "personal/professional
+  // growth" trigger ever gets a turn — same object-order collision class as
+  // isWorkTypeComparisonQuestion/SALARY_PATTERN above. Caught live: that
+  // exact question returned a plain alphabetical alumni roster instead of
+  // the real personal-growth competency ratings.
+  if (PERSONAL_GROWTH_PATTERN.test(question)) return 'competencies';
   for (const [topic, pattern] of Object.entries(TOPIC_PATTERNS)) {
     if (pattern.test(question)) return topic;
   }
@@ -1225,28 +1448,36 @@ function extractFilters(question) {
   // "contractual", "job order", "casual", "temporary", "probationary",
   // "project-based", "trainee", "on training", "GIP" — a real Graduate field
   // (employmentType) with no filter extraction of its own until now. Gated
-  // on a "job(s)/employment/employee(s)/position/work" word nearby so a bare
+  // on a "job(s)/employ*/position/work" word nearby so a bare
   // "regular"/"permanent"/"casual" elsewhere in an unrelated sentence is
   // never mistaken for this filter. Without this, "How many alumni have
   // regular or permanent jobs?" matched no filter at all and silently
   // answered with the unfiltered whole-database total (262) instead of the
-  // ~98 alumni actually in a Regular/Permanent position. "employee(s)"
-  // added after the fix's own first pass missed "How many alumni are
-  // casual employees?" — "employees" isn't a substring of "employment", so
-  // the original guard word list didn't catch it either.
-  if (/\b(?:jobs?|employment|employees?|position|work)\b/i.test(question)) {
-    const WORK_TYPE_MAP = [
-      [/\b(?:regular|permanent)\b/i, 'Regular/Permanent'],
-      [/\bjob\s*order\b/i,           'Job Order'],
-      [/\bcontractual\b/i,           'Contractual'],
-      [/\btemporary\b/i,             'Temporary'],
-      [/\bprobationary\b/i,          'Probationary'],
-      [/\bcasual\b/i,                'Casual'],
-      [/\bproject-?based\b/i,        'Project-based'],
-      [/\btrainee\b/i,               'Trainee'],
-      [/\bon\s+training\b/i,         'On Training'],
-      [/\b(?:gip|government\s+internship)\b/i, 'GIP'],
-    ];
+  // ~98 alumni actually in a Regular/Permanent position. "employ\w*" (not
+  // just "employment"/"employees?") added after two separate live misses:
+  // "employee(s)" isn't a substring of "employment", and "employed" (as in
+  // "employed full-time") isn't a substring of either — both fell through
+  // the old guard word list entirely.
+  // "Part-time"/"Self-employed" added — confirmed against the actual tracer
+  // form's "present employment type" dropdown (Regular/Permanent, Casual/
+  // Contractual, Part-time, Project-based, Self-employed), real distinct
+  // values this list never had at all (WORK_TYPE_MAP is now shared/declared
+  // near isWorkTypeComparisonQuestion() above, not redeclared here).
+  //
+  // A genuine comparison ("full-time vs part-time", "regular vs contractual
+  // vs part-time") sets filters.employmentTypesRequested to the SPECIFIC
+  // labels named instead — queryWorkType() filters its full breakdown down
+  // to just those, rather than either (a) the single-value path below
+  // silently keeping only ONE side of the user's own comparison (the "part-
+  // time" narrowing bug this comment used to describe), or (b) dumping every
+  // one of the ~12 real+legacy categories on screen when only 2 were asked
+  // about. FULL_TIME_PATTERN is tracked separately since it has no real
+  // WORK_TYPE_MAP entry at all — queryWorkType() uses this flag to say so
+  // explicitly instead of silently dropping that half of the question.
+  if (isWorkTypeComparisonQuestion(question)) {
+    filters.employmentTypesRequested = matchedWorkTypeLabels(question);
+    if (FULL_TIME_PATTERN.test(question)) filters.mentionsUntrackedFullTime = true;
+  } else if (/\b(?:jobs?|employ\w*|position|work)\b/i.test(question)) {
     for (const [pat, value] of WORK_TYPE_MAP) {
       if (pat.test(question)) { filters.employmentType = value; break; }
     }
@@ -1307,7 +1538,7 @@ function extractFilters(question) {
     [/\bproblem.?solving\b/i,           'problemSolving'],
     [/\bproject\s+management\b/i,       'projectManagement'],
     [/\bcritical\s+thinking\b/i,        'criticalThinking'],
-    [/\bwork.?life\s+balance\b/i,       'workLifeBalance'],
+    [WORK_LIFE_BALANCE_PATTERN,         'workLifeBalance'],
     [/\bteamwork\b/i,                   'teamwork'],
     [/\badaptability\b/i,               'adaptability'],
     [/\bcommunication\s+skills?\b|\bcommunication\b/i, 'communication'],
@@ -1373,11 +1604,33 @@ function extractFilters(question) {
   // filters.program earlier and is never reached here).
   if (!filters.program && !filters.industry && !filters.excludeIndustry && !filters.company && !filters.gender) {
     const unknownProgramMatch = question.match(/\b([A-Z]{2,8})\s+(?:graduates?|alumni|alumnus|alumna|students?)\b/);
-    if (unknownProgramMatch) {
+    // A COLLEGE code ("CCS alumni", "CIT graduates") also matches this
+    // bare-ALL-CAPS shape, but it's a real, recognized value — just not a
+    // PROGRAM. It's resolved separately a few lines below (filters.college,
+    // via extractRequestedCollege()/COLLEGE_CODES), and Graduate.program
+    // never literally contains a college code, so setting filters.program to
+    // it here always matched zero real records — producing a false "no
+    // matching tracer study data was found for college 'CCS'" for a
+    // perfectly answerable question. Caught live: "List top industries where
+    // CCS alumni work" and "how many CCS alumni..." both fell into this
+    // trap. COLLEGE_CODES is declared further down this file as a
+    // module-level const — safe to reference here since extractFilters()
+    // only ever runs per-request, after the whole module has loaded.
+    if (unknownProgramMatch && !COLLEGE_CODES.includes(unknownProgramMatch[1].toUpperCase())) {
       filters.program = unknownProgramMatch[1];
       filters.programLabel = unknownProgramMatch[1];
     }
   }
+
+  // A college named in this question ("what are the events in CCS") — folded
+  // into the same seedFilters mechanism as company/job/industry/program/etc.
+  // so a follow-up that doesn't repeat it ("can you list the participants
+  // who attended each of the events?") still inherits it via buildSeedFilters
+  // instead of forcing the college-picker clarify question all over again on
+  // every single turn. extractRequestedCollege is declared further down this
+  // file as a function declaration, so it's hoisted and safe to call here.
+  const requestedCollege = extractRequestedCollege(question);
+  if (requestedCollege) filters.college = requestedCollege;
 
   return filters;
 }
@@ -2074,20 +2327,52 @@ async function queryGender(filters) {
 }
 
 async function queryWorkType(filters) {
-  const rows = toDisplayRows(await Graduate.aggregate([
+  let rows = toDisplayRows(await Graduate.aggregate([
     ...stablePipeline(filters),
     { $match: { employmentType: { $nin: [null, ''] } } },
     ...caseMergeGroup('$employmentType'),
     { $sort: { count: -1 } },
   ]));
   if (!rows.length) return null;
-  const total = rows.reduce((s, r) => s + r.count, 0);
 
+  // A comparison ("Regular/Permanent vs Casual/Contractual") names SPECIFIC
+  // types — narrow the full ~12-category breakdown down to just those,
+  // rather than dumping every real+legacy category whenever only 2 or 3 were
+  // actually asked about. Each requested label's own WORK_TYPE_MAP pattern is
+  // reused so "contractual" still matches BOTH a standalone "Contractual" row
+  // and a combined "Casual/Contractual" row (see that pattern's own comment).
+  let requestedButMissing = [];
+  if (filters.employmentTypesRequested?.length) {
+    const relevant = WORK_TYPE_MAP.filter(([, label]) => filters.employmentTypesRequested.includes(label));
+    // Always narrow, even down to zero real rows (e.g. neither requested
+    // type has any submissions yet) — requestedButMissing below supplies an
+    // explicit "0" line for each in that case. Falling back to the full,
+    // unfiltered breakdown here would silently ignore the fact that a real
+    // comparison was asked for, dumping every one of the ~12 real+legacy
+    // categories instead of the 2-3 specifically named ones.
+    rows = rows.filter(r => relevant.some(([pat]) => pat.test(r._id)));
+    // A requested type with zero matching rows (e.g. "Part-time" or "Self-
+    // employed" — both real dropdown options with no submissions yet) would
+    // otherwise silently vanish from the comparison instead of reading as
+    // "0" the way the other side of the comparison does.
+    requestedButMissing = relevant
+      .filter(([pat]) => !rows.some(r => pat.test(r._id)))
+      .map(([, label]) => label);
+  }
+
+  const total = rows.reduce((s, r) => s + r.count, 0);
   const lbl = filterLabel(filters);
   const gPrefix = genderPrefix(filters);
-  let out = `**Employment type breakdown${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`;
+  const isComparison = filters.employmentTypesRequested?.length > 0;
+  let out = isComparison
+    ? `**Employment type comparison${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`
+    : `**Employment type breakdown${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
-  return withChart(out, { type: 'donut', title: 'Employment Type', rows });
+  requestedButMissing.forEach(label => { out += `- **${label}**: 0 (0.0%) — no alumni recorded under this type yet\n`; });
+  if (filters.mentionsUntrackedFullTime) {
+    out += `\n"Full-time" is not tracked as its own separate category in the tracer study data — the closest real category is **Regular/Permanent**.`;
+  }
+  return withChart(out, { type: 'donut', title: isComparison ? 'Employment Type Comparison' : 'Employment Type', rows });
 }
 
 async function querySector(filters) {
@@ -3588,6 +3873,19 @@ const ALL_COLLEGES_PATTERN = /\ball\s+colleges?\b|\bevery\s+college\b|\btsu[\s-]
 // gets merged back into the original question on the next turn.
 const CLARIFY_COLLEGE_QUESTION = 'Which college would you like to see this for — CPAG, CCS, COS, CIT, COE, CBA, COED, CASS, CCJE, or CAFA? (Or say "all colleges" for a TSU-wide view.)';
 
+// "curriculum relevance" has no dedicated tracer-study question at all
+// (confirmed against tracerFormConfigController.js's actual question list —
+// only jobRelatedToDegree exists). Asked as a clarifying question INSTEAD of
+// silently showing job_relevance data with a disclaimer — a real user
+// (Danica) read the earlier disclaimer-then-data version as the bot still
+// hallucinating/guessing, even with the caveat attached, because it answered
+// before being asked to. See ragService.js's resolveCurriculumRelevance
+// Clarification() for how a short affirmative reply ("yes", "oo") on the
+// next turn gets merged back into an actual job_relevance question, same
+// merge-the-short-reply-into-the-prior-question shape resolveCollegeClarification()
+// already uses for CLARIFY_COLLEGE_QUESTION above.
+const CLARIFY_CURRICULUM_RELEVANCE = 'The tracer study does not track "curriculum relevance" as its own separate question. The closest available data is whether alumni\'s jobs are related to their course of study — would you like to see that instead?';
+
 // Same trigger-then-capture shape as NAMED_LOOKUP_PATTERN/WHO_IS_PATTERN
 // above, adapted for event titles instead of alumni names — captures free
 // text after an attendance/reference trigger word, trimmed of a trailing
@@ -3601,7 +3899,50 @@ const CLARIFY_COLLEGE_QUESTION = 'Which college would you like to see this for �
 // "dumalo"/"pagdalo" + "sa"/"ang" cover the Tagalog equivalent shape
 // ("Pagdalo sa Career Fair", "Ilan ang dumalo sa Career Fair") — same
 // reasoning as TOPIC_PATTERNS.events' own Tagalog support above.
-const EVENT_NAME_TRIGGER = /(?:attend(?:ed|ees|ance)?|about|for|of|dumalo|pagdalo)\b(?:\s+(?:for|of|the|count|sa|ang))*\s+(.+?)(?:\s+event)?[?.!]*$/i;
+// "graph(s)"/"chart(s)"/"visualization(s)"/"plot(s)" and a broader set of
+// report-shaped nouns (breakdown/report/summary/rate/status/list/number/
+// percentage/statistics/data/info/details/record) added to the same
+// connector-skip list as "count" — "show me the attendance GRAPH for Annual
+// Career Fair 2026" needs to reach "Annual Career Fair 2026" the same way
+// "attendance count for X" already does, not stop at "graph" and capture
+// "graph for Annual Career Fair 2026" as if that whole phrase were the
+// title (VISUALIZATION_REQUEST_PATTERN's own vocabulary plus the generic
+// filler nouns ragService.js's own INCOMPLETE_THOUGHT_PATTERNS recognizes,
+// reused here for the same reason "count" already sat in this list).
+// The trigger words themselves (attend*/about/dumalo/pagdalo) are ALSO
+// repeated inside this same connector list — the same thought can be
+// phrased with the filler word EITHER side of "attendance" ("attendance
+// graph for X" vs "graph of attendance for X" vs "graph for the attendance
+// of X"), and the leftmost trigger match can land on any one of them
+// depending on word order, so every OTHER trigger word must also be
+// skippable as filler once one of them has already fired as the anchor —
+// without this, "show me a graph of attendance for X" anchored on "of" and
+// then stopped at the next word ("attendance", not yet a recognized
+// connector), capturing "attendance for X" instead of just "X".
+const EVENT_NAME_TRIGGER = /(?:attend(?:ed|ees|ance)?|about|for|of|dumalo|pagdalo)\b(?:\s+(?:for|of|the|count|sa|ang|graphs?|charts?|visuali[sz]ations?|plots?|breakdowns?|reports?|summar(?:y|ies)|rates?|status(?:es)?|lists?|numbers?|percentages?|statistics?|stats?|data|info(?:rmation)?|details?|records?|attend(?:ed|ees|ance)?|about|dumalo|pagdalo))*\s+(.+?)(?:\s+event)?[?.!]*$/i;
+
+// A follow-up referring to EVERY/EACH event just listed ("each of the
+// events", "individual events", "all of the events") rather than one
+// specific named event still matches EVENT_NAME_TRIGGER, capturing the
+// whole generic phrase as if it were a literal title — resolveEvent() then
+// token-matched words like "each"/"of"/"the"/"events" against every event's
+// title and, finding none, returned a confusing "No event matching 'each of
+// the events' found." instead of recognizing no single event was named.
+// Left unresolved here (same as the bare "event(s)" case below) so
+// resolveEvent() reports {none: true} and callers fall back to the plain
+// event list, the same way they already do for a bare "the event?".
+// The trailing "(?:\s+(?:of|for|in)\s+[a-z]+)?" tolerates a college named IN
+// THE SAME referent phrase ("each of the events OF CCS") — without it, that
+// one extra trailing word made the $ anchor fail to match at all, so the
+// whole "each of the events of CCS" string fell through as if it were a
+// real (if unmatchable) event title instead of being recognized as the same
+// generic referent plus a college mention.
+// Tagalog equivalents added — "bawat kaganapan"/"bawat event" (each event),
+// "lahat ng (mga) event/kaganapan" (all events), "indibiduwal na (mga)
+// event/kaganapan" (individual events) — same referent shapes, just phrased
+// in Filipino, matching how EVENT_NAME_TRIGGER's own "dumalo"/"pagdalo"/
+// "sa"/"ang" alternatives already support Tagalog for attendance.
+const GENERIC_EVENT_REFERENT = /^(?:(?:the\s+)?events?|(?:the\s+)?kaganapan|each\s*(?:one)?\s*(?:of\s*(?:the\s*)?)?events?|individual\s+events?|all\s*(?:of\s*(?:the\s*)?)?events?|every\s+events?|indibiduwal\s+na\s+(?:mga\s+)?(?:events?|kaganapan)|bawat\s+(?:isa\s+sa\s+)?(?:mga\s+)?(?:events?|kaganapan)|lahat\s+ng\s+(?:mga\s+)?(?:events?|kaganapan))(?:\s+(?:of|for|in|sa|ng)\s+[a-z]+)?$|^(?:all\s+)?of\s+them$|^(?:silang\s+)?lahat$|^them$/i;
 
 function extractEventName(question) {
   const m = question.match(EVENT_NAME_TRIGGER);
@@ -3617,8 +3958,21 @@ function extractEventName(question) {
   // one was meant. Caught live: "how many attended the event?" answered
   // "0 alumni attended Test Event" — a real event, just not the one (any
   // one) the question was actually about.
-  if (/^events?$/i.test(name)) return null;
+  if (GENERIC_EVENT_REFERENT.test(name)) return null;
   return name;
+}
+
+// Distinguishes "explicitly asked about EVERY/EACH event" from "named no
+// event at all" — both make extractEventName() return null (see
+// GENERIC_EVENT_REFERENT above), but queryEventAttendees() needs to tell
+// them apart: a bare "who attended?" with nothing else genuinely doesn't
+// name a group to fall back on (show the plain event list, same as always),
+// while "list the participants who attended each of the events?" DOES name
+// a real, answerable group (every currently-listed event) that should
+// actually be resolved rather than treated the same as "no info at all."
+function isGenericMultiEventRequest(question) {
+  const m = question.match(EVENT_NAME_TRIGGER);
+  return !!m && GENERIC_EVENT_REFERENT.test(m[1].trim());
 }
 
 // Same token-matching approach queryPersonLookup() uses for alumni names
@@ -3753,7 +4107,10 @@ async function queryEventOverview(question = '') {
 // check, extractEventName()/resolveEvent() tried to resolve the plural
 // phrase itself as if it were one literal event title and failed with a
 // confusing "No event matching 'attendance of the past events' found."
-const GENERIC_EVENTS_PATTERN = /\b(all|past|upcoming|previous|every)\s+events?\b|\bevents?\s+(overall|in\s+general)\b/i;
+// Tagalog added — "lahat ng (mga) event/kaganapan" (all), "nakaraan(g)/
+// nakalipas na (mga) event/kaganapan" (past), "susunod/paparating na (mga)
+// event/kaganapan" (upcoming).
+const GENERIC_EVENTS_PATTERN = /\b(all|past|upcoming|previous|every)\s+events?\b|\bevents?\s+(overall|in\s+general)\b|\blahat\s+ng\s+(?:mga\s+)?(?:events?|kaganapan)\b|\b(?:nakaraan|nakalipas)g?\s+(?:mga\s+)?(?:events?|kaganapan)\b|\b(?:susunod|paparating)\s+na\s+(?:mga\s+)?(?:events?|kaganapan)\b/i;
 
 async function queryEventAttendanceOverview(question) {
   const scopedCollege = getCollegeScope();
@@ -3785,13 +4142,99 @@ async function queryEventAttendanceOverview(question) {
   let out = `**${heading}${events.length === 15 ? ' (latest 15)' : ''}:**\n\n`;
   events.forEach((e, i) => { out += `${i + 1}. **${e.title}**: ${counts[i]} attended\n`; });
 
-  if (VISUALIZATION_REQUEST_PATTERN.test(question) && events.length > 1) {
-    return withChart(out, {
-      type: 'bars', title: heading,
-      rows: events.map((e, i) => ({ label: e.title, count: counts[i] })),
-    });
+  if (VISUALIZATION_REQUEST_PATTERN.test(question)) {
+    // "gender breakdown of attendance graph for all CCS past events" — a
+    // chart across every event in scope, same EVENT_GENDER_BREAKDOWN_HINT
+    // used by eventVizResult() for a single named event. Without this, the
+    // question fell to the plain per-event COUNT bars below (the same chart
+    // a bare "attendance graph for all CCS past events", no gender
+    // mentioned at all, already produces) — "gender" was correctly noticed
+    // nowhere at all once the question named a group of events instead of
+    // one.
+    if (EVENT_GENDER_BREAKDOWN_HINT.test(question)) {
+      // One donut PER event, not a single combined breakdown — a merged
+      // total across every event obscures which event actually skewed one
+      // way or another (and double-counts anyone who attended more than
+      // one), so a separate, clearly-titled chart per event is more useful
+      // here than it would be for the single-number bars branch below.
+      const rowsByEvent = await Promise.all(events.map(e => genderBreakdownRows([e._id])));
+      const charts = events
+        .map((e, i) => rowsByEvent[i].length ? { type: 'donut', title: `Gender Breakdown — ${e.title}`, rows: rowsByEvent[i] } : null)
+        .filter(Boolean);
+      if (charts.length) return { text: out, charts };
+    } else if (events.length > 1) {
+      return withChart(out, {
+        type: 'bars', title: heading,
+        rows: events.map((e, i) => ({ label: e.title, count: counts[i] })),
+      });
+    }
   }
   return out;
+}
+
+// Shared by queryEventAttendanceCount()/queryEventAttendees() — a plain
+// "graph/chart" request for one event's attendance defaults to the Present/
+// Late/Excused/Absent STATUS breakdown, but naming "gender" (or a bare
+// male/female/LGBTQIA+ mention) alongside it means the chart should break
+// attendees down by GENDER instead. Added after a live bug: "show me the
+// gender breakdown of attendance graph for Annual Career Fair 2026" ignored
+// "gender" entirely and returned the exact same status donut a plain
+// "attendance graph for X" (no gender mentioned at all) already produces —
+// the word was correctly stripped out during event-name extraction (see
+// EVENT_NAME_TRIGGER's own connector-skip list) but nothing downstream ever
+// looked at what it actually asked FOR. Gender lives on Graduate (linked to
+// a User via Graduate.user_id), not on AttendanceLog or User themselves —
+// neither of which carries a gender field at all.
+const EVENT_GENDER_BREAKDOWN_HINT = /\bgenders?\b|\bmales?\b|\bfemales?\b|\bsex\b|\blgbt\w*\b/i;
+
+// Shared by eventVizResult() (one event) and queryEventAttendanceOverview()
+// (every event currently in scope, e.g. "all CCS past events") — aggregates
+// attendees' GENDER across however many event ids are passed in. Gender
+// lives on Graduate (linked to a User via Graduate.user_id), not on
+// AttendanceLog/User themselves.
+async function genderBreakdownRows(eventIds) {
+  const logs = await AttendanceLog.find({ event_id: { $in: eventIds }, status: { $in: ATTENDED_STATUSES } }).select('alumni_id').lean();
+  if (!logs.length) return [];
+  const grads = await Graduate.find({ user_id: { $in: logs.map(l => l.alumni_id) } }).select('user_id gender').lean();
+  const genderById = {};
+  grads.forEach(g => { if (g.user_id) genderById[String(g.user_id)] = g.gender || 'Unspecified'; });
+  const counts = {};
+  logs.forEach(l => {
+    const g = genderById[String(l.alumni_id)] || 'Unspecified';
+    counts[g] = (counts[g] || 0) + 1;
+  });
+  return Object.entries(counts).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
+}
+
+async function eventVizResult(question, eventId, eventTitle, text) {
+  if (!VISUALIZATION_REQUEST_PATTERN.test(question)) return { text, eventTitle };
+
+  let rows;
+  let title;
+  if (EVENT_GENDER_BREAKDOWN_HINT.test(question)) {
+    rows = await genderBreakdownRows([eventId]);
+    title = `Gender Breakdown — ${eventTitle}`;
+  } else {
+    // A bare attendance count has nothing of its own to chart — but the
+    // full Present/Late/Excused/Absent status breakdown behind it does, and
+    // is exactly what "show me a visualization" for this question
+    // reasonably means by default. Same on-request wiring as
+    // queryCount()/queryRate() elsewhere in this file: only computed when
+    // actually asked for, since it's an extra query most attendance-count
+    // questions never need.
+    rows = await AttendanceLog.aggregate([
+      { $match: { event_id: eventId } },
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+    title = `Attendance — ${eventTitle}`;
+  }
+  if (!rows.length) return { text, eventTitle };
+
+  const charted = withChart(text, { type: 'donut', title, rows });
+  return typeof charted === 'string'
+    ? { text: charted, eventTitle }
+    : { text: charted.text, chart: charted.chart, eventTitle };
 }
 
 async function queryEventAttendanceCount(question) {
@@ -3808,30 +4251,78 @@ async function queryEventAttendanceCount(question) {
   // "Who attended X?" / "What's the feedback for X?" chips instead of the
   // generic tracer-study defaults or no chips at all.
   const text = `**${count}** alumni attended **${resolved.event.title}**.`;
+  return eventVizResult(question, resolved.event._id, resolved.event.title, text);
+}
 
-  // A bare attendance count has nothing of its own to chart — but the full
-  // Present/Late/Excused/Absent status breakdown behind it does, and is
-  // exactly what "show me a visualization" for this question reasonably
-  // means. Same on-request wiring as queryCount()/queryRate() elsewhere in
-  // this file: only computed when actually asked for, since it's an extra
-  // query most attendance-count questions never need.
-  if (VISUALIZATION_REQUEST_PATTERN.test(question)) {
-    const statusRows = await AttendanceLog.aggregate([
-      { $match: { event_id: resolved.event._id } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-    ]);
-    if (statusRows.length) {
-      const charted = withChart(text, { type: 'donut', title: `Attendance — ${resolved.event.title}`, rows: statusRows });
-      return typeof charted === 'string'
-        ? { text: charted, eventTitle: resolved.event.title }
-        : { text: charted.text, chart: charted.chart, eventTitle: resolved.event.title };
-    }
+// "list the participants who attended each of the events" — a genuinely
+// answerable request (every event just listed), unlike a bare "who
+// attended?" with no name at all. Dumping every name from every matching
+// event unconditionally risks a wall-of-text reply for a college with many
+// events/attendees, so past MAX_GROUP_ATTENDEES total this offers the
+// per-event COUNTS instead (same shape queryEventAttendanceOverview()
+// already shows) and asks the user to pick one event — the same
+// "clarify/guide rather than overload" principle CLARIFY_COLLEGE_QUESTION
+// and the multi-match list in resolveEvent() already follow elsewhere in
+// this file.
+const MAX_GROUP_ATTENDEES = 30;
+
+async function queryEventAttendeesGroup(question) {
+  const scopedCollege = getCollegeScope();
+  const requestedCollege = extractRequestedCollege(question);
+  if (scopedCollege && requestedCollege && requestedCollege !== scopedCollege) {
+    return `As a ${scopedCollege} coordinator, you may only access ${scopedCollege}'s events — access to ${requestedCollege} or other colleges' events is not available.`;
   }
-  return { text, eventTitle: resolved.event.title };
+  if (!scopedCollege && !requestedCollege && !ALL_COLLEGES_PATTERN.test(question)) {
+    return CLARIFY_COLLEGE_QUESTION;
+  }
+  const college = scopedCollege || requestedCollege;
+  const isUpcoming = /\b(upcoming|forthcoming|future|next)\b/i.test(question);
+  const isPast     = /\b(past|previous|completed|already\s+(held|happened|occurred)|finished)\b/i.test(question);
+  const dateFilter = isUpcoming ? { event_datetime: { $gte: new Date() } }
+                    : isPast    ? { event_datetime: { $lt: new Date() } }
+                    : {};
+  const events = await Event.find({ ...(college ? { college } : {}), ...dateFilter })
+    .select('title event_datetime')
+    .sort({ event_datetime: -1 })
+    .limit(15)
+    .lean();
+  const scopeLabel = isUpcoming ? 'upcoming ' : isPast ? 'past ' : '';
+  if (!events.length) return `No ${scopeLabel}events found${college ? ` for ${college}` : ''}.`;
+
+  const logsByEvent = await Promise.all(events.map(e =>
+    AttendanceLog.find({ event_id: e._id, status: { $in: ATTENDED_STATUSES } }).select('alumni_id').lean()
+  ));
+  const totalAttendees = logsByEvent.reduce((sum, logs) => sum + logs.length, 0);
+
+  if (totalAttendees > MAX_GROUP_ATTENDEES) {
+    let out = `There are **${totalAttendees}** participants across these **${events.length}** ${scopeLabel}events${college ? ` for ${college}` : ''} — too many to list all at once. Please ask about one event at a time instead, for example: "Who attended ${events[0].title}?"\n\n`;
+    events.forEach((e, i) => { out += `${i + 1}. **${e.title}**: ${logsByEvent[i].length} attended\n`; });
+    return out;
+  }
+
+  // Small enough to actually name everyone — one alumni lookup across every
+  // event combined (not per event) since the same alumnus can legitimately
+  // attend more than one event and IDs may repeat across logsByEvent.
+  const allAlumniIds = [...new Set(logsByEvent.flat().map(l => String(l.alumni_id)))];
+  const users = await User.find({ _id: { $in: allAlumniIds } }).select('firstName lastName').lean();
+  const nameById = {};
+  users.forEach(u => { nameById[String(u._id)] = `${u.firstName} ${u.lastName}`; });
+
+  let out = `**Participants — ${events.length} ${scopeLabel}events${college ? ` for ${college}` : ''}:**\n\n`;
+  events.forEach((e, i) => {
+    out += `**${e.title}** (${logsByEvent[i].length} total):\n`;
+    if (!logsByEvent[i].length) {
+      out += `- No recorded attendees.\n`;
+    } else {
+      logsByEvent[i].forEach((l, j) => { out += `${j + 1}. ${nameById[String(l.alumni_id)] || 'Unknown Alumni'}\n`; });
+    }
+    out += '\n';
+  });
+  return out.trim();
 }
 
 async function queryEventAttendees(question) {
+  if (isGenericMultiEventRequest(question)) return queryEventAttendeesGroup(question);
   const resolved = await resolveEvent(question);
   if (resolved.none) return queryEventOverview(question);
   if (resolved.error) return resolved.error;
@@ -3852,23 +4343,11 @@ async function queryEventAttendees(question) {
     out += `${i + 1}. **${nameById[String(l.alumni_id)] || 'Unknown Alumni'}** (${l.status})\n`;
   });
 
-  // A name list has nothing to chart — but the same full status breakdown
-  // queryEventAttendanceCount() charts on request applies here too, since
-  // both answer questions about the same event's AttendanceLog rows.
-  if (VISUALIZATION_REQUEST_PATTERN.test(question)) {
-    const statusRows = await AttendanceLog.aggregate([
-      { $match: { event_id: resolved.event._id } },
-      { $group: { _id: '$status', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-    ]);
-    if (statusRows.length) {
-      const charted = withChart(out, { type: 'donut', title: `Attendance — ${resolved.event.title}`, rows: statusRows });
-      return typeof charted === 'string'
-        ? { text: charted, eventTitle: resolved.event.title }
-        : { text: charted.text, chart: charted.chart, eventTitle: resolved.event.title };
-    }
-  }
-  return { text: out, eventTitle: resolved.event.title };
+  // A name list has nothing to chart on its own — but the same status/
+  // gender breakdown queryEventAttendanceCount() charts on request applies
+  // here too, since both answer questions about the same event's
+  // AttendanceLog rows.
+  return eventVizResult(question, resolved.event._id, resolved.event.title, out);
 }
 
 // Same category set feedbackController.getEventFeedbackSummary() uses for the
@@ -3880,6 +4359,227 @@ function feedbackAverage(nums) {
   const valid = nums.filter(n => typeof n === 'number' && !Number.isNaN(n));
   if (!valid.length) return null;
   return Math.round((valid.reduce((a, b) => a + b, 0) / valid.length) * 100) / 100;
+}
+
+// "which/what event has (the) most/highest feedback" — asking WHICH event,
+// not for feedback about one already-named event (that's queryEventFeedback()
+// above, via resolveEvent()). No dedicated aggregation existed for this shape
+// at all: detectTopic() resolves this to the plain 'events' topic (TOPIC_
+// PATTERNS.event_feedback requires "feedback for/on/about/regarding", which
+// this phrasing doesn't have), and the events dispatch had no feedback-
+// ranking branch either — every "most feedback" question fell all the way to
+// queryEventOverview()'s plain event LIST (nothing about feedback counts at
+// all), which then got sent to LLM narration anyway (classify() reads bare
+// "feedback" as its own qualitative trigger — see EVENT_OR_FEEDBACK_HINT's
+// own comment in ragService.js — forcing this through the aggregation hybrid
+// path even though queryType itself isn't 'statistical', bypassing the
+// raw-list-skips-narration guard there). The LLM was then asked to answer a
+// feedback-count question using an event list with zero feedback data in it
+// — pure improvisation, confirmed live to give a DIFFERENT hallucinated
+// "winner" on separate identical requests to the same question.
+// Shared vocabulary fragments for the three event-feedback question shapes
+// below (ranking/submitters/count) — kept as raw strings, not full RegExp
+// objects, so each pattern can interpolate the pieces it needs into its own
+// larger expression instead of duplicating the same typo/Tagalog list three
+// times over. "-?\s*" between "feed"/"back" tolerates a stray space/hyphen
+// ("feed back", "feed-back"); "fedbacks?"/"feedbaks?"/"feedbcks?" are common
+// misspellings observed live, the same casual-typing tolerance
+// NAMED_LOOKUP_PATTERN's own comment already applies elsewhere in this file;
+// "puna"/"komento" are the natural Tagalog words for written feedback/
+// comments, not just a transliteration of "feedback" itself. "-?\s*marami/
+// konti" plus the trailing "(?:ng)?" accounts for the Filipino linker
+// ("pinakamarami" + noun almost always surfaces as "pinakamaraming X", not
+// bare "pinakamarami X").
+const FB_WORD     = '(?:feed\\s*-?\\s*backs?|fedbacks?|feedbaks?|feedbcks?|puna|komento)';
+const EVT_WORD     = '(?:events?|kaganapan)';
+const MOST_WORD    = '(?:most|highest|top|pinaka-?\\s*marami(?:ng)?)';
+const LEAST_WORD   = '(?:least|lowest|fewest|pinaka-?\\s*konti(?:ng)?|kaunti(?:ng)?)';
+const HOWMANY_WORD = '(?:how\\s+many|number\\s+of|count\\s+of|total(?:\\s+number\\s+of)?|ilan(?:g)?)';
+const WHO_WORD     = '(?:who|sino)';
+const SUBMIT_WORD  = '(?:submi\\w*|gave|left|wrote|provided|posted|nagbigay|nagpost|sumulat|nagsulat|nagsumite|nag-?sumite)';
+
+// "which/what event has (the) most/highest feedback" — asking WHICH event,
+// not for feedback about one already-named event (that's queryEventFeedback()
+// above, via resolveEvent()). No dedicated aggregation existed for this shape
+// at all: detectTopic() resolves this to the plain 'events' topic (TOPIC_
+// PATTERNS.event_feedback requires "feedback for/on/about/regarding", which
+// this phrasing doesn't have), and the events dispatch had no feedback-
+// ranking branch either — every "most feedback" question fell all the way to
+// queryEventOverview()'s plain event LIST (nothing about feedback counts at
+// all), which then got sent to LLM narration anyway (classify() reads bare
+// "feedback" as its own qualitative trigger — see EVENT_OR_FEEDBACK_HINT's
+// own comment in ragService.js — forcing this through the aggregation hybrid
+// path even though queryType itself isn't 'statistical', bypassing the
+// raw-list-skips-narration guard there). The LLM was then asked to answer a
+// feedback-count question using an event list with zero feedback data in it
+// — pure improvisation, confirmed live to give a DIFFERENT hallucinated
+// "winner" on separate identical requests to the same question.
+// ".{0,15}" between the question word and EVT_WORD tolerates a Tagalog
+// filler ("alin SA MGA event", not just adjacent "alin event").
+const EVENT_FEEDBACK_RANKING_PATTERN = new RegExp(
+  `\\b(?:which|what|alin|anong|aling)\\b.{0,15}\\b${EVT_WORD}\\b.{0,40}\\b(?:${MOST_WORD}|${LEAST_WORD})\\b.{0,20}\\b${FB_WORD}\\b` +
+  `|\\b${FB_WORD}\\b.{0,20}\\b(?:${MOST_WORD}|${LEAST_WORD})\\b` +
+  `|\\brank(?:ing)?\\s+(?:of\\s+)?${EVT_WORD}\\s+by\\s+${FB_WORD}\\b`,
+  'i'
+);
+
+async function queryEventFeedbackRanking(question) {
+  const scopedCollege = getCollegeScope();
+  const requestedCollege = extractRequestedCollege(question);
+  if (scopedCollege && requestedCollege && requestedCollege !== scopedCollege) {
+    return `As a ${scopedCollege} coordinator, you may only access ${scopedCollege}'s events — access to ${requestedCollege} or other colleges' events is not available.`;
+  }
+  if (!scopedCollege && !requestedCollege && !ALL_COLLEGES_PATTERN.test(question)) {
+    return CLARIFY_COLLEGE_QUESTION;
+  }
+  const college = scopedCollege || requestedCollege;
+  // Same isUpcoming/isPast narrowing queryEventOverview()/queryEventAttendance
+  // Overview() already support — "how many feedback did the PAST events
+  // receive" (a MANY-events subset, not literally every event on file)
+  // needs the same date scoping those two already apply, not just an
+  // unscoped ALL-events ranking every time.
+  const isUpcoming = /\b(upcoming|forthcoming|future|next|susunod|paparating)\b/i.test(question);
+  const isPast     = /\b(past|previous|completed|already\s+(held|happened|occurred)|finished|nakaraan|nakalipas)\b/i.test(question);
+  const dateFilter = isUpcoming ? { event_datetime: { $gte: new Date() } }
+                    : isPast    ? { event_datetime: { $lt: new Date() } }
+                    : {};
+  const scopeLabel = isUpcoming ? 'upcoming ' : isPast ? 'past ' : '';
+  const events = await Event.find({ ...(college ? { college } : {}), ...dateFilter }).select('title').lean();
+  if (!events.length) return `No ${scopeLabel}events found${college ? ` for ${college}` : ''}.`;
+
+  const feedbackCounts = await EventFeedback.aggregate([
+    { $match: { event_id: { $in: events.map(e => e._id) } } },
+    { $group: { _id: '$event_id', count: { $sum: 1 } } },
+  ]);
+  const countByEventId = {};
+  feedbackCounts.forEach(f => { countByEventId[String(f._id)] = f.count; });
+  const rows = events.map(e => ({ label: e.title, count: countByEventId[String(e._id)] || 0 }));
+  const totalFeedback = rows.reduce((s, r) => s + r.count, 0);
+  if (totalFeedback === 0) return `No feedback has been submitted for any ${scopeLabel}event${college ? ` for ${college}` : ''} yet.`;
+
+  const wantsLeast = new RegExp(`\\b${LEAST_WORD}\\b`, 'i').test(question);
+  const sorted = [...rows].sort((a, b) => wantsLeast ? a.count - b.count : b.count - a.count);
+  const top = sorted[0];
+  // A bare "how many feedback did the past events receive" (no most/least
+  // superlative — that's queryEventFeedbackCount()'s own GENERIC_EVENTS_
+  // PATTERN fallback into this function) reads oddly with a "received the
+  // most/least" headline for what's really just a per-event total request —
+  // only the genuine ranking questions (this function's own dispatch
+  // trigger, EVENT_FEEDBACK_RANKING_PATTERN) get that framing; a plain
+  // count-style entry point states the combined total instead.
+  const isRankingQuestion = EVENT_FEEDBACK_RANKING_PATTERN.test(question);
+  let out = isRankingQuestion
+    ? `**${top.label}** received the ${wantsLeast ? 'least' : 'most'} feedback${college ? ` among ${college}'s events` : ''}, with **${top.count}** feedback response${top.count !== 1 ? 's' : ''}.\n\n`
+    : `**${totalFeedback}** feedback response${totalFeedback !== 1 ? 's' : ''} ${totalFeedback === 1 ? 'has' : 'have'} been received across **${events.length}** ${scopeLabel}event${events.length !== 1 ? 's' : ''}${college ? ` for ${college}` : ''}:\n\n`;
+  sorted.forEach((r, i) => { out += `${i + 1}. **${r.label}**: ${r.count} response${r.count !== 1 ? 's' : ''}\n`; });
+
+  if (VISUALIZATION_REQUEST_PATTERN.test(question) && sorted.length > 1) {
+    return withChart(out, { type: 'bars', title: `Event Feedback${college ? ` for ${college}` : ''}`, rows: sorted });
+  }
+  return out;
+}
+
+// "who submitted feedback in that event?" / "who gave feedback for X?" — WHO
+// left feedback, not the feedback CONTENT itself (queryEventFeedback() above
+// answers ratings/comments for a named event, but never names who submitted
+// them). No dedicated lookup existed for this at all before, so it fell to
+// the same queryEventOverview() plain-event-list fallback every other
+// unmatched event question does, and the LLM was asked to name a specific
+// person from a list that names no people — confirmed live fabricating a
+// made-up "John Doe, Software Engineer at Google" out of nothing.
+//
+// ragService.js's resolveEventReferent() already substitutes a bare "that
+// event"/"this event" reference with the real title text (read from the
+// assistant's own previous reply) before this ever runs, so the real title
+// is normally already sitting in `question` literally. Matched by direct
+// substring/token search against every real event title instead of going
+// through extractEventName()/resolveEvent() first — this function's own
+// trigger (EVENT_FEEDBACK_SUBMITTERS_PATTERN below) doesn't share
+// EVENT_NAME_TRIGGER's "attend*/about/for/of" lead-in requirement at all
+// ("who submitted feedback IN X" has none of those), so that extraction
+// would simply fail to find a name even once the real title is present.
+// SUBMIT_WORD's "submi\w*" (not the literal word "submitted") tolerates
+// typos like "submiited" (a real live miss: "who submiited feedback in the
+// event..." didn't match the literal spelling at all and fell through to
+// the plain event-list fallback instead of this function), same casual-
+// typing tolerance NAMED_LOOKUP_PATTERN's own comment already applies
+// elsewhere in this file. WHO_WORD ("who"/"sino") plus SUBMIT_WORD's own
+// Tagalog verbs (nagbigay/nagpost/sumulat/nagsulat) already cover "sino ang
+// nagbigay ng feedback/puna" without a separate Tagalog-only branch.
+const EVENT_FEEDBACK_SUBMITTERS_PATTERN = new RegExp(
+  `\\b${WHO_WORD}\\b.{0,25}\\b${SUBMIT_WORD}\\b.{0,15}\\b${FB_WORD}\\b` +
+  `|\\b${FB_WORD}\\b.{0,15}\\b(?:submi\\w*|given|left|posted|nabigay|naisumite)\\b.{0,10}\\b(?:by|ni|nina)\\b`,
+  'i'
+);
+
+async function feedbackSubmittersForEvent(event) {
+  const responses = await EventFeedback.find({ event_id: event._id }).select('alumni_id').lean();
+  if (!responses.length) return { text: `No feedback has been submitted yet for **${event.title}**.`, eventTitle: event.title };
+
+  const users = await User.find({ _id: { $in: responses.map(r => r.alumni_id) } }).select('firstName lastName').lean();
+  const nameById = {};
+  users.forEach(u => { nameById[String(u._id)] = `${u.firstName} ${u.lastName}`; });
+
+  const who = responses.length === 1 ? 'alumnus' : 'alumni';
+  let out = `**Feedback for ${event.title}** was submitted by **${responses.length}** ${who}:\n\n`;
+  responses.forEach((r, i) => { out += `${i + 1}. ${nameById[String(r.alumni_id)] || 'Unknown Alumni'}\n`; });
+  return { text: out, eventTitle: event.title };
+}
+
+async function queryEventFeedbackSubmitters(question) {
+  const college = getCollegeScope();
+  const events = await Event.find(college ? { college } : {}).select('title').lean();
+  const named = events.find(e => question.toLowerCase().includes(e.title.toLowerCase()));
+  if (named) return feedbackSubmittersForEvent(named);
+
+  // Fall back to the normal trigger-word extraction path in case the
+  // question DID use a recognized lead-in ("feedback FOR X") the direct
+  // substring search above missed (e.g. a partial or misspelled title).
+  const resolved = await resolveEvent(question);
+  if (resolved.none) return queryEventOverview(question);
+  if (resolved.error) return resolved.error;
+  return feedbackSubmittersForEvent(resolved.event);
+}
+
+// "how many feedback that the event has received?" — a COUNT for one
+// (named or referred) event, distinct from queryEventFeedback() above (full
+// ratings/comments detail) and queryEventFeedbackRanking() (compares across
+// every event). HOWMANY_WORD's "ilan(g)" covers the same lead-in queryCount()
+// elsewhere in this file already recognizes for other subjects, in Tagalog.
+const EVENT_FEEDBACK_COUNT_PATTERN = new RegExp(
+  `\\b${HOWMANY_WORD}\\b.{0,25}\\b${FB_WORD}\\b` +
+  `|\\b${FB_WORD}\\b.{0,25}\\b(?:received|submitted|count|total|natanggap|nabigay|naisumite)\\b`,
+  'i'
+);
+
+async function queryEventFeedbackCount(question) {
+  // "how many feedback did all/past/upcoming events receive" — a MANY-events
+  // subset, not one specific event at all. Checked BEFORE the single-event
+  // resolution below (same order queryEventAttendanceCount() already uses
+  // for the equivalent attendance question) — without this, "past events"
+  // got handed to resolveEvent() as if it were one literal (if unmatchable)
+  // event title.
+  if (GENERIC_EVENTS_PATTERN.test(question)) return queryEventFeedbackRanking(question);
+
+  const college = getCollegeScope();
+  const events = await Event.find(college ? { college } : {}).select('title').lean();
+  let event = events.find(e => question.toLowerCase().includes(e.title.toLowerCase()));
+  if (!event) {
+    const resolved = await resolveEvent(question);
+    if (resolved.error) return resolved.error;
+    event = resolved.event || null;
+  }
+  // No specific event named or resolvable from context ("how many feedback
+  // is there?" with nothing else to go on) — a full per-event ranking
+  // breakdown answers this more usefully than the generic plain event list
+  // every other unmatched event question falls back to.
+  if (!event) return queryEventFeedbackRanking(question);
+
+  const count = await EventFeedback.countDocuments({ event_id: event._id });
+  return {
+    text: `**${count}** feedback response${count !== 1 ? 's' : ''} ${count === 1 ? 'has' : 'have'} been received for **${event.title}**.`,
+    eventTitle: event.title,
+  };
 }
 
 async function queryEventFeedback(question) {
@@ -5248,7 +5948,18 @@ async function queryInner(question, seedFilters = {}) {
   // was actually asked (e.g. a single total count) — forcing it through the
   // by-year breakdown here would silently replace a plain "number of alumni
   // batch 2020 to 2022" count answer with an unrelated per-year chart.
-  if (/\btrend\b|\byear[\s-]over[\s-]year\b|\bover\s+time\b|\b(improv|declin|increas|decreas|grow(?:ing|th)?|worsen|drop(?:ping|ped)?)\w*\b/i.test(question) || (filters.yearFrom && !filters.yearTo)) {
+  // "grow(?:ing|th)?" (meant for "is employment GROWING", "job GROWTH over
+  // time") also matched "personal GROWTH"/"professional GROWTH" — the exact
+  // section names the tracer form itself uses for its competency/personal-
+  // development ratings (see TracerStudyResponse.js's own "Personal Growth
+  // (C)"/"Professional Growth (D)" comments) — hijacking a genuine
+  // competencies question into an unrelated "Employment by graduation year"
+  // breakdown before topic detection ever got a turn. Caught live: "show
+  // personal growth of alumni after graduation" answered with employment-by-
+  // batch percentages instead of the real technical/communication/work-life-
+  // balance/etc. ratings queryCompetencies() already has real data for.
+  const isPersonalOrProfessionalGrowth = PERSONAL_GROWTH_PATTERN.test(question);
+  if (!isPersonalOrProfessionalGrowth && (/\btrend\b|\byear[\s-]over[\s-]year\b|\bover\s+time\b|\b(improv|declin|increas|decreas|grow(?:ing|th)?|worsen|drop(?:ping|ped)?)\w*\b/i.test(question) || (filters.yearFrom && !filters.yearTo))) {
     // queryByYear() may return { text, chart } now — normalize the same way
     // the generic dispatch wrapper below does, since this early-return
     // bypasses that wrapper entirely.
@@ -5346,8 +6057,27 @@ async function queryInner(question, seedFilters = {}) {
   const wantsRankHighest = () => filters.rankDirection ? filters.rankDirection !== 'least' : !/\b(least|lowest|fewest)\b/i.test(question);
 
   const fn = {
-    event_feedback:  () => queryEventFeedback(question),
-    events:          () => /who\s+attended|attendees?|sino.{0,15}dumalo/i.test(question)
+    // "who gave feedback for X?" matches TOPIC_PATTERNS.event_feedback's own
+    // "feedback for/on/about" trigger too — routed to the submitters lookup
+    // instead of queryEventFeedback() (ratings/comments CONTENT for X, never
+    // names who left them) whenever the question is asking WHO, not WHAT.
+    event_feedback:  () => EVENT_FEEDBACK_SUBMITTERS_PATTERN.test(question) ? queryEventFeedbackSubmitters(question)
+      : EVENT_FEEDBACK_COUNT_PATTERN.test(question) ? queryEventFeedbackCount(question)
+      : queryEventFeedback(question),
+    // "participants" added alongside "attendees"/"who attended" — "list the
+    // participants who attended each of the events" used to miss this
+    // branch entirely (no literal "attendees" or "who attended"), fell to
+    // the plain attend*/dumalo test below, and got a bare COUNT instead of
+    // the names the question actually asked for. Excluded whenever a "how
+    // many"/"ilan" counting word is also present — "how many participants
+    // attended X" genuinely wants the count path below, not a name dump.
+    events:          () => EVENT_FEEDBACK_SUBMITTERS_PATTERN.test(question)
+      ? queryEventFeedbackSubmitters(question)
+      : EVENT_FEEDBACK_RANKING_PATTERN.test(question)
+      ? queryEventFeedbackRanking(question)
+      : EVENT_FEEDBACK_COUNT_PATTERN.test(question)
+      ? queryEventFeedbackCount(question)
+      : (/who\s+attended|attendees?|participants?|sino.{0,15}dumalo/i.test(question) && !/\b(?:how\s+many|ilan(?:g)?)\b/i.test(question))
       ? queryEventAttendees(question)
       // Only route into the attendance-count path (which extracts an event
       // NAME out of the question — see EVENT_NAME_TRIGGER) when the question
@@ -5455,7 +6185,16 @@ async function queryInner(question, seedFilters = {}) {
     // checked first here, same priority order the 'count' topic's own
     // dispatch already gives filters.industry over its own default.
     work_type:       () => isSectorQuestion ? querySector(filters) : (filters.industry || filters.excludeIndustry) ? queryIndustry(filters) : queryWorkType(filters),
-    job_relevance:   () => BY_PROGRAM_QUESTION_PATTERN.test(question) ? queryJobAlignmentByProgram(filters)
+    // "curriculum relevance" isn't tracked at all — ASK before showing the
+    // closest real proxy (job_relevance data) instead of showing it right
+    // away with a disclaimer attached (see CLARIFY_CURRICULUM_RELEVANCE's
+    // own comment for why: answering before being asked still read as
+    // guessing to a real user, even with the caveat included). No data
+    // lookup happens on this turn at all — cheaper, and mirrors
+    // CLARIFY_COLLEGE_QUESTION's own "ask first, resolve on the next turn"
+    // shape exactly.
+    job_relevance:   () => /\bcurriculum\b|\bkurikulum\b/i.test(question) ? CLARIFY_CURRICULUM_RELEVANCE
+      : BY_PROGRAM_QUESTION_PATTERN.test(question) ? queryJobAlignmentByProgram(filters)
       : filters.jobRelated ? queryCount(filters, wantsRateChart) : queryJobRelevance(filters),
     // filters.furtherEducation checked first — same reasoning as
     // licensure's own filters.tookExam check just below: an English "how
@@ -5490,6 +6229,15 @@ async function queryInner(question, seedFilters = {}) {
       return hasOtherFilter ? queryCount(filters, wantsRateChart) : queryGender(filters);
     },
     employment:      () => {
+      // Checked FIRST — job satisfaction/work-life balance/time-to-first-job
+      // all satisfy bare EMPLOYMENT_SIGNAL ("job"/"work") the same way a
+      // real employment-status question does, but answering any of them
+      // with the Employed/Unemployed/Self-Employed breakdown below is a
+      // confidently wrong answer to a different question. See
+      // UNTRACKED_EMPLOYMENT_CONCEPTS's own comment for why these decline
+      // plainly instead of offering a closest-available substitute.
+      const untracked = untrackedEmploymentConceptMessage(question);
+      if (untracked) return untracked;
       // "employed including self-employed" / "employed and self-employed" —
       // this combo already has an established combined meaning everywhere
       // else in the app (getDonutStats, the dashboard tile, queryRate's own
@@ -5589,7 +6337,14 @@ async function query(question, options = {}) {
   // A coordinator's own account-level scope is set directly by the caller
   // and always wins — this only ever fires when `college` arrives unset.
   const collegeFromAccount = !!college;
-  if (!college) college = extractRequestedCollege(question);
+  // Falls back to seedFilters.college (a college named in an EARLIER turn,
+  // carried via extractFilters()/buildSeedFilters() above) when this
+  // question's own text doesn't repeat it — see extractFilters()'s own
+  // comment on filters.college for the live failure this fixes (a follow-up
+  // like "list the participants who attended each of the events?" re-asking
+  // the college-picker clarify question even though the college was already
+  // named the very previous turn).
+  if (!college) college = extractRequestedCollege(question) || seedFilters.college;
 
   if (!college) return queryInner(question, seedFilters);
 
@@ -5766,4 +6521,4 @@ function suggestFollowUps(topic, filters = {}) {
 // layer be verified directly, without needing a live MongoDB connection the
 // way calling query() end-to-end would. Not used by any other module; the
 // real request path still only ever calls query() from ragService.js.
-module.exports = { query, hasData, suggestFollowUps, extractPersonName, extractPersonNames, detectTopic, extractFilters, CLARIFY_COLLEGE_QUESTION, extractEventName, VISUALIZATION_REQUEST_PATTERN };
+module.exports = { query, hasData, suggestFollowUps, extractPersonName, extractPersonNames, detectTopic, extractFilters, CLARIFY_COLLEGE_QUESTION, CLARIFY_CURRICULUM_RELEVANCE, extractEventName, VISUALIZATION_REQUEST_PATTERN };
