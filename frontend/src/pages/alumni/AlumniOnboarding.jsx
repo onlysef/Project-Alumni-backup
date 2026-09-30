@@ -2,6 +2,7 @@
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { API } from "../../services/api.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 export default function AlumniOnboarding() {
   const { user, token, firstLogin, setFirstLoginDone } = useAuth();
@@ -17,8 +18,8 @@ export default function AlumniOnboarding() {
   async function handleChangePassword(e) {
     e.preventDefault();
     setError("");
-    if (newPassword.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!isStrongPassword(newPassword)) {
+      setError(PASSWORD_REQUIREMENT_MESSAGE);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -99,7 +100,7 @@ export default function AlumniOnboarding() {
               type="password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder="More than 8 characters, with uppercase + symbol"
               style={inputStyle}
               required
             />

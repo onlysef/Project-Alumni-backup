@@ -60,6 +60,38 @@ const SKILL_LABEL_OVERRIDES = {
   patient: 'Patience', creative: 'Creativity', resourceful: 'Resourcefulness', reliable: 'Reliability', multitask: 'Multitasking',
 };
 
+// The Employment Details "+ Add skill" field (frontend SkillsEditor.jsx)
+// used to accept any text with at least one letter, with no check that it's
+// an actual skill — caught live: alumni entered "Roblox", "Y8", "codm" and
+// they were saved and displayed as skills. Not an attempt at a general "is
+// this a real skill" classifier (impossible to enumerate every legitimate
+// niche skill someone could genuinely have, and SKILL_BUCKETS above is
+// deliberately NOT exhaustive) — a curated denylist of the most common
+// non-skill entries someone might type instead: video games/gaming
+// platforms (near-zero chance any of these is ever a legitimate
+// professional skill), bare entertainment/social apps (a real skill mention
+// uses an actual skill phrase already covered by SKILL_BUCKETS above —
+// "Social Media Marketing", "Content Creation", "Video Editing" — so typing
+// just the app name by itself is never the real skill, only a shortcut to
+// one), and common placeholder/joke text. Mirrored in frontend/src/utils/
+// skillClassification.js for the client-side check — keep both in sync.
+const NON_SKILL_KEYWORDS = [
+  // Video games / gaming platforms
+  'roblox', 'y8', 'minecraft', 'fortnite', 'valorant', 'mobile legends', 'mobile legends bang bang', 'mlbb',
+  'codm', 'call of duty', 'call of duty mobile', 'free fire', 'pubg', 'pubg mobile', 'among us',
+  'genshin impact', 'honkai star rail', 'honkai impact', 'dota', 'dota 2', 'league of legends', 'wild rift',
+  'arena of valor', 'aov', 'grand theft auto', 'gta', 'clash of clans', 'clash royale', 'brawl stars',
+  'brawlhalla', 'stumble guys', 'candy crush', 'subway surfers', 'temple run', 'pokemon go', '8 ball pool',
+  'apex legends', 'overwatch', 'counter strike', 'csgo', 'cs2', 'tekken', 'street fighter', 'fifa', 'efootball',
+  'sky children of light', 'video games', 'video game', 'gaming', 'playstation', 'xbox', 'nintendo switch',
+  // Bare entertainment/social apps (the real skill is a phrase like "Social
+  // Media Marketing"/"Content Creation"/"Video Editing", already covered
+  // above — the app name alone isn't a skill by itself)
+  'netflix', 'youtube', 'tiktok', 'spotify', 'discord', 'snapchat', 'pinterest', 'whatsapp', 'telegram', 'messenger',
+  // Placeholder/joke entries
+  'none', 'n a', 'nothing', 'idk', 'wala', 'basta', 'test', 'testing', 'asdf', 'qwerty', 'lol', 'lmao', 'haha', 'charot', 'ewan',
+];
+
 const skillLabel = (keyword) => SKILL_LABEL_OVERRIDES[keyword] || keyword.replace(/\b\w/g, (c) => c.toUpperCase());
 
 // Flat, deduplicated keyword vocabulary drawn from SKILL_BUCKETS (already
@@ -151,6 +183,13 @@ function matchesKeywordLiterally(userSkillsText, skill) {
   return false;
 }
 
+// Server-side counterpart to the frontend's isNonSkillEntry() (SkillsEditor.jsx
+// already blocks these client-side) — the actual enforcement boundary, since
+// a direct API call bypasses any client-side check entirely.
+function isNonSkillEntry(skillText) {
+  return NON_SKILL_KEYWORDS.some((keyword) => matchesKeywordLiterally(skillText, keyword));
+}
+
 function textContainsSkill(userSkillsText, skill) {
   const key = (skill || '').trim().toLowerCase();
   const symbolPattern = SYMBOL_SKILL_PATTERNS[key];
@@ -220,4 +259,4 @@ function extractSkillsFromText(text) {
   return found;
 }
 
-module.exports = { SKILL_BUCKETS, SKILL_LABEL_OVERRIDES, skillLabel, ALL_SKILL_KEYWORDS, normalizeSkillText, textContainsSkill, extractSkillsFromText };
+module.exports = { SKILL_BUCKETS, SKILL_LABEL_OVERRIDES, skillLabel, ALL_SKILL_KEYWORDS, normalizeSkillText, textContainsSkill, extractSkillsFromText, isNonSkillEntry };

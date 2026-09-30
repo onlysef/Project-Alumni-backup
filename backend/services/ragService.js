@@ -592,6 +592,15 @@ const BARE_TIME_WINDOW_PATTERN = /^[\s?.!,]*(?:yung|ang|and|what\s+about|how\s+a
 const SINGULAR_PRONOUN_PATTERN = /\b(his|her|him|he|she|that person|this person|siya|niya|kanya|kaniya)\b/i;
 const PLURAL_PRONOUN_PATTERN = /\b(their|theirs|them|they|those|nila|sila|kanila)\b/i;
 
+// "make it a line graph"/"turn that into a bar chart" — same "bare
+// follow-up, no topic of its own" shape as CONTINUATION_PATTERN's own "show
+// all"/"show more" phrases just below. Checked directly inside
+// isEllipticalContinuation() (not folded into CONTINUATION_PATTERN itself)
+// so isChartTypeOnlyContinuation() below can reuse the identical word list
+// without duplicating it. Mirrors aggregationService.extractFilters()'s own
+// chartTypeMatch regex — keep both in sync.
+const CHART_TYPE_REQUEST_PATTERN = /\b(?:line|trend|bar|bars|column|pie|donut)\s*(?:chart|graph|plot)\b/i;
+
 function isEllipticalContinuation(question) {
   if (RESET_PHRASE_PATTERN.test(question)) return false;
   // Checked BEFORE the EXPLICIT_SUBJECT_PATTERN gate just below — see
@@ -599,6 +608,12 @@ function isEllipticalContinuation(question) {
   // mention needs to be carved out from that gate's broader batch\d{4} clause.
   if (BARE_BATCH_MENTION_PATTERN.test(question)) return true;
   if (BARE_TIME_WINDOW_PATTERN.test(question)) return true;
+  // Same reasoning as BARE_BATCH_MENTION_PATTERN/BARE_TIME_WINDOW_PATTERN
+  // just above — "make it a line graph" names no subject of its own, so it
+  // must be checked before EXPLICIT_SUBJECT_PATTERN's gate could otherwise
+  // never wrongly trip on it anyway (no alumni/graduates/etc. word in it),
+  // but kept here for the same early, explicit precedence as its siblings.
+  if (CHART_TYPE_REQUEST_PATTERN.test(question)) return true;
   // Checked BEFORE any trigger below (not just the "how many" one) — "who
   // are those ALUMNI working in IT industry?" contains a referent word
   // ("those") and would otherwise short-circuit true via
@@ -662,6 +677,19 @@ function isShowMoreOnlyContinuation(text) {
   const filters = aggregationService.extractFilters(text);
   const keys = Object.keys(filters);
   return keys.length > 0 && keys.every(k => k === 'showAll' || k === 'showLimit');
+}
+
+// "make it a line graph" (see CHART_TYPE_REQUEST_PATTERN's own comment)
+// carries NO topic content of its own either — same shape as
+// isShowMoreOnlyContinuation() just above, reused the same way in the
+// question-rewrite branch below (appends the bare phrase onto the prior
+// turn's own question text so aggregationService re-resolves the SAME
+// topic/filters, with extractFilters()'s chartTypeMatch picking up the
+// appended part).
+function isChartTypeOnlyContinuation(text) {
+  const filters = aggregationService.extractFilters(text);
+  const keys = Object.keys(filters);
+  return keys.length > 0 && keys.every(k => k === 'requestedChartType');
 }
 
 function buildContextQuestions(chatHistory, currentQuestion) {
@@ -1138,11 +1166,19 @@ const QUALITATIVE_REFUSAL_SENTENCE = FALLBACK_RESPONSE;
 // it's also a common English word (an address/location preposition),  the
 // one entry here that risks a false-positive hit in real English prose.
 const TAGALOG_FUNCTION_WORDS = /\b(ang|ng|mga|hindi|wala|akin|niya|nila|kanila|kayo|siya|dito|doon|kasi|naman|lang|talaga|paano|ay|na|sa|kung|dahil|ito|iyon|iyan|kanya|sila|kami|tayo|yung|nang|mayroon)\b/gi;
+// A short one-sentence narration ("May 440 ang mga alumning walang
+// trabaho.") naturally contains fewer function words than a full paragraph,
+// so the absolute-hits floor scales down with sentence length — a fixed
+// floor of 3 let a short Tagalog narration (only "ang"/"mga" hit; "walang"
+// doesn't match "wala" — no word boundary after the root) through
+// undetected. The ratio check still guards against false positives on
+// short legitimate English text.
 function looksNonEnglish(text) {
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length < 4) return false;
   const hits = (text.match(TAGALOG_FUNCTION_WORDS) || []).length;
-  return hits >= 3 && hits / words.length > 0.08;
+  const minHits = words.length <= 10 ? 2 : 3;
+  return hits >= minHits && hits / words.length > 0.08;
 }
 
 // SYSTEM_PROMPT rule 9 tells the model not to open with "Based on the
@@ -1768,7 +1804,11 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // silently forcing an unbounded show-all.
   question = ['greeting', 'acknowledgment', 'offensive'].includes(preTranslateType)
     ? preTranslateQuestion
-    : isShowMoreOnlyContinuation(preTranslateQuestion) && contextQuestions.length
+    // "make it a line graph" (isChartTypeOnlyContinuation — see its own
+    // comment) gets the identical treatment: reuse the prior turn's real
+    // question verbatim, append the bare chart-type phrase so
+    // extractFilters() picks up requestedChartType on top of it.
+    : (isShowMoreOnlyContinuation(preTranslateQuestion) || isChartTypeOnlyContinuation(preTranslateQuestion)) && contextQuestions.length
     ? `${contextQuestions[contextQuestions.length - 1]} (${preTranslateQuestion})`
     : await condenseQuestion(question, chatHistory);
 
@@ -2447,7 +2487,22 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
         // second LLM call that could itself misbehave (observed live: a
         // translate-repair call on a long list degenerated into a repeating
         // loop) for what both prompts already treat as "narration failed."
-        const useNarration = !(REFUSAL_PATTERN.test(trimmed) || droppedTheAnswer || fabricatedYear || fabricatedDetail || personFactsDropped || looksNonEnglish(trimmed));
+        // The opposite failure from droppedTheAnswer above, for the case
+        // that check can't cover: a PURE refusal/decline aggText (e.g.
+        // untrackedEmploymentConceptMessage()'s "job satisfaction isn't
+        // tracked" text) has aggNumbers.length === 0, so droppedTheAnswer
+        // never even runs — nothing was there to drop. But nothing stops
+        // the model from "helpfully" inventing a statistic anyway instead
+        // of just declining. Caught live: "What is the job satisfaction of
+        // alumni?" (correctly refused by aggText, zero numbers in it)
+        // narrated into "Out of 100 alumni, 85 are employed, with 75 of
+        // them finding their jobs highly relevant..." — every number
+        // fabricated, none present in the source at all. Raw digit test
+        // (not just extractBoldNumbers' bold-only extraction) since
+        // aggText here legitimately has no digits whatsoever — any digit
+        // appearing in the narration is definitionally invented.
+        const fabricatedNumbers = !/\d/.test(aggText) && /\d/.test(trimmed);
+        const useNarration = !(REFUSAL_PATTERN.test(trimmed) || droppedTheAnswer || fabricatedYear || fabricatedDetail || personFactsDropped || fabricatedNumbers || looksNonEnglish(trimmed));
         // person_lookup narration falling back to raw aggText used to be
         // silent — impossible to tell WHICH of the 6 guard conditions above
         // actually tripped without live log visibility, which mattered a lot

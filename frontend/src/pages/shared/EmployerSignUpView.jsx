@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { API } from "../../services/api.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -66,8 +67,8 @@ export default function EmployerSignUpView() {
       setError("Please fill in all required fields.");
       return;
     }
-    if (form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!isStrongPassword(form.password)) {
+      setError(PASSWORD_REQUIREMENT_MESSAGE);
       return;
     }
     if (form.password !== form.confirmPassword) {

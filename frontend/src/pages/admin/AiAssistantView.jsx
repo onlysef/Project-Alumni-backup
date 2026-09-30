@@ -10,6 +10,12 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
   const blockRef = useRef(null);
   if (!chart || !chart.rows?.length) return null;
   const Chart = chart.type === "bars" ? DistributionBars : chart.type === "line" ? TrendLine : MiniDonut;
+  // unit/max: backend-computed scale for a 'line' chart (see aggregationService.js's
+  // withChart()/queryInner() requestedChartType override) — TrendLine
+  // defaults to a hardcoded 0-100% axis otherwise, built for this app's one
+  // percentage-trend chart. Undefined for non-line charts; TrendLine's own
+  // defaults harmlessly apply (unused by DistributionBars/MiniDonut).
+  const chartExtraProps = chart.type === "line" ? { unit: chart.unit, max: chart.max } : {};
 
   async function handleCopy() {
     if (!blockRef.current) return;
@@ -50,7 +56,7 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
           {copiedChartId === id ? <CheckIcon /> : <CopyIcon />}
         </button>
       </div>
-      <Chart rows={chart.rows} />
+      <Chart rows={chart.rows} {...chartExtraProps} />
     </div>
   );
 }

@@ -51,8 +51,22 @@ const GraduateSchema = new mongoose.Schema(
     // ─── Post-graduation ──────────────────────────────────────────────────────
     tookExam:         { type: String, trim: true, default: null },
     furtherEducation: { type: String, trim: true, default: null },
-    furtherTraining:  { type: String, trim: true, default: null },
+    furtherTraining:  { type: String, trim: true, default: null }, // Yes / No — whether they pursued any
+    // The actual training/seminar name or type ("Web Development Bootcamp")
+    // — a SEPARATE tracer-study question from furtherTraining above (which
+    // only ever captures Yes/No). Without this, "what trainings did alumni
+    // attend" had no real data to answer from at all, even with correct
+    // topic routing — see queryFurtherTrainingTypes()'s own comment.
+    trainingType:     { type: String, trim: true, index: true, default: null },
     hasPromotion:     { type: String, trim: true, default: null },
+    // Yes/No tracer-study question ("Have you achieved any significant
+    // accomplishments in your current job?") — despite the name, this is
+    // NOT a free-text description of the accomplishment itself (no such
+    // field exists anywhere in the tracer form). Never synced anywhere the
+    // chatbot could see until now (same missing-sync gap trainingType had),
+    // so "what are alumni's significant accomplishments" had no real data
+    // to answer from at all.
+    significantAccomplishments: { type: String, trim: true, default: null },
 
     // ─── Competency self-ratings ──────────────────────────────────────────────
     competencies: {

@@ -6,6 +6,7 @@ import { DashboardSettingsForm } from "../admin/AdminTopbar.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { getNotificationTarget } from "../../services/notificationNavigation.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 function fmtNotifTime(d) {
   const diffMin = Math.round((Date.now() - new Date(d).getTime()) / 60000);
@@ -286,7 +287,7 @@ function AccountSecurityForm() {
     event.stopPropagation();
     setMessage("");
     setError("");
-    if (newPassword.length < 8) { setError("New password must be at least 8 characters."); return; }
+    if (!isStrongPassword(newPassword)) { setError(PASSWORD_REQUIREMENT_MESSAGE); return; }
     if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
     setSaving(true);
     try {
@@ -314,7 +315,7 @@ function AccountSecurityForm() {
     {error && <div className="account-settings-error">{error}</div>}
     {message && <div className="account-settings-success">{message}</div>}
     <label><span>Current Password</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>
-    <label><span>New Password</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="At least 8 characters" required /></label>
+    <label><span>New Password</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="More than 8 characters, with uppercase + symbol" required /></label>
     <label><span>Confirm New Password</span><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></label>
     <button type="submit" className="primary-card-btn" disabled={saving}>{saving ? "Saving…" : "Update Password"}</button>
   </form>;

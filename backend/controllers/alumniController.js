@@ -22,7 +22,8 @@ const { tracerRowToText }     = require('../utils/fileParser');
 const { sendInquiryEmail, sendAlumniMessageEmail } = require('../utils/emailService');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
 const answerCache             = require('../services/answerCache');
-const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill, extractSkillsFromText } = require('../utils/skillMatching');
+const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill, extractSkillsFromText, isNonSkillEntry } = require('../utils/skillMatching');
+const { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } = require('../utils/passwordValidation');
 
 // The set of keys that the TracerStudyResponse schema handles directly.
 // Everything else in the submitted answers object goes into extra_answers.
@@ -131,8 +132,8 @@ async function resolveExtraEmploymentFields(extraAnswers, college) {
 const changePassword = async (req, res) => {
   try {
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    if (!newPassword || !isStrongPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENT_MESSAGE });
     }
     const hashed = await bcrypt.hash(newPassword, 10);
     const user = await User.findByIdAndUpdate(
@@ -163,8 +164,8 @@ const updatePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword) return res.status(400).json({ message: 'Current password is required.' });
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    if (!newPassword || !isStrongPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENT_MESSAGE });
     }
     const user = await User.findById(req.user.id).select('password role college tokenVersion');
     if (!user) return res.status(404).json({ message: 'Account not found.' });
@@ -496,7 +497,9 @@ async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates
     tookExam:         body.professionalExam || null,
     furtherEducation: body.furtherEducation || null,
     furtherTraining:  body.pursuedTrainings || null,
+    trainingType:     body.trainingType || null,
     hasPromotion:     body.promotedInJob || null,
+    significantAccomplishments: body.significantAccomplishments || null,
     competencies: {
       technicalSkills:   body.personalGrowthRatings?.technicalSkills || null,
       communication:     body.personalGrowthRatings?.communicationSkills || null,
@@ -540,7 +543,9 @@ async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates
     board_exam:         graduatePatch.tookExam,
     further_studies:    graduatePatch.furtherEducation,
     trainings:          graduatePatch.furtherTraining,
+    training_type:      graduatePatch.trainingType,
     promoted:           graduatePatch.hasPromotion,
+    accomplishments:    graduatePatch.significantAccomplishments,
   }, graduatePatch.yearGraduated);
 
   const embedding = await getEmbedding(text);
@@ -828,6 +833,14 @@ const updateMyEmployment = async (req, res) => {
     if (skillsList.some((s) => !HAS_LETTER_RE.test(s))) {
       return res.status(400).json({ message: 'Skills should not be just symbols or numbers.' });
     }
+    // SkillsEditor.jsx already blocks these client-side (see
+    // isNonSkillEntry's own comment in utils/skillMatching.js) — this is the
+    // actual enforcement boundary, since a direct API call bypasses any
+    // client-side check entirely.
+    const badSkill = skillsList.find((s) => isNonSkillEntry(s));
+    if (badSkill) {
+      return res.status(400).json({ message: `"${badSkill}" doesn't look like a real skill. Please enter an actual skill or hobby relevant to your work.` });
+    }
 
     const trimmedFacebook = typeof facebook === 'string' ? facebook.trim() : '';
     if (trimmedFacebook && !/facebook\.com|fb\.com/i.test(trimmedFacebook)) {
@@ -937,13 +950,27 @@ const updateMyEmployment = async (req, res) => {
     // tracer response and the normalized Graduate profile in step with it so
     // admin/coordinator views, analytics, and recommendations do not continue
     // showing the older employment information.
-    const tracerEmploymentStatus = updates.employment_status === 'Unemployed' ? 'No' : 'Yes';
+    // The Employment Details form's own status dropdown (see
+    // AlumniEmploymentDetails.jsx) offers "Employed"/"Self-employed"/
+    // "Unemployed" — but this only ever recognized "Unemployed", collapsing
+    // "Self-employed" into the same "Yes" (formally employed) bucket as
+    // "Employed". That silently corrupted the chatbot's employmentStatus
+    // data: an alumnus who legitimately selected "Self-employed" here got
+    // counted as formally employed everywhere Graduate.employmentStatus is
+    // read (chatbot counts/rates, admin views), with no way to tell the two
+    // apart again until their next full tracer study submission happened to
+    // overwrite it correctly.
+    const tracerEmploymentStatus =
+      updates.employment_status === 'Unemployed'      ? 'No'
+      : updates.employment_status === 'Self-employed' ? 'Self-Employed'
+      : 'Yes';
+    const clearWorkFields = updates.employment_status === 'Unemployed';
     const tracerPatch = {
       employmentStatus: tracerEmploymentStatus,
-      companyName: updates.employment_status === 'Unemployed' ? '' : updates.company_name,
-      placeOfWork: updates.employment_status === 'Unemployed' ? '' : updates.work_location,
-      occupationTitle: updates.employment_status === 'Unemployed' ? '' : updates.job_title,
-      industryField: updates.employment_status === 'Unemployed' ? '' : updates.industry,
+      companyName: clearWorkFields ? '' : updates.company_name,
+      placeOfWork: clearWorkFields ? '' : updates.work_location,
+      occupationTitle: clearWorkFields ? '' : updates.job_title,
+      industryField: clearWorkFields ? '' : updates.industry,
     };
     await TracerStudyResponse.updateOne(
       { alumni_id: req.user.id },

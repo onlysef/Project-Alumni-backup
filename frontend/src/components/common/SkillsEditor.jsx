@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { API, authHeaders } from "../../services/api.js";
-import { classifySkill } from "../../utils/skillClassification.js";
+import { classifySkill, isNonSkillEntry } from "../../utils/skillClassification.js";
 
 // Chip-based skills editor shared by alumni and admin/coordinator; `extractEndpoint` picks the role's route.
 const HAS_LETTER_RE = /[A-Za-zÀ-ÖØ-öø-ÿ]/;
@@ -25,6 +25,10 @@ export default function SkillsEditor({ value, onChange, extractEndpoint = "/alum
     if (!skill) { setDraft(""); return; }
     if (!HAS_LETTER_RE.test(skill)) {
       setDraftError("A skill should include letters, not just symbols or numbers.");
+      return;
+    }
+    if (isNonSkillEntry(skill)) {
+      setDraftError("That doesn't look like a real skill — please enter an actual skill or hobby relevant to your work.");
       return;
     }
     setDraftError("");
