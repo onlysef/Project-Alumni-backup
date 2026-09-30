@@ -2,6 +2,7 @@
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Dropdown } from "../../components/common/Primitives.jsx";
+import acLogo from "../../assets/images/ac-logo.png";
 
 import { API, authHeaders } from "../../services/api.js";
 
@@ -213,8 +214,8 @@ function Assistant({ showToast }) {
     <section className={`panel${collapsedPanel ? " assistant-collapsed" : ""}`}>
       <div className="panel-head">
         <div className="left-title">
-          <span className="tiny-logo">AC</span>
-          <span>AC - Assistant</span>
+          <img className="tiny-logo" src={acLogo} alt="" />
+          <span>ATREIA - Assistant</span>
         </div>
         <span style={{ position: "relative" }}>
           <button
@@ -271,7 +272,7 @@ function Assistant({ showToast }) {
       <div className={`assistant-body${thinking ? " is-thinking" : ""}`}>
         {messages.map((m, i) => (
           <div className={m.type === "user" ? "chat-row user" : "chat-row"} key={i}>
-            {m.type === "bot" && <div className="bot">AC</div>}
+            {m.type === "bot" && <img className="bot" src={acLogo} alt="ATREIA" />}
             <div>
               <div className="bubble" style={{ whiteSpace: "pre-line" }}>{m.text}</div>
               <div className="chat-time">{m.time}</div>

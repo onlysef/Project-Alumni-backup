@@ -55,7 +55,7 @@ function dbAnswerThinkingDelay() {
 // (aiController.chat reads it off req.user), so it's always the real
 // requester's own name, never guessed from the question text.
 function buildGreetingResponse(userName) {
-  return `Good day${userName ? `, ${userName}` : ''}. I am AC, the Graduate Tracer Study assistant. You may inquire about employment rates, industries, board examination results, competency ratings, program breakdowns, or any other information contained in the tracer study records.`;
+  return `Good day${userName ? `, ${userName}` : ''}. I am ATREIA, the Graduate Tracer Study assistant. You may inquire about employment rates, industries, board examination results, competency ratings, program breakdowns, or any other information contained in the tracer study records.`;
 }
 
 // ACKNOWLEDGMENT_PATTERN (queryClassifier.js) groups two different speech
@@ -75,7 +75,7 @@ const GRATITUDE_PATTERN = /\b(thanks|thank\s*you|ty|salamat)\b/i;
 const ACK_RESPONSE = `You are welcome. Please let me know if you have further questions regarding the tracer study data.`;
 const PLAIN_ACK_RESPONSE = `Is there anything further I may assist you with regarding the tracer study data?`;
 
-const IDENTITY_RESPONSE = `I am AC, the AI Assistant for the TSU Alumni Portal. I am designed to assist you in exploring Graduate Tracer Study data, including employment rates, industries, board examination results, program breakdowns, events, and related information. Please let me know what you would like to know.`;
+const IDENTITY_RESPONSE = `I am ATREIA, the Alumni Tracer Records and Event Information Assistant for the TSU Alumni Portal. I am designed to assist you in exploring Graduate Tracer Study data, including employment rates, industries, board examination results, program breakdowns, events, and related information. Please let me know what you would like to know.`;
 
 // Fallback only — used when the LLM-generated help answer below fails (see
 // the 'help' branch in generateAnswer()). Kept in sync with what AC can
@@ -114,7 +114,7 @@ const HELP_CAPABILITIES = `- Tracer study statistics: employment rate, industrie
 - Demographics: employment status, gender
 - Events: event listings (upcoming or past), attendance counts, who attended a specific event
 - Event feedback: ratings and comments alumni gave for a specific event
-AC only answers using Tarlac State University (TSU) alumni tracer-study and event data — it does not answer unrelated general-knowledge questions.`;
+ATREIA only answers using Tarlac State University (TSU) alumni tracer-study and event data — it does not answer unrelated general-knowledge questions.`;
 
 // Single shared wording for every "I genuinely can't answer this" case —
 // unrecognized/gibberish input, off-topic questions, and a search (structured
@@ -223,7 +223,7 @@ function hasDomainKeyword(question) {
 // to fall back on — the data here is guaranteed complete, so there is nothing to
 // refuse. Reusing the RAG-oriented SYSTEM_PROMPT here caused small Llama models to
 // occasionally parrot its "not enough data" refusal verbatim despite valid data.
-const STATS_NARRATIVE_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. The user asked a statistics question, and the exact answer has ALREADY been computed from the database — it is given below as complete, verified data.
+const STATS_NARRATIVE_PROMPT = `You are ATREIA, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. The user asked a statistics question, and the exact answer has ALREADY been computed from the database — it is given below as complete, verified data.
 
 Your ONLY task is to rewrite that data as a short, natural-language explanation (2-5 sentences).
 
@@ -250,7 +250,7 @@ STRICT RULES:
 // ONLY a short lead-in sentence naming the top-ranked item, which then gets
 // PREPENDED to the untouched, guaranteed-correct bulleted breakdown — the
 // LLM only ever does natural-language framing, never touches a number.
-const PREDICTION_LEAD_IN_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal. The user asked a PREDICTIVE question (e.g. "which program would most likely..."), and a complete, verified ranked breakdown has ALREADY been computed from the database — it is given below as the Data.
+const PREDICTION_LEAD_IN_PROMPT = `You are ATREIA, an AI assistant for the TSU (Tarlac State University) Alumni Portal. The user asked a PREDICTIVE question (e.g. "which program would most likely..."), and a complete, verified ranked breakdown has ALREADY been computed from the database — it is given below as the Data.
 
 Your ONLY task is to write ONE short sentence (a second sentence only if a genuine sample-size caveat is needed) that directly names the TOP-ranked item from the Data as the answer to the prediction, in natural predictive language (e.g. "Based on current tracer study data, X is most likely to have employed alumni, with a Y% employment rate.").
 
@@ -268,7 +268,7 @@ STRICT RULES:
 // verified FACTS block and this prompt asks the model to answer whatever was
 // actually asked FROM that block, so a new phrasing never needs a new
 // hand-coded template again.
-const PERSON_LOOKUP_NARRATIVE_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. The user asked about one or more specific alumni. Their verified record(s) from the tracer study database are given below, separated by "---" if there is more than one person — this is everything known about them, nothing more.
+const PERSON_LOOKUP_NARRATIVE_PROMPT = `You are ATREIA, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. The user asked about one or more specific alumni. Their verified record(s) from the tracer study database are given below, separated by "---" if there is more than one person — this is everything known about them, nothing more.
 
 Your ONLY task is to answer the user's actual question using that record.
 
@@ -1223,12 +1223,12 @@ function formalizeRegister(text) {
 // deterministic net: if the final answer contains a verbatim fingerprint of
 // the prompt's own scaffolding (not alumni data), it's a leak, and gets
 // replaced with the standard refusal rather than shipped to the user.
-const PROMPT_LEAK_PATTERN = /\bSTRICT RULES\b|\byou are AC\b|\bNEVER invent or estimate statistics\b|\balumni-submitted tracer responses, employment records, or event feedback comments\b/i;
+const PROMPT_LEAK_PATTERN = /\bSTRICT RULES\b|\byou are (?:AC|ATREIA)\b|\bNEVER invent or estimate statistics\b|\balumni-submitted tracer responses, employment records, or event feedback comments\b/i;
 function containsPromptLeak(text) {
   return PROMPT_LEAK_PATTERN.test(text);
 }
 
-const SYSTEM_PROMPT = `You are AC, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. You help administrators and coordinators understand alumni tracer study results and institutional programs.
+const SYSTEM_PROMPT = `You are ATREIA, an AI assistant for the TSU (Tarlac State University) Alumni Portal, College of Computer Studies. You help administrators and coordinators understand alumni tracer study results and institutional programs.
 
 STRICT RULES — follow these exactly:
 1. Answer ONLY using information explicitly present in the provided context. Do not use your training knowledge to fill gaps.
@@ -1964,7 +1964,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // reason, so "what can you do" never comes back empty.
   if (queryType === 'help') {
     const helpMessages = [
-      { role: 'system', content: `You are AC, an AI assistant for the Tarlac State University (TSU) Alumni Portal — a Philippine state university. TSU always means Tarlac State University here; never assume or state any other institution, even one that shares the same initials. The user is asking what you can help with. Using ONLY the capability list below, write a short, formal, professional explanation of what you can answer — a short paragraph or a few bullet points, under 120 words. Use no contractions and no exclamation marks. Always respond in English, even if the user's question was written in Tagalog, Taglish, or any other language — understand the question in whatever language it's asked, but always answer in English. Do not invent, expand, or exaggerate any capability beyond exactly what's listed below, do not name or guess at any institution/place/organization not mentioned here, and do not mention internal system details.\n\nCapabilities:\n${HELP_CAPABILITIES}` },
+      { role: 'system', content: `You are ATREIA, an AI assistant for the Tarlac State University (TSU) Alumni Portal — a Philippine state university. TSU always means Tarlac State University here; never assume or state any other institution, even one that shares the same initials. The user is asking what you can help with. Using ONLY the capability list below, write a short, formal, professional explanation of what you can answer — a short paragraph or a few bullet points, under 120 words. Use no contractions and no exclamation marks. Always respond in English, even if the user's question was written in Tagalog, Taglish, or any other language — understand the question in whatever language it's asked, but always answer in English. Do not invent, expand, or exaggerate any capability beyond exactly what's listed below, do not name or guess at any institution/place/organization not mentioned here, and do not mention internal system details.\n\nCapabilities:\n${HELP_CAPABILITIES}` },
       { role: 'user', content: question },
     ];
     try {

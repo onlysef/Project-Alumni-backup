@@ -215,9 +215,9 @@ test('acknowledgment: a chained "okay, thanks!" is recognized and gets the grati
 // at the very start). Translation is now skipped entirely for a message
 // that already classifies as greeting/acknowledgment/offensive in its
 // original language.
-test('greeting: "kumusta AC" gets the canned greeting, not an off-persona LLM improvisation', { skip }, async () => {
-  const result = await generateAnswer('kumusta AC', [], {});
-  assert.match(result.answer, /I'm AC/i);
+test('greeting: "kumusta ATREIA" gets the canned greeting, not an off-persona LLM improvisation', { skip }, async () => {
+  const result = await generateAnswer('kumusta ATREIA', [], {});
+  assert.match(result.answer, /I am ATREIA/i);
   assert.doesNotMatch(result.answer, /functioning within normal parameters/i);
 });
 
@@ -234,12 +234,12 @@ test('acknowledgment: a bare "okay"/"salamat" with NO real prior conversation ge
   for (const history of [[], [turn('user', 'okay')]]) {
     const okay = await generateAnswer('okay', history, {});
     assert.doesNotMatch(okay.answer, /you're welcome|anything else i can help/i, `history=${JSON.stringify(history)}`);
-    assert.match(okay.answer, /I'm AC/i, `history=${JSON.stringify(history)}`);
+    assert.match(okay.answer, /I am ATREIA/i, `history=${JSON.stringify(history)}`);
   }
 
   const salamat = await generateAnswer('salamat', [turn('user', 'salamat')], {});
   assert.doesNotMatch(salamat.answer, /you're welcome|anything else i can help/i);
-  assert.match(salamat.answer, /I'm AC/i);
+  assert.match(salamat.answer, /I am ATREIA/i);
 });
 
 // Regression: "saan siya nagtatrabaho?" ("where does SHE work?") right after

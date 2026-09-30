@@ -10,5 +10,5 @@ export const coordinatorNavItems = [
   { view: "export-employment", icon: "icon-17", label: "Export Alumni Record" },
   { view: "notify-alumni", icon: "icon-9", label: "Notify Alumni" },
   { view: "contacts",     icon: "icon-4", label: "Alumni Contacts" },
-  { view: "aiassistant",  icon: "icon-15", label: "AC - AI Assistant" },
+  { view: "aiassistant",  icon: "icon-15", label: "ATREIA - AI Assistant" },
 ];

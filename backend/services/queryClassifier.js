@@ -22,7 +22,7 @@
 // assistant by name ("hello ac!", "hi ai") still matches — those aren't
 // address terms like "guys"/"everyone" grammatically, but serve the exact
 // same role here (naming who the greeting is for, not changing its meaning).
-const GREETING_PATTERN = /^\s*(hi+|hello+|he+y+|yo+|hola|howdy|hiya|oi+|oy+|wassup|what'?s\s*up|good\s?(morning|afternoon|evening|day|noon)|greetings|su+p+|kumusta|kamusta|musta|magandang\s+(umaga|hapon|gabi|araw))(?:\s+(po|ho|na|ka|kayo|there|guys|everyone|all|bro|sis|ac|ai))*[\s!.,]*$/i;
+const GREETING_PATTERN = /^\s*(hi+|hello+|he+y+|yo+|hola|howdy|hiya|oi+|oy+|wassup|what'?s\s*up|good\s?(morning|afternoon|evening|day|noon)|greetings|su+p+|kumusta|kamusta|musta|magandang\s+(umaga|hapon|gabi|araw))(?:\s+(po|ho|na|ka|kayo|there|guys|everyone|all|bro|sis|ac|atreia|ai))*[\s!.,]*$/i;
 
 // A bare acknowledgment ("thanks", "okay", "salamat") had no category of its
 // own before — it fell to the 'statistical' default, hit RAG with nothing
@@ -168,7 +168,7 @@ const HELP_PATTERNS = [
   // this file's other capability patterns either, since they all spell
   // "you" out in full — the same gap IDENTITY_PATTERNS below already closed
   // for "who are you/u" but this list never got the same treatment.
-  /\bwhat\b.{0,15}\b(?:can|could|does|do|is|are)\b.{0,25}\b(?:you|u|ac|it|this)\b.{0,20}\b(?:do|help|answer|for|capable)\b/i,
+  /\bwhat\b.{0,15}\b(?:can|could|does|do|is|are)\b.{0,25}\b(?:you|u|ac|atreia|it|this)\b.{0,20}\b(?:do|help|answer|for|capable)\b/i,
   /\bhow\b.{0,15}\b(?:to|do|does|is)\b.{0,25}\b(?:use|work|used)\b/i,
   /\b(?:guide|help)\s+me\b.{0,20}\bhow\s+to\s+use\b/i,
   // Bare "capabilities"/"commands" — the only thing either word means in
