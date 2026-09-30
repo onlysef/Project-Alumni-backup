@@ -228,6 +228,21 @@
   let resetEmail = '';
   let resetToken = '';
 
+  // Mirrors frontend/src/utils/passwordValidation.js — this is a standalone
+  // static page with no bundler/module system, so the rule is inlined here
+  // rather than imported; keep both in sync. The strength meter below used
+  // to score length/uppercase/digit/symbol independently for COSMETIC
+  // display only, never actually gating submission, so it could show a
+  // "strong" green bar for a password that still failed the real 8-char-only
+  // check just above it — misleading. Now driven by the same real rule.
+  const PASSWORD_REQUIREMENT_MESSAGE = 'Password must be more than 8 characters and include at least one uppercase letter and one symbol.';
+  function isStrongPassword(password) {
+    if (typeof password !== 'string' || password.length <= 8) return false;
+    if (!/[A-Z]/.test(password)) return false;
+    if (!/[^A-Za-z0-9]/.test(password)) return false;
+    return true;
+  }
+
   const leftSubs = [
     "No worries — it happens.<br>Enter your email and we'll send<br>a verification code to get you<br>back into your account.",
     "Check your inbox.<br>We've sent a 6-digit code to<br>your registered email address.<br>It expires in 10 minutes.",
@@ -375,7 +390,7 @@
 
     if (!newPassword || !confirm) return showMsg('panel3', 'Please fill in both fields.');
     if (newPassword !== confirm) return showMsg('panel3', 'Passwords do not match.');
-    if (newPassword.length < 8) return showMsg('panel3', 'Password must be at least 8 characters.');
+    if (!isStrongPassword(newPassword)) return showMsg('panel3', PASSWORD_REQUIREMENT_MESSAGE);
 
     const btn = document.getElementById('btn3');
     btn.disabled = true;
@@ -441,11 +456,14 @@
   });
 
   function updateStrength(val) {
+    // Each bar now maps to one real, gating requirement (not an arbitrary
+    // cosmetic point), so a fully-lit meter means the password will actually
+    // pass the isStrongPassword() check above it, not just look strong.
     let score = 0;
-    if (val.length >= 8) score++;
+    if (val.length > 8) score++;
     if (/[A-Z]/.test(val)) score++;
-    if (/[0-9]/.test(val)) score++;
     if (/[^A-Za-z0-9]/.test(val)) score++;
+    if (isStrongPassword(val)) score++;
     const colors = ['#e53e3e', '#dd6b20', '#d69e2e', '#38a169'];
     for (let i = 1; i <= 4; i++) {
       const bar = document.getElementById('bar' + i);

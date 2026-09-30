@@ -9,6 +9,7 @@ const XLSX                = require('xlsx');
 const { escapeRegex }     = require('../utils/escapeRegex');
 const { FIXED_KEYS }      = require('../utils/tracerFixedKeys');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
+const { isNonSkillEntry }     = require('../utils/skillMatching');
 
 // Maps programsCompleted → User.course code
 function mapProgramToCourse(programsCompleted) {
@@ -664,6 +665,16 @@ const updateEmploymentRecord = async (req, res) => {
     }
     if (employment_status === 'Self-employed' && !industry?.trim()) {
       return res.status(400).json({ message: 'Industry or business type is required.' });
+    }
+    // This endpoint had no skills validation at all — an admin/coordinator
+    // editing on an alumnus's behalf could save the same non-skill entries
+    // (video game names, placeholder text) SkillsEditor.jsx's client-side
+    // check blocks on the alumnus's own self-service edit. See
+    // isNonSkillEntry's own comment in utils/skillMatching.js.
+    const skillsList = typeof skills === 'string' ? skills.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const badSkill = skillsList.find((s) => isNonSkillEntry(s));
+    if (badSkill) {
+      return res.status(400).json({ message: `"${badSkill}" doesn't look like a real skill. Please enter an actual skill or hobby relevant to your work.` });
     }
 
     // Set by the coordinator route middleware — checked before any update

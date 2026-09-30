@@ -239,7 +239,9 @@ function tracerRowToText(row, year) {
   if (row.further_studies)       parts.push(`Pursued Further Studies: ${row.further_studies}`);
   if (row.further_studies_details) parts.push(`Further Studies Details: ${row.further_studies_details}`);
   if (row.trainings)             parts.push(`Pursued Trainings: ${row.trainings}`);
+  if (row.training_type)         parts.push(`Training Type: ${row.training_type}`);
   if (row.promoted)              parts.push(`Promoted: ${row.promoted}`);
+  if (row.accomplishments)       parts.push(`Significant Accomplishment: ${row.accomplishments}`);
   if (row.certifications)        parts.push(`Professional Certifications: ${row.certifications}`);
   return parts.join('. ') + '.';
 }

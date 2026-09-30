@@ -8,6 +8,7 @@ import { getNotificationTarget } from "../../services/notificationNavigation.js"
 import { isDrawerViewport } from "../../constants/layout.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import AvatarCropper from "../common/AvatarCropper.jsx";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 const LAST_READ_KEY = "adminNotifReadAt";
 const READ_ITEMS_KEY = "adminNotifReadItems";
@@ -456,7 +457,7 @@ function ChangePasswordSection({ showToast }) {
     e.preventDefault();
     setError("");
     if (!current || !newPw || !confirm) { setError("All fields are required."); return; }
-    if (newPw.length < 8)              { setError("New password must be at least 8 characters."); return; }
+    if (!isStrongPassword(newPw))      { setError(PASSWORD_REQUIREMENT_MESSAGE); return; }
     if (newPw !== confirm)             { setError("Passwords do not match."); return; }
     setSaving(true);
     try {

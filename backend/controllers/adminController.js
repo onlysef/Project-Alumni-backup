@@ -348,18 +348,23 @@ const updateUser = async (req, res) => {
       const deleted = await AlumniEmployment.findOneAndDelete({ alumni_id: req.params.id });
       if (deleted) employmentRemoved = true;
 
-      // Also drop the linked Graduate row (and its RAG chunk) — otherwise an
-      // account promoted to coordinator/admin/employer keeps being counted
-      // as an alumnus in every tracer-study statistic and AC chatbot answer
-      // forever, since Graduate has no role field of its own to filter on.
-      const graduate = await Graduate.findOneAndDelete({
+      // Also drop the linked Graduate row(s) (and their RAG chunks) —
+      // otherwise an account promoted to coordinator/admin/employer keeps
+      // being counted as an alumnus in every tracer-study statistic and AC
+      // chatbot answer forever, since Graduate has no role field of its own
+      // to filter on. deleteMany, not findOneAndDelete — a person can have
+      // MORE THAN ONE Graduate document (see deleteUser()'s own comment on
+      // this exact gap) — findOneAndDelete only ever removed the first,
+      // silently leaving any duplicate behind still counted as an alumnus.
+      const graduates = await Graduate.find({
         $or: [
           { user_id: req.params.id },
           { $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, existing.email.toLowerCase().trim()] } },
         ],
-      });
-      if (graduate) {
-        await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
+      }).select('_id').lean();
+      if (graduates.length) {
+        await Graduate.deleteMany({ _id: { $in: graduates.map(g => g._id) } });
+        await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': { $in: graduates.map(g => String(g._id)) } });
         answerCache.bumpDataVersion();
       }
     }
@@ -441,19 +446,33 @@ const deleteUser = async (req, res) => {
       Job.updateMany({ postedBy: req.params.id, status: 'open' }, { status: 'closed' }),
       (async () => {
         if (!user.email) return;
+        // deleteMany, not findOneAndDelete — a person can have MORE THAN ONE
+        // Graduate document (repeated bulk-import files over time create a
+        // new row rather than merging into an existing one; aggregationService
+        // .js's shared DEDUP stage papers over the duplicates for ordinary
+        // queries by always picking the newest one). findOneAndDelete here
+        // only ever removed the FIRST match, silently leaving any OTHER
+        // duplicate row behind as a permanent orphan — still counted in
+        // every tracer-study statistic and AC chatbot answer forever, for an
+        // account that no longer exists. Caught live: a deleted "Sample
+        // Only" test account's Graduate row kept showing up in batch-2023
+        // headcounts (48) while its own employment-rate denominator (47,
+        // respondents only) correctly excluded it, reading as two
+        // disagreeing answers for the same real bug.
         // Prefer the indexed user_id FK (set whenever a live tracer/employment
         // action touched this record); Graduate.email isn't schema-normalized
         // to lowercase (bulk-imported rows keep the source spreadsheet's
         // original casing), so an exact match there would still silently miss
         // records — kept as a fallback for rows that predate user_id.
-        const graduate = await Graduate.findOneAndDelete({
+        const graduates = await Graduate.find({
           $or: [
             { user_id: req.params.id },
             { $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, user.email.toLowerCase().trim()] } },
           ],
-        });
-        if (graduate) {
-          await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
+        }).select('_id').lean();
+        if (graduates.length) {
+          await Graduate.deleteMany({ _id: { $in: graduates.map(g => g._id) } });
+          await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': { $in: graduates.map(g => String(g._id)) } });
         }
       })(),
     ]);

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { API } from "../../services/api.js";
 import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 const CURRENT_YEAR = new Date().getFullYear();
@@ -50,8 +51,8 @@ export default function AlumniSignUpView() {
       setError("Please fill in all required fields.");
       return;
     }
-    if (form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!isStrongPassword(form.password)) {
+      setError(PASSWORD_REQUIREMENT_MESSAGE);
       return;
     }
     if (form.password !== form.confirmPassword) {
