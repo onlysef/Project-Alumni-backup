@@ -479,7 +479,7 @@ export default function EventParticipation() {
                         {r.status}
                       </span>
                     </td>
-                    <td data-label="Feedback">{r.feedback ? "Yes" : ""}</td>
+                    <td data-label="Feedback">{r.feedback ? "Yes" : "No feedback yet"}</td>
                     <td data-label="Action">
                       <div className="coord-row-actions">
                         <button type="button" aria-label={`Edit attendance for ${r.name}`} onClick={() => openEditAttendance(r)}>
