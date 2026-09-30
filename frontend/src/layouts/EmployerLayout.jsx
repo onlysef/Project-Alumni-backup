@@ -106,7 +106,7 @@ export default function EmployerLayout() {
 
         <nav className="nav" aria-label="Main navigation">
           {navItems.map((item, index) => <React.Fragment key={item.to}>
-            <div className="nav-category" aria-hidden="true">{["Overview", "Talent", "Scheduling"][index]}</div>
+            <div className="nav-category" aria-hidden="true">{["Overview", "Recruitment", "Scheduling"][index]}</div>
             <NavLink to={item.to} onClick={closeOnMobile} className={({ isActive }) => isActive ? "active" : undefined}>
             <span><Icon name={item.icon}/></span><span>{item.label}</span>
             </NavLink>
