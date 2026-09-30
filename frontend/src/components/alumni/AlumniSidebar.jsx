@@ -21,7 +21,7 @@ const ITEMS = [
 const NAV_SECTIONS = [
   { label: "Overview", items: ITEMS.slice(0, 1) },
   { label: "Community", items: [ITEMS[1], ITEMS[3], ITEMS[4]] },
-  { label: "Career", items: [ITEMS[2], ITEMS[5], ITEMS[6], ITEMS[7]] },
+  { label: "Professional Growth", items: [ITEMS[2], ITEMS[5], ITEMS[6], ITEMS[7]] },
 ];
 
 export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restrictedLabel = "Account Setup" }) {

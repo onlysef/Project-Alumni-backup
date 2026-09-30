@@ -887,14 +887,14 @@ export default function AiAssistantView() {
 
   function exportChat() {
     const lines = messages.map((m) => {
-      const who = m.role === "user" ? "You" : "AC";
+      const who = m.role === "user" ? "You" : "ATREIA";
       return `[${m.time}] ${who}:\n${m.text}${m.sources?.length ? `\nSources: ${m.sources.join(", ")}` : ""}${m.sampleSize ? `\nBased on ${m.sampleSize} matching record${m.sampleSize === 1 ? "" : "s"}` : ""}`;
     });
     const blob = new Blob([lines.join("\n\n")], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `AC-Chat-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.download = `ATREIA-Chat-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -1003,7 +1003,7 @@ export default function AiAssistantView() {
           <div className="ac-welcome">
             <h2 className="ac-welcome-title">Good day, {firstName}.</h2>
             <p className="ac-welcome-sub">
-              I am AC, your assistant for alumni records, tracer surveys, and employment outcomes.
+              I am ATREIA, your assistant for alumni records, tracer surveys, and employment outcomes.
             </p>
 
             <form className="ac-composer ac-composer-center" onSubmit={handleSubmit}>
@@ -1011,12 +1011,12 @@ export default function AiAssistantView() {
                 ref={inputRef}
                 className="ac-input"
                 rows={1}
-                placeholder="Ask AC…"
+                placeholder="Ask ATREIA…"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 maxLength={MAX_MESSAGE_LENGTH}
-                aria-label="Message AC"
+                aria-label="Message ATREIA"
               />
               <button
                 type="submit"
@@ -1137,8 +1137,8 @@ export default function AiAssistantView() {
               {thinking && (
                 <div className="ac-row ac-row-ac ac-row-with-avatar">
                   <img className="ac-avatar" src={acLogo} alt="" aria-hidden="true" />
-                  <div className="ac-typing" aria-label="AC is thinking">
-                    <span className="ac-typing-text">AC is thinking</span>
+                  <div className="ac-typing" aria-label="ATREIA is thinking">
+                    <span className="ac-typing-text">ATREIA is thinking</span>
                     <span className="ac-typing-dots">
                       <span /><span /><span />
                     </span>
@@ -1183,12 +1183,12 @@ export default function AiAssistantView() {
                   ref={inputRef}
                   className="ac-input"
                   rows={1}
-                  placeholder="Ask AC…"
+                  placeholder="Ask ATREIA…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   maxLength={MAX_MESSAGE_LENGTH}
-                  aria-label="Message AC"
+                  aria-label="Message ATREIA"
                 />
                 <button
                   type="submit"
@@ -1336,7 +1336,7 @@ export default function AiAssistantView() {
                       </svg>
                     </div>
                     <p>No files imported yet.</p>
-                    <p>Upload an Excel, PDF, or Word file to add it to AC's knowledge base.</p>
+                    <p>Upload an Excel, PDF, or Word file to add it to ATREIA's knowledge base.</p>
                   </div>
                 ) : (
                   <div className="ac-files-list">
@@ -1431,7 +1431,7 @@ export default function AiAssistantView() {
                 ) : flags.length === 0 ? (
                   <div className="ac-files-empty">
                     <p>No unreviewed flags.</p>
-                    <p>Prompt-injection attempts, possible RAG fabrications, and questions AC couldn't answer all land here.</p>
+                    <p>Prompt-injection attempts, possible RAG fabrications, and questions ATREIA couldn't answer all land here.</p>
                   </div>
                 ) : (
                   <div className="ac-files-list">

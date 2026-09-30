@@ -13,10 +13,10 @@ export const employmentSets = [
 ];
 
 export const assistantGreetings = [
-  "Good day. I am AC, your AI assistant. How may I assist you today?\nYou may inquire about alumni records, tracer surveys, or employment data.",
-  "Good day. I am AC. I am able to assist you in reviewing alumni records, employment status, and tracer survey results.",
-  "Welcome back. I am AC, your AI assistant for tracer records and graduate employment insights.",
-  "Good day. I am AC. You may ask about alumni profiles, course alignment, survey completion, or employment outcomes.",
+  "Good day. I am ATREIA, your AI assistant. How may I assist you today?\nYou may inquire about alumni records, tracer surveys, or employment data.",
+  "Good day. I am ATREIA. I am able to assist you in reviewing alumni records, employment status, and tracer survey results.",
+  "Welcome back. I am ATREIA, your AI assistant for tracer records and graduate employment insights.",
+  "Good day. I am ATREIA. You may ask about alumni profiles, course alignment, survey completion, or employment outcomes.",
 ];
 
 export function assistantReply(message) {
@@ -28,7 +28,7 @@ export function assistantReply(message) {
   if (n.includes("employment") || n.includes("employed"))
     return "### Employment Summary\n\nThe dashboard contains **260 alumni employment records**.\n\n| Status | Alumni | Share |\n| :--- | ---: | ---: |\n| Employed | 169 | 65% |\n| Unemployed | 52 | 20% |\n| Unidentified | 39 | 15% |\n\n1. Review unidentified records first.\n2. Use the employment chart to compare each status.\n3. Filter by course for a more focused breakdown.";
   if (n.includes("job") || n.includes("opportunit"))
-    return "AC is focused on tracer-study data. I can help with alumni records, survey responses, employment status, and course-related employment outcomes.";
+    return "ATREIA is focused on tracer-study data. I can help with alumni records, survey responses, employment status, and course-related employment outcomes.";
   return "### What I can help with\n\n- Alumni records\n- Tracer surveys\n- Employment status\n- Course-related employment outcomes\n\nTry one of the quick buttons or ask a question about these areas.";
 }
 
@@ -46,7 +46,7 @@ export const viewRoutes = {
   accounts: "Manage Accounts",
   announcements: "Post Announcements",
   partnerships: "Partnerships",
-  aiassistant: "AC - AI Assistant",
+  aiassistant: "ATREIA - AI Assistant",
   about: "Alumni Association Inc.",
 };
 
@@ -90,7 +90,7 @@ export const navGroups = [
           { key: "Coordinator", label: "Coordinator" },
           { key: "Employer", label: "Employer" },
       ] },
-      { view: "aiassistant", icon: "icon-15", label: "AC - AI Assistant" },
+      { view: "aiassistant", icon: "icon-15", label: "ATREIA - AI Assistant" },
     ],
   },
 ];
