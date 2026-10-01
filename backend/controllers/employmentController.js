@@ -60,6 +60,31 @@ async function resolveExtraFromTracer(extraAnswers, college = 'CCS', prefetchedC
   }
 }
 
+// Question types the tracer dashboard can automatically chart for a
+// custom/admin-added question — closed-vocabulary answers only. text/
+// textarea/static_text have no closed vocabulary to group by, so they're
+// deliberately excluded (would just produce noisy per-respondent buckets).
+const CHARTABLE_TYPES = new Set(['radio', 'select', 'checkbox', 'rating_table']);
+
+// Returns the chart-able custom questions (i.e. not one of the fixed
+// TracerStudyResponse fields) found in an already-fetched TracerFormConfig
+// pages array, so computeTracerAnalytics can build a dashboard chart for
+// each one without any hand-written per-question code. Each question
+// carries its source page's id/order/title so the dashboard can group its
+// chart under the same section the question was added to, in the same
+// order the pages appear in the live tracer survey.
+function extractChartableCustomQuestions(pages) {
+  const out = [];
+  pages.forEach((page, pageOrder) => {
+    (page.questions || []).forEach((q) => {
+      if (FIXED_KEYS.has(q.id)) return;
+      if (!CHARTABLE_TYPES.has(q.type)) return;
+      out.push({ ...q, pageId: page.id, pageOrder, pageTitle: page.title });
+    });
+  });
+  return out;
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function logActivity(userId, userName, action, targetName = '', details = '') {
@@ -1153,6 +1178,40 @@ async function computeTracerAnalytics(query) {
     const { userScope, userLookupMatch, tracerMatch } = buildTracerFilterMatch(query);
     const tracerMatchStage = Object.keys(tracerMatch).length ? [{ $match: tracerMatch }] : [];
 
+    // The dashboard's section names, question labels, and ordering are all
+    // driven by this one live TracerFormConfig fetch — a single college's
+    // question set is unambiguous; "all colleges" has no single definition
+    // to drive the dashboard from, so college must be set for any of this.
+    const college = (query.college || '').trim().toUpperCase();
+    const cfg = college ? await TracerFormConfig.findOne({ college }).lean() : null;
+    const rawPages = cfg?.config?.pages || [];
+    const customQuestions = extractChartableCustomQuestions(rawPages);
+    const customFacets = {};
+    customQuestions.forEach((q) => {
+      const path = `extra_answers.${q.id}`;
+      if (q.type === 'checkbox') {
+        customFacets[`custom__${q.id}`] = [
+          ...tracerMatchStage,
+          { $unwind: { path: `$${path}`, preserveNullAndEmptyArrays: false } },
+          ...ciGroup(`$${path}`),
+        ];
+      } else if (q.type === 'rating_table') {
+        customFacets[`custom__${q.id}`] = [
+          ...tracerMatchStage,
+          { $project: { ratings: { $objectToArray: `$${path}` } } },
+          { $unwind: '$ratings' },
+          { $match: { 'ratings.v': { $nin: ['', null] } } },
+          { $group: { _id: { skill: '$ratings.k', rating: '$ratings.v' }, count: { $sum: 1 } } },
+        ];
+      } else {
+        customFacets[`custom__${q.id}`] = [
+          ...tracerMatchStage,
+          { $match: notBlank(path) },
+          ...ciGroup(`$${path}`),
+        ];
+      }
+    });
+
     const [[result], totalAlumniOnRoll, totalActiveAlumni] = await Promise.all([
       TracerStudyResponse.aggregate([
       // Deleting an alumni account doesn't always reach every linked record
@@ -1256,6 +1315,8 @@ async function computeTracerAnalytics(query) {
 
           byCertifications: [...tracerMatchStage, ...groupCount('professionalCertifications')],
           byDevActivities: [...tracerMatchStage, ...groupCount('professionalDevelopmentActivities')],
+
+          ...customFacets,
         },
       },
       ]),
@@ -1311,6 +1372,24 @@ async function computeTracerAnalytics(query) {
     });
     const avgPersonalGrowthScore = growthN ? +(growthSum / growthN).toFixed(2) : null;
 
+    // Same chart-shape choices hand-picked for the fixed fields above,
+    // applied generically: rating_table always gets the rating matrix,
+    // checkbox (multi-select) always gets bars, and radio/select gets a
+    // donut only when the option list is small enough to stay legible.
+    const customQuestionResults = customQuestions.map((q) => {
+      const rows = result[`custom__${q.id}`] || [];
+      if (q.type === 'rating_table') {
+        const ratingRows = (q.rows || []).map((row) => {
+          const ratings = {};
+          rows.filter((r) => r._id.skill === row.key).forEach((r) => { ratings[r._id.rating] = r.count; });
+          return { skill: row.label, ratings };
+        });
+        return { id: q.id, label: q.label, type: q.type, renderAs: 'rating', rows: ratingRows, pageId: q.pageId, pageOrder: q.pageOrder, pageTitle: q.pageTitle };
+      }
+      const renderAs = q.type === 'checkbox' ? 'bars' : ((q.options || []).length <= 5 ? 'donut' : 'bars');
+      return { id: q.id, label: q.label, type: q.type, renderAs, rows: mapRows(rows), pageId: q.pageId, pageOrder: q.pageOrder, pageTitle: q.pageTitle };
+    });
+
     const kpis = {
       totalActiveAlumni,
       totalAlumniOnRoll,
@@ -1360,6 +1439,20 @@ async function computeTracerAnalytics(query) {
         byCertifications: mapRows(result.byCertifications),
         byDevActivities: mapRows(result.byDevActivities),
       },
+      customQuestions: customQuestionResults,
+      // Live page/question layout for the selected college's tracer form —
+      // the dashboard walks this (not a hardcoded section list) to decide
+      // what sections exist, their titles, which questions chart under each,
+      // and in what order, so renaming/reordering/deleting a question or
+      // page in the Tracer Form Editor is reflected immediately.
+      formStructure: rawPages.map((page, pageOrder) => ({
+        id: page.id,
+        pageOrder,
+        title: page.title,
+        questions: [...(page.questions || [])]
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map((q) => ({ id: q.id, label: q.label })),
+      })),
     };
 }
 
@@ -1478,6 +1571,25 @@ function buildTracerSummaryRows(data) {
     Object.entries(ratings).forEach(([rating, count]) => {
       rows.push([skill, rating, count, pctOf(count, total)]);
     });
+  });
+
+  // Custom/admin-added questions (see computeTracerAnalytics' customQuestions)
+  // get the same treatment as the fixed sections above, so the Excel export
+  // never falls out of sync with what the dashboard shows on screen.
+  (data.customQuestions || []).forEach((q) => {
+    if (q.type === 'rating_table') {
+      rows.push([q.label]);
+      rows.push(['Skill', 'Rating', 'Count', 'Percent']);
+      (q.rows || []).forEach(({ skill, ratings }) => {
+        const total = Object.values(ratings).reduce((a, b) => a + b, 0);
+        Object.entries(ratings).forEach(([rating, count]) => {
+          rows.push([skill, rating, count, pctOf(count, total)]);
+        });
+      });
+      rows.push([]);
+    } else {
+      distBlock(q.label, q.rows);
+    }
   });
 
   return rows;
