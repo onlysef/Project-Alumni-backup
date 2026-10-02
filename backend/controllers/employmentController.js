@@ -10,6 +10,7 @@ const { escapeRegex }     = require('../utils/escapeRegex');
 const { FIXED_KEYS }      = require('../utils/tracerFixedKeys');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
 const { isNonSkillEntry }     = require('../utils/skillMatching');
+const { extractChartableCustomQuestions, buildCustomQuestionFacetPipeline } = require('../utils/customQuestionAggregation');
 
 // Maps programsCompleted → User.course code
 function mapProgramToCourse(programsCompleted) {
@@ -58,31 +59,6 @@ async function resolveExtraFromTracer(extraAnswers, college = 'CCS', prefetchedC
   } catch {
     return {};
   }
-}
-
-// Question types the tracer dashboard can automatically chart for a
-// custom/admin-added question — closed-vocabulary answers only. text/
-// textarea/static_text have no closed vocabulary to group by, so they're
-// deliberately excluded (would just produce noisy per-respondent buckets).
-const CHARTABLE_TYPES = new Set(['radio', 'select', 'checkbox', 'rating_table']);
-
-// Returns the chart-able custom questions (i.e. not one of the fixed
-// TracerStudyResponse fields) found in an already-fetched TracerFormConfig
-// pages array, so computeTracerAnalytics can build a dashboard chart for
-// each one without any hand-written per-question code. Each question
-// carries its source page's id/order/title so the dashboard can group its
-// chart under the same section the question was added to, in the same
-// order the pages appear in the live tracer survey.
-function extractChartableCustomQuestions(pages) {
-  const out = [];
-  pages.forEach((page, pageOrder) => {
-    (page.questions || []).forEach((q) => {
-      if (FIXED_KEYS.has(q.id)) return;
-      if (!CHARTABLE_TYPES.has(q.type)) return;
-      out.push({ ...q, pageId: page.id, pageOrder, pageTitle: page.title });
-    });
-  });
-  return out;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -1188,28 +1164,7 @@ async function computeTracerAnalytics(query) {
     const customQuestions = extractChartableCustomQuestions(rawPages);
     const customFacets = {};
     customQuestions.forEach((q) => {
-      const path = `extra_answers.${q.id}`;
-      if (q.type === 'checkbox') {
-        customFacets[`custom__${q.id}`] = [
-          ...tracerMatchStage,
-          { $unwind: { path: `$${path}`, preserveNullAndEmptyArrays: false } },
-          ...ciGroup(`$${path}`),
-        ];
-      } else if (q.type === 'rating_table') {
-        customFacets[`custom__${q.id}`] = [
-          ...tracerMatchStage,
-          { $project: { ratings: { $objectToArray: `$${path}` } } },
-          { $unwind: '$ratings' },
-          { $match: { 'ratings.v': { $nin: ['', null] } } },
-          { $group: { _id: { skill: '$ratings.k', rating: '$ratings.v' }, count: { $sum: 1 } } },
-        ];
-      } else {
-        customFacets[`custom__${q.id}`] = [
-          ...tracerMatchStage,
-          { $match: notBlank(path) },
-          ...ciGroup(`$${path}`),
-        ];
-      }
+      customFacets[`custom__${q.id}`] = buildCustomQuestionFacetPipeline(q.id, q.type, tracerMatchStage);
     });
 
     const [[result], totalAlumniOnRoll, totalActiveAlumni] = await Promise.all([

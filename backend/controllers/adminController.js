@@ -348,6 +348,16 @@ const updateUser = async (req, res) => {
       const deleted = await AlumniEmployment.findOneAndDelete({ alumni_id: req.params.id });
       if (deleted) employmentRemoved = true;
 
+      // Also drop the account's own tracer submission — otherwise it stays
+      // behind as an orphaned TracerStudyResponse forever (same gap
+      // deleteUser()'s cascade already closes for an actually-deleted
+      // account, just missing here for a role change). The Tracer Dashboard
+      // already filters these out at query time via its own role==='alumni'
+      // guard, so this doesn't change any visible stat — it just stops dead
+      // rows from accumulating for an account that's never going back to
+      // being counted as an alumnus's submission.
+      await TracerStudyResponse.deleteOne({ alumni_id: req.params.id });
+
       // Also drop the linked Graduate row(s) (and their RAG chunks) —
       // otherwise an account promoted to coordinator/admin/employer keeps
       // being counted as an alumnus in every tracer-study statistic and AC

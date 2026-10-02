@@ -67,6 +67,17 @@ const GraduateSchema = new mongoose.Schema(
     // so "what are alumni's significant accomplishments" had no real data
     // to answer from at all.
     significantAccomplishments: { type: String, trim: true, default: null },
+    // Multi-select tracer-study question ("What are your reasons for not
+    // being employed?") asked only of No/Never-Employed respondents — a
+    // person can pick several at once (e.g. both "Lack of work experience"
+    // AND "Skills do not match current job market demands"). Never synced
+    // anywhere the chatbot could see until now (same missing-sync gap
+    // trainingType/significantAccomplishments had) — "why are alumni
+    // unemployed"-shaped questions had no real data to answer from at all,
+    // even though TracerStudyResponse.reasonsNotEmployed (and the Admin
+    // Dashboard's own unemploymentReasons facet) has real, populated answers
+    // for this exact question.
+    reasonsNotEmployed: [{ type: String, trim: true }],
 
     // ─── Competency self-ratings ──────────────────────────────────────────────
     competencies: {

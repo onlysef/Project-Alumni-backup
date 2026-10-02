@@ -418,6 +418,17 @@ const updateTracerFormConfig = async (req, res) => {
     } else {
       cfg = await TracerFormConfig.create({ college, config, updatedBy: req.user.id });
     }
+
+    // Keeps the chatbot's custom-question embedding catalog (see
+    // services/tracerQuestionCatalogService.js) in sync with whatever this
+    // college's form actually contains now — backgrounded so saving the
+    // form doesn't wait on an HF embeddings API round-trip.
+    setImmediate(() => {
+      require('../services/tracerQuestionCatalogService')
+        .rebuildCatalogForCollege(college)
+        .catch((err) => console.error('rebuildCatalogForCollege error:', err.message));
+    });
+
     res.json({ config: cfg.config, college, message: `Tracer form for ${college} saved.` });
   } catch (err) {
     console.error('updateTracerFormConfig error:', err);

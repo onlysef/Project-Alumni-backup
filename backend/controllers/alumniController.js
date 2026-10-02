@@ -500,6 +500,7 @@ async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates
     trainingType:     body.trainingType || null,
     hasPromotion:     body.promotedInJob || null,
     significantAccomplishments: body.significantAccomplishments || null,
+    reasonsNotEmployed: Array.isArray(body.reasonsNotEmployed) ? body.reasonsNotEmployed : [],
     competencies: {
       technicalSkills:   body.personalGrowthRatings?.technicalSkills || null,
       communication:     body.personalGrowthRatings?.communicationSkills || null,
@@ -546,6 +547,7 @@ async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates
     training_type:      graduatePatch.trainingType,
     promoted:           graduatePatch.hasPromotion,
     accomplishments:    graduatePatch.significantAccomplishments,
+    reasons_not_employed: graduatePatch.reasonsNotEmployed,
   }, graduatePatch.yearGraduated);
 
   const embedding = await getEmbedding(text);
