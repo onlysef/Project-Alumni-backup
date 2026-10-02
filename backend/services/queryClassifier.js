@@ -169,7 +169,16 @@ const HELP_PATTERNS = [
   // "you" out in full — the same gap IDENTITY_PATTERNS below already closed
   // for "who are you/u" but this list never got the same treatment.
   /\bwhat\b.{0,15}\b(?:can|could|does|do|is|are)\b.{0,25}\b(?:you|u|ac|atreia|it|this)\b.{0,20}\b(?:do|help|answer|for|capable)\b/i,
-  /\bhow\b.{0,15}\b(?:to|do|does|is)\b.{0,25}\b(?:use|work|used)\b/i,
+  // Negative lookahead for "not"/"n't" right after the modal — caught live:
+  // "How many alumni do NOT work abroad?" (a plain statistical question
+  // about work location) matched this pattern outright ("how" ... "do" ...
+  // "work," with nothing requiring a system/chatbot subject in between,
+  // unlike the "what can you/this do" pattern just above which already
+  // anchors on one), misclassifying it as 'help' and answering with a vague
+  // capability description instead of ever reaching aggregationService at
+  // all. A genuine "how do you use this"/"how does this work" capability
+  // question never has a negation sitting right after its modal verb.
+  /\bhow\b.{0,15}\b(?:to|do|does|is)\b(?!.{0,10}\b(?:not|n't)\b).{0,25}\b(?:use|work|used)\b/i,
   /\b(?:guide|help)\s+me\b.{0,20}\bhow\s+to\s+use\b/i,
   // Bare "capabilities"/"commands" — the only thing either word means in
   // this app's chat interface is asking what AC itself can do; there's no

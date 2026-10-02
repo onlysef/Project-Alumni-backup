@@ -38,6 +38,16 @@ const VOCABULARY = [
   'further', 'studies', 'study', 'education', 'masters', 'doctorate', 'postgrad',
   // Licensure
   'license', 'licensure', 'licensed', 'exam', 'examination', 'professional', 'board', 'passed', 'failed', 'took',
+  // "passer"/"passers" (a NOUN, "board passer" = someone who passed the
+  // board exam) is a different, legitimate word from "passed" (the verb),
+  // not a typo of it — but with no protected entry of its own, it sat
+  // exactly 1 substitution away from "passed" and got silently rewritten.
+  // Caught live: "Ilang porsyento ng alumni ang board passer?" became
+  // "...ang board passed?", which no longer matched aggregationService.js's
+  // own `board\s+passers?` trigger (that gate was specifically added for
+  // the noun phrasing) — tookExam never got set, and the question fell
+  // through to a keyword-overlap clarify instead of the real pass rate.
+  'passer', 'passers',
   // Competencies
   'competency', 'competencies', 'skill', 'skills', 'technical', 'communication', 'teamwork', 'adaptability',
   'performance', 'critical', 'thinking', 'project', 'management', 'balance',
@@ -83,13 +93,82 @@ const VOCABULARY = [
   'kumusta', 'kamusta', 'musta',
   'kaya', 'gawin', 'sagutin', 'tulungan', 'paano', 'gamitin', 'magamit', 'pwede', 'puwede', 'itanong', 'tanungin',
   'ilan', 'ilang', 'ilista', 'ipakita', 'porsyento', 'porsiyento', 'pinakamataas', 'pinakamababa', 'bilang',
+  // "ibang" ("other"/"foreign," as in "ibang bansa" = "another/foreign
+  // country," the standard Tagalog phrase for "abroad") is a DIFFERENT word
+  // from "ilang" ("how many"/"some") just above, not a typo of it — but
+  // with no protected entry of its own, it sat exactly 1 substitution away
+  // ('b' vs 'l') and silently got "corrected" INTO "ilang" once that word
+  // was added to this vocabulary. Caught live: "Ilan ang mga alumning hindi
+  // nagtrabaho sa ibang bansa?" ("how many alumni do NOT work abroad?")
+  // became "...sa ilang bansa?" ("...in SOME countries?"), destroying the
+  // one phrase aggregationService.js's hasAbroadSignal check depends on —
+  // workLocation never got set to 'abroad' at all, and the question fell
+  // through to the generic bare employed-alumni count.
+  'ibang',
+  // "aling"/"alin" ("which") had no protected entry at all, so it fuzzy-
+  // matched to the unrelated ENGLISH vocabulary word "align" (job-relevance
+  // vocabulary, added for "aligns with their course" phrasing) — within
+  // edit distance via a simple letter transposition ("-ing" vs "-ign").
+  // Caught live: "Aling programa ang may pinakamataas na employment rate?"
+  // ("WHICH program has the highest employment rate?") got silently rewritten
+  // to "Align programa ang...", which no longer matched any "which
+  // program"-shaped trigger downstream — the by-program ranking question
+  // collapsed into the generic bare overall rate, with the LLM then
+  // fabricating a specific, entirely nonexistent program name ("the College
+  // of Engineering") to paper over the lost "which program" framing.
+  'aling', 'alin', 'anong', 'alamin',
   'bakit', 'dahilan', 'ipaliwanag', 'paliwanag', 'palagay', 'opinyon', 'karanasan', 'mungkahi', 'puna',
   // Alumni-tracer domain vocabulary from the project's own Tagalog reference
   // table (nagtapos, kumpanya, sahod, etc.) — mirrors ragService.js's
   // DOMAIN_KEYWORDS additions for the same reason as every entry above.
-  'nagtapos', 'gradweyt', 'trabaho', 'nagtatrabaho', 'tatrabaho', 'kasalukuyang',
+  'nagtapos', 'gradweyt', 'trabaho', 'nagtatrabaho', 'tatrabaho', 'kasalukuyang', 'kasalukuyan',
   'kurso', 'programa', 'baytse', 'industriya', 'kumpanya', 'kompanya', 'posisyon',
   'sahod', 'kita', 'lokasyon', 'lugar', 'sumagot', 'nasa', 'sila', 'nila', 'kanila', 'siya', 'niya',
+  // Systematic audit (2026-10-02): ran every common Tagalog pronoun, particle,
+  // connector, and domain word a real user plausibly types through
+  // correctTypos() looking for the exact "aling"/"ibang"/"passer" collision
+  // shape (a legitimate, correctly-spelled word silently rewritten into an
+  // unrelated VOCABULARY term) BEFORE it causes a live wrong answer, instead
+  // of waiting for the next one to surface one at a time. Found 14 more:
+  // 'kada' ("per"/"each," as in "kada taon" = "per year" — TOPIC_PATTERNS.
+  // by_year's own trigger phrase) -> 'kaya' ("so"/"can"); 'lang' ("only/
+  // just," one of the single most common Tagalog particles) -> 'ilang'
+  // ("how many/some"); 'iyan' ("that") -> 'ilan' ("how many"); 'muna'
+  // ("first/for now") -> 'puna' (VOCABULARY's "feedback/comment" term,
+  // risking a misroute into the event-feedback topic); 'galing' ("from"/
+  // "skilled," as in "saan ka galing") -> 'aling' ("which"); 'kanya' ("his/
+  // her/its") -> 'kaya'; 'niyan' ("that's/its," genitive of iyan) -> 'niya'
+  // ("his/her"); 'nagtrabaho' (past tense "worked") -> 'nagtatrabaho'
+  // (present/ongoing "is working" — a real tense change, not a spelling
+  // fix); 'kayo'/'akin'/'amin'/'atin'/'inyo' (you-plural/mine/ours/yours —
+  // common possessive/personal pronouns) -> 'kaya'/'alin'/'alin'/'alin'/
+  // 'info' respectively. None of these are typos of the word they were
+  // being rewritten into; each is its own distinct, correctly-spelled word.
+  'kada', 'lang', 'iyan', 'muna', 'galing', 'kanya', 'niyan', 'nagtrabaho',
+  'kayo', 'akin', 'amin', 'atin', 'inyo',
+  // Re-running the same audit AFTER the batch above exposed exactly the
+  // "whack-a-mole" risk documented at the top of this list: adding 'kayo'/
+  // 'amin'/'atin'/'inyo'/'iyan'/'niyan' just now created SEVEN BRAND NEW
+  // collisions against words that were previously safe (nothing near them
+  // existed in VOCABULARY before): 'tayo' ("we," inclusive) -> 'kayo';
+  // 'namin' ("our," exclusive) -> 'amin'; 'natin' ("our," inclusive) ->
+  // 'atin'; 'ninyo' ("your," plural) -> 'inyo'; 'iyon' ("that," far
+  // demonstrative) -> 'iyan'; 'diyan' ("there," near) -> 'iyan'; 'niyon'
+  // (genitive of iyon) -> 'niyan'. Added in the SAME pass rather than
+  // waiting for each to surface as its own live bug later — re-audited
+  // again after this addition too, confirming no further NEW collisions.
+  'tayo', 'namin', 'natin', 'ninyo', 'iyon', 'diyan', 'niyon',
+  // One more new collision from the 'namin' addition just above: 'naman'
+  // (a near-universal Tagalog particle, roughly "also"/"though"/softening
+  // emphasis — e.g. "ano naman ang trabaho niya") -> 'namin' ("our").
+  'naman',
+  // Second, broader audit wave: 'mali' ("wrong/incorrect") -> 'male' (the
+  // ENGLISH gender term — a particularly dangerous collision, since it could
+  // silently inject a gender filter into an unrelated question); 'siyam'
+  // ("nine") -> 'siya' ("he/she"); 'tanong'/'tinanong' (the NOUN "question"
+  // and its past-tense verb form "asked") -> 'itanong' (the base verb "to
+  // ask," already in this list) — related but grammatically distinct words.
+  'mali', 'siyam', 'tanong', 'tinanong',
 ];
 
 // Common English function words (pronouns, articles, prepositions, auxiliary
@@ -260,7 +339,7 @@ function stripStraySymbols(text) {
   return text.replace(STRAY_SYMBOL_PATTERN, '').replace(/\s{2,}/g, ' ').trim();
 }
 
-// Collapses a run of 3+ identical consecutive LETTERS down to one —
+// Collapses a run of 3+ identical consecutive lowercase LETTERS down to one —
 // "silaaa"/"sinooo" (emphatic elongation, extremely common in informal
 // Filipino/English chat typing: "ilan nsa sutherland???", "sino silaaa!!!")
 // isn't a typo Levenshtein distance can fix (the edit distance to the real
@@ -269,8 +348,19 @@ function stripStraySymbols(text) {
 // 3+ (not 2+) leaves ordinary double letters ("committee", "kailangan")
 // completely untouched — no real English or Filipino word repeats the same
 // letter 3+ times in a row.
+//
+// Lowercase only ([a-z], not [a-zA-Z]) — a run of repeated UPPERCASE letters
+// is never emphatic chat typing (nobody elongates a word by holding shift);
+// it's almost always a fumbled all-caps acronym, where collapsing to a
+// single letter can accidentally manufacture an unrelated real trigger word.
+// Caught live: "How many CCCCS alumni are employed?" (a fumbled "CCS", the
+// college code, typed with extra C's) collapsed to "CS" — which just
+// happens to ALSO be the real abbreviation for the Computer Science program
+// (see SPEC_ABBR in aggregationService.js) — and silently answered with the
+// Computer Science employment count instead of recognizing "CCCCS" doesn't
+// match any real college code at all.
 function collapseRepeatedLetters(text) {
-  return text.replace(/([a-zA-Z])\1{2,}/g, '$1');
+  return text.replace(/([a-z])\1{2,}/g, '$1');
 }
 
 // Collapses repeated punctuation ("???", "!!!") down to a single mark —

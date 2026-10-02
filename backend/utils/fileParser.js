@@ -234,6 +234,12 @@ function tracerRowToText(row, year) {
   if (row.relevance)             parts.push(`Job Related to Course: ${row.relevance}`);
   if (row.job_duration)          parts.push(`Years in Current Job: ${row.job_duration}`);
   if (row.reason_unemployed)     parts.push(`Reason Not Employed: ${row.reason_unemployed}`);
+  // Multi-select live-submission reasons (distinct from the free-text/bulk-
+  // import reason_unemployed above) — see Graduate.js's own comment on
+  // reasonsNotEmployed for why this exists.
+  if (Array.isArray(row.reasons_not_employed) && row.reasons_not_employed.length) {
+    parts.push(`Reasons Not Employed: ${row.reasons_not_employed.join(', ')}`);
+  }
   if (row.board_exam)            parts.push(`Took Professional Exam: ${row.board_exam}`);
   if (row.board_exam_name)       parts.push(`Exam Taken: ${row.board_exam_name}`);
   if (row.further_studies)       parts.push(`Pursued Further Studies: ${row.further_studies}`);
