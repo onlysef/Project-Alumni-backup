@@ -2,8 +2,7 @@ import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
-import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
-import toptsuLogo from "../../assets/images/tsu-top-header.webp";
+import tsuLogo from "../../assets/images/tsu-seal-2026.png";
 import acLogo from "../../assets/images/ac-logo.png";
 import { navGroups } from "../../data.js";
 import { useAuth } from "../../context/AuthContext.jsx";
@@ -75,14 +74,14 @@ export function AdminSidebar({ collapsed, onNavigate }) {
             onClick={() => handleSelect("tsu")}
             aria-label="Open Tarlac State University profile"
           >
-            <img src={toptsuLogo} alt="TSU" className="toptsu-logo" />
+            <span className="tsu-lockup"><img src={tsuLogo} alt="" /><span>Tarlac State<br />University</span></span>
           </button>
           <div
             className={`alumni-brand ${view === "about" ? "active" : ""}`}
             onClick={() => handleSelect("about")}
           >
             <img src={alumniLogo} alt="Alumni" className="alumni-logo" />
-            <p>Alumni Association<br /> Inc.</p>
+            <p>Alumni Association,<br /> Inc.</p>
           </div>
         </div>
       </div>

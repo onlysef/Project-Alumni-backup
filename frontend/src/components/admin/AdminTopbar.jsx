@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { Modal } from "../common/Primitives.jsx";
-import toptsuLogo from "../../assets/images/tsu-top-header.webp";
 import { API, authHeaders } from "../../services/api.js";
 import { getNotificationTarget } from "../../services/notificationNavigation.js";
 import { isDrawerViewport } from "../../constants/layout.js";
