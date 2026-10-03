@@ -966,7 +966,9 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
 .office-services { margin-top: 20px; padding: 22px 25px; }
 .office-services-head { margin-bottom: 14px; }
 .office-services-hint { margin: 6px 0 0; color: #9a898e; font-size: 11px; }
-.service-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.service-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
+/* Detail sits in the grid right after its card; `dense` back-fills the rest of that row so it opens beneath the row (directly under the card on one column). */
+.service-grid > .service-detail { grid-column: 1 / -1; margin-top: 0; }
 .office-service { display: grid; grid-template-columns: 38px minmax(0, 1fr) 14px; gap: 12px; align-items: start; min-height: 0; padding: 14px; border: 1px solid #eadfe2; border-radius: 7px; background: #fdfbfb; text-align: left; font-family: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
 .office-service:hover { border-color: #d8b7c0; box-shadow: 0 4px 12px rgba(70,0,18,.07); }
 .office-service:focus-visible { outline: 2px solid #70001d; outline-offset: 2px; }
@@ -1760,9 +1762,13 @@ body.dark-mode .resume-empty p { color: #c9b3b9; }
 
   .employment-grid,
   .career-layout,
-  .job-connect-layout,
-  .alumni-home-layout {
+  .job-connect-layout {
     grid-template-columns: 1fr;
+  }
+
+  /* minmax(0, …): a plain 1fr track grows to fit the horizontally scrolling update list. */
+  .alumni-home-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .profile-summary-card {
@@ -2827,22 +2833,43 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   text-align: left;
 }
 
-.app:not(.sidebar-collapsed) .sidebar .toptsu-logo {
+/* Official TSU seal (unaltered) + typed name. The alumni row below uses the same
+   40px logo column and 8px gap so both names start at the same x. */
+.app:not(.sidebar-collapsed) .sidebar .tsu-lockup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .tsu-lockup img {
   display: block;
-  width: 100%;
-  max-width: 158px;
-  height: 42px;
+  flex: none;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
-  object-position: left center;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .tsu-lockup span,
+.app:not(.sidebar-collapsed) .sidebar .alumni-brand p {
+  color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  font-weight: 400;
+  font-variant: small-caps;
+  line-height: 1;
+  letter-spacing: .01em;
+  text-align: left;
+  text-transform: none;
 }
 
 .app:not(.sidebar-collapsed) .sidebar .alumni-brand {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   width: calc(100% + 7px);
-  min-height: 42px;
+  min-height: 50px;
   margin: 0 0 0 -7px;
   padding: 5px 7px;
   box-sizing: border-box;
@@ -2851,20 +2878,13 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
 
 .app:not(.sidebar-collapsed) .sidebar .alumni-logo {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
 }
 
 .app:not(.sidebar-collapsed) .sidebar .alumni-brand p {
   margin: 0;
-  color: #fff;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.05;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 @media (max-width: 600px) {
@@ -3065,6 +3085,9 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
 }
 .alumni-app .completed-event .announcement-image { width: 112px; height: 78px; }
+/* `.completed-event > div { flex: 1 }` would otherwise stretch the thumbnail and squeeze the feedback block. */
+.alumni-app .completed-event > .announcement-image { order: 0; flex: 0 0 auto; }
+.alumni-app .completed-event > .completed-event-feedback { flex: 0 0 auto; min-width: 0; }
 .alumni-app .completed-event > span { background: #e7f3eb; color: #24733d; }
 body.dark-mode .alumni-app .announcement-filter-bar,
 body.dark-mode .alumni-app .announcement-card,
@@ -3093,6 +3116,19 @@ body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83,
   .alumni-app .completed-event .announcement-image { width: 88px; height: 66px; }
   .alumni-app .completed-event b { font-size: 12px; }
   .alumni-app .completed-event > span { padding: 4px 7px; font-size: 9px; }
+  .alumni-app .completed-event { flex-wrap: wrap; }
+  .alumni-app .completed-event > .completed-event-feedback {
+    flex-basis: 100%;
+    max-width: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding-top: 8px;
+    border-top: 1px solid #eef0f2;
+    text-align: left;
+  }
+  body.dark-mode .alumni-app .completed-event > .completed-event-feedback { border-top-color: rgba(250, 200, 83, .14); }
 }
 
 /* News feed — full Facebook-style post: author header, body text, edge-to-edge
