@@ -47,7 +47,7 @@ export const viewRoutes = {
   announcements: "Post Announcements",
   partnerships: "Partnerships",
   aiassistant: "ATREIA - AI Assistant",
-  about: "Alumni Association Inc.",
+  about: "Alumni Association, Inc.",
 };
 
 export const navGroups = [

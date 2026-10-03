@@ -3,8 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
-import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
-import toptsuLogo from "../../assets/images/tsu-top-header.webp";
+import tsuLogo from "../../assets/images/tsu-seal-2026.png";
 
 const ITEMS = [
   ["home", "Home", "alumni-home"],
@@ -67,11 +66,11 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
             onClick={() => openInstitutionPage("tsu")}
             aria-label="Open Tarlac State University profile"
           >
-            <img src={toptsuLogo} alt="Tarlac State University" className="toptsu-logo" />
+            <span className="tsu-lockup"><img src={tsuLogo} alt="" /><span>Tarlac State<br />University</span></span>
           </button>
           <div className="alumni-brand" onClick={() => openInstitutionPage("about")}>
             <img src={alumniLogo} alt="Alumni" className="alumni-logo" />
-            <p>Alumni Association<br /> Inc.</p>
+            <p>Alumni Association,<br /> Inc.</p>
           </div>
         </div>
       </div>

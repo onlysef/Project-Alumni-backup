@@ -1,5 +1,5 @@
 import React from "react";
-import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
+import tsuLogo from "../../assets/images/tsu-seal-2026.png";
 
 const strategicDirections = [
   ["S", "Sustainable student support programs", "to improve access to quality education to become globally competitive."],

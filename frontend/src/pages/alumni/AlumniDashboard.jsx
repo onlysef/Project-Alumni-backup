@@ -542,7 +542,7 @@ function AlumniHome({ navigate }) {
       </div>
       <div className="alumni-welcome-badge" aria-hidden="true">
         <img src={alumniLogo} alt="" />
-        <strong>TSU Alumni Association Inc.</strong>
+        <strong>TSU Alumni Association, Inc.</strong>
         <span>Connected - Updated - Career-ready</span>
       </div>
     </section>
