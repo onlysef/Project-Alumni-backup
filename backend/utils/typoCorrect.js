@@ -221,6 +221,17 @@ const STOPWORDS = new Set([
   // question) into "...i year", which then classified as a totally different
   // (and legitimate-looking) statistical question about graduation year.
   'word', 'words', 'rule', 'rules', 'filed', 'late', 'wear', 'wears', 'wearing', 'wore',
+  // "still" -> "skill" (1 substitution, 't'->'k', within maxDistanceFor(5)=1)
+  // and "looking"/"look" -> "booking"/"took" (same shape, 1 substitution
+  // each) — "still looking for work" is this app's own standard phrasing
+  // for unemployment, yet every word in it collided with an unrelated
+  // VOCABULARY term (competencies' "skill", appointments' "booking",
+  // licensure's "took"). Caught live: "how many graduates from batch 2023
+  // are still looking for work" became "...are skill booking for work",
+  // which satisfies no unemployment-signal pattern downstream at all — the
+  // question silently fell back to the bare batch headcount (48) instead of
+  // the real unemployed count (3), with zero indication anything was lost.
+  'still', 'look', 'looks', 'looked', 'looking',
 ]);
 
 // Damerau-Levenshtein (optimal string alignment): like Levenshtein but also

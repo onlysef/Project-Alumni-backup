@@ -421,6 +421,16 @@ export default function TracerStudyForm() {
           const v = raw[key];
           if (v !== undefined && v !== null && v !== "") flat[key] = v;
         });
+        // placeOfWork is only ever meant to be "Local" or "Abroad" — some
+        // responses predate that and still hold a specific place instead
+        // (e.g. "Makati City"), which doesn't match either radio option and
+        // leaves both unselected on edit. Same normalization the admin
+        // Excel export already applies (employmentController.js).
+        if (flat.placeOfWork) {
+          flat.placeOfWork = flat.placeOfWork.toLowerCase().includes("abroad")
+            ? "Abroad (outside your home country)"
+            : "Local (within your home country)";
+        }
         // Merge extra_answers (admin-added questions) back into the flat object
         if (raw.extra_answers && typeof raw.extra_answers === "object") {
           Object.entries(raw.extra_answers).forEach(([k, v]) => {

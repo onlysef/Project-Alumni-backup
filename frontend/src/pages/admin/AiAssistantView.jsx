@@ -3,13 +3,20 @@ import { toBlob } from "html-to-image";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
 import acLogo from "../../assets/images/ac-logo.png";
-import { MiniDonut, DistributionBars, TrendLine } from "../../components/common/Charts.jsx";
+import { MiniDonut, MiniBarChart, TrendLine } from "../../components/common/Charts.jsx";
 
 // Renders chart data attached to answers with the dashboard's chart components; copy rasterizes the whole labeled block.
 function AcChart({ chart, id, copiedChartId, onCopy }) {
   const blockRef = useRef(null);
   if (!chart || !chart.rows?.length) return null;
-  const Chart = chart.type === "bars" ? DistributionBars : chart.type === "line" ? TrendLine : MiniDonut;
+  // "bars" renders as a genuine vertical bar graph (MiniBarChart), not
+  // DistributionBars' horizontal percentage-meter look — the AC assistant
+  // previously had no true bar-graph visual among its renderers at all, so
+  // a "make it bar graph" request only ever changed the underlying DATA
+  // (aggregationService.js's requestedChartType), never actually produced a
+  // chart shaped like a bar graph. DistributionBars stays in use elsewhere
+  // (the Tracer Dashboard's own "bars"-typed blocks), just not here.
+  const Chart = chart.type === "bars" ? MiniBarChart : chart.type === "line" ? TrendLine : MiniDonut;
   // unit/max: backend-computed scale for a 'line' chart (see aggregationService.js's
   // withChart()/queryInner() requestedChartType override) — TrendLine
   // defaults to a hardcoded 0-100% axis otherwise, built for this app's one
