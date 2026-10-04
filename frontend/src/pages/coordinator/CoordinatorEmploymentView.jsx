@@ -25,9 +25,7 @@ const INDUSTRIES = [
   "Non-Profit/NGO",
   "Other",
 ];
-// Same fixed lists the alumni's own Employment Details form uses — kept
-// identical so a coordinator editing this on their behalf sees the exact
-// same choices, not a different set that silently diverges over time.
+// Same lists as the alumni's Employment Details form; keep in sync.
 const SALARY_RANGES = [
   "Below PHP 15,000",
   "PHP 15,000 - PHP 25,000",
@@ -68,10 +66,19 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-// ── Alumni Record detail helpers — same look/behavior as the admin Alumni
-// Record view/edit modal, adapted here for the coordinator's own page since
-// the underlying data (fetched from /coordinator/employment/*, always
-// scoped server-side to their assigned college) is the same shape. ─────────
+// resume.experience is a list; flattened to text for the row renderers.
+function formatExperienceEntries(experience) {
+  if (!Array.isArray(experience)) return "";
+  return experience.map((entry) => {
+    const titleLine = [entry.title, entry.company].filter(Boolean).join(" - ") + (entry.employment_type ? ` (${entry.employment_type})` : "");
+    const lines = [titleLine];
+    if (entry.meta) lines.push(entry.meta);
+    String(entry.description || "").split("\n").map((s) => s.trim()).filter(Boolean).forEach((s) => lines.push(`• ${s}`));
+    return lines.join("\n");
+  }).join("\n\n");
+}
+
+// Alumni Record detail helpers (same as the admin view)
 function RecordGroup({ title, children }) {
   const kids = Array.isArray(children) ? children : [children];
   return (
@@ -367,9 +374,6 @@ export default function CoordinatorEmploymentView() {
       .finally(() => setViewDetailLoading(false));
   }, [viewRecord]);
 
-  // Their own college's live tracer form config — same dynamic, page-driven
-  // rendering the admin Alumni Record uses, just always scoped to the one
-  // college a coordinator manages (the endpoint ignores ?college= anyway).
   useEffect(() => {
     if (!viewRecord && !editRecord) { setTracerConfig(null); return; }
     apiFetch(`/coordinator/tracer-form-config`)
@@ -486,10 +490,6 @@ export default function CoordinatorEmploymentView() {
     }
   }
 
-  // Same as the admin Alumni Record's row-level print — fetches the full
-  // record + live tracer form config fresh every time so the printout is
-  // always complete (avatar, tracer answers, resume), not just whatever the
-  // list row already had in hand.
   async function printRecord(rowRecord) {
     const w = window.open("", "_blank");
     if (!w) { showToast(`${rowRecord.name} record is ready to print.`); return; }
@@ -565,7 +565,7 @@ export default function CoordinatorEmploymentView() {
       row("LinkedIn", resume.linkedin),
       rowPre("Summary", resume.summary),
       row("Skills", fmtList(resume.skills)),
-      rowPre("Experience", resume.experience),
+      rowPre("Experience", formatExperienceEntries(resume.experience)),
       rowPre("Education", resume.education),
       rowPre("Certifications", resume.certifications),
       rowPre("Projects", resume.projects),
@@ -934,7 +934,7 @@ export default function CoordinatorEmploymentView() {
                           <RecordField label="LinkedIn" value={resume.linkedin} />
                           <RecordMultilineField label="Summary" value={resume.summary} />
                           <RecordChips label="Skills" text={resume.skills} />
-                          <RecordMultilineField label="Experience" value={resume.experience} />
+                          <RecordMultilineField label="Experience" value={formatExperienceEntries(resume.experience)} />
                           <RecordMultilineField label="Education" value={resume.education} />
                           <RecordMultilineField label="Certifications" value={resume.certifications} />
                           <RecordMultilineField label="Projects" value={resume.projects} />

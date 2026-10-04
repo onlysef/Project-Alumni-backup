@@ -15,11 +15,7 @@
 .employer-glyph { display: block; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 
-/* NOTE: the employer module renders the SHARED app shell
-   (`.app.employer-app` > `.sidebar.employer-shared-sidebar` + `.main.employer-main`
-   + `.topbar.employer-shared-topbar`), so the sidebar/topbar/drawer behaviour
-   all comes from admin-mod.css. The old bespoke `.employer-sidebar` /
-   `.employer-shell` / `.employer-topbar` styles were dead code and were removed. */
+/* The employer module uses the shared app shell; sidebar/topbar/drawer styles come from admin-mod.css. */
 .employer-main .employer-content { height: calc(100vh - 70px); height: calc(100dvh - 70px); min-height: 0; overflow-y: auto; padding: 28px clamp(22px,3vw,46px) 56px; }
 .employer-shared-sidebar, .employer-shared-topbar { font-family: Arial, Helvetica, sans-serif; }
 .employer-shared-sidebar .alumni-brand { cursor: default; }
@@ -80,9 +76,13 @@
 .employer-primary-btn, .employer-secondary-btn, .employer-danger-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 39px; padding: 0 17px; border-radius: 7px; font: 800 10px 'Manrope'; cursor: pointer; }
 .employer-primary-btn { border: 1px solid #670018; background: #670018; color: #fff; box-shadow: 0 5px 12px rgba(103,0,24,.14); }
 .employer-primary-btn:hover { background: #820021; }
+.employer-primary-btn:disabled { border-color: #d8c9cd; background: #cbbec1; color: #fff; box-shadow: none; cursor: not-allowed; }
+.employer-primary-btn:disabled:hover { background: #cbbec1; }
 .employer-secondary-btn { border: 1px solid #d8c9cd; background: #fff; color: #625459; }
 .employer-danger-btn { border: 1px solid #a61d35; background: #a61d35; color: #fff; }
 .create-job-btn { margin-top: 16px; }
+.employer-inline-notice { max-width: 480px; margin: 10px 0 0; padding: 10px 14px; border: 1px solid #eecf8f; border-radius: 7px; background: #fcf3dd; color: #6b5210; font-size: 11px; line-height: 1.5; }
+body.dark-mode .employer-inline-notice { border-color: rgba(227,185,79,.35); background: rgba(227,185,79,.08); color: #e3b94f; }
 .employer-dashboard-lower { display: grid; grid-template-columns: minmax(0,1.3fr) minmax(280px,.7fr); gap: 16px; margin-top: 22px; }
 .employer-insight-card { padding: 20px; border: 1px solid var(--employer-line); border-radius: 10px; background: rgba(255,255,255,.94); box-shadow: 0 7px 24px rgba(56,27,36,.045); }
 .employer-insight-heading { display: flex; align-items: center; justify-content: space-between; }

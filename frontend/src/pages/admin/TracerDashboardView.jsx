@@ -2,49 +2,19 @@ import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import { Dropdown } from "../../components/common/Primitives.jsx";
-import { CHART_PALETTE, MiniDonut, DistributionBars, EmploymentChart } from "../../components/common/Charts.jsx";
+import { CHART_PALETTE, MiniDonut, DistributionBars, EmploymentChart, MiniBarChart } from "../../components/common/Charts.jsx";
 import { renderChartImage } from "../../components/common/canvasCharts.js";
 import Icon from "../../components/common/Icon.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { COLLEGE_CODES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
 
-// ── Tracer Study Analytics (accordion) ────────────────────────────────────────
-// DistributionBars, MiniDonut, and CHART_PALETTE live in Charts.jsx so the
-// AC AI Assistant chat can render the same charts inline in answers.
+// Tracer Study Analytics: shared chart components live in Charts.jsx
 
 const DURATION_ORDER = [
   "Less than 6 months", "6 months to 1 year", "1 to 2 years",
   "2 to 3 years", "3 to 5 years", "More than 5 years",
 ];
 
-// Vertical bar chart — best for ordered or moderate-cardinality categories.
-function MiniBarChart({ rows }) {
-  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
-  const max = Math.max(...rows.map((r) => r.count), 1);
-  return (
-    <div className="tracer-vbar-chart">
-      {rows.map((r, i) => (
-        <div className="tracer-vbar-col" key={r.label}>
-          <div className="tracer-vbar-wrap">
-            <div
-              className="tracer-vbar"
-              style={{ height: `${Math.max((r.count / max) * 100, 8)}%`, background: CHART_PALETTE[i % CHART_PALETTE.length] }}
-              title={`${r.label}: ${r.count}`}
-            >
-              <span className="tracer-vbar-value">{r.count}</span>
-            </div>
-          </div>
-          <div className="tracer-vbar-label" title={r.label}>{r.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Tag cloud — best for many categories that would otherwise need
-// horizontal scrolling as bars (e.g. a long industry list). Uniform chip
-// size keeps the row clean and consistent; the count inside each chip
-// still shows magnitude without relying on size differences to read it.
 function TagCloud({ rows }) {
   if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
   const total = rows.reduce((a, r) => a + r.count, 0);
@@ -67,9 +37,6 @@ function TagCloud({ rows }) {
   );
 }
 
-// Trend/area line — best for ordinal data with a natural sequence (e.g.
-// duration buckets), where the shape across categories in THEIR order
-// matters more than ranking them by count.
 const TREND_W = 560, TREND_H = 190, TREND_PAD = 26;
 
 function TrendLine({ rows, order }) {
@@ -205,11 +172,7 @@ function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
-// Builds a real .xlsx (data table + an embedded picture of the chart, drawn
-// by canvasCharts.js) so the exported chart can be copied out of Excel as an
-// image, not just read as numbers. `exceljs` is dynamically imported (it's a
-// large dependency, ~900KB) so it's only fetched when Export is clicked, not
-// on every dashboard page load.
+// exceljs is dynamically imported (~900KB) so it only loads on export.
 async function downloadChartExcel(filename, title, csvRows, img) {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
@@ -251,10 +214,6 @@ function downloadEmploymentDonutCsv(donutData) {
   ]);
 }
 
-// Wraps a single chart with its own title + export button. Exports a real
-// .xlsx with the data table AND an embedded picture of the chart (drawn
-// fresh from chartRows via canvasCharts.js, not a DOM screenshot — see that
-// module's own comment for why).
 function ChartBlock({ title, filename, csvRows, chartType, chartRows, chartOrder, children }) {
   return (
     <div className="tracer-chart-block">
@@ -286,10 +245,6 @@ function ChartBlock({ title, filename, csvRows, chartType, chartRows, chartOrder
   );
 }
 
-// `data` is already scoped by every applied filter (see the fetch effect in
-// the default export below) — this component just renders it, it doesn't
-// own any filter UI itself anymore (that now lives once, in
-// TracerFilterPanel, above this).
 function TracerStudyAnalytics({ data }) {
   if (!data) {
     return (
@@ -302,124 +257,138 @@ function TracerStudyAnalytics({ data }) {
     );
   }
 
-  const SECTIONS = [
-    {
-      key: "profile", title: "Respondent Profile",
-      subtitle: "Gender and course distribution of tracer respondents.",
-      body: (
-        <div className="tracer-chart-row">
-          <ChartBlock title="By Gender" filename="tracer-gender.xlsx" csvRows={distCsv(data.respondentProfile.byGender)} chartType="donut" chartRows={data.respondentProfile.byGender}>
-            <MiniDonut rows={data.respondentProfile.byGender} />
-          </ChartBlock>
-          <ChartBlock title="By Program" filename="tracer-program.xlsx" csvRows={distCsv(data.respondentProfile.byProgram)} chartType="bars" chartRows={data.respondentProfile.byProgram}>
-            <DistributionBars rows={data.respondentProfile.byProgram} />
-          </ChartBlock>
-        </div>
-      ),
-    },
-    {
-      key: "exam", title: "Professional Examination",
-      subtitle: "Professional-examination participation of tracer respondents.",
-      body: (
-        <ChartBlock title="Participation" filename="tracer-exam-participation.xlsx" csvRows={distCsv(data.professionalExam.byStatus)} chartType="donut" chartRows={data.professionalExam.byStatus}>
-          <MiniDonut rows={data.professionalExam.byStatus} />
-        </ChartBlock>
-      ),
-    },
-    {
-      key: "employment", title: "Employment Overview",
-      subtitle: "Employment participation, classification, job-relevance, and duration.",
-      body: (
-        <>
-          <div className="tracer-chart-row">
-            <ChartBlock title="Employment Status" filename="tracer-employment-status.xlsx" csvRows={distCsv(data.employmentOverview.byStatus)} chartType="donut" chartRows={data.employmentOverview.byStatus}>
-              <MiniDonut rows={data.employmentOverview.byStatus} />
-            </ChartBlock>
-            <ChartBlock title="Job-Relatedness" filename="tracer-job-relatedness.xlsx" csvRows={distCsv(data.employmentOverview.byJobRelevance)} chartType="vbars" chartRows={data.employmentOverview.byJobRelevance}>
-              <MiniBarChart rows={data.employmentOverview.byJobRelevance} />
-            </ChartBlock>
-          </div>
-          <ChartBlock title="Duration in Current Job" filename="tracer-job-duration.xlsx" csvRows={distCsv(data.employmentOverview.byDuration)} chartType="line" chartRows={data.employmentOverview.byDuration} chartOrder={DURATION_ORDER}>
-            <TrendLine rows={data.employmentOverview.byDuration} order={DURATION_ORDER} />
-          </ChartBlock>
-        </>
-      ),
-    },
-    {
-      key: "occupation", title: "Occupation and Industry",
-      subtitle: "Most common occupations and industries of employed respondents.",
-      body: (
-        <>
-          <ChartBlock title="Top Occupations" filename="tracer-occupations.xlsx" csvRows={distCsv(data.occupationIndustry.topOccupations)} chartType="bars" chartRows={data.occupationIndustry.topOccupations}>
-            <DistributionBars rows={data.occupationIndustry.topOccupations} />
-          </ChartBlock>
-          <ChartBlock title="By Industry" filename="tracer-industry.xlsx" csvRows={distCsv(data.occupationIndustry.byIndustry)} chartType="bars" chartRows={data.occupationIndustry.byIndustry}>
-            <TagCloud rows={data.occupationIndustry.byIndustry} />
-          </ChartBlock>
-        </>
-      ),
-    },
-    {
-      key: "unemployment", title: "Unemployment Reasons",
-      subtitle: "Multi-response reasons selected by unemployed respondents.",
-      body: (
-        <ChartBlock title="Unemployment Reasons" filename="tracer-unemployment-reasons.xlsx" csvRows={distCsv(data.unemploymentReasons)} chartType="bars" chartRows={data.unemploymentReasons}>
-          <DistributionBars rows={data.unemploymentReasons} />
-        </ChartBlock>
-      ),
-    },
-    {
-      key: "growth", title: "Personal Growth Assessment",
-      subtitle: "Likert-style comparison of personal-growth areas.",
-      body: (
-        <ChartBlock title="Personal Growth Assessment" filename="tracer-personal-growth.xlsx" csvRows={ratingMatrixCsv(data.personalGrowth)} chartType="rating" chartRows={data.personalGrowth}>
-          <RatingMatrix rows={data.personalGrowth} />
-        </ChartBlock>
-      ),
-    },
-    {
-      key: "education", title: "Further Education",
-      subtitle: "Further-education participation and training pursuits.",
-      body: (
-        <div className="tracer-chart-row">
-          <ChartBlock title="Pursued Further Education" filename="tracer-further-education.xlsx" csvRows={distCsv(data.furtherEducation.byFurtherEducation)} chartType="donut" chartRows={data.furtherEducation.byFurtherEducation}>
-            <MiniDonut rows={data.furtherEducation.byFurtherEducation} />
-          </ChartBlock>
-          <ChartBlock title="Pursued Trainings" filename="tracer-trainings.xlsx" csvRows={distCsv(data.furtherEducation.byTrainings)} chartType="vbars" chartRows={data.furtherEducation.byTrainings}>
-            <MiniBarChart rows={data.furtherEducation.byTrainings} />
-          </ChartBlock>
-        </div>
-      ),
-    },
-    {
-      key: "promotion", title: "Promotion and Recognition",
-      subtitle: "Promotions and significant accomplishments reported.",
-      body: (
-        <>
-          <ChartBlock title="Promoted in Current Job" filename="tracer-promoted.xlsx" csvRows={distCsv(data.promotion.byPromotion)} chartType="donut" chartRows={data.promotion.byPromotion}>
-            <MiniDonut rows={data.promotion.byPromotion} />
-          </ChartBlock>
-          <ChartBlock title="Significant Accomplishments" filename="tracer-accomplishments.xlsx" csvRows={distCsv(data.promotion.byAccomplishments)} chartType="bars" chartRows={data.promotion.byAccomplishments}>
-            <TagCloud rows={data.promotion.byAccomplishments} />
-          </ChartBlock>
-        </>
-      ),
-    },
-    {
-      key: "development", title: "Professional Development Activities",
-      subtitle: "Participation in professional-development activities and certifications.",
-      body: (
-        <div className="tracer-chart-row">
-          <ChartBlock title="Development Activities" filename="tracer-dev-activities.xlsx" csvRows={distCsv(data.professionalDevelopment.byDevActivities)} chartType="donut" chartRows={data.professionalDevelopment.byDevActivities}>
-            <MiniDonut rows={data.professionalDevelopment.byDevActivities} />
-          </ChartBlock>
-          <ChartBlock title="Professional Certifications" filename="tracer-certifications.xlsx" csvRows={distCsv(data.professionalDevelopment.byCertifications)} chartType="vbars" chartRows={data.professionalDevelopment.byCertifications}>
-            <MiniBarChart rows={data.professionalDevelopment.byCertifications} />
-          </ChartBlock>
-        </div>
-      ),
-    },
-  ];
+  // Renders the exact same ChartBlock/chart-component JSX each fixed field
+  // has always used — only the title is now parametrized from the field's
+  // live label (see data.formStructure) instead of a hardcoded phrase, so
+  // renaming a question in the Tracer Form Editor renames its chart too.
+  const FIXED_CHART_RENDERERS = {
+    gender: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-gender.xlsx" csvRows={distCsv(data.respondentProfile.byGender)} chartType="donut" chartRows={data.respondentProfile.byGender}>
+        <MiniDonut rows={data.respondentProfile.byGender} />
+      </ChartBlock>
+    ),
+    programsCompleted: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-program.xlsx" csvRows={distCsv(data.respondentProfile.byProgram)} chartType="bars" chartRows={data.respondentProfile.byProgram}>
+        <DistributionBars rows={data.respondentProfile.byProgram} />
+      </ChartBlock>
+    ),
+    professionalExam: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-exam-participation.xlsx" csvRows={distCsv(data.professionalExam.byStatus)} chartType="donut" chartRows={data.professionalExam.byStatus}>
+        <MiniDonut rows={data.professionalExam.byStatus} />
+      </ChartBlock>
+    ),
+    employmentStatus: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-employment-status.xlsx" csvRows={distCsv(data.employmentOverview.byStatus)} chartType="donut" chartRows={data.employmentOverview.byStatus}>
+        <MiniDonut rows={data.employmentOverview.byStatus} />
+      </ChartBlock>
+    ),
+    jobRelatedToDegree: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-job-relatedness.xlsx" csvRows={distCsv(data.employmentOverview.byJobRelevance)} chartType="vbars" chartRows={data.employmentOverview.byJobRelevance}>
+        <MiniBarChart rows={data.employmentOverview.byJobRelevance} />
+      </ChartBlock>
+    ),
+    yearsInCurrentJob: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-job-duration.xlsx" csvRows={distCsv(data.employmentOverview.byDuration)} chartType="line" chartRows={data.employmentOverview.byDuration} chartOrder={DURATION_ORDER}>
+        <TrendLine rows={data.employmentOverview.byDuration} order={DURATION_ORDER} />
+      </ChartBlock>
+    ),
+    occupationTitle: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-occupations.xlsx" csvRows={distCsv(data.occupationIndustry.topOccupations)} chartType="bars" chartRows={data.occupationIndustry.topOccupations}>
+        <DistributionBars rows={data.occupationIndustry.topOccupations} />
+      </ChartBlock>
+    ),
+    industryField: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-industry.xlsx" csvRows={distCsv(data.occupationIndustry.byIndustry)} chartType="bars" chartRows={data.occupationIndustry.byIndustry}>
+        <TagCloud rows={data.occupationIndustry.byIndustry} />
+      </ChartBlock>
+    ),
+    reasonsNotEmployed: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-unemployment-reasons.xlsx" csvRows={distCsv(data.unemploymentReasons)} chartType="bars" chartRows={data.unemploymentReasons}>
+        <DistributionBars rows={data.unemploymentReasons} />
+      </ChartBlock>
+    ),
+    personalGrowthRatings: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-personal-growth.xlsx" csvRows={ratingMatrixCsv(data.personalGrowth)} chartType="rating" chartRows={data.personalGrowth}>
+        <RatingMatrix rows={data.personalGrowth} />
+      </ChartBlock>
+    ),
+    furtherEducation: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-further-education.xlsx" csvRows={distCsv(data.furtherEducation.byFurtherEducation)} chartType="donut" chartRows={data.furtherEducation.byFurtherEducation}>
+        <MiniDonut rows={data.furtherEducation.byFurtherEducation} />
+      </ChartBlock>
+    ),
+    pursuedTrainings: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-trainings.xlsx" csvRows={distCsv(data.furtherEducation.byTrainings)} chartType="vbars" chartRows={data.furtherEducation.byTrainings}>
+        <MiniBarChart rows={data.furtherEducation.byTrainings} />
+      </ChartBlock>
+    ),
+    promotedInJob: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-promoted.xlsx" csvRows={distCsv(data.promotion.byPromotion)} chartType="donut" chartRows={data.promotion.byPromotion}>
+        <MiniDonut rows={data.promotion.byPromotion} />
+      </ChartBlock>
+    ),
+    significantAccomplishments: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-accomplishments.xlsx" csvRows={distCsv(data.promotion.byAccomplishments)} chartType="bars" chartRows={data.promotion.byAccomplishments}>
+        <TagCloud rows={data.promotion.byAccomplishments} />
+      </ChartBlock>
+    ),
+    professionalCertifications: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-certifications.xlsx" csvRows={distCsv(data.professionalDevelopment.byCertifications)} chartType="vbars" chartRows={data.professionalDevelopment.byCertifications}>
+        <MiniBarChart rows={data.professionalDevelopment.byCertifications} />
+      </ChartBlock>
+    ),
+    professionalDevelopmentActivities: (id, label, data) => (
+      <ChartBlock key={id} title={label} filename="tracer-dev-activities.xlsx" csvRows={distCsv(data.professionalDevelopment.byDevActivities)} chartType="donut" chartRows={data.professionalDevelopment.byDevActivities}>
+        <MiniDonut rows={data.professionalDevelopment.byDevActivities} />
+      </ChartBlock>
+    ),
+  };
+
+  // Custom/admin-added questions (see computeTracerAnalytics in
+  // employmentController.js) — handled generically by renderAs, since they
+  // have no hand-tuned widget to preserve.
+  function renderCustomChartBlock(q) {
+    return (
+      <ChartBlock
+        key={q.id}
+        title={q.label}
+        filename={`tracer-custom-${q.id}.xlsx`}
+        csvRows={q.renderAs === "rating" ? ratingMatrixCsv(q.rows) : distCsv(q.rows)}
+        chartType={q.renderAs}
+        chartRows={q.rows}
+      >
+        {q.renderAs === "donut" ? <MiniDonut rows={q.rows} />
+          : q.renderAs === "rating" ? <RatingMatrix rows={q.rows} />
+          : <DistributionBars rows={q.rows} />}
+      </ChartBlock>
+    );
+  }
+
+  // The dashboard's sections, titles, question set, and order come entirely
+  // from data.formStructure — the live page/question layout of the selected
+  // college's tracer form (see computeTracerAnalytics in
+  // employmentController.js) — not from any hardcoded list. Renaming,
+  // reordering, adding, or deleting a page/question in the Tracer Form
+  // Editor is reflected here with no code change.
+  const customById = new Map((data.customQuestions || []).map((q) => [q.id, q]));
+  const SECTIONS = (data.formStructure || [])
+    .map((page) => {
+      const blocks = page.questions
+        .map((q) => {
+          if (FIXED_CHART_RENDERERS[q.id]) return FIXED_CHART_RENDERERS[q.id](q.id, q.label, data);
+          if (customById.has(q.id)) return renderCustomChartBlock(customById.get(q.id));
+          return null; // text/textarea/static_text/unchartable — not shown
+        })
+        .filter(Boolean);
+      if (!blocks.length) return null; // nothing chartable on this page — no section
+      return {
+        key: page.id,
+        title: page.title,
+        subtitle: "Responses collected under this section of the tracer form.",
+        body: <>{blocks}</>,
+      };
+    })
+    .filter(Boolean);
 
   return (
     <section className="panel tracer-analytics-panel">
@@ -429,52 +398,56 @@ function TracerStudyAnalytics({ data }) {
           <span style={{ fontWeight: 500, fontSize: 12, opacity: 0.85 }}>{data.total} responses</span>
         </span>
       </div>
-      <div className="tracer-analytics-note">
-        Charts reflect free-text and single/multi-select answers as submitted — some categories
-        (e.g. exam names, occupations) are grouped by exact wording and may show near-duplicate
-        entries if alumni phrased answers differently.
-      </div>
-      <div className="tracer-accordion">
-        {SECTIONS.map((s, i) => (
-          <TracerAccordionRow
-            key={s.key}
-            num={i + 1}
-            title={s.title}
-            subtitle={s.subtitle}
-          >
-            {s.body}
-          </TracerAccordionRow>
-        ))}
-      </div>
+      {data.total === 0 || SECTIONS.length === 0 ? (
+        <div className="chart-body" style={{ textAlign: "center", color: "var(--muted, #76656a)" }}>
+          No tracer study responses yet for this selection — sections and charts will appear once
+          alumni submit the tracer form.
+        </div>
+      ) : (
+        <>
+          <div className="tracer-analytics-note">
+            Charts reflect free-text and single/multi-select answers as submitted — some categories
+            (e.g. exam names, occupations) are grouped by exact wording and may show near-duplicate
+            entries if alumni phrased answers differently.
+          </div>
+          <div className="tracer-accordion">
+            {SECTIONS.map((s, i) => (
+              <TracerAccordionRow
+                key={s.key}
+                num={i + 1}
+                title={s.title}
+                subtitle={s.subtitle}
+              >
+                {s.body}
+              </TracerAccordionRow>
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }
 
 // ── Filter panel ───────────────────────────────────────────────────────────
 
-const EMPTY_TRACER_FILTERS = {
-  college: "", course: "", track: "",
+// The dashboard's custom-question charts (see computeTracerAnalytics in
+// employmentController.js) only know which questions to chart when scoped
+// to one college's TracerFormConfig — "All Colleges" has no single question
+// set to chart against. The College filter is therefore always a specific
+// college, never blank; CCS is the default since it's the only college with
+// a real, populated tracer form today (see tracerFormConfigController.js).
+const DEFAULT_TRACER_FILTERS = {
+  college: "CCS", course: "", track: "",
   graduationYearFrom: "", graduationYearTo: "",
   surveyYear: "", gender: "", employmentStatus: "",
   jobRelatedToDegree: "", furtherEducation: "",
 };
 
-// BSIT is currently the only course with a specialization/track — mirrors
-// the same TSM/WMA/NA vocabulary used at signup (AlumniSignUpView.jsx) and
-// account creation (AccountsView.jsx).
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 
-// Display-only relabeling for this filter's dropdown — the option's `value`
-// stays the raw "Yes"/"No" stored on TracerStudyResponse (so filtering still
-// matches the real data), only the text shown to the admin reads as
-// "Employed"/"Unemployed" instead of a bare yes/no.
+// Display-only labels; values stay the stored "Yes"/"No".
 const EMPLOYMENT_STATUS_LABELS = { Yes: "Employed", No: "Unemployed" };
 
-// College/course/batch filters live on User and can be validated against a
-// known vocabulary (COLLEGE_CODES/COURSES_BY_COLLEGE); the remaining 6
-// filters are free-text answers straight from TracerStudyResponse, so their
-// option lists come from the backend's tracer-filter-options endpoint
-// (real, deduped values already in the data) rather than a hardcoded guess.
 function yearRange(min, max) {
   if (!min || !max) return [];
   const out = [];
@@ -504,7 +477,6 @@ function TracerFilterPanel({ pending, onChange, options, onApply, onReset, hasAc
       <div className="tracer-filter-grid">
         <label>College
           <select value={pending.college} onChange={(e) => set("college", e.target.value)}>
-            <option value="">All Colleges</option>
             {COLLEGE_CODES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
@@ -597,13 +569,7 @@ function TracerFilterPanel({ pending, onChange, options, onApply, onReset, hasAc
 
 // ── KPI grid ─────────────────────────────────────────────────────────────
 
-// The tiles flagged `scopeNote: true` intentionally track only the
-// College/Course/Batch Year filters, not the tracer-only ones (gender,
-// employment status, etc.) — see the matching comment on
-// buildTracerFilterMatch in employmentController.js for why.
-// Icon color doesn't matter here — the `.tracer-kpi-grid .admin-svg-icon`
-// filter rule in admin-mod.css force-recolors every icon (regardless of its
-// native stroke) to a uniform maroon, so these are picked purely for shape.
+// scopeNote tiles only follow the College/Course/Batch filters (see buildTracerFilterMatch).
 const KPI_TILES = [
   { key: "employedRespondents",          label: "Total Employed",              icon: "icon-12" }, // briefcase
   { key: "unemployedRespondents",        label: "Total Unemployed",            icon: "icon-7"  }, // exit/log-out arrow
@@ -686,14 +652,7 @@ const PDF_RATING_COLORS = Object.fromEntries(
   Object.entries(RATING_COLORS).map(([k, v]) => [k, hexToRgb(v)])
 );
 
-// Entirely client-side, hand-drawn with plain jsPDF vector primitives —
-// deliberately NOT a DOM screenshot (html2canvas can't reliably capture the
-// CSS conic-gradient donuts or the icon <img>s here, which produced blank/
-// incomplete output). Every distribution is redrawn as a ranked horizontal
-// bar chart and the personal-growth ratings as a stacked bar + legend, so
-// the report always renders correctly and stays crisp/selectable at any
-// zoom, following the same ensureSpace()-based pagination idiom already
-// used by downloadResumePdf() in JobConnect.jsx.
+// PDF drawn with jsPDF primitives; DOM screenshots rendered the donuts blank.
 function downloadTracerAnalyticsPdf(data, filters) {
   if (!data) return;
   const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -746,9 +705,6 @@ function downloadTracerAnalyticsPdf(data, filters) {
     y += 18;
   }
 
-  // Ranked (or explicitly ordered) horizontal bar chart: label, proportional
-  // bar, count (%) — the one reusable chart shape every distribution below
-  // maps onto.
   function barChart(rows, opts = {}) {
     if (!rows || !rows.length) { emptyNote(); return; }
     const list = opts.order
@@ -932,28 +888,19 @@ function downloadTracerAnalyticsPdf(data, filters) {
 
 // ── Page ─────────────────────────────────────────────────────────────────
 
-// Module-level, not state — survives this component unmounting when the
-// admin navigates away and back, so returning to the Tracer Dashboard shows
-// the last-known charts instantly instead of flashing "Loading…" again
-// while a fresh copy loads silently in the background. Keyed by the applied
-// filter set, since different filters have different cached results.
+// Module-level cache, keyed by filters, so returning shows the last charts instantly.
 const cachedDonutData = new Map();
 const cachedTracerAnalytics = new Map();
 let cachedTracerFilterOptions = null;
 
 export default function TracerDashboardView() {
   const { showToast } = useOutletContext();
-  const [pendingFilters, setPendingFilters] = useState(EMPTY_TRACER_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState(EMPTY_TRACER_FILTERS);
+  const [pendingFilters, setPendingFilters] = useState(DEFAULT_TRACER_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState(DEFAULT_TRACER_FILTERS);
   const [filterOptions, setFilterOptions] = useState(cachedTracerFilterOptions ?? {});
-  const [tracerAnalytics, setTracerAnalytics] = useState(() => cachedTracerAnalytics.get(buildFilterQueryString(EMPTY_TRACER_FILTERS)) ?? null);
+  const [tracerAnalytics, setTracerAnalytics] = useState(() => cachedTracerAnalytics.get(buildFilterQueryString(DEFAULT_TRACER_FILTERS)) ?? null);
 
-  // Moved here from the main Dashboard — the employed/unemployed breakdown
-  // is a tracer-derived stat, so it belongs on the tracer dashboard
-  // alongside everything else built from the same data, and (unlike on the
-  // main Dashboard) is now scoped by the SAME applied filters as the rest
-  // of this page instead of its own separate one.
-  const [donutData, setDonutData] = useState(() => cachedDonutData.get(buildFilterQueryString(EMPTY_TRACER_FILTERS)) ?? null);
+  const [donutData, setDonutData] = useState(() => cachedDonutData.get(buildFilterQueryString(DEFAULT_TRACER_FILTERS)) ?? null);
 
   useEffect(() => {
     let cancelled = false;
@@ -974,9 +921,6 @@ export default function TracerDashboardView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(appliedFilters)]);
 
-  // Filter dropdown vocabularies (genders/statuses/survey years/batch
-  // bounds) — fetched once, unfiltered. See getTracerFilterOptions's own
-  // comment for why this isn't recomputed per applied filter.
   useEffect(() => {
     async function fetchFilterOptions() {
       try {
@@ -991,12 +935,7 @@ export default function TracerDashboardView() {
   }, []);
 
   useEffect(() => {
-    // Switching filters quickly can let an in-flight request for a
-    // PREVIOUS filter set resolve after the new one already did,
-    // overwriting the correct data with stale data. `cancelled` is
-    // flipped by this effect's own cleanup (which runs whenever
-    // appliedFilters changes), so a late response from an abandoned
-    // request is dropped instead of applied.
+    // Drop responses from a superseded filter set.
     let cancelled = false;
     const qs = buildFilterQueryString(appliedFilters);
     const cached = cachedTracerAnalytics.get(qs);
@@ -1026,11 +965,13 @@ export default function TracerDashboardView() {
   }
 
   function resetFilters() {
-    setPendingFilters(EMPTY_TRACER_FILTERS);
-    setAppliedFilters(EMPTY_TRACER_FILTERS);
+    setPendingFilters(DEFAULT_TRACER_FILTERS);
+    setAppliedFilters(DEFAULT_TRACER_FILTERS);
   }
 
-  const hasActiveFilters = Object.values(appliedFilters).some(Boolean);
+  // college is always set now (no "All Colleges" option), so it doesn't
+  // count toward whether the admin has applied any *extra* narrowing.
+  const hasActiveFilters = Object.entries(appliedFilters).some(([k, v]) => k !== "college" && Boolean(v));
 
   return (
     <section className="content tracer-dashboard-view view active-view">

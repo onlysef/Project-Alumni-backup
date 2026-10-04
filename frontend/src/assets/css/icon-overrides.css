@@ -1,6 +1,4 @@
-/* Icons are <img> elements with inline data-URI SVGs. An <img> has no
- * intrinsic size cap, so we must pin width/height or it expands to fill
- * its cell (the "blob" bug). Mirrors the size rules in admin-mod.css. */
+/* <img> icons have no intrinsic size cap; pin width/height or they fill their container. */
 
 img.admin-svg-icon {
   background: none !important;
@@ -27,23 +25,10 @@ img.admin-svg-icon {
   height: 18px !important;
 }
 
-/* The "blob bug" (an unconstrained <img> filling its whole button as a
-   solid square) has resurfaced specifically on the print/view action
-   buttons despite the rules above — forcing it here too, since something
-   with higher specificity than we could track down is still winning for
-   this pair. Filled maroon buttons with a white icon (rather than a maroon
-   icon on transparent) — matches .maroon-action's filled-button look
-   elsewhere in the admin UI, and forcing white via filter sidesteps the
-   two source SVGs having different hardcoded stroke colors (#570013 vs
-   #ffffff) that would otherwise look inconsistent against the same fill. */
+/* Print/view buttons: filled maroon with a white icon, forced because other rules kept winning. */
 .table-icon.table-print,
 .table-icon.table-view {
   background: var(--maroon) !important;
-  /* Flex/grid centering on the button and its <span> wrapper still left a
-     visible offset — likely the inline <img>'s baseline "phantom"
-     whitespace fighting the centering at this size. Absolute-positioning
-     the icon dead center of the button, independent of the <span>'s own
-     layout, removes any room for that to happen. */
   position: relative;
 }
 
@@ -76,6 +61,30 @@ img.admin-svg-icon {
 .stat-card img.admin-svg-icon {
   width: 64px;
   height: 64px;
+}
+
+/* These icons draw their tile on the <img> itself, so they need the full size. */
+.coord-stat img.admin-svg-icon,
+.coord-highlight img.admin-svg-icon {
+  width: 48px !important;
+  height: 48px !important;
+  max-width: none;
+  max-height: none;
+}
+
+@media (max-width: 760px) {
+  .coord-stat img.admin-svg-icon,
+  .coord-highlight img.admin-svg-icon {
+    width: 38px !important;
+    height: 38px !important;
+  }
+}
+
+/* Same tile fill the dark-mode rule in coordinator-dashboard.css intends —
+   the blanket `background: none !important` above was stripping it. */
+body.dark-mode .coord-stat img.admin-svg-icon,
+body.dark-mode .coord-highlight img.admin-svg-icon {
+  background: rgba(250, 200, 83, 0.16) !important;
 }
 
 .composer-icon-action img.admin-svg-icon {

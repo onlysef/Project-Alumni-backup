@@ -1,9 +1,4 @@
-// Mirrors the matching rules and vocabulary of backend/utils/skillMatching.js
-// (SKILL_BUCKETS), duplicated here only so the Skills editor can group chips
-// into Soft/Technical sections client-side without a network round trip on
-// every render. This drives display grouping only — actual career
-// recommendation scoring stays backend-authoritative via textContainsSkill.
-// Keep in sync with SKILL_BUCKETS if that list changes.
+// Mirrors backend/utils/skillMatching.js SKILL_BUCKETS, for display grouping only; keep in sync.
 
 const SOFT_SKILL_KEYWORDS = [
   'communication', 'presentation', 'writing', 'leadership', 'teamwork', 'collaboration',
@@ -38,6 +33,40 @@ const HARD_SKILL_KEYWORDS = [
   'construction', 'carpentry', 'welding', 'electrical work', 'plumbing', 'site supervision', 'blueprint reading', 'safety compliance',
 ];
 
+// Mirrors backend/utils/skillMatching.js NON_SKILL_KEYWORDS — keep in sync.
+// The manual "+ Add skill" field used to accept any text with at least one
+// letter — nothing stopped an alumnus from typing a video game name as a
+// "skill" (caught live: "Roblox", "Y8", "codm" all landed in the Other
+// bucket with zero validation). Not an attempt at a general "is this a real
+// skill" classifier (impossible to enumerate every legitimate niche skill,
+// and SKILL_BUCKETS above is deliberately NOT exhaustive — an unlisted real
+// skill should still be accepted into Other) — a curated denylist of the
+// most common non-skill entries someone might type instead: video games/
+// gaming platforms (near-zero chance any of these is ever a legitimate
+// professional skill), bare entertainment/social apps (a real skill mention
+// uses an actual skill phrase already covered above — "Social Media
+// Marketing", "Content Creation", "Video Editing" — so typing just the app
+// name alone is never the real skill), and common placeholder/joke text.
+// This is a client-side convenience check only — the backend enforces the
+// same list as the real boundary (see isNonSkillEntry() in
+// backend/utils/skillMatching.js), since a direct API call bypasses this.
+const NON_SKILL_KEYWORDS = [
+  // Video games / gaming platforms
+  'roblox', 'y8', 'minecraft', 'fortnite', 'valorant', 'mobile legends', 'mobile legends bang bang', 'mlbb',
+  'codm', 'call of duty', 'call of duty mobile', 'free fire', 'pubg', 'pubg mobile', 'among us',
+  'genshin impact', 'honkai star rail', 'honkai impact', 'dota', 'dota 2', 'league of legends', 'wild rift',
+  'arena of valor', 'aov', 'grand theft auto', 'gta', 'clash of clans', 'clash royale', 'brawl stars',
+  'brawlhalla', 'stumble guys', 'candy crush', 'subway surfers', 'temple run', 'pokemon go', '8 ball pool',
+  'apex legends', 'overwatch', 'counter strike', 'csgo', 'cs2', 'tekken', 'street fighter', 'fifa', 'efootball',
+  'sky children of light', 'video games', 'video game', 'gaming', 'playstation', 'xbox', 'nintendo switch',
+  // Bare entertainment/social apps (the real skill is a phrase like "Social
+  // Media Marketing"/"Content Creation"/"Video Editing", already covered
+  // above — the app name alone isn't a skill by itself)
+  'netflix', 'youtube', 'tiktok', 'spotify', 'discord', 'snapchat', 'pinterest', 'whatsapp', 'telegram', 'messenger',
+  // Placeholder/joke entries
+  'none', 'n a', 'nothing', 'idk', 'wala', 'basta', 'test', 'testing', 'asdf', 'qwerty', 'lol', 'lmao', 'haha', 'charot', 'ewan',
+];
+
 const normalize = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 function wholeWordMatch(text, keyword) {
@@ -52,23 +81,22 @@ function wholeWordMatch(text, keyword) {
   return false;
 }
 
-// Longest keyword first, checked across BOTH lists together (not soft-list-
-// then-hard-list) — otherwise a short soft keyword that happens to also be
-// the first word of a longer hard/domain phrase wins by accident. E.g. a
-// "Patient Care" chip (Healthcare bucket, hard) contains the standalone
-// word "patient", which is also a soft-skill keyword on its own ("I am
-// patient") — checking soft first would misfile it as a soft skill. Sorting
-// everything by phrase length first means "patient care" is tested (and
-// matches) before the bare "patient" ever gets a chance to.
+export function isNonSkillEntry(skillText) {
+  return NON_SKILL_KEYWORDS.some((keyword) => wholeWordMatch(skillText, keyword));
+}
+
+// Check the longest keywords first across both lists, so "patient care" beats "patient".
 const KEYWORD_TYPES = [
   ...SOFT_SKILL_KEYWORDS.map((keyword) => ({ keyword, type: 'soft' })),
   ...HARD_SKILL_KEYWORDS.map((keyword) => ({ keyword, type: 'hard' })),
 ].sort((a, b) => b.keyword.length - a.keyword.length);
 
-// A chip's own text is usually just the skill name itself (e.g. "Customer
-// Service"), so this only needs to check whether that short text matches a
-// known keyword — not scan a longer sentence for keywords buried inside it.
+// Exact match for short symbol skills like "C++"/"C#", which wholeWordMatch skips.
+const EXACT_SYMBOL_KEYWORDS = { 'c++': 'hard', 'c#': 'hard' };
+
 export function classifySkill(skillText) {
+  const exact = EXACT_SYMBOL_KEYWORDS[(skillText || '').trim().toLowerCase()];
+  if (exact) return exact;
   for (const { keyword, type } of KEYWORD_TYPES) {
     if (wholeWordMatch(skillText, keyword)) return type;
   }

@@ -6,6 +6,7 @@ import { DashboardSettingsForm } from "../admin/AdminTopbar.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API, authHeaders } from "../../services/api.js";
 import { getNotificationTarget } from "../../services/notificationNavigation.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 function fmtNotifTime(d) {
   const diffMin = Math.round((Date.now() - new Date(d).getTime()) / 60000);
@@ -16,7 +17,7 @@ function fmtNotifTime(d) {
   return new Date(d).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
 }
 
-export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setSettings, showToast = () => {}, restricted = false }) {
+export function AlumniTopbar({ title, titleLogo = null, collapsed, onToggleSidebar, settings, setSettings, showToast = () => {}, restricted = false }) {
   const navigate = useNavigate();
   const [panel, setPanel] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -85,7 +86,7 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
   return (
     <>
     <header className="topbar alumni-topbar">
-      <div className="title-wrap"><button className="hamburger" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={onToggleSidebar}><Icon name="icon-8" /></button><h2>{title}</h2></div>
+      <div className="title-wrap"><button className="hamburger" type="button" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} onClick={onToggleSidebar}><Icon name="icon-8" /></button>{titleLogo && <img className="topbar-title-logo" src={titleLogo} alt="" aria-hidden="true" />}<h2>{title}</h2></div>
       <div className="top-actions alumni-actions" ref={actionsRef}>
         <button className="icon-btn has-badge" data-count={badge > 9 ? "9+" : badge} aria-label="Notifications" disabled={restricted} onClick={openNotifications}><Icon name="icon-9" /></button>
         <button className="icon-btn" aria-label="Settings" disabled={restricted} onClick={() => setPanel(panel === "settings" ? null : "settings")}><Icon name="icon-10" /></button>
@@ -125,9 +126,7 @@ export function AlumniTopbar({ title, collapsed, onToggleSidebar, settings, setS
 function TwoFactorToggle() {
   const { user, updateUser } = useAuth();
   const saved = !!user?.isTwoFactorEnabled;
-  // Checking the box only changes this local draft — nothing is sent to the
-  // server until Save is clicked, so an accidental click doesn't instantly
-  // flip a security setting.
+  // Local draft only; nothing is saved until Save.
   const [checked, setChecked] = useState(saved);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -288,7 +287,7 @@ function AccountSecurityForm() {
     event.stopPropagation();
     setMessage("");
     setError("");
-    if (newPassword.length < 8) { setError("New password must be at least 8 characters."); return; }
+    if (!isStrongPassword(newPassword)) { setError(PASSWORD_REQUIREMENT_MESSAGE); return; }
     if (newPassword !== confirmPassword) { setError("Passwords do not match."); return; }
     setSaving(true);
     try {
@@ -299,10 +298,7 @@ function AccountSecurityForm() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Failed to update password.");
-      // The backend invalidates every other session on the account by
-      // bumping its token version, and issues this session a fresh token
-      // carrying the new version — without storing it, the very next
-      // authenticated request from this tab would fail with "invalid token".
+      // Store the fresh token; the backend invalidated the old one.
       if (data.token) localStorage.setItem("auth_token", data.token);
       setMessage("Password updated.");
       setCurrentPassword("");
@@ -319,7 +315,7 @@ function AccountSecurityForm() {
     {error && <div className="account-settings-error">{error}</div>}
     {message && <div className="account-settings-success">{message}</div>}
     <label><span>Current Password</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required /></label>
-    <label><span>New Password</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="At least 8 characters" required /></label>
+    <label><span>New Password</span><input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="More than 8 characters, with uppercase + symbol" required /></label>
     <label><span>Confirm New Password</span><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></label>
     <button type="submit" className="primary-card-btn" disabled={saving}>{saving ? "Saving…" : "Update Password"}</button>
   </form>;

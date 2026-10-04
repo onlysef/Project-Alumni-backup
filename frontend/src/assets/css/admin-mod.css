@@ -108,16 +108,7 @@
 
         body {
             margin: 0;
-            /* dvh tracks the actual visible viewport (shrinks when a mobile
-               on-screen keyboard opens); vh does not, and combined with
-               overflow:hidden here that used to trap content — like the AI
-               Assistant's message input — behind the keyboard with no way
-               to scroll it into view. vh kept first as a fallback for
-               browsers without dvh support. --app-vh (set by
-               useViewportHeight via the visualViewport API) is declared last
-               so it wins over dvh in WebViews — e.g. Meta's in-app browser —
-               that support visualViewport but report dvh as the full screen
-               height and never shrink it for the keyboard. */
+            /* dvh shrinks with the mobile keyboard; --app-vh (useViewportHeight) comes last so it wins in WebViews where dvh doesn't. */
             height: 100vh;
             height: 100dvh;
             height: var(--app-vh, 100dvh);
@@ -318,9 +309,6 @@
         .tsu-values p b { color: var(--tsu-title); }
         .tsu-section-heading { margin-bottom: 22px; }
         .tsu-section-heading h2 small { color: var(--tsu-accent); font-size: .46em; letter-spacing: .1em; }
-        /* Single column so the leading letters read straight down as the
-           acronym S-O-A-R-H-I-G-H-E-R ("SOAR HIGHER"). A 2-column grid made
-           the sequence zig-zag and look shuffled. */
         .tsu-strategic-list { margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 10px; list-style: none; }
         .tsu-strategic-list li { display: grid; grid-template-columns: 38px 1fr; gap: 12px; align-items: start; padding: 14px; border-radius: 10px; background: var(--tsu-soft-bg); }
         .tsu-strategic-list i, .tsu-roadmap-card li i { display: grid; place-items: center; min-height: 34px; border-radius: 8px; background: rgba(250,200,83,.18); color: var(--tsu-title); font-style: normal; font-weight: 900; }
@@ -373,13 +361,7 @@
   
         }
 
-        /* ── Shell: off-canvas sidebar drawer ──────────────────────────────
-           At/below this width the sidebar leaves the grid and slides over the
-           content as an overlay (toggled by the topbar hamburger); the main
-           column spans the full viewport. Keep this breakpoint in sync with
-           SIDEBAR_DRAWER_MAX in src/constants/layout.js. This is the single
-           source of truth for the drawer — the smaller phone breakpoints below
-           only adjust cosmetics (font sizes, padding, table stacking). */
+        /* Off-canvas sidebar drawer. Keep this breakpoint in sync with SIDEBAR_DRAWER_MAX in src/constants/layout.js. */
         @media (max-width: 1024px) {
             .app,
             .app.sidebar-collapsed,
@@ -754,14 +736,6 @@
 
         .main {
             min-width: 0;
-            /* dvh tracks the actual visible viewport on tablet/mobile (shrinks
-               for browser chrome/on-screen keyboard); vh does not. Left as
-               plain vh here, this trapped content past the visible area —
-               like the AI Assistant's composer — with no way to scroll to
-               it, since overflow below is hidden. Same fix already applied
-               to body/.app above. --app-vh (see body's comment) is declared
-               last so it wins in WebViews that support visualViewport but
-               don't shrink dvh for the keyboard. */
             height: 100vh;
             height: 100dvh;
             height: var(--app-vh, 100dvh);
@@ -871,13 +845,6 @@
         }
 
         .content {
-            /* Same vh-vs-dvh gap as .main above — on a tablet/mobile browser
-               where 100vh overshoots the real visible area, this box (and
-               everything sized from it, like the AI Assistant's flex-column
-               composer) ends up taller than the screen with no scrollbar
-               reaching the extra bit, since .main's own overflow is hidden.
-               See body's --app-vh comment — same WebView-compatibility
-               override applies here too. */
             height: calc(100vh - 70px);
             height: calc(100dvh - 70px);
             height: calc(var(--app-vh, 100dvh) - 70px);
@@ -984,17 +951,18 @@
             color: var(--muted, #76656a);
         }
 
-        /* Icon set mixes white-stroke and maroon-stroke SVGs (each meant for
-           a different background elsewhere in the app) — force every icon
-           here to the same solid maroon regardless of its native stroke
-           color, same trick DashboardView's .figma-group-69 stat-cards
-           already use for this exact reason. */
+        /* Force every icon here to maroon; the icon set mixes white and maroon strokes. */
         body:not(.dark-mode) .tracer-kpi-grid .admin-svg-icon {
             filter: brightness(0) saturate(100%) invert(11%) sepia(73%) saturate(3884%) hue-rotate(330deg) brightness(70%) contrast(105%);
         }
 
         body.dark-mode .tracer-kpi-grid .admin-svg-icon {
             filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
+        }
+
+        body.dark-mode .tracer-kpi-grid .stat-card > span {
+            background: rgba(250, 200, 83, 0.16);
+            box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.36);
         }
 
         .grid {
@@ -1292,10 +1260,7 @@
             gap: 4px;
         }
 
-        /* Opens upward instead of downward — for triggers near the bottom
-           of their container (e.g. the tracer filter panel's download
-           button), where dropping down would float over unrelated content
-           below the panel. */
+        /* Opens upward, for triggers near the bottom of their container. */
         .filter-menu.filter-menu-up {
             top: auto;
             bottom: 42px;
@@ -1603,9 +1568,6 @@
             background: rgba(250, 200, 83, 0.1);
         }
 
-        /* Coordinator activity rows — match the admin activity hover.
-         * Defined here (admin-mod.css) per the change scope; the class is
-         * coordinator-only so there's no conflict with the legacy stylesheet. */
         .coord-activity-row {
             cursor: pointer;
             border-radius: 6px;
@@ -1663,10 +1625,6 @@
             color: #f0d9a6;
         }
 
-        /* Every top-level panel/section on the Tracer Dashboard gets even
-           spacing — plain .panel has no margin of its own (other pages rely
-           on a .left-stack/.right-stack grid gap for that), but this page
-           stacks panels directly. */
         .tracer-dashboard-view > .panel,
         .tracer-dashboard-view > .tracer-analytics-note {
             margin-bottom: 17px;
@@ -1942,14 +1900,6 @@
             margin-bottom: 0;
         }
 
-        /* A donut/pie chart is intrinsically narrow (fixed-diameter circle +
-           legend) — stacked full-width above a bar chart the way every
-           .tracer-chart-block used to render, it left a wide strip of empty
-           space beside it before the next chart even started. Side by side,
-           that same space goes to the second chart instead of sitting
-           unused, and the pair takes less total vertical room than stacking
-           did. Wraps to stacked on narrow viewports via the min-width floor
-           below, same as the AC chatbot's own donut/legend sizing pattern. */
         .tracer-chart-row {
             display: flex;
             align-items: stretch;
@@ -2205,6 +2155,15 @@
             overflow: visible;
         }
 
+        /* Wide layout (many/long x-axis labels, e.g. a per-program
+           breakdown — see TrendLine's own comment) renders at its own
+           natural pixel width instead of being squeezed into the card, and
+           scrolls horizontally — same "give every category real room,
+           scroll instead of cram" pattern .tracer-vbar-chart already uses. */
+        .tracer-trend-line-scroll {
+            overflow-x: auto;
+        }
+
         .trend-gridline {
             stroke: #f0e2e2;
             stroke-width: 1;
@@ -2215,17 +2174,34 @@
         }
 
         .trend-axis-label {
-            /* This is an SVG user-space size inside a 600x220 viewBox that
-               gets scaled down to fit .ac-chart-block's max-width: 88% of
-               the chat bubble — in practice often rendered well under
-               600px wide, so the effective on-screen size ends up smaller
-               than this number, not equal to it. 9px scaled by a realistic
-               ~0.6-0.75x factor lands at roughly 5.5-6.5 actual pixels —
-               illegible, reading as a fuzzy dash instead of a number/year.
-               13px leaves enough headroom to still land in a readable
-               ~8-10px range after that same scaling. */
             font-size: 13px;
             fill: var(--muted, #76656a);
+        }
+
+        /* Y-axis gridline numbers — bold, same visual emphasis as
+           MiniBarChart's own in-bar value numbers (.tracer-vbar-value), just
+           in the brand maroon instead of white since there's no colored bar
+           behind these to sit on top of. */
+        .trend-yaxis-value {
+            font-weight: 700;
+            fill: var(--maroon, #570013);
+        }
+
+        body.dark-mode .trend-yaxis-value {
+            fill: #fac853;
+        }
+
+        /* x-axis category labels — plain, horizontal, the same small
+           readable size/color as MiniBarChart's own .tracer-vbar-label
+           (not the larger .trend-axis-label size above, which is now only
+           used for the y-axis numbers). */
+        .trend-xaxis-label {
+            font-size: 10.5px;
+            fill: #67575c;
+        }
+
+        body.dark-mode .trend-xaxis-label {
+            fill: #dbc5cb;
         }
 
         .trend-line-path {
@@ -2239,15 +2215,6 @@
             stroke: #fac853;
         }
 
-        /* Dashed bridge across an interior no-data gap (see TrendLine's own
-           comment) — deliberately lighter/dashed, never the same solid style
-           as trend-line-path, so it never reads as "we know the trend really
-           went this way through the gap," only "here's the overall shape
-           with a gap in it." Kept subtle on purpose — the vertical guide
-           line + "no data" label below carry the actual "this point isn't
-           real" signal now, since a style-only difference on the line/point
-           itself was found to be too subtle to notice at chat-message
-           rendering size (read as a real third data point instead). */
         .trend-line-bridge {
             stroke: var(--muted, #76656a);
             stroke-width: 1.5;
@@ -2255,10 +2222,6 @@
             opacity: 0.35;
         }
 
-        /* Full-height vertical guide marking exactly where a no-data gap
-           sits — unlike a dot placed ON the trend line, a vertical line
-           crossing the WHOLE plot area can't be mistaken for a plotted
-           value at any render size. Paired with .trend-gap-label below. */
         .trend-gap-guide {
             stroke: var(--muted, #76656a);
             stroke-width: 1;
@@ -2266,10 +2229,6 @@
             opacity: 0.5;
         }
 
-        /* Always-visible (no hover required) sub-label under a gap point's
-           year — a static screenshot or touch-screen viewer never triggers a
-           hover tooltip, so this is the ONLY thing that actually needs to
-           communicate "no data" to every viewer, not just mouse users. */
         .trend-gap-label {
             font-size: 9px;
             font-style: italic;
@@ -2292,6 +2251,19 @@
             stroke: #241116;
         }
 
+        /* Always-visible per-point value — same bold emphasis as
+           MiniBarChart's own in-bar numbers (.tracer-vbar-value), so a
+           point's value no longer requires hovering to read. */
+        .trend-point-value {
+            font-size: 10px;
+            font-weight: 700;
+            fill: var(--maroon);
+        }
+
+        body.dark-mode .trend-point-value {
+            fill: #fac853;
+        }
+
         .trend-tooltip {
             transform: translate(-50%, -100%);
             background: var(--maroon);
@@ -2305,12 +2277,6 @@
 
         .tracer-donut-layout {
             display: grid;
-            /* minmax(0, 1fr), not a bare 1fr — a grid track's implicit
-               min-width is auto, which for a legend row with nowrap values
-               resolves to the text's full unwrapped width. Without the 0
-               floor, a wide value ("170 (66%)") refuses to let this column
-               shrink to fit the card, so the legend overflows straight
-               through the card's own border instead of staying inside it. */
             grid-template-columns: 132px minmax(150px, 1fr);
             gap: 24px;
             align-items: center;
@@ -2358,11 +2324,6 @@
 
         .tracer-donut-legend-row {
             display: grid;
-            /* Same minmax(0, 1fr) floor as .tracer-donut-layout above — this
-               is the column .tracer-donut-legend-label's own overflow:hidden/
-               text-overflow:ellipsis lives on, and neither ever engages
-               without it (the label column just refuses to shrink below its
-               full text width instead of truncating). */
             grid-template-columns: 13px minmax(0, 1fr) auto;
             align-items: center;
             gap: 8px;
@@ -2467,6 +2428,7 @@
             display: -webkit-box;
             -webkit-box-orient: vertical;
             -webkit-line-clamp: 2;
+            line-clamp: 2;
             overflow: hidden;
         }
 
@@ -2977,6 +2939,10 @@
             overflow-x: auto;
         }
 
+        .tracer-response-cards {
+            display: none;
+        }
+
         .employment-table {
             width: 100%;
             min-width: 760px;
@@ -3406,9 +3372,6 @@
             .chart-export-button { width: 78px; padding-inline: 7px; font-size: 11px; }
         }
 
-        /* Tracer Form Editor header controls (college switcher + Import) —
-           same white-pill-on-maroon language as .chart-export-button, instead
-           of the flat translucent-white boxes these used before. */
         .tracer-editor-college-select,
         .tracer-editor-college-locked,
         .tracer-editor-import-btn {
@@ -3424,8 +3387,6 @@
             transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
         }
 
-        /* A coordinator's college is locked, not a real dropdown — no
-           hover/pointer affordance since clicking it does nothing. */
         .tracer-editor-college-locked {
             cursor: default;
             display: inline-flex;
@@ -3543,16 +3504,6 @@
             font-size: 11px;
         }
 
-        /* The "..." action-menu trigger is an icon-square button, not a
-           regular labeled action button — the generic .appointments-table
-           button rule above stretches it into the same wide, short
-           rectangle as "Approve"/"Reject", which both distorts its shape
-           and (combined with border/background resets elsewhere in this
-           file) left it looking like an unstyled default button instead of
-           matching the solid maroon square used everywhere else (e.g.
-           Manage Accounts). Re-declared here with higher specificity so it
-           can't be overridden by table-wide button rules regardless of
-           source order. */
         .appointments-table .action-menu-trigger {
             min-width: 34px !important;
             width: 34px !important;
@@ -3802,14 +3753,6 @@
             gap: 10px;
         }
 
-        /* .admin-card-head-inline — opt-out for a card head that's just a
-           title + ONE small action button ("Employer Invites" / "Send
-           Invite"), unlike the search-box + filters + button combos the
-           several @media (max-width: 760/600/420/360px) rules further down
-           stack into a column for — this stays side-by-side at every width.
-           Doubled class + !important on each rule so it beats those (some
-           of which already use !important themselves) regardless of source
-           order or specificity. */
         .admin-card-head.admin-card-head-inline {
             flex-direction: row !important;
             align-items: center !important;
@@ -3946,11 +3889,6 @@
             max-width: 100%;
         }
 
-        /* Left column used to be just post-launcher-card alone — a short bar
-           sitting on top of a lot of empty space next to the taller Recent
-           Posts column beside it. recent-activity-card (added below) is its
-           new second row, so the two columns land at roughly the same
-           height instead of that lopsided look. */
         .announcement-left-col {
             display: flex;
             flex-direction: column;
@@ -4203,14 +4141,6 @@
             background: #fff;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
             z-index: 35;
-            /* A long option list (e.g. all 11 partner types) can be taller
-               than the viewport below the trigger. It's absolutely
-               positioned, so that extra height doesn't grow the page's own
-               scroll area — the tail end of the list would otherwise render
-               past the bottom of the window with no way to reach it. Capping
-               the menu's own height and scrolling inside it keeps every
-               option reachable regardless of where the trigger sits on the
-               page. */
             max-height: min(60vh, 420px);
             overflow-y: auto;
         }
@@ -5482,13 +5412,14 @@
             .modal-backdrop.topbar-popover .topbar-modal::before {
                 display: none;
             }
+
+            .modal-backdrop.topbar-popover.show {
+                background: rgba(0, 0, 0, 0.45);
+                /* Re-enabled so tapping the dimmed area closes the panel instead of clicking through. */
+                pointer-events: auto;
+            }
         }
 
-        /* Offsets shift right-to-left to clear each icon in .top-actions —
-           notifications, then settings, then the 34px avatar button now
-           rightmost (added for account-popover below). Each popover still
-           just needs to land roughly under its own trigger, not pixel-
-           perfect, same as this file's existing convention. */
         .notifications-popover .topbar-modal {
             right: 104px;
         }
@@ -5505,10 +5436,6 @@
             right: 20px;
         }
 
-        /* .account-profile-actions itself is already styled unscoped
-           (alumni-mod.css) — only the BUTTON inside it is scoped to
-           .alumni-top-panel there, so AccountPanel's own "Upload Photo"
-           button needs its own copy of that same look here. */
         .account-panel-modal .account-profile-actions button {
             min-height: 36px;
             border: 1px solid var(--maroon);
@@ -5572,7 +5499,13 @@
         }
 
         .topbar-modal-actions {
-            padding: 0 18px 18px;
+            padding: 14px 18px 18px;
+            border-top: 1px solid #f0e0e3;
+            margin-top: 4px;
+        }
+
+        body.dark-mode .topbar-modal-actions {
+            border-top-color: rgba(250, 200, 83, 0.16);
         }
 
         .settings-form,
@@ -5783,6 +5716,12 @@
             color: var(--tsu-muted);
         }
 
+        /* The rule above turns every <strong> gold, including the T/S/U
+           letters inside the gold Core Values circles — gold on gold. */
+        body.dark-mode .tsu-document .tsu-values p > strong {
+            color: #570013;
+        }
+
         body.dark-mode .panel-head.light {
             background: #570013;
             color: #fac853;
@@ -5800,6 +5739,41 @@
 
         body.dark-mode .admin-table th {
             color: #fac853;
+        }
+
+        /* Dark mode: one header style for every data table. */
+        body.dark-mode .admin-table th,
+        body.dark-mode .account-table th,
+        body.dark-mode .partnership-table th,
+        body.dark-mode .announcement-table th,
+        body.dark-mode .employment-table th,
+        body.dark-mode .appointments-table th {
+            background: var(--maroon);
+            color: #fac853;
+            border-color: rgba(250, 200, 83, 0.22);
+        }
+
+        body.dark-mode .admin-table th:first-child,
+        body.dark-mode .employment-table th:first-child,
+        body.dark-mode .appointments-table th:first-child {
+            border-radius: 6px 0 0 6px;
+        }
+
+        body.dark-mode .admin-table th:last-child,
+        body.dark-mode .employment-table th:last-child,
+        body.dark-mode .appointments-table th:last-child {
+            border-radius: 0 6px 6px 0;
+        }
+
+        body.dark-mode .employment-table th {
+            padding-top: 14px;
+            padding-bottom: 14px;
+        }
+
+        body.dark-mode .admin-table td,
+        body.dark-mode .employment-table td,
+        body.dark-mode .appointments-table td {
+            color: #fff6f8;
         }
 
         body.dark-mode .activity,
@@ -6181,8 +6155,6 @@
         }
 
         @media (max-width: 600px) {
-            /* Shell / drawer positioning is owned by the @media (max-width: 1024px)
-               block near the top of this file. Below only tunes phone cosmetics. */
             .sidebar {
                 padding: 20px 0;
             }
@@ -6302,10 +6274,7 @@
 
             /* ── Content & grids ── */
             .content {
-                /* See body's --app-vh comment — this breakpoint's own height
-                   override was still plain vh, silently undoing the dvh/
-                   --app-vh fix above at exactly the mobile widths it matters
-                   most for. */
+                /* Keep dvh/--app-vh here too; plain vh would undo the keyboard fix at this width. */
                 height: calc(100vh - 60px);
                 height: calc(100dvh - 60px);
                 height: calc(var(--app-vh, 100dvh) - 60px);
@@ -6760,10 +6729,7 @@
             position: relative;
         }
 
-        /* Position is set inline (see Dropdown's `portal` mode in
-           Primitives.jsx) since the menu is now portaled to document.body
-           and fixed-positioned from the trigger's own bounding rect — these
-           !important top/right rules used to fight that inline position. */
+        /* Positioned inline by Dropdown's portal mode (Primitives.jsx), so no top/right here. */
         .admin-menu {
             min-width: 150px;
             z-index: 200;
@@ -6989,6 +6955,11 @@
             width: 36px;
             height: 36px;
             border-radius: 50%;
+            flex-shrink: 0;
+            object-fit: cover;
+        }
+
+        .comment-avatar-fallback {
             background: var(--maroon);
             color: #fff;
             display: grid;
@@ -6996,7 +6967,92 @@
             font-size: 14px;
             font-weight: 800;
             text-transform: uppercase;
-            flex-shrink: 0;
+        }
+
+        .comment-meta {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px 10px;
+        }
+
+        .comment-edited {
+            font-size: 10px;
+            color: var(--muted);
+            font-style: italic;
+        }
+
+        .comment-action {
+            border: 0;
+            padding: 0;
+            background: transparent;
+            color: var(--muted);
+            font: inherit;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .comment-action:hover,
+        .comment-action:focus-visible {
+            color: var(--maroon);
+            text-decoration: underline;
+            outline: none;
+        }
+
+        .comment-action.danger:hover,
+        .comment-action.danger:focus-visible {
+            color: #c53030;
+        }
+
+        .comment-edit textarea {
+            width: 100%;
+            box-sizing: border-box;
+            margin: 2px 0 6px;
+            border: 1px solid #cba0a6;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font: inherit;
+            font-size: 13px;
+            line-height: 1.4;
+            resize: vertical;
+            background: #fff;
+            color: #2d2024;
+        }
+
+        .comment-edit textarea:focus {
+            outline: 2px solid var(--maroon);
+            outline-offset: 1px;
+        }
+
+        .comment-edit-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .comment-edit-actions button {
+            border: 1px solid #d9c3c7;
+            border-radius: 14px;
+            padding: 4px 12px;
+            background: transparent;
+            color: #5a4a4f;
+            font: inherit;
+            font-size: 11px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .comment-edit-actions button.primary {
+            border-color: var(--maroon);
+            background: var(--maroon);
+            color: #fff;
+        }
+
+        .comment-edit-actions button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
         }
 
         .comment-bubble {
@@ -7107,6 +7163,42 @@
             color: #fac853;
         }
 
+        body.dark-mode .comment-action,
+        body.dark-mode .comment-edited {
+            color: #bfa9ae;
+        }
+
+        body.dark-mode .comment-action:hover,
+        body.dark-mode .comment-action:focus-visible {
+            color: #fac853;
+        }
+
+        body.dark-mode .comment-action.danger:hover,
+        body.dark-mode .comment-action.danger:focus-visible {
+            color: #ff8a8a;
+        }
+
+        body.dark-mode .comment-edit textarea {
+            border-color: #5a3440;
+            background: #1e0e12;
+            color: #f3e7ea;
+        }
+
+        body.dark-mode .comment-edit textarea:focus {
+            outline-color: #fac853;
+        }
+
+        body.dark-mode .comment-edit-actions button {
+            border-color: #5a3440;
+            color: #e0cdd2;
+        }
+
+        body.dark-mode .comment-edit-actions button.primary {
+            border-color: #fac853;
+            background: #7a0f2c;
+            color: #fff;
+        }
+
         body.dark-mode .comment-bubble p {
             color: #f3e7ea;
         }
@@ -7150,6 +7242,42 @@
         body.dark-mode .post-viewer-actions .liked,
         body.dark-mode .post-viewer-actions .shared {
             color: #7ab4ff;
+        }
+
+        /* Like/Comment/Share icons are maroon-stroke SVGs, which vanish on the
+           dark card — recolor them gold, same filter the dark-mode KPI icons use. */
+        body.dark-mode .post-actions .admin-svg-icon,
+        body.dark-mode .post-viewer-actions .admin-svg-icon {
+            filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
+        }
+
+        body.dark-mode .post-actions button:hover,
+        body.dark-mode .post-actions button.is-active {
+            background: rgba(250, 200, 83, 0.1);
+        }
+
+        body.dark-mode .post-actions button.liked {
+            background: rgba(255, 122, 145, 0.16);
+            color: #ff9fb0;
+        }
+
+        body.dark-mode .post-actions button.liked:hover {
+            background: rgba(255, 122, 145, 0.24);
+        }
+
+        body.dark-mode .post-actions button.shared {
+            background: rgba(122, 180, 255, 0.16);
+            color: #9cc6ff;
+        }
+
+        body.dark-mode .post-actions button.shared:hover {
+            background: rgba(122, 180, 255, 0.24);
+        }
+
+        body.dark-mode .post-meta-type {
+            background: rgba(250, 200, 83, 0.16);
+            color: #fac853;
+            box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.36);
         }
 
         body.dark-mode .comment-empty {
@@ -7433,6 +7561,32 @@
             flex-wrap: wrap;
         }
 
+        .tracer-filter-select {
+            margin-bottom: 0;
+            min-height: 36px;
+        }
+
+        .tracer-date-range {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tracer-date-label {
+            font-size: 12px;
+            color: #76656a;
+            white-space: nowrap;
+        }
+
+        .tracer-date-input {
+            min-width: 130px;
+            flex: none;
+        }
+
+        .tracer-clear-btn {
+            margin-top: 0;
+        }
+
         .emp-search {
             flex: 1;
             min-width: 200px;
@@ -7525,13 +7679,7 @@
             width: min(680px, 100%);
         }
 
-        /* The generic .tracer-modal scrolls the whole box (header included),
-         * which leaves a visible gap where the native scrollbar's square
-         * corner cuts across the box's rounded corner. These 3 modals
-         * (view/edit/add employment record) have tall content, so instead
-         * only the body between the header and the action buttons scrolls —
-         * the header and Save/Cancel row stay pinned, and the outer box's
-         * rounded corner stays a clean, unbroken curve. */
+        /* Only the body scrolls, so the header and actions stay pinned and the rounded corner stays clean. */
         .tracer-modal.wider-modal {
             display: flex;
             flex-direction: column;
@@ -7584,6 +7732,100 @@
         body.dark-mode .status-badge.account-status.active    { background: rgba(40, 122, 78, 0.22); color: #7be0a6; border-color: rgba(123, 224, 166, 0.4); }
         body.dark-mode .status-badge.account-status.pending   { background: rgba(137, 90, 0, 0.28); color: #f0cf86; border-color: rgba(240, 207, 134, 0.4); }
         body.dark-mode .status-badge.account-status.suspended { background: rgba(138, 31, 47, 0.28); color: #f3a3ad; border-color: rgba(243, 163, 173, 0.4); }
+
+        /* Tracer Form Responses (TracerPills.jsx) — "Never Employed" is a
+           raw tracer-form answer the Employment page never shows. */
+        .status-badge.never-employed { background: #ece3f7; color: #5b3a8a; border-color: #cdb8e8; }
+        body.dark-mode .status-badge.never-employed { background: rgba(125, 90, 190, 0.24); color: #cbb2f2; border-color: rgba(203, 178, 242, 0.4); }
+
+        /* ExpandableText (AnnouncementsView's Description column). */
+        .expandable-text p {
+            margin: 0;
+            white-space: pre-line;
+        }
+
+        .expandable-text p.is-clamped {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 3;
+            line-clamp: 3;
+            overflow: hidden;
+        }
+
+        /* Doubled-up selector so this text-link style beats the generic
+           ".admin-table button" filled-pill rules the table applies. */
+        .expandable-text .expandable-text-toggle {
+            min-width: 0;
+            min-height: 0;
+            margin: 4px 0 0;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            color: var(--maroon);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 800;
+            cursor: pointer;
+        }
+
+        .expandable-text .expandable-text-toggle:hover,
+        .expandable-text .expandable-text-toggle:focus-visible {
+            background: transparent;
+            text-decoration: underline;
+            outline: none;
+        }
+
+        /* !important: "body.dark-mode .admin-table td *" forces every
+           descendant to white with !important. */
+        body.dark-mode .admin-table td .expandable-text .expandable-text-toggle {
+            color: #fac853 !important;
+        }
+
+        /* Notify Alumni (admin + coordinator) — these were inline maroon,
+           which inline styles kept maroon on the dark card too. */
+        .notify-new-questions-toggle,
+        .notify-questions-title {
+            color: var(--maroon);
+        }
+
+        body.dark-mode .notify-new-questions-toggle {
+            color: #f3e7ea;
+        }
+
+        body.dark-mode .notify-questions-title {
+            color: #fac853;
+        }
+
+        .college-pill {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 48px;
+            padding: 4px 11px;
+            border: 1px solid #e2c3c9;
+            border-radius: 999px;
+            background: #f7e9ec;
+            color: var(--maroon);
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.35;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        body.dark-mode .college-pill {
+            border-color: rgba(250, 200, 83, 0.36);
+            background: rgba(250, 200, 83, 0.14);
+            color: #fac853;
+        }
+
+        .tracer-response-card-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
 
         .record-fields-grid {
             display: grid;
@@ -7660,15 +7902,7 @@
         }
 
         .emp-export-menu {
-            /* Rendered through a portal straight into <body> now (see
-               EmploymentView.jsx) — .employment-card sitting right below this
-               menu in the toolbar kept painting over it regardless of how
-               high z-index alone was pushed, the same stacking-context trap
-               .action-menu-list-portal's own comment above already documents
-               for table rows. position/top/left/right come from the portal's
-               inline style (fixed, computed off the trigger's real position);
-               this class now only supplies the box's visual styling.
-               z-index still set defensively, same level as that portal. */
+            /* Portaled to <body> (EmploymentView.jsx); position comes from the inline style. */
             width: 170px;
             padding: 6px;
             display: none;
@@ -7774,14 +8008,7 @@
 
         .emp-filter-grid {
             display: grid;
-            /* minmax(0, 1fr), not a bare 1fr — a grid item's default
-               min-width is auto, which for a <select> resolves to its
-               widest <option> text (a long college/course name). Without
-               the 0 floor, a select that's intrinsically wider than half
-               the card refuses to shrink to its track and overflows the
-               card into the page background instead of wrapping its text
-               or truncating — exactly the "College"/"Batch Year" controls
-               spilling out on a narrow phone screen. */
+            /* minmax(0, 1fr) so a long <select> option can't push the control past the card. */
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             gap: 14px;
             padding: 18px 20px;
@@ -7799,9 +8026,6 @@
         .emp-filter-grid select,
         .emp-filter-grid input {
             min-height: 36px;
-            /* width: 100% + min-width: 0 — fills (and is capped by) its
-               grid track instead of sizing to its content, the other half
-               of the overflow fix alongside minmax(0, 1fr) above. */
             width: 100%;
             min-width: 0;
             box-sizing: border-box;
@@ -7818,11 +8042,6 @@
         }
 
         @media (max-width: 600px) {
-            /* Same collapse-to-one-column pattern .record-fields-grid
-               already uses at this breakpoint — a single column always has
-               the full card width to work with, so this is also a second,
-               independent safety net against the overflow above even if a
-               future option value is unusually long. */
             .emp-filter-grid {
                 grid-template-columns: 1fr;
             }
@@ -7920,13 +8139,7 @@
 
         /* ===== Kebab action menu ===== */
         .action-menu { position: relative; display: inline-block; }
-        /* Rendered through a portal straight into <body> (see ActionMenu.jsx)
-           instead of positioned in-place inside the row — neighboring rows'
-           own trigger buttons could otherwise end up painting over an open
-           dropdown from a table stacking context no amount of z-index on
-           the dropdown alone could escape. Needs its own z-index here since
-           it's no longer nested under .action-menu's — just high enough to
-           clear normal page content, comfortably under modal overlays (9999). */
+        /* Portaled to <body> (ActionMenu.jsx) so table rows can't paint over it; stays below modals (9999). */
         .action-menu-list-portal { z-index: 500; }
 
         .admin-table .action-menu-trigger,
@@ -7954,8 +8167,8 @@
         }
         .action-menu-trigger .admin-svg-icon,
         .action-menu-trigger svg {
-            width: 18px;
-            height: 18px;
+            width: 22px;
+            height: 22px;
             flex: 0 0 auto;
             filter: brightness(0) invert(1);
             display: block;
@@ -8328,29 +8541,35 @@
             filter: brightness(0) saturate(100%) invert(11%) sepia(73%) saturate(3884%) hue-rotate(330deg) brightness(70%) contrast(105%);
         }
 
-        body:not(.dark-mode) .figma-group-69 .stat-card .admin-svg-icon {
+        body:not(.dark-mode) .figma-group-69 .stat-card .admin-svg-icon,
+        body:not(.dark-mode) .coord-stats .stat-card .admin-svg-icon {
             filter: brightness(0) saturate(100%) invert(11%) sepia(73%) saturate(3884%) hue-rotate(330deg) brightness(70%) contrast(105%);
         }
 
-        body.dark-mode .figma-group-69 .stat-card {
+        body.dark-mode .figma-group-69 .stat-card,
+        body.dark-mode .coord-stats .stat-card {
             background: linear-gradient(135deg, #2b1018 0%, #4b0618 55%, #6f0a25 100%) !important;
             color: #fff7f8;
             border-color: rgba(250, 200, 83, 0.22);
         }
 
-        body.dark-mode .figma-group-69 .stat-value {
+        body.dark-mode .figma-group-69 .stat-value,
+        body.dark-mode .coord-stats .stat-value {
             color: var(--gold);
         }
 
-        body.dark-mode .figma-group-69 .stat-label {
+        body.dark-mode .figma-group-69 .stat-label,
+        body.dark-mode .coord-stats .stat-label {
             color: #f3e7ea;
         }
 
-        body.dark-mode .figma-group-69 .stat-card > span {
+        body.dark-mode .figma-group-69 .stat-card > span,
+        body.dark-mode .coord-stats .stat-card > span {
             background: rgba(250, 200, 83, 0.16);
             box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.36);
         }
 
+        body.dark-mode .coord-stats .stat-card .admin-svg-icon,
         body.dark-mode .figma-group-69 .stat-card .admin-svg-icon {
             filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
         }
@@ -8372,17 +8591,17 @@
 
             .mobile-row-actions {
                 display: block;
-                min-width: 34px !important;
+                min-width: 36px !important;
                 width: auto !important;
                 max-width: none !important;
-                justify-self: start;
+                justify-self: end;
             }
 
             .mobile-row-actions .action-menu,
             .mobile-row-actions .action-menu-trigger {
-                min-width: 34px !important;
-                width: 34px !important;
-                max-width: 34px !important;
+                min-width: 36px !important;
+                width: 36px !important;
+                max-width: 36px !important;
             }
 
             .mobile-row-actions .action-menu-list {
@@ -8559,12 +8778,7 @@
                 overflow: hidden;
             }
 
-            /* overflow: hidden above clips the card to its rounded corners,
-               but it also clips the absolutely-positioned action-menu
-               dropdown whenever the row is short (e.g. the last row before
-               "Add Appointment") — the dropdown was rendering detached from
-               its trigger and overlapping unrelated content below the
-               table. Lift the clip only while a row's menu is open. */
+            /* Lift the clip while a row's menu is open so the dropdown isn't cut off. */
             .admin-table tr:has(.action-menu-list),
             .appointments-table tr:has(.action-menu-list) {
                 overflow: visible;
@@ -8639,6 +8853,13 @@
             .appointments-table td:nth-child(4)::before { content: "Purpose"; }
             .appointments-table td:nth-child(5)::before { content: "Status"; }
             .appointments-table td:nth-child(6)::before { content: "Actions"; }
+
+            .account-table td:nth-child(5) > .action-menu,
+            .partnership-table td:nth-child(5) > .action-menu,
+            .announcement-table td:nth-child(5) > .announcement-action-menu,
+            .appointments-table td:nth-child(6) > .appointment-action-menu {
+                justify-self: end;
+            }
 
             .admin-table td::before,
             .appointments-table td::before {
@@ -8819,7 +9040,7 @@
             }
 
             .employment-table td[data-label="Actions"] {
-                justify-items: center;
+                justify-items: end;
             }
 
             .employment-table td[data-label="Actions"]::before {
@@ -8863,6 +9084,113 @@
 
             body.dark-mode .employment-table td::before {
                 color: var(--gold);
+            }
+
+            .tracer-filter-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .tracer-filter-row > * {
+                width: 100%;
+            }
+
+            .tracer-filter-select {
+                background: #fff;
+                color: #2d2024;
+                border: 1px solid rgba(87, 0, 19, 0.3);
+                font-weight: 600;
+                min-height: 40px;
+            }
+
+            .tracer-date-input {
+                flex: 1;
+                min-width: 0;
+            }
+
+            .tracer-clear-btn {
+                width: 100%;
+            }
+
+            body.dark-mode .tracer-filter-select {
+                background: #2b141a;
+                color: #f7edef;
+                border-color: rgba(250, 200, 83, 0.3);
+            }
+
+            body.dark-mode .tracer-date-label {
+                color: #d4bdc3;
+            }
+
+            .tracer-responses-table {
+                display: none;
+            }
+
+            .tracer-response-cards {
+                display: grid;
+                gap: 10px;
+                padding: 12px 0;
+            }
+
+            .tracer-response-card {
+                border: 1px solid #ead7da;
+                border-radius: 10px;
+                background: #fff;
+                padding: 14px 16px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            }
+
+            .tracer-response-card-head {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                margin-bottom: 8px;
+            }
+
+            .tracer-response-card-head strong {
+                font-size: 15px;
+                color: #2d2024;
+            }
+
+            .tracer-response-card-meta {
+                font-size: 12px;
+                color: #76656a;
+                font-weight: 700;
+            }
+
+            .tracer-response-card-date {
+                font-size: 12px;
+                color: #8a767c;
+                margin-bottom: 12px;
+            }
+
+            .tracer-response-card-btn {
+                width: 100%;
+                background: var(--maroon);
+                color: #fff;
+                border: none;
+                border-radius: 6px;
+                padding: 9px 0;
+                font-size: 13px;
+                font-weight: 700;
+                cursor: pointer;
+            }
+
+            .tracer-response-card-btn:disabled {
+                opacity: 0.6;
+            }
+
+            body.dark-mode .tracer-response-card {
+                background: #241116;
+                border-color: #50303a;
+            }
+
+            body.dark-mode .tracer-response-card-head strong {
+                color: #f7edef;
+            }
+
+            body.dark-mode .tracer-response-card-meta {
+                color: #d4bdc3;
             }
         }
 
@@ -9036,18 +9364,23 @@
             box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
         }
         body.dark-mode .recent-activity-row { border-top-color: rgba(250, 200, 83, 0.18); }
-        body.dark-mode .recent-activity-icon { background: #3a1f27; }
+        body.dark-mode .recent-activity-icon {
+            background: rgba(250, 200, 83, 0.14);
+            box-shadow: inset 0 0 0 1px rgba(250, 200, 83, 0.32);
+        }
+        body.dark-mode .recent-activity-card h3 { color: #fac853; }
+        /* Like/share/comment and the composer's edit icon are maroon-stroke
+           SVGs — invisible on the dark card; recolor gold like the KPI icons. */
+        body.dark-mode .recent-activity-icon .admin-svg-icon,
+        body.dark-mode .post-launcher-icon .admin-svg-icon {
+            filter: brightness(0) saturate(100%) invert(82%) sepia(62%) saturate(637%) hue-rotate(348deg) brightness(102%) contrast(96%);
+        }
         body.dark-mode .recent-activity-text { color: #f3e7ea; }
         body.dark-mode .recent-activity-empty,
         body.dark-mode .recent-activity-time { color: #cbb9bd; }
 
         @media (min-width: 601px) {
-            /* table-layout: auto (the default) sizes columns to fit content
-               on one line whenever possible, so the percentage widths below
-               were only ever a hint — a long Description just grew the
-               column (and the whole table, via .table-scroll's horizontal
-               scroll) instead of wrapping. Fixed layout makes the browser
-               honor these widths and wrap text inside them instead. */
+            /* Fixed layout so the column widths below are honored and long text wraps. */
             .announcement-table {
                 table-layout: fixed;
             }
@@ -9516,13 +9849,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 
         .ac-chart-block {
             max-width: 88%;
-            /* Fixed-px floor, not just a percentage — a percentage alone can
-               end up resolving against a different (often narrower) box
-               during html-to-image's capture, since the node gets cloned
-               out of its live layout context. A min-width in real pixels
-               resolves the same whether attached to the live page or
-               captured, so the donut legend always has the room it needs
-               and never spills through the card's own border. */
+            /* px floor: percentages resolve differently during html-to-image capture. */
             min-width: min(420px, 100%);
             margin-top: 10px;
             padding: 14px 16px;
@@ -9627,12 +9954,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
 
         .ac-word {
             display: inline-block;
-            /* Each span already holds one whole word (animatedWords() splits on
-               whitespace) — without this, the ancestor .ac-ac-text's
-               overflow-wrap: break-word inherits in and can split the word
-               itself mid-letter ("Technology" -> "Technolo" / "gy") when the
-               line-wrap calculation runs tight, instead of wrapping the whole
-               word down to the next line like normal text does. */
+            /* Keep each word whole; the inherited break-word would split words mid-letter. */
             white-space: nowrap;
             opacity: 0;
             transform: translateY(5px);
@@ -9657,18 +9979,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             display: grid;
             gap: 7px;
             margin: 4px 0 18px;
-            /* Was a fixed 26px, only ever room for a 1-2 digit marker
-               ("1."-"99.") — a list past 99 items (this app's alumni-name
-               lists routinely run into the hundreds, and are asked to scale
-               to 1000+) needs room for "100."-"9999." too, or the extra
-               digits get visually clipped against the text that follows.
-               `ch` (not a fixed px) scales with THIS element's own
-               font-size/font — same reason it also auto-adapts for the
-               14px mobile override below with no separate mobile rule
-               needed. 5ch comfortably fits a 4-digit marker + the period,
-               with tabular-nums (set on .ac-ac-text above) keeping every
-               digit's width identical so this doesn't get tighter for
-               "0000"-heavy numbers vs "1111"-heavy ones. */
+            /* ch-based so list markers up to "9999." fit. */
             padding-left: 5ch;
         }
         .ac-ac-text li {
@@ -9860,11 +10171,7 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             color: var(--text);
             padding: 7px 0;
         }
-        /* The global textarea:focus-visible accessibility ring (gold, line ~68)
-           beats plain .ac-input{outline:none} on specificity — the composer
-           pill itself already shows a maroon focus-within border, so the
-           textarea's own ring is redundant here and needs an explicit,
-           equally-specific override to actually turn off. */
+        /* Needs this specificity to beat the global textarea:focus-visible ring. */
         .ac-input:focus-visible {
             outline: none;
         }
@@ -10394,10 +10701,6 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             .ac-bubble { max-width: 85%; }
             .ac-ac-text { max-width: 100%; font-size: 14px; line-height: 1.7; }
             .ac-ac-text h3 { font-size: 16px; }
-            /* No separate ul/ol padding-left override needed here anymore —
-               the base rule now uses `ch` (see its own comment), which
-               already scales down correctly for this smaller 14px
-               font-size on its own. */
             .ac-ac-text table { min-width: 390px; font-size: 13px; }
             .ac-ac-text th,
             .ac-ac-text td { padding: 9px 10px; }
@@ -10566,9 +10869,6 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             border-color: #e0cbcb;
         }
 
-        /* Wraps a flag's .ac-file-row plus its optional note input below it —
-           .ac-file-row keeps its own border/background as a self-contained
-           card, this is just a layout wrapper. */
         .ac-flag-item {
             display: flex;
             flex-direction: column;
@@ -10579,10 +10879,6 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
             align-items: center;
             gap: 2px;
         }
-        /* Deliberately borderless/ghost — a second bordered box the same
-           weight as the resolve checkmark, repeated down a 35-row list,
-           read as visually loud/repetitive. This is a secondary, optional
-           action, so it stays quiet until hovered. */
         .ac-flag-note-toggle {
             width: 28px;
             height: 28px;
@@ -11450,4 +11746,88 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
     .ac-menu {
         animation: none !important;
     }
+}
+
+/* AC logo used as the AI Assistant nav icon (admin + coordinator sidebars) */
+.nav-ac-logo {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 0 0 1px rgba(237, 196, 94, 0.55);
+}
+
+/* AC avatar beside each assistant response */
+.ac-row-with-avatar {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 12px;
+    align-items: start;
+}
+
+.ac-row-with-avatar > :not(.ac-avatar) {
+    grid-column: 2;
+}
+
+.ac-avatar {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: 34px;
+    height: 34px;
+    margin-top: 2px;
+    border-radius: 50%;
+    object-fit: cover;
+    box-shadow: 0 2px 6px rgba(76, 8, 10, 0.25);
+}
+
+@media (max-width: 620px) {
+    .ac-row-with-avatar {
+        grid-template-columns: 28px minmax(0, 1fr);
+        column-gap: 9px;
+    }
+
+    .ac-avatar {
+        width: 28px;
+        height: 28px;
+    }
+}
+
+/* Sidebar scrollbar (all roles): thin thumb on a transparent track. */
+/* Firefox only: in Chrome/Edge 121+ setting scrollbar-color switches off the
+   ::-webkit-scrollbar styling below, which is what draws the glass thumb. */
+@supports not selector(::-webkit-scrollbar) {
+    .sidebar,
+    .sidebar .nav {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.32) transparent;
+    }
+}
+
+.sidebar::-webkit-scrollbar,
+.sidebar .nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track,
+.sidebar .nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar::-webkit-scrollbar-thumb,
+.sidebar .nav::-webkit-scrollbar-thumb {
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(237, 196, 94, 0.28));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover,
+.sidebar .nav::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.5), rgba(237, 196, 94, 0.45));
+}
+
+.sidebar::-webkit-scrollbar-button,
+.sidebar .nav::-webkit-scrollbar-button {
+    display: none;
+    height: 0;
 }

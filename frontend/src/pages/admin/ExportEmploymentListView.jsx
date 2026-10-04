@@ -34,14 +34,7 @@ export default function ExportEmploymentListView() {
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
-  // Both the count preview and the export itself read from the AlumniEmployment
-  // collection, not User — an alumni with no AlumniEmployment document yet
-  // (e.g. just registered) is invisible to that query no matter the filters.
-  // The Employment page papers over this by backfilling missing records (and
-  // syncing tracer-derived status) before ever loading its table. This page
-  // can be opened directly from the sidebar without ever visiting Employment
-  // first, so it has to do the same backfill+sync itself, or a fresh alumni
-  // would silently be missing from "export all users based on the filter."
+  // Backfill + sync first, or alumni without an AlumniEmployment doc are missing from the export.
   useEffect(() => {
     Promise.all([
       fetch(`${API}/admin/employment/backfill`,    { method: "POST", headers: authHeaders() }).then(r => r.ok && r.json()),
@@ -53,9 +46,6 @@ export default function ExportEmploymentListView() {
       .catch(() => {});
   }, []);
 
-  // Live preview of how many records the current filters match — fetched
-  // from the same list endpoint the Employment table itself uses, just with
-  // limit=1 so only pagination.total is needed.
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -70,11 +60,7 @@ export default function ExportEmploymentListView() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filters, refreshKey]);
 
-  // CSV/Excel carry every tracer-study answer as its own column (can run to
-  // dozens per college) — a PDF page can't reasonably fit that many columns
-  // per row and stay readable. PDF is a compact, printable overview table
-  // instead (core fields only); the full answer set is still there in
-  // CSV/Excel for anyone who needs to process the raw data.
+  // PDF is a compact overview; CSV/Excel carry every tracer answer.
   async function exportPdf() {
     const PAGE_SIZE = 200;
     let page = 1, pages = 1;
@@ -256,18 +242,21 @@ export default function ExportEmploymentListView() {
           <span style={{ fontSize: 13, color: "#76656a" }}>
             {counting ? "Counting matching records…" : total === null ? "" : `${total} record${total !== 1 ? "s" : ""} match these filters`}
           </span>
-          <Dropdown
-            menuClassName="admin-menu"
-            portal
-            options={["CSV", "Excel", "PDF"]}
-            onSelect={(choice) => handleExport(choice.toLowerCase())}
-            trigger={(toggle) => (
-              <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
-                <span><Icon name="icon-17" /></span>
-                <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
-              </button>
-            )}
-          />
+          {/* marginLeft:auto keeps the button (and its portaled menu) on the right when the row wraps. */}
+          <div style={{ marginLeft: "auto" }}>
+            <Dropdown
+              menuClassName="admin-menu"
+              portal
+              options={["CSV", "Excel", "PDF"]}
+              onSelect={(choice) => handleExport(choice.toLowerCase())}
+              trigger={(toggle) => (
+                <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
+                  <span><Icon name="icon-17" /></span>
+                  <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
+                </button>
+              )}
+            />
+          </div>
         </div>
       </section>
     </section>

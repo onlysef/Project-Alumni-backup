@@ -9,6 +9,8 @@ const XLSX                = require('xlsx');
 const { escapeRegex }     = require('../utils/escapeRegex');
 const { FIXED_KEYS }      = require('../utils/tracerFixedKeys');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
+const { isNonSkillEntry }     = require('../utils/skillMatching');
+const { extractChartableCustomQuestions, buildCustomQuestionFacetPipeline } = require('../utils/customQuestionAggregation');
 
 // Maps programsCompleted → User.course code
 function mapProgramToCourse(programsCompleted) {
@@ -665,6 +667,16 @@ const updateEmploymentRecord = async (req, res) => {
     if (employment_status === 'Self-employed' && !industry?.trim()) {
       return res.status(400).json({ message: 'Industry or business type is required.' });
     }
+    // This endpoint had no skills validation at all — an admin/coordinator
+    // editing on an alumnus's behalf could save the same non-skill entries
+    // (video game names, placeholder text) SkillsEditor.jsx's client-side
+    // check blocks on the alumnus's own self-service edit. See
+    // isNonSkillEntry's own comment in utils/skillMatching.js.
+    const skillsList = typeof skills === 'string' ? skills.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const badSkill = skillsList.find((s) => isNonSkillEntry(s));
+    if (badSkill) {
+      return res.status(400).json({ message: `"${badSkill}" doesn't look like a real skill. Please enter an actual skill or hobby relevant to your work.` });
+    }
 
     // Set by the coordinator route middleware — checked before any update
     // is applied, so a coordinator can never edit a record outside their
@@ -1142,6 +1154,19 @@ async function computeTracerAnalytics(query) {
     const { userScope, userLookupMatch, tracerMatch } = buildTracerFilterMatch(query);
     const tracerMatchStage = Object.keys(tracerMatch).length ? [{ $match: tracerMatch }] : [];
 
+    // The dashboard's section names, question labels, and ordering are all
+    // driven by this one live TracerFormConfig fetch — a single college's
+    // question set is unambiguous; "all colleges" has no single definition
+    // to drive the dashboard from, so college must be set for any of this.
+    const college = (query.college || '').trim().toUpperCase();
+    const cfg = college ? await TracerFormConfig.findOne({ college }).lean() : null;
+    const rawPages = cfg?.config?.pages || [];
+    const customQuestions = extractChartableCustomQuestions(rawPages);
+    const customFacets = {};
+    customQuestions.forEach((q) => {
+      customFacets[`custom__${q.id}`] = buildCustomQuestionFacetPipeline(q.id, q.type, tracerMatchStage);
+    });
+
     const [[result], totalAlumniOnRoll, totalActiveAlumni] = await Promise.all([
       TracerStudyResponse.aggregate([
       // Deleting an alumni account doesn't always reach every linked record
@@ -1245,6 +1270,8 @@ async function computeTracerAnalytics(query) {
 
           byCertifications: [...tracerMatchStage, ...groupCount('professionalCertifications')],
           byDevActivities: [...tracerMatchStage, ...groupCount('professionalDevelopmentActivities')],
+
+          ...customFacets,
         },
       },
       ]),
@@ -1300,6 +1327,24 @@ async function computeTracerAnalytics(query) {
     });
     const avgPersonalGrowthScore = growthN ? +(growthSum / growthN).toFixed(2) : null;
 
+    // Same chart-shape choices hand-picked for the fixed fields above,
+    // applied generically: rating_table always gets the rating matrix,
+    // checkbox (multi-select) always gets bars, and radio/select gets a
+    // donut only when the option list is small enough to stay legible.
+    const customQuestionResults = customQuestions.map((q) => {
+      const rows = result[`custom__${q.id}`] || [];
+      if (q.type === 'rating_table') {
+        const ratingRows = (q.rows || []).map((row) => {
+          const ratings = {};
+          rows.filter((r) => r._id.skill === row.key).forEach((r) => { ratings[r._id.rating] = r.count; });
+          return { skill: row.label, ratings };
+        });
+        return { id: q.id, label: q.label, type: q.type, renderAs: 'rating', rows: ratingRows, pageId: q.pageId, pageOrder: q.pageOrder, pageTitle: q.pageTitle };
+      }
+      const renderAs = q.type === 'checkbox' ? 'bars' : ((q.options || []).length <= 5 ? 'donut' : 'bars');
+      return { id: q.id, label: q.label, type: q.type, renderAs, rows: mapRows(rows), pageId: q.pageId, pageOrder: q.pageOrder, pageTitle: q.pageTitle };
+    });
+
     const kpis = {
       totalActiveAlumni,
       totalAlumniOnRoll,
@@ -1349,6 +1394,20 @@ async function computeTracerAnalytics(query) {
         byCertifications: mapRows(result.byCertifications),
         byDevActivities: mapRows(result.byDevActivities),
       },
+      customQuestions: customQuestionResults,
+      // Live page/question layout for the selected college's tracer form —
+      // the dashboard walks this (not a hardcoded section list) to decide
+      // what sections exist, their titles, which questions chart under each,
+      // and in what order, so renaming/reordering/deleting a question or
+      // page in the Tracer Form Editor is reflected immediately.
+      formStructure: rawPages.map((page, pageOrder) => ({
+        id: page.id,
+        pageOrder,
+        title: page.title,
+        questions: [...(page.questions || [])]
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+          .map((q) => ({ id: q.id, label: q.label })),
+      })),
     };
 }
 
@@ -1467,6 +1526,25 @@ function buildTracerSummaryRows(data) {
     Object.entries(ratings).forEach(([rating, count]) => {
       rows.push([skill, rating, count, pctOf(count, total)]);
     });
+  });
+
+  // Custom/admin-added questions (see computeTracerAnalytics' customQuestions)
+  // get the same treatment as the fixed sections above, so the Excel export
+  // never falls out of sync with what the dashboard shows on screen.
+  (data.customQuestions || []).forEach((q) => {
+    if (q.type === 'rating_table') {
+      rows.push([q.label]);
+      rows.push(['Skill', 'Rating', 'Count', 'Percent']);
+      (q.rows || []).forEach(({ skill, ratings }) => {
+        const total = Object.values(ratings).reduce((a, b) => a + b, 0);
+        Object.entries(ratings).forEach(([rating, count]) => {
+          rows.push([skill, rating, count, pctOf(count, total)]);
+        });
+      });
+      rows.push([]);
+    } else {
+      distBlock(q.label, q.rows);
+    }
   });
 
   return rows;

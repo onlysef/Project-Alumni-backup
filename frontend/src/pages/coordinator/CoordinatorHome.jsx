@@ -7,10 +7,7 @@ import { apiFetch } from "../../services/api.js";
 
 const ACTIVITY_WINDOW_LABELS = { "24": "Last 24 hours", "168": "Last 7 days", all: "Full history" };
 
-// Module-level, not state — survives this component unmounting when the
-// coordinator navigates away and back, so returning to the Dashboard shows
-// the last-known numbers instantly instead of flashing "…" again while a
-// fresh copy loads silently in the background.
+// Module-level cache so returning shows the last numbers instantly.
 let cachedDashboardData = null;
 const cachedActivity = new Map(); // keyed by activityWindow ("24"/"168"/"all")
 
@@ -42,9 +39,6 @@ export default function CoordinatorHome() {
         .finally(() => setLoading(false));
     }
     fetchDashboard();
-    // Keeps stat cards live (e.g. Total Alumni) while the coordinator stays
-    // on this page, not just when they navigate away and back — same 30s
-    // polling interval the Tracer Dashboard already uses.
     const interval = setInterval(fetchDashboard, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -74,8 +68,8 @@ export default function CoordinatorHome() {
   const collegeLabel = data?.college ? ` (${data.college})` : "";
   const statCards = [
     [data?.totalAlumni    ?? "—", `Total Alumni${collegeLabel}`,    "icon-11"],
-    [data?.activeAlumni   ?? "—", `Active Alumni${collegeLabel}`,   "icon-user-check"],
-    [data?.inactiveAlumni ?? "—", `Inactive Alumni${collegeLabel}`, "icon-user-x"],
+    [data?.activeAlumni   ?? "—", `Active Alumni${collegeLabel}`,   "icon-active"],
+    [data?.inactiveAlumni ?? "—", `Inactive Alumni${collegeLabel}`, "icon-inactive"],
   ];
 
   return (
@@ -96,12 +90,12 @@ export default function CoordinatorHome() {
 
       <div className="coord-stats">
         {statCards.map(([value, label, icon]) => (
-          <article className={`coord-stat${loading ? " coord-stat-loading" : ""}`} key={label}>
+          <article className={`stat-card${loading ? " coord-stat-loading" : ""}`} key={label}>
             <div>
-              <strong>{loading ? "…" : value}</strong>
-              <span>{label}</span>
+              <p className="stat-value">{loading ? "…" : value}</p>
+              <p className="stat-label">{label}</p>
             </div>
-            <Icon name={icon} />
+            <span><Icon name={icon} /></span>
           </article>
         ))}
       </div>

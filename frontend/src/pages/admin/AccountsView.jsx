@@ -14,13 +14,7 @@ function capitalize(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-// A past version of this page stuffed the middle initial into the lastName
-// field itself ("A. Thora") instead of sending the backend's own dedicated
-// middleInitial field — every admin edit re-prepended it on top of
-// whatever was already there, so some stored values have several rounds of
-// "X. " baked in ("A. A. Thora"). Stripping in a loop (not just once)
-// fully recovers those on the next load, regardless of how many edits it
-// took to get there.
+// Older edits stacked "X. " into lastName; strip repeatedly.
 function splitStoredLastName(value = "") {
   let normalized = String(value).trim();
   let middleInitial = "";
@@ -33,10 +27,6 @@ function splitStoredLastName(value = "") {
 }
 
 function mapUser(u) {
-  // Always derive lastName from the stripped value, never the raw
-  // u.lastName — the dedicated u.middleInitial field can't be trusted to
-  // mean "u.lastName is already clean" (see above), so there's no safe
-  // shortcut around parsing it every time.
   const parsedLastName = splitStoredLastName(u.lastName);
   const middleInitial = (u.middleInitial || parsedLastName.middleInitial || "").replace(/\./g, "").slice(0, 1).toUpperCase();
   const lastName = parsedLastName.lastName;
@@ -45,12 +35,6 @@ function mapUser(u) {
     firstName:      u.firstName,
     middleInitial,
     lastName,
-    // Employer rows show the company name (that's what admins recognize) —
-    // but a bare firstName fallback dropped the contact's lastName entirely
-    // when no company was set, e.g. "Employer" instead of "Employer Tolentino"
-    // for an account whose firstName literally is "Employer". Every other
-    // role's fallback is the full name, so employer without a company should
-    // fall back to the same, not just firstName alone.
     name:           u.role === 'employer'
       ? (u.company || `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`)
       : `${u.firstName} ${middleInitial ? `${middleInitial}. ` : ""}${lastName}`,
@@ -85,6 +69,13 @@ export default function AccountsView() {
   const [roleFilter, setRoleFilter]   = useState("Role");
   const [statusFilter, setStatusFilter] = useState("Status");
   const [search, setSearch]           = useState("");
+  // Search is debounced; filtering and paging happen server-side.
+  const [appliedSearch, setAppliedSearch] = useState("");
+  const searchDebounceRef = React.useRef(null);
+  const [page, setPage]               = useState(1);
+  const [totalPages, setTotalPages]   = useState(1);
+  const [activeCount, setActiveCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [entry, setEntry]             = useState(null);
   const [importOpen, setImportOpen]   = useState(false);
   const [openMenuId, setOpenMenuId]   = useState(null);
@@ -96,7 +87,6 @@ export default function AccountsView() {
   const [partnerships, setPartnerships] = useState([]);
 
   useEffect(() => {
-      fetchUsers();
       fetch(`${API}/admin/partnerships`, { headers: authHeaders() })
         .then((res) => res.json())
         .then((data) => setPartnerships(data.partnerships ?? []))
@@ -109,39 +99,40 @@ export default function AccountsView() {
     }
   }, [roleFilterFromNav]);
 
+  function handleSearchChange(value) {
+    setSearch(value);
+    clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => setAppliedSearch(value), 350);
+  }
+
+  useEffect(() => { setPage(1); }, [appliedSearch, roleFilter, statusFilter]);
+
+  useEffect(() => {
+    fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, appliedSearch, roleFilter, statusFilter]);
+
   async function fetchUsers() {
     setLoading(true);
     try {
-      const res  = await fetch(`${API}/admin/users`, { headers: authHeaders() });
+      const params = new URLSearchParams();
+      params.set("page", page);
+      params.set("limit", "50");
+      if (appliedSearch.trim()) params.set("search", appliedSearch.trim());
+      if (roleFilter !== "Role" && roleFilter !== "All") params.set("role", roleFilter);
+      if (statusFilter !== "Status" && statusFilter !== "All") params.set("status", statusFilter);
+      const res  = await fetch(`${API}/admin/users?${params.toString()}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) { showToast(data.message || "Failed to load users."); return; }
       setRows(data.users.map(mapUser));
+      setTotalPages(data.totalPages || 1);
+      setActiveCount(data.activeCount || 0);
+      setPendingCount(data.pendingCount || 0);
     } catch {
       showToast("Could not connect to server.");
     } finally {
       setLoading(false);
     }
-  }
-
-  function visible(r) {
-    const roleMatch   = roleFilter === "Role"   || roleFilter === "All"   || r.role === roleFilter;
-    const statusMatch = statusFilter === "Status" || statusFilter === "All" || r.status === statusFilter;
-    const q = search.trim().toLowerCase();
-    const searchMatch = !q || r.name.toLowerCase().includes(q) || r.email.toLowerCase().includes(q);
-    return roleMatch && statusMatch && searchMatch;
-  }
-
-  function applyFilter(choice, which) {
-    const newRole   = which === "role"   ? choice : roleFilter;
-    const newStatus = which === "status" ? choice : statusFilter;
-    if (which === "role")   setRoleFilter(choice);
-    else                    setStatusFilter(choice);
-    const count = rows.filter((r) => {
-      const roleMatch   = newRole === "Role"   || newRole === "All"   || r.role === newRole;
-      const statusMatch = newStatus === "Status" || newStatus === "All" || r.status === newStatus;
-      return roleMatch && statusMatch;
-    }).length;
-    showToast(`${count} item${count === 1 ? "" : "s"} shown.`);
   }
 
   async function handleAction(row, action) {
@@ -255,9 +246,8 @@ export default function AccountsView() {
     });
   }
 
-  const visibleRows    = rows.filter(visible);
-  const allVisSelected = visibleRows.length > 0 && visibleRows.every((r) => selected.has(r.id));
-  const someSelected   = visibleRows.some((r) => selected.has(r.id));
+  const allVisSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const someSelected   = rows.some((r) => selected.has(r.id));
 
   function toggleRow(id) {
     setSelected((prev) => {
@@ -271,20 +261,19 @@ export default function AccountsView() {
     if (allVisSelected) {
       setSelected((prev) => {
         const next = new Set(prev);
-        visibleRows.forEach((r) => next.delete(r.id));
+        rows.forEach((r) => next.delete(r.id));
         return next;
       });
     } else {
       setSelected((prev) => {
         const next = new Set(prev);
-        visibleRows.forEach((r) => next.add(r.id));
+        rows.forEach((r) => next.add(r.id));
         return next;
       });
     }
   }
 
-  const activeCount    = rows.filter((r) => r.status === "Active").length;
-  const pendingCount   = rows.filter((r) => r.status === "Pending").length;
+  const roleScope = roleFilter !== "Role" && roleFilter !== "All" ? roleFilter : "All";
 
   return (
     <section className={`content admin-view view active-view`}>
@@ -292,14 +281,14 @@ export default function AccountsView() {
         <article>
           <div>
             <strong>{activeCount}</strong>
-            <span>All Active Accounts</span>
+            <span>{roleScope} Active Accounts</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-11" /></span>
         </article>
         <article>
           <div>
             <strong>{pendingCount}</strong>
-            <span>All Pending Activation</span>
+            <span>{roleScope} Pending Activation</span>
           </div>
           <span className="admin-kpi-icon" aria-hidden="true"><Icon name="icon-13" /></span>
         </article>
@@ -319,12 +308,12 @@ export default function AccountsView() {
                 name="accounts-search"
                 placeholder="Search accounts…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 aria-label="Search accounts by name or email"
                 autoComplete="off"
               />
               {search && (
-                <button type="button" className="accounts-search-clear" onClick={() => setSearch("")} aria-label="Clear account search">
+                <button type="button" className="accounts-search-clear" onClick={() => { clearTimeout(searchDebounceRef.current); setSearch(""); setAppliedSearch(""); }} aria-label="Clear account search">
                   ×
                 </button>
               )}
@@ -347,8 +336,8 @@ export default function AccountsView() {
             </button>
             {filtersOpen && (
               <>
-                <AdminMenu menuKey="accounts-role" label={roleFilter} onSelect={(c) => applyFilter(c, "role")} />
-                <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={(c) => applyFilter(c, "status")} />
+                <AdminMenu menuKey="accounts-role" label={roleFilter} onSelect={setRoleFilter} />
+                <AdminMenu menuKey="accounts-status" label={statusFilter} onSelect={setStatusFilter} />
               </>
             )}
             <button
@@ -434,7 +423,7 @@ export default function AccountsView() {
               {rows.length === 0 ? (
                 <tr><td colSpan="6" style={{ textAlign: "center", padding: "1.5rem" }}>No accounts found.</td></tr>
               ) : rows.map((r) => (
-                <tr key={r.id} className={`${visible(r) ? "" : "is-hidden"}${selected.has(r.id) ? " row-selected" : ""}`}>
+                <tr key={r.id} className={selected.has(r.id) ? "row-selected" : ""}>
                   <td>
                     {selectionMode && (
                       <input
@@ -462,6 +451,27 @@ export default function AccountsView() {
               ))}
             </tbody>
           </table>
+          </div>
+        )}
+        {totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+            >
+              ‹ Prev
+            </button>
+            <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+            >
+              Next ›
+            </button>
           </div>
         )}
       </section>
@@ -519,12 +529,7 @@ export default function AccountsView() {
               setRows((prev) => prev.map((r) =>
                 r.id === entry.row.id ? mapUser(json.user) : r
               ));
-              // Editing your OWN account here (e.g. an admin renaming
-              // themselves) updates the database, but the logged-in
-              // session's cached profile is a separate copy set once at
-              // login — without this, the old name keeps showing anywhere
-              // it's read from auth context (AC assistant greeting, etc.)
-              // until the next full sign-in.
+              // Refresh the cached session profile when editing your own account.
               if (loggedInUser?.id === entry.row.id) {
                 updateUser({
                   firstName: json.user.firstName,
@@ -798,10 +803,7 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
                 inputMode="text"
                 aria-label="Middle initial"
                 placeholder="e.g. A"
-                // A single letter only — the "." is added automatically
-                // wherever this is displayed (mapUser's `name` field, the
-                // account list, etc.), so typing one here would just be a
-                // second, redundant period stacking on top of that.
+                // Single letter; the period is added on display.
                 onChange={(e) => { e.target.value = e.target.value.replace(/[^A-Za-z]/g, "").slice(0, 1).toUpperCase(); }}
               />
             </label>
@@ -811,9 +813,6 @@ export function AdminEntryModal({ entry, onClose, onSubmit, partnerships = [] })
                 name="lastName"
                 defaultValue={row?.lastName || ""}
                 required
-                // The middle initial has its own field/column — a period
-                // typed here would look like a (wrong) second initial
-                // embedded in the surname once displayed.
                 onChange={(e) => { e.target.value = e.target.value.replace(/\./g, ""); }}
               />
             </label>

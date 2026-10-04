@@ -41,6 +41,8 @@ export default function SuggestedAlumni() {
   const [activeView, setActiveView] = useState("suggestions");
   const [course, setCourse] = useState("All");
   const [year, setYear] = useState("All");
+  const [industry, setIndustry] = useState("All");
+  const [location, setLocation] = useState("All");
   const [sort, setSort] = useState("Best match");
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -49,7 +51,7 @@ export default function SuggestedAlumni() {
   const [savedProfiles, setSavedProfiles] = useState(() => readSavedProfiles(savedKey));
   const [dismissedIds, setDismissedIds] = useState(() => new Set());
   const [total, setTotal] = useState(0);
-  const [filterOptions, setFilterOptions] = useState({ courses: [], years: [] });
+  const [filterOptions, setFilterOptions] = useState({ courses: [], years: [], industries: [], locations: [] });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
@@ -76,7 +78,7 @@ export default function SuggestedAlumni() {
     debounceRef.current = window.setTimeout(() => setAppliedSearch(value), 350);
   }
 
-  useEffect(() => setLimit(PAGE_SIZE), [course, year, appliedSearch]);
+  useEffect(() => setLimit(PAGE_SIZE), [course, year, industry, location, appliedSearch]);
 
   useEffect(() => {
     let active = true;
@@ -87,6 +89,8 @@ export default function SuggestedAlumni() {
     const params = new URLSearchParams();
     if (course !== "All") params.set("course", course);
     if (year !== "All") params.set("year", year);
+    if (industry !== "All") params.set("industry", industry);
+    if (location !== "All") params.set("location", location);
     if (appliedSearch) params.set("search", appliedSearch);
     params.set("limit", limit);
 
@@ -107,13 +111,20 @@ export default function SuggestedAlumni() {
           let suggestions = PREVIEW_SUGGESTIONS;
           if (course !== "All") suggestions = suggestions.filter((person) => person.course === course);
           if (year !== "All") suggestions = suggestions.filter((person) => String(person.year) === String(year));
+          if (industry !== "All") suggestions = suggestions.filter((person) => person.industry === industry);
+          if (location !== "All") suggestions = suggestions.filter((person) => person.location === location);
           if (appliedSearch) {
             const query = appliedSearch.toLowerCase();
             suggestions = suggestions.filter((person) => `${person.name} ${person.role} ${person.company}`.toLowerCase().includes(query));
           }
           setAlumni(suggestions);
           setTotal(suggestions.length);
-          setFilterOptions({ courses: ["BSCS", "BSIS", "BSIT"], years: [2024, 2023, 2022, 2021] });
+          setFilterOptions({
+            courses: ["BSCS", "BSIS", "BSIT"],
+            years: [2024, 2023, 2022, 2021],
+            industries: [...new Set(PREVIEW_SUGGESTIONS.map((p) => p.industry).filter(Boolean))],
+            locations: [...new Set(PREVIEW_SUGGESTIONS.map((p) => p.location).filter(Boolean))],
+          });
         } else {
           setError("Could not load alumni right now.");
         }
@@ -125,7 +136,7 @@ export default function SuggestedAlumni() {
       });
 
     return () => { active = false; };
-  }, [course, year, appliedSearch, limit]);
+  }, [course, year, industry, location, appliedSearch, limit]);
 
   const visibleSuggestions = useMemo(() => {
     const profiles = alumni.filter((person) => !dismissedIds.has(person._id));
@@ -191,19 +202,42 @@ export default function SuggestedAlumni() {
       <div className="directory-filters">
         <span>{activeView === "saved" ? "Saved alumni" : "Filter by"}</span>
         {activeView === "suggestions" && <>
-          <select aria-label="Course" value={course} onChange={(event) => setCourse(event.target.value)}>
-            <option>All</option>
-            {filterOptions.courses.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <select aria-label="Graduation year" value={year} onChange={(event) => setYear(event.target.value)}>
-            <option>All</option>
-            {filterOptions.years.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
-          <select aria-label="Sort alumni" value={sort} onChange={(event) => setSort(event.target.value)}>
-            <option>Best match</option>
-            <option>Newest batch</option>
-            <option>Name</option>
-          </select>
+          <label className="directory-filter-field">
+            <span>Course</span>
+            <select value={course} onChange={(event) => setCourse(event.target.value)}>
+              <option>All</option>
+              {filterOptions.courses.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="directory-filter-field">
+            <span>Batch</span>
+            <select value={year} onChange={(event) => setYear(event.target.value)}>
+              <option>All</option>
+              {filterOptions.years.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="directory-filter-field">
+            <span>Industry</span>
+            <select value={industry} onChange={(event) => setIndustry(event.target.value)}>
+              <option>All</option>
+              {filterOptions.industries.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="directory-filter-field">
+            <span>Location</span>
+            <select value={location} onChange={(event) => setLocation(event.target.value)}>
+              <option>All</option>
+              {filterOptions.locations.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label className="directory-filter-field">
+            <span>Sort by</span>
+            <select value={sort} onChange={(event) => setSort(event.target.value)}>
+              <option>Best match</option>
+              <option>Newest batch</option>
+              <option>Name</option>
+            </select>
+          </label>
         </>}
       </div>
       <label className="directory-search">
@@ -289,9 +323,7 @@ function SavedProfileCard({ person, onRemove, onView }) {
   </article>;
 }
 
-// Alumni type these in freely (e.g. "facebook.com/name" with no scheme), so
-// normalize before using as an href or the link silently resolves relative
-// to the current page instead of opening the external profile.
+// Add a scheme so links like "facebook.com/name" don't resolve relative to this page.
 function externalHref(value) {
   if (!value) return "";
   return /^https?:\/\//i.test(value) ? value : `https://${value}`;

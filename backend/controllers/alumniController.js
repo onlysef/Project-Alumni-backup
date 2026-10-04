@@ -22,7 +22,8 @@ const { tracerRowToText }     = require('../utils/fileParser');
 const { sendInquiryEmail, sendAlumniMessageEmail } = require('../utils/emailService');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
 const answerCache             = require('../services/answerCache');
-const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill, extractSkillsFromText } = require('../utils/skillMatching');
+const { SKILL_BUCKETS, skillLabel, ALL_SKILL_KEYWORDS, textContainsSkill, extractSkillsFromText, isNonSkillEntry } = require('../utils/skillMatching');
+const { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } = require('../utils/passwordValidation');
 
 // The set of keys that the TracerStudyResponse schema handles directly.
 // Everything else in the submitted answers object goes into extra_answers.
@@ -131,8 +132,8 @@ async function resolveExtraEmploymentFields(extraAnswers, college) {
 const changePassword = async (req, res) => {
   try {
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    if (!newPassword || !isStrongPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENT_MESSAGE });
     }
     const hashed = await bcrypt.hash(newPassword, 10);
     const user = await User.findByIdAndUpdate(
@@ -163,8 +164,8 @@ const updatePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword) return res.status(400).json({ message: 'Current password is required.' });
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    if (!newPassword || !isStrongPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENT_MESSAGE });
     }
     const user = await User.findById(req.user.id).select('password role college tokenVersion');
     if (!user) return res.status(404).json({ message: 'Account not found.' });
@@ -327,7 +328,50 @@ const getMyTracerResponse = async (req, res) => {
 // alumni submission gets (AlumniEmployment sync, course/track sync, AI
 // chatbot Graduate/embedding sync) since an admin correction should stay
 // consistent everywhere the alumni's own submission would.
+// Mirrors the allow-list Alumni Profile's own text fields use — every one of
+// these free-text tracer questions used to accept literally anything
+// ("77777", "#####"), same bug, same fix. contactNumber gets its own
+// numeric-only check below instead, same split as validatePage() in
+// TracerStudyForm.jsx.
+const TRACER_WORK_TEXT_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ0-9.,'&\-/() ]*$/;
+const TRACER_PHONE_CHARS_RE = /^[0-9+\-\s()]+$/;
+// Sized per field to what a real answer actually looks like — mirrors
+// TEXT_FIELD_MAX_LENGTHS in TracerStudyForm.jsx.
+const TRACER_TEXT_FIELDS = {
+  companyName:          { label: 'Company Name',            max: 100 }, // long legal entity names still fit
+  occupationTitle:      { label: 'Job title',                max: 80 },  // job titles are short phrases
+  professionalExamName: { label: 'Professional exam name',   max: 100 }, // e.g. "Certified Public Accountant (CPA) Licensure Examination"
+  furtherEducationType: { label: 'Further education type',   max: 120 }, // degree names with a major can run long
+  trainingType:         { label: 'Training type',            max: 100 },
+};
+
 async function saveTracerAnswers(alumniId, college, body) {
+    for (const [field, { label, max }] of Object.entries(TRACER_TEXT_FIELDS)) {
+      if (!body[field]) continue;
+      if (body[field].length > max) {
+        const err = new Error(`${label} is too long (max ${max} characters).`);
+        err.status = 400;
+        throw err;
+      }
+      if (!TRACER_WORK_TEXT_RE.test(body[field])) {
+        const err = new Error(`${label} contains invalid special characters.`);
+        err.status = 400;
+        throw err;
+      }
+    }
+    if (body.contactNumber) {
+      if (body.contactNumber.length > 20) {
+        const err = new Error('Contact Number is too long (max 20 characters).');
+        err.status = 400;
+        throw err;
+      }
+      if (!TRACER_PHONE_CHARS_RE.test(body.contactNumber)) {
+        const err = new Error('Contact Number should only contain numbers.');
+        err.status = 400;
+        throw err;
+      }
+    }
+
     // Separate extra (custom admin-added) answers from the fixed schema fields
     const extra_answers = {};
     for (const [key, value] of Object.entries(body)) {
@@ -453,7 +497,10 @@ async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates
     tookExam:         body.professionalExam || null,
     furtherEducation: body.furtherEducation || null,
     furtherTraining:  body.pursuedTrainings || null,
+    trainingType:     body.trainingType || null,
     hasPromotion:     body.promotedInJob || null,
+    significantAccomplishments: body.significantAccomplishments || null,
+    reasonsNotEmployed: Array.isArray(body.reasonsNotEmployed) ? body.reasonsNotEmployed : [],
     competencies: {
       technicalSkills:   body.personalGrowthRatings?.technicalSkills || null,
       communication:     body.personalGrowthRatings?.communicationSkills || null,
@@ -497,7 +544,10 @@ async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates
     board_exam:         graduatePatch.tookExam,
     further_studies:    graduatePatch.furtherEducation,
     trainings:          graduatePatch.furtherTraining,
+    training_type:      graduatePatch.trainingType,
     promoted:           graduatePatch.hasPromotion,
+    accomplishments:    graduatePatch.significantAccomplishments,
+    reasons_not_employed: graduatePatch.reasonsNotEmployed,
   }, graduatePatch.yearGraduated);
 
   const embedding = await getEmbedding(text);
@@ -523,6 +573,7 @@ const submitTracerStudy = async (req, res) => {
     await saveTracerAnswers(req.user.id, req.user.college, req.body);
     res.status(200).json({ message: 'Tracer study submitted successfully.' });
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ message: err.message });
     console.error('submitTracerStudy error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
@@ -549,6 +600,7 @@ const updateAlumniTracerData = async (req, res) => {
     await saveTracerAnswers(emp.alumni_id, alumniUser.college || '', req.body);
     res.json({ message: 'Alumni record updated.' });
   } catch (err) {
+    if (err.status === 400) return res.status(400).json({ message: err.message });
     console.error('updateAlumniTracerData error:', err);
     res.status(500).json({ message: 'Server error.' });
   }
@@ -693,11 +745,155 @@ const updateMyEmployment = async (req, res) => {
       employment_status, company_name, job_title, industry, work_location,
       salary_range, date_employed, skills, experience,
       contact_email, contact_number, facebook, linkedin,
+      firstName, lastName, middleInitial, work_history,
     } = req.body;
 
+    // Mirrors validateProfileForm() in AlumniEmploymentDetails.jsx — kept here
+    // too since this endpoint can be hit directly, not just through that
+    // form. maxLength on the frontend inputs only stops typing past the
+    // limit; a pasted wall of text or a direct API call bypasses it.
+    const FIELD_MAX_LENGTHS = {
+      firstName: 50, lastName: 50, contact_email: 100, contact_number: 20,
+      company_name: 100, job_title: 100, work_location: 100, facebook: 200, linkedin: 200,
+    };
+    for (const [field, max] of Object.entries(FIELD_MAX_LENGTHS)) {
+      const v = req.body[field];
+      if (typeof v === 'string' && v.trim().length > max) {
+        return res.status(400).json({ message: `${field} is too long (max ${max} characters).` });
+      }
+    }
+    if (typeof skills === 'string' && skills.split(',').some((s) => s.trim().length > 50)) {
+      return res.status(400).json({ message: 'A skill is too long (max 50 characters).' });
+    }
+
     const trimmedEmail = typeof contact_email === 'string' ? contact_email.trim() : '';
-    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+    if (!trimmedEmail) {
+      return res.status(400).json({ message: 'Contact email is required.' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
       return res.status(400).json({ message: 'Please enter a valid contact email address.' });
+    }
+
+    const trimmedNumber = typeof contact_number === 'string' ? contact_number.trim() : '';
+    if (!trimmedNumber) {
+      return res.status(400).json({ message: 'Contact number is required.' });
+    }
+    if (!/^[0-9+\-\s()]+$/.test(trimmedNumber)) {
+      return res.status(400).json({ message: 'Contact number should only contain numbers.' });
+    }
+    if (trimmedNumber.replace(/\D/g, '').length < 7) {
+      return res.status(400).json({ message: 'Please enter a valid contact number.' });
+    }
+
+    // Alumni Profile shows the account's real name right next to the fields
+    // it otherwise owns (Contact Info, Work Info) — without a way to fix a
+    // typo here, the only route was asking the admin office to edit it via
+    // Accounts. Optional: only touches User when both are actually present
+    // and non-blank, so a client that's never sent these fields at all (or
+    // sends them blank by mistake) can't silently wipe a real name.
+    const trimmedFirstName = typeof firstName === 'string' ? firstName.trim() : '';
+    const trimmedLastName  = typeof lastName  === 'string' ? lastName.trim()  : '';
+    if (firstName !== undefined || lastName !== undefined) {
+      if (!trimmedFirstName || !trimmedLastName) {
+        return res.status(400).json({ message: 'First and last name are required.' });
+      }
+      // Letters (incl. basic accented characters), spaces, periods,
+      // apostrophes, and hyphens only — covers real names ("Dela Cruz",
+      // "D'Souza") while rejecting digits/symbols typed into a name field.
+      const NAME_RE = /^[A-Za-zÀ-ÖØ-öø-ÿ'.\- ]+$/;
+      if (!NAME_RE.test(trimmedFirstName) || !NAME_RE.test(trimmedLastName)) {
+        return res.status(400).json({ message: 'Name should only contain letters.' });
+      }
+    }
+    // Single letter only, same as Accounts' own middle-initial field — free
+    // text here previously let an account end up with something like "A."
+    // already saved WITH a trailing period, which then produced a doubled
+    // "A.." once a "." was appended again wherever the name gets displayed.
+    const cleanMiddleInitial = typeof middleInitial === 'string'
+      ? middleInitial.replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase()
+      : undefined;
+
+    // Company/Job/Location can legitimately contain digits and a small set
+    // of real punctuation ("7-Eleven", "Brgy. 3, Quezon City", "R&D
+    // Engineer") but nothing beyond that — an earlier version of this check
+    // only rejected a value with NO letters at all, which still let
+    // "asdf@#$%" or "Manager!!!" through since they technically contain a
+    // letter somewhere.
+    const WORK_TEXT_RE = /^[A-Za-z0-9À-ÖØ-öø-ÿ.,'&\-/() ]*$/;
+    // Skills legitimately include symbols a business-text field wouldn't
+    // ("C++", "C#", "UI/UX") so this stays a looser "at least one letter"
+    // check — it only rejects an entry with NO letters at all
+    // ("88888888888"), never a real skill.
+    const HAS_LETTER_RE = /[A-Za-zÀ-ÖØ-öø-ÿ]/;
+    const trimmedCompany  = typeof company_name  === 'string' ? company_name.trim()  : '';
+    const trimmedPosition = typeof job_title     === 'string' ? job_title.trim()     : '';
+    const trimmedLocation = typeof work_location === 'string' ? work_location.trim() : '';
+    if (trimmedCompany  && !WORK_TEXT_RE.test(trimmedCompany))  return res.status(400).json({ message: 'Company Name contains invalid special characters.' });
+    if (trimmedPosition && !WORK_TEXT_RE.test(trimmedPosition)) return res.status(400).json({ message: 'Job Position contains invalid special characters.' });
+    if (trimmedLocation && !WORK_TEXT_RE.test(trimmedLocation)) return res.status(400).json({ message: 'Work Location contains invalid special characters.' });
+    const skillsList = typeof skills === 'string' ? skills.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    if (skillsList.some((s) => !HAS_LETTER_RE.test(s))) {
+      return res.status(400).json({ message: 'Skills should not be just symbols or numbers.' });
+    }
+    // SkillsEditor.jsx already blocks these client-side (see
+    // isNonSkillEntry's own comment in utils/skillMatching.js) — this is the
+    // actual enforcement boundary, since a direct API call bypasses any
+    // client-side check entirely.
+    const badSkill = skillsList.find((s) => isNonSkillEntry(s));
+    if (badSkill) {
+      return res.status(400).json({ message: `"${badSkill}" doesn't look like a real skill. Please enter an actual skill or hobby relevant to your work.` });
+    }
+
+    const trimmedFacebook = typeof facebook === 'string' ? facebook.trim() : '';
+    if (trimmedFacebook && !/facebook\.com|fb\.com/i.test(trimmedFacebook)) {
+      return res.status(400).json({ message: 'Please enter a valid Facebook profile link.' });
+    }
+    const trimmedLinkedin = typeof linkedin === 'string' ? linkedin.trim() : '';
+    if (trimmedLinkedin && !/linkedin\.com/i.test(trimmedLinkedin)) {
+      return res.status(400).json({ message: 'Please enter a valid LinkedIn profile link.' });
+    }
+
+    // Past jobs the alumnus adds separately from their current position
+    // (Resume's Professional Experience is built from current job + this
+    // list — see resumeBuilder.deriveFromProfile). Each entry needs a real
+    // title and a valid, non-future date range — an "ended" job that
+    // finishes in the future, or ends before it starts, doesn't make sense.
+    let normalizedWorkHistory;
+    if (work_history !== undefined) {
+      if (!Array.isArray(work_history)) {
+        return res.status(400).json({ message: 'work_history must be a list.' });
+      }
+      if (work_history.length > 20) {
+        return res.status(400).json({ message: 'You can add up to 20 work history entries.' });
+      }
+      normalizedWorkHistory = [];
+      for (const entry of work_history) {
+        const title       = typeof entry?.title === 'string' ? entry.title.trim() : '';
+        const company     = typeof entry?.company === 'string' ? entry.company.trim() : '';
+        const description = typeof entry?.description === 'string' ? entry.description.trim() : '';
+        if (!title) return res.status(400).json({ message: 'Each work history entry needs a job title.' });
+        if (title.length > 100) return res.status(400).json({ message: 'A work history job title is too long (max 100 characters).' });
+        if (company.length > 100) return res.status(400).json({ message: 'A work history company name is too long (max 100 characters).' });
+        if (description.length > 600) return res.status(400).json({ message: 'A work history description is too long (max 600 characters).' });
+        if (!WORK_TEXT_RE.test(title))   return res.status(400).json({ message: 'A work history job title contains invalid special characters.' });
+        if (company && !WORK_TEXT_RE.test(company)) return res.status(400).json({ message: 'A work history company name contains invalid special characters.' });
+
+        const start = entry?.start_date ? new Date(entry.start_date) : null;
+        const end   = entry?.end_date   ? new Date(entry.end_date)   : null;
+        if (start && Number.isNaN(start.getTime())) return res.status(400).json({ message: 'A work history start date is invalid.' });
+        if (end && Number.isNaN(end.getTime()))     return res.status(400).json({ message: 'A work history end date is invalid.' });
+        if (start && end && end < start) return res.status(400).json({ message: 'A work history end date cannot be before its start date.' });
+        if (end && end > new Date())     return res.status(400).json({ message: "A work history end date can't be in the future — it's a past position." });
+
+        normalizedWorkHistory.push({
+          title,
+          company,
+          employment_type: typeof entry?.employment_type === 'string' ? entry.employment_type.trim().slice(0, 50) : '',
+          start_date: start,
+          end_date: end,
+          description,
+        });
+      }
     }
 
     const updates = {
@@ -710,11 +906,12 @@ const updateMyEmployment = async (req, res) => {
       skills:            skills || '',
       experience:        experience || '',
       contact_email:     trimmedEmail,
-      contact_number:    typeof contact_number === 'string' ? contact_number.trim() : '',
-      facebook:          typeof facebook === 'string' ? facebook.trim() : '',
-      linkedin:          typeof linkedin === 'string' ? linkedin.trim() : '',
+      contact_number:    trimmedNumber,
+      facebook:          trimmedFacebook,
+      linkedin:          trimmedLinkedin,
       last_updated:      new Date(),
     };
+    if (normalizedWorkHistory !== undefined) updates.work_history = normalizedWorkHistory;
     // Every other field above always lands in `updates`, so clearing one in
     // the form correctly overwrites it back to blank/null. date_employed
     // used to be skipped entirely whenever it was falsy — indistinguishable
@@ -745,25 +942,46 @@ const updateMyEmployment = async (req, res) => {
     // alumnus's entry now instead of waiting out its TTL.
     bustRecommendedJobsCache(req.user.id);
 
+    if (trimmedFirstName && trimmedLastName) {
+      const nameUpdate = { firstName: trimmedFirstName, lastName: trimmedLastName };
+      if (cleanMiddleInitial !== undefined) nameUpdate.middleInitial = cleanMiddleInitial;
+      await User.findByIdAndUpdate(req.user.id, nameUpdate);
+    }
+
     // Employment Details is part of the alumnus profile. Keep the submitted
     // tracer response and the normalized Graduate profile in step with it so
     // admin/coordinator views, analytics, and recommendations do not continue
     // showing the older employment information.
-    const tracerEmploymentStatus = updates.employment_status === 'Unemployed' ? 'No' : 'Yes';
+    // The Employment Details form's own status dropdown (see
+    // AlumniEmploymentDetails.jsx) offers "Employed"/"Self-employed"/
+    // "Unemployed" — but this only ever recognized "Unemployed", collapsing
+    // "Self-employed" into the same "Yes" (formally employed) bucket as
+    // "Employed". That silently corrupted the chatbot's employmentStatus
+    // data: an alumnus who legitimately selected "Self-employed" here got
+    // counted as formally employed everywhere Graduate.employmentStatus is
+    // read (chatbot counts/rates, admin views), with no way to tell the two
+    // apart again until their next full tracer study submission happened to
+    // overwrite it correctly.
+    const tracerEmploymentStatus =
+      updates.employment_status === 'Unemployed'      ? 'No'
+      : updates.employment_status === 'Self-employed' ? 'Self-Employed'
+      : 'Yes';
+    const clearWorkFields = updates.employment_status === 'Unemployed';
     const tracerPatch = {
       employmentStatus: tracerEmploymentStatus,
-      companyName: updates.employment_status === 'Unemployed' ? '' : updates.company_name,
-      placeOfWork: updates.employment_status === 'Unemployed' ? '' : updates.work_location,
-      occupationTitle: updates.employment_status === 'Unemployed' ? '' : updates.job_title,
-      industryField: updates.employment_status === 'Unemployed' ? '' : updates.industry,
+      companyName: clearWorkFields ? '' : updates.company_name,
+      placeOfWork: clearWorkFields ? '' : updates.work_location,
+      occupationTitle: clearWorkFields ? '' : updates.job_title,
+      industryField: clearWorkFields ? '' : updates.industry,
     };
     await TracerStudyResponse.updateOne(
       { alumni_id: req.user.id },
       { $set: tracerPatch }
     );
 
+    let profileUser = null;
     try {
-      const profileUser = await User.findById(req.user.id).select('email firstName lastName').lean();
+      profileUser = await User.findById(req.user.id).select('email firstName middleInitial lastName').lean();
       // Coordinator dashboard's "Activity" feed (see routes/coordinator.js's
       // dashboard/activity) surfaces this via the same College-scoped
       // EmploymentActivity join used for staff actions — an alumnus always
@@ -783,6 +1001,9 @@ const updateMyEmployment = async (req, res) => {
         if (graduate) {
           // Backfills user_id onto a row that was only ever matched by email.
           graduate.user_id = req.user.id;
+          // Keeps the AI chatbot/admin views from continuing to show a
+          // typo'd name the alumnus just fixed on their own profile.
+          graduate.name = alumniName;
           graduate.employmentStatus = tracerPatch.employmentStatus;
           graduate.workLocation = tracerPatch.placeOfWork || null;
           graduate.jobTitle = tracerPatch.occupationTitle || null;
@@ -806,7 +1027,12 @@ const updateMyEmployment = async (req, res) => {
       console.error('Employment profile sync failed (non-blocking):', syncErr.message);
     }
 
-    res.json({ employment: emp });
+    res.json({
+      employment: emp,
+      user: profileUser
+        ? { firstName: profileUser.firstName, middleInitial: profileUser.middleInitial, lastName: profileUser.lastName }
+        : undefined,
+    });
   } catch (err) {
     console.error('updateMyEmployment error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -862,7 +1088,7 @@ async function scoreCareerjetJobs(rawJobs, { userId, userSkillsText, location, t
 // posting to link to) is what JobCard uses to render "Apply now" as an
 // in-app application instead of an outbound link.
 async function scoreInternalJobs(rawJobs, { userId, userSkillsText }) {
-  const jobTexts = rawJobs.map((job) => `${job.title || ''} ${job.description || ''}`);
+  const jobTexts = rawJobs.map((job) => `${job.title || ''} ${job.jobDescription || ''} ${job.keyResponsibilities || ''} ${job.qualifications || ''} ${job.preferredSkills || ''}`);
   const cosineScores = await withTimeout(
     computeJobCosineScores(jobTexts, userId, userSkillsText).catch((err) => {
       console.error('Job cosine scoring failed, falling back to skill-ratio only:', err.message);
@@ -882,8 +1108,11 @@ async function scoreInternalJobs(rawJobs, { userId, userSkillsText }) {
       type: job.jobType || '',
       posted: job.createdAt || '',
       url: `internal:${job._id}`,
-      description: job.description || '',
-      salary: '',
+      description: job.jobDescription || '',
+      keyResponsibilities: job.keyResponsibilities || '',
+      qualifications: job.qualifications || '',
+      preferredSkills: job.preferredSkills || '',
+      salary: job.salaryRange || '',
       match,
       skills,
       internal: true,
@@ -1003,9 +1232,13 @@ const getHomeSummary = async (req, res) => {
       // literally everyone, trading a small chance of missing the single
       // best match for a bounded, predictable query cost on every Home load
       // and 30s poll.
+      // avatarUrl deliberately excluded — this endpoint is also polled every
+      // 30s from the Home dashboard, so fetching a base64 image for all 60
+      // sampled candidates just to render the 3 that survive scoring below
+      // was real, recurring waste. Fetched separately, only for the final 3.
       me?.course
         ? User.find({ role: 'alumni', course: me.course, _id: { $ne: alumniId } })
-            .select('firstName lastName course graduationYear avatarUrl')
+            .select('firstName lastName course graduationYear')
             .limit(60)
             .lean()
         : [],
@@ -1028,7 +1261,6 @@ const getHomeSummary = async (req, res) => {
       return {
         _id: a._id,
         name: `${a.firstName} ${a.lastName}`,
-        avatarUrl: a.avatarUrl || '',
         initials: `${(a.firstName || '')[0] || ''}${(a.lastName || '')[0] || ''}`.toUpperCase(),
         role: cleanEmploymentValue(emp?.job_title) || 'Role not yet updated',
         company: cleanEmploymentValue(emp?.company_name) || 'Not yet updated',
@@ -1047,6 +1279,12 @@ const getHomeSummary = async (req, res) => {
       .sort((a, b) => b.scoreNum - a.scoreNum)
       .slice(0, 3)
       .map(({ scoreNum, ...rest }) => rest);
+
+    if (similarAlumniOut.length) {
+      const similarAvatarRows = await User.find({ _id: { $in: similarAlumniOut.map((r) => r._id) } }, 'avatarUrl').lean();
+      const similarAvatarMap = new Map(similarAvatarRows.map((a) => [String(a._id), a.avatarUrl || '']));
+      similarAlumniOut.forEach((r) => { r.avatarUrl = similarAvatarMap.get(String(r._id)) || ''; });
+    }
 
     // "What needs your attention" showed only the single most recent item
     // per category, so a second/third event (or news post) within the same
@@ -1086,19 +1324,30 @@ const cleanEmploymentValue = (v) => (v && !PLACEHOLDER_EMPLOYMENT_VALUES.has(v) 
 // fake profiles with no backend behind them at all.
 const getSuggestedAlumni = async (req, res) => {
   try {
-    const { course, year, search } = req.query;
+    const { course, year, search, industry, location } = req.query;
     const limit = Math.min(600, Math.max(1, parseInt(req.query.limit, 10) || 60));
 
     const match = { role: 'alumni', status: 'active', _id: { $ne: req.user.id } };
     if (course && course !== 'All') match.course = course;
     if (year && year !== 'All') match.graduationYear = Number(year);
 
-    const [me, myEmp, users, allCourses, allYears] = await Promise.all([
+    const [me, myEmp, users, allCourses, allYears, allIndustries, allLocations] = await Promise.all([
       User.findById(req.user.id).select('course graduationYear').lean(),
       AlumniEmployment.findOne({ alumni_id: req.user.id }).lean(),
-      User.find(match, 'firstName lastName email course graduationYear avatarUrl').sort({ lastName: 1 }).lean(),
+      // avatarUrl deliberately excluded here — it's a base64 data URI (can
+      // run to 1-2MB of text) and isn't used by computeMatchScore, but this
+      // query used to fetch it for EVERY matching alumnus just to score and
+      // then discard most of them (only `limit`, default 60, are ever
+      // returned). Fetched separately below, only for the alumni that
+      // actually survive scoring/filtering/pagination.
+      User.find(match, 'firstName lastName email course graduationYear').sort({ lastName: 1 }).lean(),
       User.distinct('course', { role: 'alumni', status: 'active', course: { $nin: [null, ''] } }),
       User.distinct('graduationYear', { role: 'alumni', status: 'active', graduationYear: { $ne: null } }),
+      // Industry/location only live on AlumniEmployment (not User), so the
+      // filter dropdown options come from that collection instead — same
+      // shape as the course/year distincts above.
+      AlumniEmployment.distinct('industry', { industry: { $nin: [null, ''] } }),
+      AlumniEmployment.distinct('work_location', { work_location: { $nin: [null, ''] } }),
     ]);
 
     const ids = users.map((u) => u._id);
@@ -1117,7 +1366,6 @@ const getSuggestedAlumni = async (req, res) => {
         _id: u._id,
         name: `${u.firstName} ${u.lastName}`,
         email: u.email || '',
-        avatarUrl: u.avatarUrl || '',
         role: cleanEmploymentValue(emp?.job_title) || 'Not yet updated',
         company: cleanEmploymentValue(emp?.company_name) || 'Not yet updated',
         industry: cleanEmploymentValue(emp?.industry),
@@ -1132,6 +1380,12 @@ const getSuggestedAlumni = async (req, res) => {
       };
     });
 
+    // industry/location are filtered here (post-join) rather than in the
+    // User `match` above, since both only exist on the joined
+    // AlumniEmployment record, not the User document itself.
+    if (industry && industry !== 'All') results = results.filter((r) => r.industry === industry);
+    if (location && location !== 'All') results = results.filter((r) => r.location === location);
+
     if (search) {
       const q = search.toLowerCase();
       results = results.filter((r) => `${r.name} ${r.role} ${r.company}`.toLowerCase().includes(q));
@@ -1144,12 +1398,23 @@ const getSuggestedAlumni = async (req, res) => {
     const total = results.length;
     results = results.slice(0, limit);
 
+    // avatarUrl fetched here instead — only for the alumni actually being
+    // returned, not the whole scored candidate pool (see the comment on the
+    // User.find above).
+    if (results.length) {
+      const avatarRows = await User.find({ _id: { $in: results.map((r) => r._id) } }, 'avatarUrl').lean();
+      const avatarMap = new Map(avatarRows.map((a) => [String(a._id), a.avatarUrl || '']));
+      results = results.map((r) => ({ ...r, avatarUrl: avatarMap.get(String(r._id)) || '' }));
+    }
+
     res.json({
       alumni: results,
       total,
       filters: {
         courses: allCourses.filter(Boolean).sort(),
         years: allYears.filter(Boolean).sort((a, b) => b - a),
+        industries: allIndustries.filter(Boolean).sort(),
+        locations: allLocations.filter(Boolean).sort(),
       },
     });
   } catch (err) {
@@ -1961,9 +2226,21 @@ function isSameArea(jobLocation, profileLocation) {
   return profileParts.some((part) => job.includes(part));
 }
 
+// Mirrors the frontend search box's own check (JobConnect.jsx) — a query of
+// pure symbols ("***¥€$") isn't a real job title/company/skill/location, and
+// this endpoint is reachable directly, not just through that form.
+const SEARCH_HAS_ALNUM_RE = /[a-zA-Z0-9À-ÖØ-öø-ÿ]/;
+
 const searchJobs = async (req, res) => {
   try {
     const { keywords = '', location = '', type = '', proximity = '', education = '', page = 1, pagesize = 20, sort = 'relevance' } = req.query;
+
+    if (keywords.trim() && !SEARCH_HAS_ALNUM_RE.test(keywords)) {
+      return res.status(400).json({ message: 'Please enter a real job title, company, or skill — not just symbols.' });
+    }
+    if (location.trim() && !SEARCH_HAS_ALNUM_RE.test(location)) {
+      return res.status(400).json({ message: 'Please enter a real city or province — not just symbols.' });
+    }
 
     const employment = await AlumniEmployment.findOne({ alumni_id: req.user.id }).lean();
     const userSkillsText = employment?.skills || '';
@@ -2165,7 +2442,7 @@ const getMyResume = async (req, res) => {
   }
 };
 
-const RESUME_FIELDS = ['name', 'address', 'phone', 'email', 'linkedin', 'summary', 'skills', 'experience', 'education', 'certifications', 'projects', 'languages'];
+const RESUME_FIELDS = ['name', 'address', 'phone', 'email', 'linkedin', 'avatarUrl', 'summary', 'skills', 'experience', 'education', 'certifications', 'projects', 'languages'];
 
 const updateMyResume = async (req, res) => {
   try {
@@ -2260,14 +2537,10 @@ const logApplication = async (req, res) => {
       return res.status(400).json({ message: 'Job url and title are required.' });
     }
 
-    // Gate applying on a minimum skill match — the alumnus has to close the
-    // gap on their profile first. Skipped for a job already applied to (so a
-    // repeat click can't strand an existing application) and for jobs with
-    // no computed match at all.
+    // Applying is always the alumnus's own call, regardless of computed skill
+    // match — a low match is shown to them (see the match ribbon/skill-gap
+    // panel) as information, not as a gate they have to clear first.
     const alreadyLogged = await JobApplication.exists({ alumni_id: req.user.id, url });
-    if (!alreadyLogged && typeof match === 'number' && match < 50) {
-      return res.status(400).json({ message: 'You need at least a 50% skill match to apply. Add the missing skills to your profile first.' });
-    }
 
     // "internal:<jobId>" is how partner-postings (scoreInternalJobs) tag a
     // job with no real external URL — recovering the real Job's _id here is

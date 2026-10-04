@@ -3,8 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../components/common/Icon.jsx";
 import EmployerTopbar from "../components/employer/EmployerTopbar.jsx";
 import alumniLogo from "../assets/images/alumni-removebg.png";
-import tsuLogo from "../assets/images/tsu_logo-removebg.png";
-import toptsuLogo from "../assets/images/tsu-top-header.webp";
+import tsuLogo from "../assets/images/tsu-seal-2026.png";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../services/api.js";
 import { isDrawerViewport, watchDrawerBoundary } from "../constants/layout.js";
@@ -95,18 +94,18 @@ export default function EmployerLayout() {
           </button>
           <div className="brand-text">
             <button type="button" className="tsu-top-brand-link" onClick={() => navigate("/employer/dashboard")} aria-label="Open Employer dashboard">
-              <img src={toptsuLogo} alt="Tarlac State University" className="toptsu-logo" />
+              <span className="tsu-lockup"><img src={tsuLogo} alt="" /><span>Tarlac State<br />University</span></span>
             </button>
             <div className="alumni-brand">
               <img src={alumniLogo} alt="Alumni" className="alumni-logo" />
-              <p>Alumni Association<br/> Inc.</p>
+              <p>Alumni Association,<br /> Inc.</p>
             </div>
           </div>
         </div>
 
         <nav className="nav" aria-label="Main navigation">
           {navItems.map((item, index) => <React.Fragment key={item.to}>
-            <div className="nav-category" aria-hidden="true">{["Overview", "Talent", "Scheduling"][index]}</div>
+            <div className="nav-category" aria-hidden="true">{["Overview", "Recruitment", "Scheduling"][index]}</div>
             <NavLink to={item.to} onClick={closeOnMobile} className={({ isActive }) => isActive ? "active" : undefined}>
             <span><Icon name={item.icon}/></span><span>{item.label}</span>
             </NavLink>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
+import { CollegePill, CoursePill, EmploymentStatusPill } from "../../components/common/TracerPills.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
 const MAROON = "#570013";
@@ -80,13 +81,7 @@ function DetailModal({ response, onClose }) {
   const [questionLabels, setQuestionLabels] = useState({});
   const college = response?.alumni?.college;
 
-  // extra_answers is stored keyed by each custom question's internal id
-  // (e.g. "q_newQuestion_lz3k9f2", auto-generated once at creation and never
-  // updated to track the label the admin later types) — showing that raw key
-  // as-is made a newly-added question's answer look like it never made it
-  // into the database, when it actually had, it just had no readable label.
-  // Fetching the form config and mapping id -> current label fixes the display
-  // without changing how/where the answer itself is stored.
+  // Map custom-question ids to their current labels.
   useEffect(() => {
     if (!college) { setQuestionLabels({}); return; }
     fetch(`${API}/admin/tracer-form-config?college=${encodeURIComponent(college)}`, { headers: authHeaders() })
@@ -332,7 +327,7 @@ export default function TracerResponsesView() {
       </div>
 
       <section className="employment-card">
-        <div className="emp-search-row">
+        <div className="emp-search-row tracer-filter-row">
           <input
             type="text"
             className="emp-search"
@@ -340,39 +335,36 @@ export default function TracerResponsesView() {
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
           />
-          <select className="table-filter" style={{ marginBottom: 0, minHeight: 36 }} value={college} onChange={e => { setCollege(e.target.value); setPage(1); }}>
+          <select className="table-filter tracer-filter-select" value={college} onChange={e => { setCollege(e.target.value); setPage(1); }}>
             <option value="">All colleges</option>
             {colleges.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select className="table-filter" style={{ marginBottom: 0, minHeight: 36 }} value={batch} onChange={e => { setBatch(e.target.value); setPage(1); }}>
+          <select className="table-filter tracer-filter-select" value={batch} onChange={e => { setBatch(e.target.value); setPage(1); }}>
             <option value="">All batches</option>
             {batches.map(b => <option key={b} value={b}>Batch {b}</option>)}
           </select>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12, color: "#76656a", whiteSpace: "nowrap" }}>Date:</span>
+          <div className="tracer-date-range">
+            <span className="tracer-date-label">Date:</span>
             <input
               type="date"
               title="Date submitted from"
               value={dateFrom}
               onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-              className="emp-search"
-              style={{ minWidth: 130, flex: "none" }}
+              className="emp-search tracer-date-input"
             />
-            <span style={{ fontSize: 12, color: "#76656a" }}>–</span>
+            <span className="tracer-date-label">–</span>
             <input
               type="date"
               title="Date submitted to"
               value={dateTo}
               onChange={e => { setDateTo(e.target.value); setPage(1); }}
-              className="emp-search"
-              style={{ minWidth: 130, flex: "none" }}
+              className="emp-search tracer-date-input"
             />
           </div>
           {hasActiveFilters && (
             <button
               type="button"
-              className="see-toggle"
-              style={{ marginTop: 0 }}
+              className="see-toggle tracer-clear-btn"
               onClick={() => {
                 setCollege(""); setBatch("");
                 setDateFrom(""); setDateTo("");
@@ -385,26 +377,28 @@ export default function TracerResponsesView() {
           )}
         </div>
 
-        <table className="employment-table" style={{ width: "100%" }}>
+        <table className="employment-table tracer-responses-table" style={{ width: "100%" }}>
           <thead>
             <tr>
               <th>Name</th>
               <th>College</th>
               <th>Course</th>
+              <th>Status</th>
               <th>Date Submitted</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={5} className="emp-loading">Loading responses…</td></tr>
+              <tr><td colSpan={6} className="emp-loading">Loading responses…</td></tr>
             ) : responses.length === 0 ? (
-              <tr><td colSpan={5} className="emp-empty">No tracer form submissions found.</td></tr>
+              <tr><td colSpan={6} className="emp-empty">No tracer form submissions found.</td></tr>
             ) : responses.map(r => (
               <tr key={r._id}>
                 <td data-label="Name">{r.name}</td>
-                <td data-label="College">{r.college || "—"}</td>
-                <td data-label="Course">{r.course || "—"}</td>
+                <td data-label="College"><CollegePill college={r.college} /></td>
+                <td data-label="Course"><CoursePill course={r.course} /></td>
+                <td data-label="Status"><EmploymentStatusPill status={r.employmentStatus} /></td>
                 <td data-label="Date Submitted">{fmtDate(r.submittedAt)}</td>
                 <td data-label="Actions">
                   <button
@@ -425,6 +419,34 @@ export default function TracerResponsesView() {
             ))}
           </tbody>
         </table>
+
+        <div className="tracer-response-cards">
+          {loading ? (
+            <p className="emp-loading">Loading responses…</p>
+          ) : responses.length === 0 ? (
+            <p className="emp-empty">No tracer form submissions found.</p>
+          ) : responses.map(r => (
+            <article className="tracer-response-card" key={r._id}>
+              <div className="tracer-response-card-head">
+                <strong>{r.name}</strong>
+                <span className="tracer-response-card-pills">
+                  <CollegePill college={r.college} />
+                  <CoursePill course={r.course} />
+                  <EmploymentStatusPill status={r.employmentStatus} />
+                </span>
+              </div>
+              <div className="tracer-response-card-date">Submitted {fmtDate(r.submittedAt)}</div>
+              <button
+                type="button"
+                className="tracer-response-card-btn"
+                disabled={detailLoading}
+                onClick={() => handleViewAnswer(r.alumni_id)}
+              >
+                View Answer
+              </button>
+            </article>
+          ))}
+        </div>
 
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",

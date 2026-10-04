@@ -18,5 +18,9 @@ const eventSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 eventSchema.index({ visibility: 1, event_datetime: 1 });
+// Coordinator dashboards/reports filter Event.find({ college, ... }) on
+// nearly every load (dashboard, activity feed, reports, events-dashboard) —
+// without this, every one of those forces a full collection scan.
+eventSchema.index({ college: 1, event_datetime: -1 });
 
 module.exports = mongoose.model('Event', eventSchema);

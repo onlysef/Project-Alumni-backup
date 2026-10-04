@@ -262,12 +262,7 @@ export function DistributionBars({ rows, limit }) {
   const shown = limit ? rows.slice(0, limit) : rows;
   const total = rows.reduce((a, r) => a + r.count, 0);
   const max   = Math.max(...shown.map((r) => r.count), 1);
-  // A "share of total" percentage is only meaningful when there's something
-  // to compare against — with a single category shown, it's mathematically
-  // always 100% regardless of the actual count, which reads as a misleading
-  // rate (e.g. "111 (100%)" can look like "100% employed") rather than the
-  // trivial fact it actually is. Suppressed for exactly that one-row case;
-  // 2+ rows still show a real, informative share.
+  // Hide share-of-total for a single row; it's always 100%.
   const showPct = shown.length > 1;
   return (
     <div className="tracer-bars">
@@ -289,26 +284,81 @@ export function DistributionBars({ rows, limit }) {
   );
 }
 
-// Line/trend chart — best for a metric tracked ACROSS an ordered sequence
-// (batch year, month, etc.), where the shape of change over time is the
-// actual point, not a ranked comparison DistributionBars' bars suit. `rows`
-// is already in the sequence's natural order (oldest -> newest) by the time
-// it gets here — see queryByYear()'s own comment on why. A row's `count`
-// may be `null` (no data for that point, e.g. a batch with zero tracer
-// responses yet) — rendered as a genuine GAP in the line rather than a
-// misleading 0, since "no data" and "confirmed zero" are different facts.
+// Vertical bar chart — best for ordered or moderate-cardinality categories.
+// Moved here from TracerDashboardView.jsx/CoordinatorTracerDashboardView.jsx
+// (both had byte-identical copies) so AiAssistantView.jsx's chat widget can
+// also render a genuine bar graph for chart.type === "bars" instead of
+// DistributionBars' horizontal percentage-meter look — the AC assistant had
+// no true bar-graph visual among its 3 renderers (MiniDonut/DistributionBars/
+// TrendLine) at all, so a "make it bar graph" request could only ever change
+// the DATA, never actually produce a chart shaped like a bar graph.
+export function MiniBarChart({ rows }) {
+  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
+  const max = Math.max(...rows.map((r) => r.count), 1);
+  return (
+    <div className="tracer-vbar-chart">
+      {rows.map((r, i) => (
+        <div className="tracer-vbar-col" key={r.label}>
+          <div className="tracer-vbar-wrap">
+            <div
+              className="tracer-vbar"
+              style={{ height: `${Math.max((r.count / max) * 100, 8)}%`, background: CHART_PALETTE[i % CHART_PALETTE.length] }}
+              title={`${r.label}: ${r.count}`}
+            >
+              <span className="tracer-vbar-value">{r.count}</span>
+            </div>
+          </div>
+          <div className="tracer-vbar-label" title={r.label}>{r.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Trend line. A null count is drawn as a gap (no data), not zero.
 export function TrendLine({ rows, unit = '%', max = 100 }) {
   const [tip, setTip] = useState(null);
-  const wrapRef = useRef(null);
+  const svgRef = useRef(null);
   if (!rows || rows.length === 0) {
     return <p className="tracer-empty">No responses yet.</p>;
   }
 
-  // PAD_B (42, was 32) leaves room for the two-line axis label a gap point
-  // now gets — the year plus an explicit "no data" sub-label (see the
-  // x-axis label loop below) — without the second line clipping against the
-  // bottom edge.
-  const W = 600, H = 220, PAD_L = 36, PAD_R = 16, PAD_T = 16, PAD_B = 42;
+  // This chart was originally built for ONE shape of x-axis label — short
+  // batch years ("2020".."2026", 4 characters) — plain horizontal labels at
+  // a fixed 600px width fit that fine regardless of how many years there
+  // were. It's since been reused (via the "make it a line graph" chart-type
+  // override — see aggregationService.js's queryInner()) for per-PROGRAM
+  // breakdowns too, whose labels ("BSIT - TSM", "BSIS - Business Analytics")
+  // are both longer and more numerous — plain labels packed into the same
+  // fixed width collided into an unreadable overlapping smear. A first fix
+  // tried rotating them, but rotated text at a small readable size is its
+  // own kind of hard-to-read (reported live: "masakit sa mata" — hurts the
+  // eyes). MiniBarChart (the vertical bar chart right next to this one —
+  // see its own usage in AiAssistantView.jsx) already solves the identical
+  // "many/long category labels" problem a completely different way: it
+  // doesn't cram everything into one fixed width at all — it gives each
+  // category a real, comfortable, plain-horizontal-text column and lets the
+  // whole chart scroll horizontally instead. Matched here: a wide-label
+  // chart renders at its own natural pixel width (not squeezed into a fixed
+  // 600px) inside a horizontally-scrollable wrapper, so every label stays
+  // plain, horizontal, and the same small size as MiniBarChart's own labels
+  // — no rotation needed at all. The original short-label case (actual
+  // batch years) is untouched: maxLabelLen stays well under the threshold,
+  // so that chart keeps its original fixed 600px, 100%-responsive, no-
+  // scroll rendering exactly as it always did.
+  const cleanLabels = rows.map((r) => String(r.label).replace(/^Batch\s+/i, ''));
+  const maxLabelLen = Math.max(0, ...cleanLabels.map((l) => l.length));
+  const needsWideLayout = maxLabelLen > 6 || rows.length > 8;
+  // 150px comfortably fits this dataset's longest real label ("BSIS -
+  // Business Analytics", ~26 characters) on one plain horizontal line at
+  // MiniBarChart's own label size without crowding its neighbors.
+  const PER_LABEL_PX = 150;
+
+  const W = needsWideLayout ? Math.max(600, rows.length * PER_LABEL_PX) : 600;
+  // PAD_T widened from 16 to keep the always-visible value label (see
+  // trend-point-value below) above the chart's own highest possible point
+  // (max, 0% headroom left above it) from crowding the card's top edge.
+  const H = 220, PAD_L = 36, PAD_R = 16, PAD_T = 26, PAD_B = 42;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const n = rows.length;
@@ -317,9 +367,6 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
 
   const points = rows.map((r, i) => ({ ...r, x: xFor(i), y: r.count == null ? null : yFor(r.count) }));
 
-  // Break the polyline into separate contiguous segments wherever a null
-  // (no-data) point interrupts the sequence, instead of drawing a straight
-  // line across the gap as if that value were actually known.
   const segments = [];
   let current = [];
   points.forEach((p) => {
@@ -328,28 +375,7 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
   });
   if (current.length) segments.push(current);
 
-  // A gap sitting BETWEEN two known points (e.g. 3 batches where only the
-  // middle one has zero tracer responses) used to render as nothing at all —
-  // both neighbors ended up as their own 1-point "segment" (a polyline needs
-  // 2+ points to draw anything), so a short series with one interior gap
-  // showed two disconnected dots and looked completely empty/broken rather
-  // than like a real chart with one missing point. A dashed bridge across the
-  // gap shows the overall shape without a dead-looking hole in the line.
-  //
-  // Deliberately NOT a circle/dot on that bridge (an earlier version placed
-  // one, interpolated to sit visually on the dashed line) — caught live: at
-  // chat-message rendering size, a dashed-vs-solid line and a hollow-vs-
-  // filled dot are both too subtle a difference to actually notice, so that
-  // interpolated marker read as a THIRD REAL DATA POINT sitting right on the
-  // trend line, exactly the "why does 2025 have a number when there were no
-  // responses" confusion this is meant to prevent. A vertical dashed guide
-  // line (drawn further down, spanning the full plot height at the gap's x)
-  // plus an explicit "no data" sub-label under that point's year (see the
-  // x-axis label loop below) are both unambiguous regardless of render size —
-  // neither can be mistaken for a plotted value. Only bridges INTERIOR gaps
-  // (a known point on BOTH sides) — a gap at the very start or end of the
-  // series has no second known point to interpolate a bridge position from
-  // and is left as genuinely empty, same as before.
+  // Interior gaps: dashed bridge + vertical guide + "no data" label (no dot; it read as a real point).
   const bridges = [];
   {
     let i = 0;
@@ -367,7 +393,14 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
   const gridLines = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ y: PAD_T + plotH * (1 - f), label: Math.round(max * f) }));
 
   function showTip(x, y, text) {
-    const rect = wrapRef.current?.getBoundingClientRect();
+    // Measures the <svg> itself, not the outer wrapping div — in the wide/
+    // scrollable layout (see needsWideLayout above), the div's own
+    // bounding rect is clamped to its VISIBLE (scrolled) width, which would
+    // badly under-scale the tooltip position; the svg's rendered width is
+    // always what actually matters (100%-of-container when responsive, or
+    // its own explicit W-pixel width when scrollable — a 1:1 match with the
+    // viewBox either way).
+    const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return;
     const scale = rect.width / W;
     setTip({ x: x * scale, y: y * scale - 14, text });
@@ -379,12 +412,22 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
   }
 
   return (
-    <div className="tracer-trend-line" ref={wrapRef} style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="auto" role="img" aria-label="Trend over time">
+    <div
+      className={`tracer-trend-line${needsWideLayout ? ' tracer-trend-line-scroll' : ''}`}
+      style={{ position: 'relative' }}
+    >
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        width={needsWideLayout ? W : '100%'}
+        height="auto"
+        role="img"
+        aria-label="Trend over time"
+      >
         {gridLines.map((g) => (
           <g key={g.y}>
             <line x1={PAD_L} y1={g.y} x2={W - PAD_R} y2={g.y} className="trend-gridline" />
-            <text x={PAD_L - 8} y={g.y} className="trend-axis-label" textAnchor="end" dominantBaseline="middle">{g.label}</text>
+            <text x={PAD_L - 8} y={g.y} className="trend-axis-label trend-yaxis-value" textAnchor="end" dominantBaseline="middle">{g.label}</text>
           </g>
         ))}
         {bridges.map((b, i) => (
@@ -403,23 +446,44 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
             fill="none"
           />
         ))}
-        {points.map((p) => p.y == null ? null : (
-          <circle
-            key={p.label}
-            cx={p.x}
-            cy={p.y}
-            r={4}
-            className="trend-line-point"
-            onMouseMove={(e) => handleMove(e, p)}
-            onMouseLeave={() => setTip(null)}
-          />
+        {points.map((p, i) => p.y == null ? null : (
+          <g key={p.label}>
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={4}
+              className="trend-line-point"
+              onMouseMove={(e) => handleMove(e, p)}
+              onMouseLeave={() => setTip(null)}
+            />
+            {/* MiniBarChart (the bar chart right next to this one) shows
+                its value permanently on every bar — this line chart only
+                revealed a value on hover, via the tooltip above, which
+                reads as "unreadable" for anyone not actively hovering (e.g.
+                looking at an exported/copied image of the chart). Mirrors
+                that same always-visible, bold number here, placed just
+                above each point instead of inside a bar (a line chart has
+                no bar body to put it inside). Bare number only (no unit
+                suffix) — the chart's own title already states the unit
+                ("Employment Rate by Program (%)"), and the shorter text
+                leaves more breathing room at the edges. The FIRST/LAST
+                point anchor outward (start/end) instead of centered — a
+                centered label at the very first point collided with the
+                y-axis's own top gridline number sitting just to its left
+                (reported live as "111100" running together); the last
+                point's centered label would equally run past the chart's
+                right edge. */}
+            <text
+              x={i === 0 ? p.x + 4 : i === n - 1 ? p.x - 4 : p.x}
+              y={p.y - 10}
+              className="trend-point-value"
+              textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
+            >
+              {p.count}
+            </text>
+          </g>
         ))}
         {bridges.flatMap((b) => b.gaps.map((g) => (
-          // Full-height dashed vertical guide at the gap's x — unlike a dot
-          // ON the line, this can't be mistaken for a plotted value; it
-          // reads unambiguously as "something is marked at this position,"
-          // and the "no data" sub-label below (in the axis-label loop)
-          // explains what.
           <line
             key={`gap-guide-${g.label}`}
             x1={g.x} y1={PAD_T} x2={g.x} y2={PAD_T + plotH}
@@ -427,23 +491,22 @@ export function TrendLine({ rows, unit = '%', max = 100 }) {
           />
         )))}
         {points.map((p, i) => {
-          // Thinning long label sequences — a batch-year axis with 15+ points
-          // renders every label overlapping and unreadable at this width, so
-          // only every Nth label is drawn once there are more than ~10 points.
+          // n > 10 only ever applies to the original batch-year case (this
+          // dataset never has more than ~8 programs/specializations) — the
+          // wide layout above already gives every program its own 150px
+          // column, wide enough for one plain line of text, so no label
+          // needs to be skipped there.
           const stride = n > 10 ? Math.ceil(n / 8) : 1;
           if (i % stride !== 0 && i !== n - 1) return null;
           const labelY = H - PAD_B + 14;
+          const labelText = String(p.label).replace(/^Batch\s+/i, '');
           return (
             <g key={p.label}>
-              <text x={p.x} y={labelY} className="trend-axis-label" textAnchor="middle">
-                {String(p.label).replace(/^Batch\s+/i, '')}
+              <text x={p.x} y={labelY} className="trend-xaxis-label" textAnchor="middle">
+                {labelText}
               </text>
-              {/* Explicit, always-visible (no hover needed) call-out for a
-                  gap point — a static screenshot or a touch-screen viewer
-                  never sees a hover tooltip, so the missing-data fact has to
-                  be readable in the chart itself, not just on mouseover. */}
               {p.y == null && (
-                <text x={p.x} y={labelY + 12} className="trend-axis-label trend-gap-label" textAnchor="middle">
+                <text x={p.x} y={labelY + 12} className="trend-xaxis-label trend-gap-label" textAnchor="middle">
                   no data
                 </text>
               )}

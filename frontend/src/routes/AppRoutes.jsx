@@ -82,9 +82,7 @@ export default function AppRoutes() {
         <Suspense fallback={<div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#76656a", fontSize: 14 }}>Loading…</div>}>
         <Routes>
           <Route path="/" element={<RoleRedirect />} />
-          {/* Public — alumni self-registration, no auth required. Placed
-              before the catch-all "*" below so it isn't swallowed by
-              RoleRedirect. */}
+          {/* Public sign-up; must stay above the catch-all "*". */}
           <Route path="/signup" element={<AlumniSignUpView />} />
           <Route path="/employer-signup" element={<EmployerSignUpView />} />
           <Route path="*" element={<RoleRedirect />} />

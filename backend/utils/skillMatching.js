@@ -60,6 +60,38 @@ const SKILL_LABEL_OVERRIDES = {
   patient: 'Patience', creative: 'Creativity', resourceful: 'Resourcefulness', reliable: 'Reliability', multitask: 'Multitasking',
 };
 
+// The Employment Details "+ Add skill" field (frontend SkillsEditor.jsx)
+// used to accept any text with at least one letter, with no check that it's
+// an actual skill — caught live: alumni entered "Roblox", "Y8", "codm" and
+// they were saved and displayed as skills. Not an attempt at a general "is
+// this a real skill" classifier (impossible to enumerate every legitimate
+// niche skill someone could genuinely have, and SKILL_BUCKETS above is
+// deliberately NOT exhaustive) — a curated denylist of the most common
+// non-skill entries someone might type instead: video games/gaming
+// platforms (near-zero chance any of these is ever a legitimate
+// professional skill), bare entertainment/social apps (a real skill mention
+// uses an actual skill phrase already covered by SKILL_BUCKETS above —
+// "Social Media Marketing", "Content Creation", "Video Editing" — so typing
+// just the app name by itself is never the real skill, only a shortcut to
+// one), and common placeholder/joke text. Mirrored in frontend/src/utils/
+// skillClassification.js for the client-side check — keep both in sync.
+const NON_SKILL_KEYWORDS = [
+  // Video games / gaming platforms
+  'roblox', 'y8', 'minecraft', 'fortnite', 'valorant', 'mobile legends', 'mobile legends bang bang', 'mlbb',
+  'codm', 'call of duty', 'call of duty mobile', 'free fire', 'pubg', 'pubg mobile', 'among us',
+  'genshin impact', 'honkai star rail', 'honkai impact', 'dota', 'dota 2', 'league of legends', 'wild rift',
+  'arena of valor', 'aov', 'grand theft auto', 'gta', 'clash of clans', 'clash royale', 'brawl stars',
+  'brawlhalla', 'stumble guys', 'candy crush', 'subway surfers', 'temple run', 'pokemon go', '8 ball pool',
+  'apex legends', 'overwatch', 'counter strike', 'csgo', 'cs2', 'tekken', 'street fighter', 'fifa', 'efootball',
+  'sky children of light', 'video games', 'video game', 'gaming', 'playstation', 'xbox', 'nintendo switch',
+  // Bare entertainment/social apps (the real skill is a phrase like "Social
+  // Media Marketing"/"Content Creation"/"Video Editing", already covered
+  // above — the app name alone isn't a skill by itself)
+  'netflix', 'youtube', 'tiktok', 'spotify', 'discord', 'snapchat', 'pinterest', 'whatsapp', 'telegram', 'messenger',
+  // Placeholder/joke entries
+  'none', 'n a', 'nothing', 'idk', 'wala', 'basta', 'test', 'testing', 'asdf', 'qwerty', 'lol', 'lmao', 'haha', 'charot', 'ewan',
+];
+
 const skillLabel = (keyword) => SKILL_LABEL_OVERRIDES[keyword] || keyword.replace(/\b\w/g, (c) => c.toUpperCase());
 
 // Flat, deduplicated keyword vocabulary drawn from SKILL_BUCKETS (already
@@ -73,6 +105,53 @@ const ALL_SKILL_KEYWORDS = [...new Set(SKILL_BUCKETS.flatMap((b) => b.keywords))
 // boundaries survive — textContainsSkill below needs them to tell "java"
 // the word apart from "java" the first four letters of "javascript".
 const normalizeSkillText = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+// "c++"/"c#" are the only keywords whose punctuation carries their entire
+// meaning — normalizeSkillText strips the symbol, collapsing both down to a
+// bare "c" (see the length<2 guards below), which is why they used to be
+// skipped outright rather than false-positiving on any text containing a
+// standalone "c". Matched here directly against the RAW text instead, with
+// the symbol required and real word boundaries either side (lookarounds,
+// since "+"/"#" aren't \b word characters) — "c++"/"c#" as literal
+// substrings essentially never appear by coincidence, so this carries none
+// of the false-positive risk the bare-letter version had.
+const SYMBOL_SKILL_PATTERNS = {
+  'c++': /(?<![a-z0-9])c\+\+(?![a-z0-9])/i,
+  'c#':  /(?<![a-z0-9])c#(?![a-z0-9])/i,
+};
+
+// "frontend"/"backend" are umbrella/category words pulled from job posting
+// text (part of the Web Development bucket), not real skill names anyone
+// actually lists on their own profile — nobody writes "frontend" as a
+// skill, they write "React"/"HTML"/"CSS". Literal whole-word matching
+// against these two therefore always failed, showing them as "missing"
+// even for an alumnus whose listed skills (React, HTML, CSS, PHP, Node.js)
+// obviously satisfy them. Satisfied here by checking for ANY of the
+// concrete underlying technologies each umbrella term actually covers.
+const CATEGORY_ALIASES = {
+  frontend: ['html', 'css', 'react', 'vue', 'angular', 'jquery', 'bootstrap', 'tailwind', 'next.js', 'ui', 'ux'],
+  backend:  ['node', 'php', 'django', 'flask', 'spring boot', 'asp.net', 'laravel', 'ruby on rails', 'sql', 'mysql', 'mongodb', 'postgresql', 'graphql', 'rest api', 'python', 'java', 'c#'],
+};
+
+// Several soft-skill keywords are just different grammatical forms of the
+// SAME underlying trait ("creative"/"creativity", "reliable"/"reliability",
+// "patient"/"patience", "flexible"/"flexibility", "hardworking"/"hard
+// working", "adaptable"/"adaptability", "multitask"/"multitasking",
+// "resourceful"/"resourcefulness") — SKILL_LABEL_OVERRIDES already displays
+// both forms under one identical-looking chip label, but without this they
+// were still matched as two unrelated keywords. A job posting using
+// "creative" and an alumnus's profile listing "Creativity" are the same
+// skill in different grammar, not two different skills — caught live: the
+// exact same "Creativity" chip showed matched on one job card and missing
+// on another, purely because of which word form each posting's own
+// description text happened to use, with the alumnus's own listed skills
+// never having changed at all. Built programmatically (not hand-listed) so
+// every current and future label-sharing pair gets this fix automatically.
+const SKILL_LABEL_TO_KEYWORDS = {};
+for (const kw of ALL_SKILL_KEYWORDS) {
+  const label = skillLabel(kw);
+  (SKILL_LABEL_TO_KEYWORDS[label] ||= []).push(kw);
+}
 
 // Whole-word/whole-phrase matching, not a bare substring search — the
 // previous version stripped ALL separators (including spaces) before
@@ -88,12 +167,12 @@ const normalizeSkillText = (s) => (s || '').toLowerCase().replace(/[^a-z0-9]+/g,
 // tokenize as ["react","js"] and match on the first token alone) written
 // instead as one fused word "ReactJS"/"NodeJS"/"VueJS" with no separator at
 // all still counting as the same skill.
-function textContainsSkill(userSkillsText, skill) {
+function matchesKeywordLiterally(userSkillsText, skill) {
   const skillWords = normalizeSkillText(skill).split(' ').filter(Boolean);
   const skillFused = skillWords.join('');
-  // Symbol-heavy keywords like "C++" or "C#" strip down to a bare "c" once
-  // punctuation is removed, which then matches almost any text — too short
-  // to be a meaningful signal, so skip them rather than false-positive.
+  // Every other keyword shorter than 2 characters once normalized is too
+  // short to be a meaningful signal (would match almost any text) — skipped
+  // rather than false-positived on.
   if (skillFused.length < 2) return false;
 
   const textWords = normalizeSkillText(userSkillsText).split(' ').filter(Boolean);
@@ -102,6 +181,30 @@ function textContainsSkill(userSkillsText, skill) {
     if (skillWords.length > 1 && textWords.slice(i, i + skillWords.length).join('') === skillFused) return true;
   }
   return false;
+}
+
+// Server-side counterpart to the frontend's isNonSkillEntry() (SkillsEditor.jsx
+// already blocks these client-side) — the actual enforcement boundary, since
+// a direct API call bypasses any client-side check entirely.
+function isNonSkillEntry(skillText) {
+  return NON_SKILL_KEYWORDS.some((keyword) => matchesKeywordLiterally(skillText, keyword));
+}
+
+function textContainsSkill(userSkillsText, skill) {
+  const key = (skill || '').trim().toLowerCase();
+  const symbolPattern = SYMBOL_SKILL_PATTERNS[key];
+  if (symbolPattern) return symbolPattern.test(userSkillsText || '');
+
+  if (CATEGORY_ALIASES[key]) {
+    return CATEGORY_ALIASES[key].some((alias) => textContainsSkill(userSkillsText, alias));
+  }
+
+  const siblings = SKILL_LABEL_TO_KEYWORDS[skillLabel(key)];
+  if (siblings && siblings.length > 1) {
+    return siblings.some((sib) => matchesKeywordLiterally(userSkillsText, sib));
+  }
+
+  return matchesKeywordLiterally(userSkillsText, key);
 }
 
 // Lets the Employment Details skills field accept a free-form sentence
@@ -114,14 +217,23 @@ function textContainsSkill(userSkillsText, skill) {
 // Deterministic keyword lookup (no LLM call) — reliable and instant, unlike
 // asking a small model to freelance an extraction from scratch.
 function extractSkillsFromText(text) {
+  const found = [];
+
+  // Checked against the raw (un-normalized) text first — see
+  // SYMBOL_SKILL_PATTERNS' own comment for why these two can't go through
+  // the normalize-then-tokenize path everything else below uses.
+  for (const [keyword, pattern] of Object.entries(SYMBOL_SKILL_PATTERNS)) {
+    if (pattern.test(text || '')) found.push(skillLabel(keyword));
+  }
+
   // Longest phrase first so "network security" claims its two tokens before
   // the bare "network"/"networking" keywords get a chance to match either one.
   const sorted = [...ALL_SKILL_KEYWORDS].sort((a, b) => b.length - a.length);
   const tokens = normalizeSkillText(text).split(' ').filter(Boolean);
   const consumed = new Array(tokens.length).fill(false);
-  const found = [];
 
   for (const keyword of sorted) {
+    if (SYMBOL_SKILL_PATTERNS[keyword]) continue; // already handled above
     const skillWords = normalizeSkillText(keyword).split(' ').filter(Boolean);
     const skillFused = skillWords.join('');
     if (skillFused.length < 2) continue;
@@ -147,4 +259,4 @@ function extractSkillsFromText(text) {
   return found;
 }
 
-module.exports = { SKILL_BUCKETS, SKILL_LABEL_OVERRIDES, skillLabel, ALL_SKILL_KEYWORDS, normalizeSkillText, textContainsSkill, extractSkillsFromText };
+module.exports = { SKILL_BUCKETS, SKILL_LABEL_OVERRIDES, skillLabel, ALL_SKILL_KEYWORDS, normalizeSkillText, textContainsSkill, extractSkillsFromText, isNonSkillEntry };

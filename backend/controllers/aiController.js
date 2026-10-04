@@ -12,6 +12,11 @@ const answerCache          = require('../services/answerCache');
 const { stripInjectionPhrases } = require('../utils/injectionFilter');
 const AiFlag                = require('../models/AiFlag');
 
+// Same limit the frontend chat composer's <textarea maxLength> enforces —
+// kept here too since this endpoint is reachable directly, not just through
+// that form.
+const MAX_QUESTION_LENGTH = 500;
+
 // Maps fileParser's TRACER_COLUMNS field names → Graduate model fields
 function mapNormalizedToGraduate(n) {
   const year = parseInt(n.date_graduated, 10);
@@ -57,6 +62,16 @@ const chat = async (req, res) => {
   if (!question || !question.trim()) {
     return res.status(400).json({ message: 'Question is required.' });
   }
+  // Mirrors the frontend composer's maxLength — that only stops TYPING past
+  // the limit (a direct API call bypasses it entirely), so the real
+  // enforcement has to live here. An overly long message is also just bad
+  // for this system specifically: it gets interpolated into the LLM prompt
+  // alongside retrieved context, so an unbounded question risks blowing the
+  // model's context window or degrading answer quality long before any rate
+  // limit would ever kick in.
+  if (question.length > MAX_QUESTION_LENGTH) {
+    return res.status(400).json({ message: `Question is too long (max ${MAX_QUESTION_LENGTH} characters).` });
+  }
 
   // Set up Server-Sent Events stream
   res.setHeader('Content-Type',  'text/event-stream');
@@ -69,7 +84,7 @@ const chat = async (req, res) => {
     // data — admins see everything. See utils/collegeScope.js for why.
     const college = req.user?.role === 'coordinator' ? req.user.college : null;
 
-    const { sources, type, suggestions, chart, charts } = await generateAnswer(
+    const { sources, type, suggestions, chart, charts, sampleSize, lowConfidence } = await generateAnswer(
       question,
       history,
       {
@@ -96,7 +111,7 @@ const chat = async (req, res) => {
     // Final event with sources, classification type, (when available)
     // backend-computed follow-up suggestions guaranteed answerable by
     // aggregation, and (when available) chart data for an inline graph.
-    res.write(`data: ${JSON.stringify({ done: true, sources, type, suggestions, chart, charts })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, sources, type, suggestions, chart, charts, sampleSize, lowConfidence })}\n\n`);
   } catch (err) {
     logger.error('chat_request_failed', { question, error: err });
     const isRateLimit = err?.status === 429 || err?.status === 413;

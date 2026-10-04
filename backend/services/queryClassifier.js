@@ -22,7 +22,7 @@
 // assistant by name ("hello ac!", "hi ai") still matches — those aren't
 // address terms like "guys"/"everyone" grammatically, but serve the exact
 // same role here (naming who the greeting is for, not changing its meaning).
-const GREETING_PATTERN = /^\s*(hi+|hello+|he+y+|yo+|hola|howdy|hiya|oi+|oy+|wassup|what'?s\s*up|good\s?(morning|afternoon|evening|day|noon)|greetings|su+p+|kumusta|kamusta|musta|magandang\s+(umaga|hapon|gabi|araw))(?:\s+(po|ho|na|ka|kayo|there|guys|everyone|all|bro|sis|ac|ai))*[\s!.,]*$/i;
+const GREETING_PATTERN = /^\s*(hi+|hello+|he+y+|yo+|hola|howdy|hiya|oi+|oy+|wassup|what'?s\s*up|good\s?(morning|afternoon|evening|day|noon)|greetings|su+p+|kumusta|kamusta|musta|magandang\s+(umaga|hapon|gabi|araw))(?:\s+(po|ho|na|ka|kayo|there|guys|everyone|all|bro|sis|ac|atreia|ai))*[\s!.,]*$/i;
 
 // A bare acknowledgment ("thanks", "okay", "salamat") had no category of its
 // own before — it fell to the 'statistical' default, hit RAG with nothing
@@ -141,12 +141,73 @@ function isUnrecognizedInput(q) {
 }
 
 const HELP_PATTERNS = [
-  /\bwhat can you (do|help|answer)\b/i,
-  /\bhow (do|can) (i|you) use\b/i,
+  // Bare "can you help (me)?" — arguably the single most natural way
+  // someone asks for help, but every alternative below required the word
+  // "what" first ("what can you help/do"). "hiii, can you help me?" (a
+  // greeting + this, together) fell through to the generic fallback
+  // entirely, since it's not JUST a greeting either.
+  /\b(?:can|could|will)\s+(?:you|u)\s+help\s*(?:me)?\b/i,
+  /\bwhat can (?:you|u) (do|help|answer)\b/i,
+  /\bhow (do|can) (i|you|u) use\b/i,
   /\bshow (me )?(available )?(commands|capabilities|features)\b/i,
-  /\bwhat (questions|topics) can (i|you)\b/i,
+  /\bwhat (questions|topics) can (i|you|u)\b/i,
   /^\s*help\s*$/i,
   /\bhow does this (chat|assistant|bot) work\b/i,
+  // Proximity-based capability questions — every fixed-phrase alternative
+  // above only matched ONE specific word order ("what can you do", "how do
+  // you use"). Real phrasings vary a lot more than that: "what can you
+  // ACTUALLY do" (word wedged in), "what can AC answer" (bot's own name,
+  // not "you"), "what IS this system FOR" ("is" wasn't in the verb list at
+  // all), "how does AC work" ("AC" isn't "chat/assistant/bot" literally),
+  // "how TO use this" (verb-before-subject, opposite order from "how do
+  // you use"). All of these fell through to the generic fallback before.
+  // The (you|u|ac|it|this) middle requirement is what keeps this from
+  // false-positiving on a real data question — "what is the employment
+  // rate" has no "you"/"u"/"ac"/"it"/"this" for the pattern to anchor on.
+  // "u" for "you" (chat shorthand, e.g. "what can u do") matched none of
+  // this file's other capability patterns either, since they all spell
+  // "you" out in full — the same gap IDENTITY_PATTERNS below already closed
+  // for "who are you/u" but this list never got the same treatment.
+  /\bwhat\b.{0,15}\b(?:can|could|does|do|is|are)\b.{0,25}\b(?:you|u|ac|atreia|it|this)\b.{0,20}\b(?:do|help|answer|for|capable)\b/i,
+  // Negative lookahead for "not"/"n't" right after the modal — caught live:
+  // "How many alumni do NOT work abroad?" (a plain statistical question
+  // about work location) matched this pattern outright ("how" ... "do" ...
+  // "work," with nothing requiring a system/chatbot subject in between,
+  // unlike the "what can you/this do" pattern just above which already
+  // anchors on one), misclassifying it as 'help' and answering with a vague
+  // capability description instead of ever reaching aggregationService at
+  // all. A genuine "how do you use this"/"how does this work" capability
+  // question never has a negation sitting right after its modal verb.
+  /\bhow\b.{0,15}\b(?:to|do|does|is)\b(?!.{0,10}\b(?:not|n't)\b).{0,25}\b(?:use|work|used)\b/i,
+  /\b(?:guide|help)\s+me\b.{0,20}\bhow\s+to\s+use\b/i,
+  // Bare "capabilities"/"commands" — the only thing either word means in
+  // this app's chat interface is asking what AC itself can do; there's no
+  // other sense of "capabilities"/"commands" a tracer-study question would
+  // ever use them in.
+  /\b(?:capabilit(?:y|ies)|commands?)\b/i,
+  // "what topics/questions do you cover" / "what kind of questions can I
+  // ask" — broader than the fixed "what (questions|topics) can (i|you)"
+  // above, which missed "cover" as a verb and "kind of questions" as an
+  // extra phrase wedged in the middle.
+  /\bwhat\b.{0,30}\b(?:topics?|questions?|kind\s+of\s+questions?)\b.{0,20}\b(?:can|cover|ask)\b/i,
+  /\bwhat\s+can\s+i\s+ask\b/i,
+  // "what should I do here?" / "what do I do here" — a first-time user's
+  // most natural way to ask "how do I use this thing," but matched none of
+  // the alternatives above (none cover bare "what should/do I do"). Fell
+  // through to the generic UNKNOWN_RESPONSE refusal ("I'm designed to
+  // answer questions related to the Graduate Tracer Study records... unable
+  // to respond to unrelated inquiries") instead of HELP_RESPONSE's actually
+  // useful capability list with example questions.
+  /\bwhat (?:should|do) i do(?:\s+here)?\b/i,
+  // "what are the features of the system?" — asking the same "what can you
+  // do" question in different words, but only "show (me) ... features"
+  // above required the word "features"; "what ARE the features" (no
+  // "show") matched nothing and fell through to the generic fallback.
+  // Proximity-based (not a fixed phrase like "what are the features") so a
+  // possessive or extra word in between — "what are the SYSTEM'S feature"
+  // (singular, with "system's" wedged in) — still matches; a fixed-phrase
+  // version missed that exact live example.
+  /\bwhat\b.{0,20}\bfeatures?\b/i,
   // "Can I ask (you) something/a question?" — a permission-seeking preamble,
   // not a real question yet, so there's nothing for the statistical/RAG
   // pipeline to search for. Previously fell all the way through to the
@@ -163,9 +224,19 @@ const HELP_PATTERNS = [
   // (kita\/ko) gamitin ito" ("how do I use this"), "ano (pwede\|puwede) kong
   // itanong" ("what can I ask"), "pwede ba akong magtanong" ("may I ask").
   /\bano (ang )?kaya mo(ng)?\s*(gawin|sagutin|tulungan)\b/i,
+  // "ano ba magagawa mo" ("what can you actually do") — "magagawa" (the
+  // potential/future verb form) is a completely different word from "kaya
+  // mo(ng) gawin" above, not just a reordering of it; missed entirely.
+  /\bmagagawa\s+mo\b/i,
   /\bpaano (ko|kita|namin)?\s*(gamitin|magamit)\b/i,
   /\bano (ang )?(pwede|puwede) ko(ng)? (itanong|tanungin)\b/i,
   /\b(pwede|puwede)\s+(po\s+)?(ba\s+)?(ako|akong)?\s*magtanong\b/i,
+  // "tulungan mo ako" ("help me") / "pwede mo ba ako tulungan" ("can you
+  // help me") — the Tagalog equivalent of the bare "can you help me?" added
+  // above; a different verb ("tulungan") entirely from "magtanong" (to ask)
+  // right above, not just a rephrasing of it.
+  /\btulungan\s+mo\s+ako\b/i,
+  /\bpwede\s+mo\s+ba\s+ako(?:ng)?\s+tulungan\b/i,
 ];
 
 // "Who/what are you" style questions directed at AC itself — a near-universal
@@ -181,8 +252,18 @@ const HELP_PATTERNS = [
 // own friendly self-introduction instead.
 const IDENTITY_PATTERNS = [
   /\bwho\s+are\s+(?:you|u)\b/i,
-  /\bwhat\s+are\s+(?:you|u)\b/i,
-  /\bwhat('?s|\s+is)\s+your\s+name\b/i,
+  // "who r u" / "wat r u" — texting shorthand for "are", same convention as
+  // the existing "u" (for "you") shorthand just above, just never extended
+  // to "are" itself.
+  /\bwho\s+r\s+u\b/i,
+  /\bwhat\s+r\s+u\b(?!\s+(?:for\b|capable|able|good\s+for))/i,
+  // Negative lookahead excludes "what are you FOR/capable of/good for" —
+  // HELP_PATTERNS has its own dedicated match for that exact capability-
+  // question shape, but classify() checks IDENTITY_PATTERNS first, so this
+  // broad prefix used to swallow it and reply with a self-introduction
+  // instead of the actual capability list the user asked for.
+  /\bwhat\s+are\s+(?:you|u)\b(?!\s+(?:for\b|capable|able|good\s+for))/i,
+  /\bwhat('?s|\s+is)\s+(?:your|ur)\s+name\b/i,
   /\btell\s+me\s+(about\s+)?yourself\b/i,
   /\bintroduce\s+yourself\b/i,
   /\bsino\s+ka(\s+ba)?\b/i,
@@ -227,6 +308,24 @@ const INCOMPLETE_THOUGHT_PATTERNS = [
   /^\s*(how\s+many|how\s+much|total|average|count|number\s+of|percentage|ranking|breakdown|distribution|compare|graphs?|charts?|visuali[sz]e|visuali[sz]ations?|plot|ilan|porsyento|porsiyento)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
   // Qualitative-shaped bare trigger words with no named subject.
   /^\s*(why|explain|describe|summarize|suggest|recommend|feedback|bakit|ipaliwanag|mungkahi)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
+  // One step less bare than "show me"/"give me" alone above — "give me the
+  // numbers"/"show me stats"/"tell me something" still say nothing about
+  // WHAT numbers/stats/something is wanted, just with a generic filler word
+  // standing in for a real subject instead of no object at all. Without
+  // this, these fell through to the generic FALLBACK_RESPONSE refusal in
+  // ragService.js ("I could not find relevant information...") instead of
+  // this classification's own, more useful "what would you like to know?
+  // For example: employment rate, industries..." clarifying question.
+  // "me" is optional ("show graph" as well as "show me the graph") and the
+  // filler-noun list includes graph/chart/visualization/plot — without
+  // those, "show me the graph"/"show graph" (no data ever specified) fell
+  // through every other pattern here (297 requires bare "show me" alone,
+  // 299 requires a BARE "graph"/"chart" with no "show"/"give"/"tell" verb at
+  // all) all the way to the generic "I could not find relevant information"
+  // refusal instead of ragService.js's purpose-built "which data would you
+  // like visualized?" clarify text (see its own VISUALIZATION_REQUEST_PATTERN
+  // branch for that more specific wording).
+  /^\s*(?:show|give|tell)(?:\s+me)?\s+(?:the\s+|some\s+|a\s+)?(?:numbers?|stats?|statistics?|data|info(?:rmation)?|something|stuff|more|graphs?|charts?|visuali[sz]ations?|plots?)\s*(?:po|ho)?\s*[?.!]*\s*$/i,
 ];
 function isIncompleteThought(q) {
   return INCOMPLETE_THOUGHT_PATTERNS.some((p) => p.test(q));
@@ -354,7 +453,7 @@ const UNKNOWN_PATTERNS = [
   // me", "will you marry me") — same reasoning as the AI-identity meta
   // questions above: not a tracer-study question, and this assistant has no
   // feelings to report on regardless of scope.
-  /\bdo\s+(?:you|u)\s+(love|like|hate|miss)\s+me\b|\bwill\s+you\s+marry\s+me\b|\bare\s+(?:you|u)\s+(?:my\s+)?(friend|boyfriend|girlfriend)\b|\bcan\s+(?:you|u)\s+be\s+my\s+(friend|girlfriend|boyfriend)\b/i,
+  /\bdo\s+(?:you|u)\s+(love|like|hate|miss)\s+me\b|\bwill\s+(?:you|u)\s+marry\s+me\b|\bare\s+(?:you|u)\s+(?:my\s+)?(friend|boyfriend|girlfriend)\b|\bcan\s+(?:you|u)\s+be\s+my\s+(friend|girlfriend|boyfriend)\b/i,
   // Religion/spirituality.
   /\bis\s+god\s+real\b|\bwhat\s+religion\b|\bbible\s+verse\b|\bquran\b|\bhoroscope\s+reading\b|\bmeaning\s+of\s+life\b/i,
   // General programming/coding HELP (explaining a concept), distinct from
@@ -508,8 +607,20 @@ function classify(question) {
   if (IDENTITY_PATTERNS.some(p => p.test(q))) return 'identity';
   if (HELP_PATTERNS.some(p => p.test(q))) return 'help';
   if (isIncompleteThought(q)) return 'incomplete';
-  if (UNKNOWN_PATTERNS.some(p => p.test(q))) return 'unknown';
-  if (ARITHMETIC_PATTERN.test(q.replace(INLINE_DATE_PATTERN, ''))) return 'unknown';
+  // A message combining a genuine in-scope question with an off-topic one
+  // ("How many alumni? Also what's the capital of France?") used to have the
+  // WHOLE thing swallowed here — UNKNOWN_PATTERNS.some() only needs ONE
+  // pattern to match ANYWHERE in the text, so the off-topic half alone
+  // classified the entire message 'unknown' and refused it outright, even
+  // though "how many alumni" sitting right next to it is a completely
+  // ordinary, answerable question. If a real domain signal is ALSO present,
+  // prefer answering that part over refusing the whole message — the
+  // off-topic half is simply never addressed (not answered from general
+  // knowledge, not explicitly declined either), which is the safe outcome:
+  // no hallucinated "the capital of France is Paris" slipping in.
+  const hasDomainSignal = STATISTICAL_PATTERNS.some(p => p.test(q)) || QUALITATIVE_PATTERNS.some(p => p.test(q));
+  if (UNKNOWN_PATTERNS.some(p => p.test(q)) && !hasDomainSignal) return 'unknown';
+  if (ARITHMETIC_PATTERN.test(q.replace(INLINE_DATE_PATTERN, '')) && !hasDomainSignal) return 'unknown';
 
   const isStat = STATISTICAL_PATTERNS.some(p => p.test(q));
   const isQual = QUALITATIVE_PATTERNS.some(p => p.test(q));
@@ -518,4 +629,16 @@ function classify(question) {
   return 'statistical';
 }
 
-module.exports = { classify };
+// Exposed separately from classify() itself — a message can carry a real,
+// answerable domain question alongside an off-topic one in the same breath
+// ("How many alumni? Also what's the capital of France?"). classify() now
+// correctly answers the in-scope half instead of refusing the whole message
+// (see its own comment on hasDomainSignal), but silently dropping the
+// off-topic half reads as if it were never noticed — callers use this to
+// append an explicit, honest decline for that part instead of just leaving
+// it unaddressed.
+function hasOffTopicComponent(question) {
+  return UNKNOWN_PATTERNS.some(p => p.test((question || '').trim()));
+}
+
+module.exports = { classify, hasOffTopicComponent };

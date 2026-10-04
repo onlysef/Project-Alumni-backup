@@ -2,6 +2,7 @@
 import { useNavigate, Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { API } from "../../services/api.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 export default function AlumniOnboarding() {
   const { user, token, firstLogin, setFirstLoginDone } = useAuth();
@@ -17,8 +18,8 @@ export default function AlumniOnboarding() {
   async function handleChangePassword(e) {
     e.preventDefault();
     setError("");
-    if (newPassword.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!isStrongPassword(newPassword)) {
+      setError(PASSWORD_REQUIREMENT_MESSAGE);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -35,20 +36,10 @@ export default function AlumniOnboarding() {
       const data = await res.json();
       if (!res.ok) { setError(data.message || "Failed to change password."); return; }
 
-      // Changing the temp password invalidates it everywhere, including
-      // this session's own token — the backend hands back a fresh one in
-      // the same response. It has to be used for the very next request
-      // below (the stale `token` from context would now fail its
-      // tokenVersion check) and persisted so a later page reload doesn't
-      // pick the stale one back up from localStorage.
+      // Use and persist the fresh token; changing the temp password invalidated the old one.
       const activeToken = data.token || token;
       if (data.token) localStorage.setItem("auth_token", data.token);
 
-      // Mark onboarding complete with default employment status. The
-      // response was never checked before — if this call failed, the local
-      // session still marked onboarding done and moved on, but the server's
-      // firstLogin flag stayed true, so the very next login sent the user
-      // right back through this screen a second time.
       const completeRes = await fetch(`${API}/alumni/complete-onboarding`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${activeToken}` },
@@ -109,7 +100,7 @@ export default function AlumniOnboarding() {
               type="password"
               value={newPassword}
               onChange={e => setNewPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder="More than 8 characters, with uppercase + symbol"
               style={inputStyle}
               required
             />

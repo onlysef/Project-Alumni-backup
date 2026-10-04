@@ -21,11 +21,7 @@ const COLLEGES = [
 function computeStatus(event_datetime, end_datetime) {
   const now = new Date();
   const start = new Date(event_datetime);
-  // Multi-day events run "On Going" for their whole span, not just their
-  // start day — without an end bound, a 3-day event that started yesterday
-  // was marked "Ended" as soon as its start date passed, even while it was
-  // still actively running. No end_datetime falls back to end-of-start-day,
-  // matching the original single-day behavior.
+  // Multi-day events stay On Going until end_datetime (or the end of the start day).
   const end = end_datetime
     ? new Date(end_datetime)
     : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
@@ -47,11 +43,38 @@ function toDatetimeLocal(dt) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// A coordinator's events are, by default, for their own college's alumni —
-// only an admin (no assigned college) gets "Public" as the sensible default,
-// and only an admin gets to pick any of the 10 colleges at all (see the
-// "Colleges" <select> below); a coordinator's own college is the one
-// meaningful specific-college choice they'd ever have a reason to pick.
+// The reverse of toDatetimeLocal(): a bare "YYYY-MM-DDTHH:mm" <input
+// type="datetime-local"> value has no timezone of its own — the BROWSER
+// correctly reads it as this user's own local wall-clock time (`new Date()`
+// here runs client-side), but sending that raw string to the backend as-is
+// left the SAME ambiguous string for Node to parse — which it does using
+// the SERVER's own local timezone instead. On localhost that's usually
+// the same machine/timezone as the browser (so it accidentally worked),
+// but Railway's containers default to UTC — 8 hours off Philippine time —
+// so every save silently shifted the stored date by +8h, drifting further
+// with each subsequent edit. Converting to a real UTC instant here, before
+// it ever leaves the browser, makes the value unambiguous no matter what
+// timezone the server happens to run in.
+function toUtcIso(datetimeLocalStr) {
+  if (!datetimeLocalStr) return "";
+  return new Date(datetimeLocalStr).toISOString();
+}
+
+// The past-date check applies only when the start is being changed.
+function validateEventDates(startStr, endStr, previousStartStr) {
+  if (!startStr) return "";
+  const start = new Date(startStr);
+  if (isNaN(start.getTime())) return "Invalid start date & time.";
+  const startIsChanging = previousStartStr === undefined || startStr !== previousStartStr;
+  if (startIsChanging && start < new Date()) return "Event date & time cannot be in the past.";
+  if (endStr) {
+    const end = new Date(endStr);
+    if (isNaN(end.getTime())) return "Invalid end date & time.";
+    if (end <= start) return "End date & time must be after the start date & time.";
+  }
+  return "";
+}
+
 function blankForm(myCollege) {
   return { title: "", description: "", location: "", event_datetime: "", end_datetime: "", visibility: myCollege || "Public", capacity: "", image: "" };
 }
@@ -133,10 +156,6 @@ export default function EventManagement() {
     STATUS_ORDER[computeStatus(a.event_datetime, a.end_datetime)] - STATUS_ORDER[computeStatus(b.event_datetime, b.end_datetime)]
   );
 
-  // A coordinator running the same annual event year after year (orientation,
-  // alumni reunion, etc.) ends up with a list mixing every year together —
-  // filtering to one year at a time makes a specific past run findable
-  // without scrolling past everything else.
   const [listYearFilter, setListYearFilter] = useState("");
   const eventYears = [...new Set(events.map(e => new Date(e.event_datetime).getFullYear()))].sort((a, b) => b - a);
   const visibleEvents = listYearFilter
@@ -150,9 +169,16 @@ export default function EventManagement() {
     e.preventDefault();
     if (!form.title.trim())          { showToast?.("Title is required."); return; }
     if (!form.event_datetime)        { showToast?.("Date & time is required."); return; }
+    const dateError = validateEventDates(form.event_datetime, form.end_datetime);
+    if (dateError)                   { showToast?.(dateError); return; }
     setSubmitting(true);
     try {
-      const data = await apiPost("/coordinator/events", { ...form, capacity: Number(form.capacity) || 0 });
+      const data = await apiPost("/coordinator/events", {
+        ...form,
+        capacity: Number(form.capacity) || 0,
+        event_datetime: toUtcIso(form.event_datetime),
+        end_datetime: toUtcIso(form.end_datetime),
+      });
       if (data.event) {
         setEvents(prev => [data.event, ...prev]);
         setForm(blankForm(myCollege));
@@ -185,9 +211,16 @@ export default function EventManagement() {
     e.preventDefault();
     if (!editForm.title.trim())       { showToast?.("Title is required."); return; }
     if (!editForm.event_datetime)     { showToast?.("Date & time is required."); return; }
+    const dateError = validateEventDates(editForm.event_datetime, editForm.end_datetime, toDatetimeLocal(editEvent.event_datetime));
+    if (dateError)                    { showToast?.(dateError); return; }
     setEditSubmitting(true);
     try {
-      const data = await apiPut(`/coordinator/events/${editEvent._id}`, { ...editForm, capacity: Number(editForm.capacity) || 0 });
+      const data = await apiPut(`/coordinator/events/${editEvent._id}`, {
+        ...editForm,
+        capacity: Number(editForm.capacity) || 0,
+        event_datetime: toUtcIso(editForm.event_datetime),
+        end_datetime: toUtcIso(editForm.end_datetime),
+      });
       if (data.event) {
         setEvents(prev => prev.map(ev => ev._id === data.event._id ? data.event : ev));
         setEditEvent(null);
@@ -295,6 +328,7 @@ export default function EventManagement() {
                     type="datetime-local"
                     className="coord-datetime-input"
                     value={form.event_datetime}
+                    min={toDatetimeLocal(new Date())}
                     onChange={e => setForm(p => ({ ...p, event_datetime: e.target.value }))}
                   />
                 </label>
@@ -428,14 +462,7 @@ export default function EventManagement() {
       </div>
 
       {/* EDIT MODAL */}
-      {/* Portaled straight onto <body> — this page's own root section
-          carries a page-entrance transform animation (system-motion.css),
-          and any position:fixed descendant of an element with an active
-          transform gets repositioned relative to THAT element's box
-          instead of the real viewport, per the CSS containing-block rules.
-          Rendered inline, this modal could open anywhere on the scrolled
-          page instead of centered on screen — same bug already fixed for
-          the alumni-side modals, see AlumniDashboard.jsx. */}
+      {/* Portaled to <body>; the page's entrance transform would break position: fixed. */}
       {editEvent && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setEditEvent(null)}>
           <div className="coord-modal" onClick={e => e.stopPropagation()}>
@@ -485,10 +512,7 @@ export default function EventManagement() {
                   <label className="coord-field"><span>Colleges</span>
                     <select value={editForm.visibility} onChange={e => setEditForm(p => ({ ...p, visibility: e.target.value }))}>
                       <option value="Public">All Colleges</option>
-                      {/* A legacy event's visibility can predate this college-restricted
-                          list (e.g. scoped to a different college than this coordinator's
-                          own) — keep it selectable so editing doesn't silently show a
-                          blank/mismatched value for that one event. */}
+                      {/* Keep a legacy visibility value selectable so editing doesn't blank it. */}
                       {[...new Set([...(myCollege ? [myCollege] : COLLEGES), editForm.visibility].filter((c) => c && c !== "Public"))].map(c => (
                         <option key={c} value={c}>{c}</option>
                       ))}

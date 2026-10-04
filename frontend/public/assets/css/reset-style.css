@@ -477,6 +477,47 @@ input::placeholder { color: var(--gray-text); }
 
 #info-modal-content p { margin: 0 0 14px; }
 
+/* About Us — official TSU Facebook pages + website, under the modal copy. */
+.info-modal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #eee3e6;
+}
+
+.info-modal-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #e2d3d7;
+  border-radius: 999px;
+  color: var(--maroon);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.info-modal-links a:hover,
+.info-modal-links a:focus-visible {
+  border-color: var(--maroon);
+  background: #f7eef0;
+  outline: none;
+}
+
+.info-modal-links svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Facebook's own blue on its logo so the two FB links read at a glance. */
+.info-modal-links a[href*="facebook.com"] svg { color: #1877f2; }
+
 .info-modal-close {
   position: absolute;
   top: 14px;
@@ -602,7 +643,7 @@ body {
   overflow-y: auto;
   background:
     linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
-    url('/assets/images/alumni-office.jpg') center / cover no-repeat fixed;
+    url('/assets/images/alumni-center.jpg?v=2') center / cover no-repeat fixed;
 }
 
 body::before {
@@ -1213,5 +1254,193 @@ input[type="password"] {
 
   .tfa-welcome .tfa-delivery {
     transform: scale(.75);
+  }
+}
+
+/* Background video crossfade (see /assets/js/bg-video.js); the <body> photo is the fallback. */
+.page-bg-video {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+body::before {
+  z-index: 2;
+}
+
+.page {
+  z-index: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-bg-video {
+    display: none;
+  }
+}
+
+/* Desktop: size the glass card to its content instead of ~88% of the
+   viewport, which left large empty bands above and below the panels. */
+@media (min-width: 1051px) {
+  .card {
+    width: min(100%, 1140px);
+    height: auto;
+    min-height: 0;
+    gap: clamp(24px, 3.4vw, 52px);
+    padding: clamp(26px, 4vh, 44px) clamp(30px, 4vw, 60px);
+  }
+
+  .card {
+    align-items: stretch;
+  }
+
+  .left-panel {
+    height: auto;
+    justify-content: stretch;
+  }
+
+  .welcome-copy {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+}
+
+/* Footer: a solid bar above the background video instead of text floating
+   over the moving footage. Overrides the narrower per-breakpoint widths. */
+.login-footer {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 12px 16px;
+  background: #3d0010;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: none;
+  opacity: 1;
+}
+
+@media (max-width: 1050px) {
+  .login-footer {
+    width: 100%;
+    padding: 12px 20px;
+  }
+}
+
+/* Footer: undo older fixed/absolute positioning so it's a full-width bar like the login page. */
+.login-footer {
+  position: relative;
+  inset: auto;
+  transform: none;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+/* Desktop: the card is content-sized now, so drop the old forced 780px page
+   height that left a tall empty band between the card and the footer. */
+@media (min-width: 1051px) {
+  .page {
+    flex: 1 0 auto;
+    min-height: 0;
+    align-items: center;
+  }
+}
+
+/* Welcome card banner: Alumni Center photo with the TSU and Alumni
+   Association logos (same as the login page). */
+.welcome-banner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(92, 0, 24, 0.15) 0%, rgba(92, 0, 24, 0.55) 100%),
+    url('/assets/images/alumni-center.jpg?v=2') center 45% / cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.welcome-banner-logos {
+  display: flex;
+  gap: 10px;
+}
+
+.welcome-banner-logos img {
+  width: clamp(46px, 9vw, 60px);
+  height: clamp(46px, 9vw, 60px);
+  padding: 4px;
+  border-radius: 50%;
+  background: #fff;
+  object-fit: contain;
+  box-shadow: 0 6px 16px rgba(30, 0, 8, 0.35);
+}
+
+/* Reset password: banner -> heading -> subtitle */
+.welcome-copy:not(.tfa-welcome) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: center;
+}
+
+.welcome-copy:not(.tfa-welcome) .welcome-banner {
+  height: clamp(96px, 24vw, 150px);
+  margin-bottom: 20px;
+}
+
+/* 2FA: banner spans the top of the existing title/copy/phone grid */
+.welcome-copy.tfa-welcome {
+  grid-template-areas:
+    "banner banner"
+    "title visual"
+    "copy visual";
+}
+
+.tfa-welcome .welcome-banner {
+  grid-area: banner;
+  align-self: stretch; /* the tfa grid centers items, which collapsed the banner */
+  height: clamp(96px, 24vw, 150px);
+}
+
+@media (min-width: 1051px) {
+  .welcome-banner-logos { gap: 12px; }
+
+  .welcome-banner-logos img {
+    width: clamp(54px, 5vw, 70px);
+    height: clamp(54px, 5vw, 70px);
+  }
+
+  /* Banner row takes whatever height the stretched card has left over. */
+  .welcome-copy:not(.tfa-welcome) {
+    grid-template-rows: minmax(clamp(96px, 13vh, 130px), 1fr) auto auto;
+    align-content: stretch;
+  }
+
+  .welcome-copy:not(.tfa-welcome) .welcome-banner {
+    height: auto;
+    margin-bottom: clamp(22px, 3.5vh, 34px);
+  }
+
+  .welcome-copy.tfa-welcome {
+    grid-template-rows: minmax(clamp(96px, 13vh, 130px), 1fr) auto auto;
+    align-content: stretch;
+  }
+
+  .tfa-welcome .welcome-banner {
+    height: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .welcome-banner {
+    padding: 0 12px;
+  }
+
+  .welcome-copy:not(.tfa-welcome) .welcome-banner {
+    margin-bottom: 14px;
   }
 }

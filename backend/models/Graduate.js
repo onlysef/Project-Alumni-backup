@@ -51,8 +51,33 @@ const GraduateSchema = new mongoose.Schema(
     // ─── Post-graduation ──────────────────────────────────────────────────────
     tookExam:         { type: String, trim: true, default: null },
     furtherEducation: { type: String, trim: true, default: null },
-    furtherTraining:  { type: String, trim: true, default: null },
+    furtherTraining:  { type: String, trim: true, default: null }, // Yes / No — whether they pursued any
+    // The actual training/seminar name or type ("Web Development Bootcamp")
+    // — a SEPARATE tracer-study question from furtherTraining above (which
+    // only ever captures Yes/No). Without this, "what trainings did alumni
+    // attend" had no real data to answer from at all, even with correct
+    // topic routing — see queryFurtherTrainingTypes()'s own comment.
+    trainingType:     { type: String, trim: true, index: true, default: null },
     hasPromotion:     { type: String, trim: true, default: null },
+    // Yes/No tracer-study question ("Have you achieved any significant
+    // accomplishments in your current job?") — despite the name, this is
+    // NOT a free-text description of the accomplishment itself (no such
+    // field exists anywhere in the tracer form). Never synced anywhere the
+    // chatbot could see until now (same missing-sync gap trainingType had),
+    // so "what are alumni's significant accomplishments" had no real data
+    // to answer from at all.
+    significantAccomplishments: { type: String, trim: true, default: null },
+    // Multi-select tracer-study question ("What are your reasons for not
+    // being employed?") asked only of No/Never-Employed respondents — a
+    // person can pick several at once (e.g. both "Lack of work experience"
+    // AND "Skills do not match current job market demands"). Never synced
+    // anywhere the chatbot could see until now (same missing-sync gap
+    // trainingType/significantAccomplishments had) — "why are alumni
+    // unemployed"-shaped questions had no real data to answer from at all,
+    // even though TracerStudyResponse.reasonsNotEmployed (and the Admin
+    // Dashboard's own unemploymentReasons facet) has real, populated answers
+    // for this exact question.
+    reasonsNotEmployed: [{ type: String, trim: true }],
 
     // ─── Competency self-ratings ──────────────────────────────────────────────
     competencies: {
@@ -82,6 +107,11 @@ GraduateSchema.index({ name: 1 });
 // regex — a plain index still helps Mongo narrow that scan instead of a
 // full collection scan, even though the regex itself can't use a collation.
 GraduateSchema.index({ email: 1 });
+// aggregationService.js's shared DEDUP stage ({ $sort: { createdAt: -1 } },
+// used by nearly every AC chatbot query via stablePipeline()) had nothing to
+// use but an in-memory sort — this lets Mongo use the index directly for the
+// (common) case where the preceding $match has no filter narrowing it down.
+GraduateSchema.index({ createdAt: -1 });
 
 // Enforces the AC AI Assistant's college scope (see utils/collegeScope.js)
 // at the single point every query — however it was built — ultimately goes

@@ -97,10 +97,6 @@
   box-shadow: 0 12px 30px rgba(39, 0, 10, .18);
 }
 
-/* Account settings reuses the same anchored side-dropdown as Notifications
-   and Settings (not a centered overlay modal) — just wider, since it holds
-   a photo uploader and a 3-field password form, and capped with its own
-   scroll so it never gets clipped against the top of a short window. */
 .alumni-top-panel.account-panel { width: 300px; max-height: 80vh; overflow-y: auto; }
 .account-settings-avatar-row { display: flex; align-items: center; gap: 12px; }
 .account-settings-avatar { flex-shrink: 0; width: 52px; height: 52px; border-radius: 50%; background: #f3d286; color: #620019; font-weight: 800; font-size: 18px; display: grid; place-items: center; overflow: hidden; }
@@ -189,11 +185,7 @@
 .announcement-meta b { color: #51494c; font-size: 11px; }
 .meta-action { border: 0; background: transparent; color: #70001d; font-size: 12px; font-weight: 700; cursor: pointer; }
 .meta-action.active { color: #b8891e; }
-/* Without this, the browser's default focus ring lingers on whichever
-   action (Like/Comments/Share) was clicked last, showing as a stray box
-   around only that one button — not a state indicator, just leftover
-   default focus styling with no override. Keyboard users still get a
-   visible ring via :focus-visible; a mouse click doesn't retain one. */
+/* Mouse clicks don't leave a focus ring; keyboard users still get :focus-visible. */
 .meta-action:focus { outline: none; }
 .meta-action:focus-visible { outline: 2px solid #b8891e; outline-offset: 2px; border-radius: 4px; }
 .event-image { display: flex; align-items: flex-end; background: linear-gradient(135deg, #f35b49, #ffd28d 48%, #65102b); }
@@ -209,9 +201,6 @@
 .company { margin: -7px 0 16px; font-size: 13px; line-height: 1.3; }
 .job-actions { display: flex; align-items: center; gap: 14px; }
 .details-btn { border: 0; background: transparent; color: #51494c; cursor: pointer; }
-/* The modal's Close button reused .details-btn, which is styled as plain
-   inline text for "See details ->" links elsewhere — inside a modal that
-   read as an unstyled label with no visible button affordance at all. */
 .alumni-action-modal-buttons .details-btn { padding: 7px 16px; border: 1px solid #70001d; border-radius: 5px; color: #70001d; font-weight: 600; }
 .alumni-action-modal-buttons .details-btn:hover { background: #fdf0f1; }
 .news-thread { overflow: hidden; border: 1px solid #aaa; border-radius: 5px; background: #fff; }
@@ -220,8 +209,22 @@
 .guidance-image div { font-size: 70px; color: #92674d; }
 .comments { padding: 8px 20px 14px; border-top: 1px solid #ddd; }
 .comment-row { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
-.comment-row > i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #eadcff; color: #7048c6; font-style: normal; }
-.comment-row p { margin: 0; padding: 9px 14px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
+.comment-row > i { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: #eadcff; color: #7048c6; font-style: normal; flex-shrink: 0; }
+.comment-row-avatar { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.comment-row-body { flex: 1; min-width: 0; }
+.comment-row p { margin: 0; padding: 9px 14px; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; white-space: pre-wrap; }
+.comment-row-actions { display: flex; align-items: center; gap: 10px; margin: 4px 0 0 4px; }
+.comment-row-actions button { border: 0; padding: 0; background: transparent; color: #8a7a7f; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.comment-row-actions button:hover, .comment-row-actions button:focus-visible { color: #70001d; text-decoration: underline; outline: none; }
+.comment-row-actions button.danger:hover, .comment-row-actions button.danger:focus-visible { color: #c53030; }
+.comment-row-edited { color: #8a7a7f; font-size: 10px; font-style: italic; }
+.comment-row-edit { padding: 9px 14px; border: 1px solid #70001d; border-radius: 4px; font-size: 12px; }
+.comment-row-edit textarea { display: block; width: 100%; box-sizing: border-box; margin: 4px 0 6px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font: inherit; font-size: 12px; resize: vertical; outline: none; }
+.comment-row-edit textarea:focus { border-color: #70001d; }
+.comment-row-edit-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.comment-row-edit-actions button { padding: 4px 12px; border: 1px solid #d9cbcf; border-radius: 14px; background: #fff; color: #65575b; font-size: 11px; font-weight: 800; cursor: pointer; }
+.comment-row-edit-actions button.primary { border-color: #70001d; background: #70001d; color: #fff; }
+.comment-row-edit-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .comment-input { flex: 1; display: flex; justify-content: space-between; border: 0; padding: 13px 18px; border-radius: 24px; background: #e6e6e6; color: #999; font-size: 12px; cursor: pointer; }
 .comment-input b { color: #70001d; }
 .alumni-comment-composer { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -251,18 +254,27 @@
 .alumni-action-modal { width: min(430px, 92vw); padding: 26px; border: 1px solid #e2d3d7; border-radius: 8px; background: #fff; box-shadow: 0 22px 55px rgba(32, 0, 9, .28); }
 .alumni-action-modal span { color: #b68922; font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 .alumni-action-modal h2 { margin: 8px 0 14px; color: #620019; font-size: 20px; }
-/* Event details concatenate description + schedule + venue into one
-   string with \n\n / \n separators — pre-line renders those as actual
-   line breaks instead of collapsing them into one run-on paragraph. */
 .alumni-action-modal p { margin: 0; color: #54484c; font-size: 13px; line-height: 1.6; white-space: pre-line; }
 .alumni-action-modal-buttons { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+.alumni-confirm-overlay { position: fixed; inset: 0; z-index: 190; display: grid; place-items: center; padding: 24px; background: rgba(33, 11, 18, .55); animation: alumni-overlay-in 150ms ease both; }
+.alumni-confirm-card { width: min(320px, 90vw); padding: 24px; border: 1px solid #e2d3d7; border-radius: 10px; background: #fff; text-align: center; box-shadow: 0 22px 55px rgba(32, 0, 9, .3); }
+.alumni-confirm-card h3 { margin: 0 0 6px; color: #620019; font-size: 16px; }
+.alumni-confirm-card p { margin: 0; color: #75686c; font-size: 12px; }
+.alumni-confirm-actions { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
+.alumni-confirm-actions button { padding: 9px 20px; border-radius: 20px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.alumni-confirm-cancel { border: 1px solid #d9cbcf; background: #fff; color: #65575b; }
+.alumni-confirm-cancel:hover { border-color: #70001d; color: #70001d; }
+.alumni-confirm-delete { border: 1px solid #70001d; background: #70001d; color: #fff; }
+.alumni-confirm-delete:hover { background: #560015; }
+body.dark-mode .alumni-confirm-overlay { background: rgba(10, 2, 5, .7); }
+body.dark-mode .alumni-confirm-card { border-color: rgba(250, 200, 83, .18); background: #241116; }
+body.dark-mode .alumni-confirm-card h3 { color: #fff6f8; }
+body.dark-mode .alumni-confirm-card p { color: #d4bdc3; }
+body.dark-mode .alumni-confirm-cancel { border-color: #4a3d41; background: #2a2226; color: #d4bdc3; }
+body.dark-mode .alumni-confirm-delete { border-color: #fac853; background: #7a0f2c; }
 .event-image.second { background: linear-gradient(135deg, #b9d9ed, #f1d8b6 50%, #26466a); }
 .recent-title { margin-top: 28px !important; text-transform: none !important; }
-/* Was a CSS grid with a fixed 130px image column and min-height:120px that
-   left a tall block of empty space under short title/date text, plus an
-   absolutely-positioned badge spanning the full top-right edge like a strip
-   rather than a proper pill. Flex + content-sized image reads much cleaner
-   for a compact "completed" row. */
 .completed-event { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 16px 12px 12px; border: 1px solid #e2dde0; border-radius: 6px; background: #fff; }
 .completed-event .announcement-image { flex-shrink: 0; width: 92px; height: 68px; min-height: 0; margin: 0; border-radius: 4px; overflow: hidden; }
 .completed-event .event-image::before, .completed-event .event-people { display: none; }
@@ -285,11 +297,6 @@
 /* Event feedback form / response modal */
 .event-feedback-modal { width: min(480px, 92vw); max-height: 86vh; overflow-y: auto; }
 .event-feedback-fields { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
-/* Grouped so the 4 detail categories read as one unit distinct from the
-   headline "Overall rating" above them, instead of 5 visually identical
-   rows stacked in a row — label sits above its stars (not beside) since a
-   2-column grid leaves too little width for "Content / program" next to
-   5 stars on one line. */
 .event-feedback-subratings { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: 14px 20px; padding: 14px 16px; border: 1px solid #eee2e5; border-radius: 8px; background: #faf6f2; }
 .event-feedback-subratings .star-rating { flex-direction: column; align-items: flex-start; gap: 6px; }
 .event-feedback-subratings .star-rating-label { flex: none; }
@@ -721,24 +728,18 @@
 .employment-avatar-msg { margin: 6px 0 0; font-size: 10px; font-weight: 700; color: #70001d; }
 .employment-field-hint { margin: 10px 0 0; font-size: 10px; color: #8a767c; }
 .employment-save-error { margin: 0 26px; padding: 9px 12px; border-radius: 6px; background: #f7e6e8; color: #8e1c31; font-size: 11px; font-weight: 700; }
-/* z-index explicit — AvatarCropper opens as its own separate portal to
-   document.body while AccountPanel's own popover modal is still open behind
-   it (see AdminTopbar.jsx's AccountPanel). Both backdrops share the same
-   base .modal-backdrop z-index (60), so which one paints on top otherwise
-   depends on DOM insertion order — reliable on desktop, but on mobile the
-   account popover ended up stacking above the cropper, burying the crop
-   stage and Save/Cancel buttons behind it. An explicit, higher z-index here
-   makes the cropper always win instead of leaving it to insertion order. */
+/* Explicit z-index so the cropper always stacks above the account popover. */
 .modal-backdrop.avatar-cropper-modal { z-index: 70; }
+/* 3 classes to outrank .account-popover .topbar-modal regardless of load order. */
+.tracer-modal.account-panel-modal.is-cropping {
+    top: 0; right: 0; bottom: 0; left: 0;
+    margin: auto;
+    width: min(340px, calc(100vw - 32px));
+    height: fit-content;
+    max-height: calc(100vh - 48px);
+}
 .avatar-cropper { width: min(340px, 92vw); border-radius: 12px; background: #fff; color: #3e3337; overflow: hidden; box-shadow: 0 20px 50px rgba(40,0,14,.35); }
-/* background explicit — admin-mod.css's generic .modal-head sets a maroon
-   background (for every OTHER modal's white-on-maroon title bar), which
-   this rule didn't override until now since it never needed to: this
-   cropper was alumni-only until AccountPanel started opening it from the
-   admin/coordinator/employer topbars too, where that generic rule is also
-   in effect. Without this, the dark-maroon h3 text below rendered on a
-   maroon background instead of the white one it was actually designed for
-   — maroon-on-maroon, unreadable. */
+/* Explicit background: admin-mod.css's generic .modal-head is maroon. */
 .avatar-cropper .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #eee3e6; background: #fff; }
 .avatar-cropper .modal-head h3 { margin: 0; font-size: 15px; color: #5e0019; }
 .avatar-cropper .modal-head button { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: #65585c; font-size: 18px; line-height: 1; cursor: pointer; }
@@ -770,6 +771,28 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
 .profile-chip-group:first-child { margin-top: 0; }
 .profile-chip-group-label { display: block; margin-bottom: 3px; color: #f4cf6b; font-size: 8.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 
+.work-history-list { display: grid; gap: 8px; margin-top: 2px; }
+.work-history-entry-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 8px; }
+.work-history-entry-body { min-width: 0; }
+.work-history-entry-body strong { display: block; font-size: 11px; line-height: 1.4; }
+.work-history-entry-meta { display: block; margin-top: 2px; font-size: 9.5px; }
+.work-history-entry-desc { margin: 6px 0 0; font-size: 10.5px; line-height: 1.55; white-space: pre-line; }
+.work-history-remove-btn { flex: 0 0 auto; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; font-size: 13px; line-height: 1; cursor: pointer; }
+.profile-row .work-history-entry-card { background: rgba(255,255,255,.08); }
+.profile-row .work-history-entry-body strong { color: #fff; }
+.profile-row .work-history-entry-meta { color: rgba(255,255,255,.62); text-transform: uppercase; letter-spacing: .03em; }
+.profile-row .work-history-entry-desc { color: rgba(255,255,255,.8); }
+.profile-row .work-history-remove-btn { display: none; }
+.work-history-editor .work-history-entry-card { background: #f7f4f5; border: 1px solid #e1d0d4; }
+.work-history-editor .work-history-entry-body strong { color: #30272a; }
+.work-history-editor .work-history-entry-meta { color: #8a767c; }
+.work-history-editor .work-history-entry-desc { color: #4d474a; }
+.work-history-editor .work-history-remove-btn { background: #e8d8dc; color: #70001d; }
+.work-history-editor .work-history-remove-btn:hover { background: #70001d; color: #fff; }
+.work-history-add-form { display: grid; gap: 15px; margin-top: 14px; padding-top: 14px; border-top: 1px dashed #dcc9cd; }
+.work-history-add-form textarea { width: 100%; min-width: 0; min-height: 70px; padding: 8px 11px; border: 1px solid #cdbdc1; border-radius: 5px; outline: 0; background: #fff; color: #30272a; font: inherit; font-size: 12px; resize: vertical; }
+.work-history-add-form textarea:focus { border-color: #770022; box-shadow: 0 0 0 3px rgba(119,0,34,.08); }
+
 /* Suggested alumni directory */
 .suggested-page {
   width: 100%;
@@ -797,9 +820,24 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
   font-size: 11px;
   font-weight: 700;
 }
+.directory-filter-field {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 3px;
+}
+.directory-filter-field > span {
+  color: rgba(255,255,255,.6);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding-left: 2px;
+}
 .directory-filters select {
   height: 34px;
-  min-width: 82px;
+  width: 128px;
+  max-width: 128px;
   padding: 0 28px 0 11px;
   border: 1px solid rgba(255,255,255,.55);
   border-radius: 7px;
@@ -809,6 +847,10 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
   font-size: 11px;
   font-weight: 800;
   box-shadow: 0 8px 18px rgba(44,0,12,.12);
+  /* Fixed width: a native <select> sizes itself to its longest option. */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .directory-search {
   position: relative;
@@ -924,7 +966,9 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
 .office-services { margin-top: 20px; padding: 22px 25px; }
 .office-services-head { margin-bottom: 14px; }
 .office-services-hint { margin: 6px 0 0; color: #9a898e; font-size: 11px; }
-.service-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.service-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
+/* Detail sits in the grid right after its card; `dense` back-fills the rest of that row so it opens beneath the row (directly under the card on one column). */
+.service-grid > .service-detail { grid-column: 1 / -1; margin-top: 0; }
 .office-service { display: grid; grid-template-columns: 38px minmax(0, 1fr) 14px; gap: 12px; align-items: start; min-height: 0; padding: 14px; border: 1px solid #eadfe2; border-radius: 7px; background: #fdfbfb; text-align: left; font-family: inherit; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s; }
 .office-service:hover { border-color: #d8b7c0; box-shadow: 0 4px 12px rgba(70,0,18,.07); }
 .office-service:focus-visible { outline: 2px solid #70001d; outline-offset: 2px; }
@@ -990,7 +1034,7 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
 .career-score-formula { margin: 0 0 12px; color: #8a6b2a; font-size: 12px; font-weight: 700; line-height: 1.5; }
 
 /* Job Connect */
-.job-connect-page { width: 100%; max-width: none; }.job-connect-hero { display: flex; align-items: center; justify-content: space-between; padding: 25px 30px; border-radius: 11px 11px 0 0; background: linear-gradient(120deg,#71001d,#4c0014); color:#fff; }.job-connect-hero span,.job-list-head span,.application-tracker > div span { color:#edc45e;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em }.job-connect-hero h1{margin:5px 0;font-size:25px}.job-connect-hero p{margin:0;color:rgba(255,255,255,.72);font-size:11px}.job-alerts-toggle{padding:9px 13px;border:1px solid rgba(255,255,255,.25);border-radius:20px;background:rgba(255,255,255,.1);color:#fff;font-size:10px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,color .15s}.job-alerts-toggle.on{border-color:#edc45e;background:#edc45e;color:#5e0019}.job-search-bar{display:grid;grid-template-columns:1fr 150px 120px;gap:10px;padding:15px;background:#fff;border:1px solid #e4d9dc;border-top:0;border-radius:0 0 10px 10px}.job-search-bar label{position:relative}.job-search-bar label svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;fill:none;stroke:#8d7b80;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}.job-search-bar input,.job-search-bar select{width:100%;height:38px;border:1px solid #d5c8cc;border-radius:5px;padding:0 12px;font-size:11px}.job-search-bar input{padding-left:34px}.job-search-bar button{border:0;border-radius:5px;background:#70001d;color:#fff;font-size:10px;font-weight:800}.job-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}.job-stats>div{display:flex;align-items:center;gap:10px;padding:13px 16px;border:1px solid #e4d9dc;border-radius:7px;background:#fff}.job-stats strong{color:#70001d;font-size:20px}.job-stats span{color:#776a6e;font-size:9px}.job-connect-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:18px}.job-list-head{display:flex;justify-content:space-between;align-items:end;margin:8px 0 12px}.job-list-head h2,.application-tracker h2{margin:4px 0 0;color:#5e0019;font-size:18px}.job-list-head>b{color:#8e7e83;font-size:10px}.job-connect-list{display:grid;gap:12px}.connect-job-card{display:grid;grid-template-columns:58px minmax(0,1fr) 105px;gap:14px;padding:17px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.job-company-logo{display:grid;place-items:center;width:54px;height:54px;border-radius:8px;background:#70001d;color:#f0cd70;font-weight:900}.connect-job-title{display:flex;justify-content:space-between;gap:10px}.connect-job-title h3{margin:0;color:#3e3337;font-size:14px}.connect-job-title p{margin:3px 0;color:#776a6e;font-size:10px}.connect-job-title>span{color:#278246;font-size:10px;font-weight:800}.job-facts{display:flex;flex-wrap:wrap;gap:12px;margin:9px 0;color:#776a6e;font-size:9px}.job-required{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.job-required b{margin-right:3px;color:#695a5f;font-size:9px}.job-required span{padding:4px 7px;border-radius:10px;background:#f3e9ec;color:#70001d;font-size:8px;font-weight:700}.connect-job-main>small{display:block;margin-top:10px;color:#a08f94;font-size:8px}.connect-job-actions{display:grid;align-content:center;gap:7px}.connect-job-actions button{padding:7px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer}.save-job{border:1px solid #cdbec2;background:#fff;color:#65575b}.save-job.saved{border-color:#c49b34;background:#fff8df;color:#755b1d}.apply-job{border:1px solid #70001d;background:#70001d;color:#fff;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:5px;white-space:nowrap;cursor:pointer}.view-job{border:0;background:transparent;color:#70001d;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:4px;white-space:nowrap;cursor:pointer}.apply-job svg,.view-job svg{width:11px;height:11px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}.job-connect-side{display:grid;align-content:start;gap:12px}.application-tracker,.job-profile-card{padding:19px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.application-tracker>div{margin-bottom:17px}.tracker-row{display:grid;grid-template-columns:16px 1fr auto;align-items:center;padding:9px 0;border-bottom:1px solid #eee7e9;color:#8b7b80;font-size:10px}.tracker-row i{width:8px;height:8px;border-radius:50%;background:#d9cdd0}.tracker-row.active i{background:#70001d}.tracker-row b{color:#70001d}.job-profile-card{text-align:center}.profile-ring{position:relative;display:grid;place-items:center;width:70px;height:70px;margin:0 auto 10px;border-radius:50%;background:conic-gradient(#70001d calc(var(--pct,0) * 3.6deg),#e8c55f 0deg)}.profile-ring::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#fff}.profile-ring strong{position:relative;z-index:1;color:#70001d;font-size:16px}.job-profile-card h3{margin:0;color:#4e4145;font-size:13px}.job-profile-card p{color:#817177;font-size:9px;line-height:1.5}.job-profile-card button{width:100%;padding:8px;border:0;border-radius:4px;background:#70001d;color:#fff;font-size:9px;font-weight:800}.job-tip-card{padding:15px;border-left:4px solid #d5aa3e;border-radius:6px;background:#fff8e5;color:#6b5a31}.job-tip-card b{font-size:10px}.job-tip-card p{margin:5px 0 0;font-size:9px;line-height:1.5}.job-empty{display:grid;place-items:center;min-height:220px;background:#fff;border:1px dashed #d4c6ca;border-radius:8px;color:#7c6d72}.job-empty span{margin-top:-80px;font-size:10px}
+.job-connect-page { width: 100%; max-width: none; }.job-connect-hero { display: flex; align-items: center; justify-content: space-between; padding: 25px 30px; border-radius: 11px 11px 0 0; background: linear-gradient(120deg,#71001d,#4c0014); color:#fff; }.job-connect-hero span,.job-list-head span,.application-tracker > div span { color:#edc45e;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.08em }.job-connect-hero h1{margin:5px 0;font-size:25px}.job-connect-hero p{margin:0;color:rgba(255,255,255,.72);font-size:11px}.job-alerts-toggle{padding:9px 13px;border:1px solid rgba(255,255,255,.25);border-radius:20px;background:rgba(255,255,255,.1);color:#fff;font-size:10px;font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,color .15s}.job-alerts-toggle.on{border-color:#edc45e;background:#edc45e;color:#5e0019}.job-search-bar{display:grid;grid-template-columns:1fr 150px 120px;gap:10px;padding:15px;background:#fff;border:1px solid #e4d9dc;border-top:0;border-radius:0 0 10px 10px}.job-search-bar label{position:relative}.job-search-bar label svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:15px;height:15px;fill:none;stroke:#8d7b80;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}.job-search-bar input,.job-search-bar select{width:100%;height:38px;border:1px solid #d5c8cc;border-radius:5px;padding:0 12px;font-size:11px}.job-search-bar input{padding-left:34px}.job-search-bar button{border:0;border-radius:5px;background:#70001d;color:#fff;font-size:10px;font-weight:800}.job-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:16px 0}.job-stats>div{display:flex;align-items:center;gap:10px;padding:13px 16px;border:1px solid #e4d9dc;border-radius:7px;background:#fff}.job-stats strong{color:#70001d;font-size:20px}.job-stats span{color:#776a6e;font-size:9px}.job-connect-layout{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:18px}.job-list-head{display:flex;justify-content:space-between;align-items:end;margin:8px 0 12px}.job-list-head h2,.application-tracker h2{margin:4px 0 0;color:#5e0019;font-size:18px}.job-list-head>b{color:#8e7e83;font-size:10px}.job-connect-list{display:grid;gap:12px}.connect-job-card{display:grid;grid-template-columns:58px minmax(0,1fr) 105px;gap:14px;padding:17px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.job-match-panel{display:grid;place-items:center;width:54px;height:54px;border-radius:8px;background:#70001d;color:#f0cd70;font-weight:900}.connect-job-title{display:flex;justify-content:space-between;gap:10px}.connect-job-title h3{margin:0;color:#3e3337;font-size:14px}.connect-job-title p{margin:3px 0;color:#776a6e;font-size:10px}.connect-job-title>span{color:#278246;font-size:10px;font-weight:800}.job-facts{display:flex;flex-wrap:wrap;gap:12px;margin:9px 0;color:#776a6e;font-size:9px}.job-required{display:flex;align-items:center;flex-wrap:wrap;gap:5px}.job-required b{margin-right:3px;color:#695a5f;font-size:9px}.job-required span{padding:4px 7px;border-radius:10px;background:#f3e9ec;color:#70001d;font-size:8px;font-weight:700}.connect-job-main>small{display:block;margin-top:10px;color:#a08f94;font-size:8px}.connect-job-actions{display:grid;align-content:center;gap:7px}.connect-job-actions button{padding:7px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer}.save-job{border:1px solid #cdbec2;background:#fff;color:#65575b}.save-job.saved{border-color:#c49b34;background:#fff8df;color:#755b1d}.apply-job{border:1px solid #70001d;background:#70001d;color:#fff;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:5px;white-space:nowrap;cursor:pointer}.view-job{border:0;background:transparent;color:#70001d;text-decoration:none;display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;gap:4px;white-space:nowrap;cursor:pointer}.apply-job svg,.view-job svg{width:11px;height:11px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}.job-connect-side{display:grid;align-content:start;gap:12px}.application-tracker,.job-profile-card{padding:19px;border:1px solid #e1d5d8;border-radius:8px;background:#fff}.application-tracker>div{margin-bottom:17px}.tracker-row{display:grid;grid-template-columns:16px 1fr auto;align-items:center;padding:9px 0;border-bottom:1px solid #eee7e9;color:#8b7b80;font-size:10px}.tracker-row i{width:8px;height:8px;border-radius:50%;background:#d9cdd0}.tracker-row.active i{background:#70001d}.tracker-row b{color:#70001d}.job-profile-card{text-align:center}.profile-ring{position:relative;display:grid;place-items:center;width:70px;height:70px;margin:0 auto 10px;border-radius:50%;background:conic-gradient(#70001d calc(var(--pct,0) * 3.6deg),#e8c55f 0deg)}.profile-ring::before{content:"";position:absolute;inset:6px;border-radius:50%;background:#fff}.profile-ring strong{position:relative;z-index:1;color:#70001d;font-size:16px}.job-profile-card h3{margin:0;color:#4e4145;font-size:13px}.job-profile-card p{color:#817177;font-size:9px;line-height:1.5}.job-profile-card button{width:100%;padding:8px;border:0;border-radius:4px;background:#70001d;color:#fff;font-size:9px;font-weight:800}.job-tip-card{padding:15px;border-left:4px solid #d5aa3e;border-radius:6px;background:#fff8e5;color:#6b5a31}.job-tip-card b{font-size:10px}.job-tip-card p{margin:5px 0 0;font-size:9px;line-height:1.5}.job-empty{display:grid;place-items:center;min-height:220px;background:#fff;border:1px dashed #d4c6ca;border-radius:8px;color:#7c6d72}.job-empty span{margin-top:-80px;font-size:10px}
 
 @media (max-width: 760px) {
   .alumni-page-content { padding: 18px; }
@@ -1008,9 +1052,13 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
   .profile-summary-card { position: static; }
   .employment-fields, .employment-fields.two-columns { grid-template-columns: 1fr; }
   .directory-toolbar { align-items: stretch; flex-direction: column; gap: 12px; padding: 13px; }
-  .directory-filters { flex-wrap: wrap; }
-  .directory-filters > span { flex-basis: 100%; }
-  .directory-filters select { flex: 0 1 98px; min-width: 82px; }
+  /* Five labeled filters: two per row, each filling its column so labels like
+     "Best match" are not cut off; the odd last one (Sort by) spans the row. */
+  .directory-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .directory-filters > span { grid-column: 1 / -1; }
+  .directory-filter-field { min-width: 0; }
+  .directory-filter-field:last-child:nth-of-type(odd) { grid-column: 1 / -1; }
+  .directory-filters select { width: 100%; max-width: none; min-width: 0; text-overflow: ellipsis; }
   .directory-search { width: 100%; max-width: none; flex-basis: auto; }
   .alumni-directory-grid { grid-template-columns: 1fr; }
   .alumni-person-card { grid-template-columns: 54px minmax(0, 1fr); }
@@ -1019,6 +1067,12 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
   .office-hero { align-items: flex-start; flex-direction: column; padding: 24px; }
   .office-layout { grid-template-columns: 1fr; }
   .service-grid { grid-template-columns: 1fr 1fr; }
+  .career-hero { flex-direction: column; align-items: flex-start; gap: 18px; padding: 22px 20px; }
+  .career-hero h1 { font-size: 22px; }
+  .career-score { flex: none; display: flex; align-items: center; gap: 14px; }
+  .career-score-ring { width: 72px; height: 72px; }
+  .career-score-ring strong { font-size: 18px; }
+  .career-score > span { text-align: left; }
   .career-layout { grid-template-columns: 1fr; }
   .career-card { grid-template-columns: 35px minmax(0, 1fr); }
   .career-details { grid-column: 2; justify-self: start; padding-left: 0; }
@@ -1027,10 +1081,9 @@ body.dark-mode .avatar-cropper-hint { color: #b99ba4; }
 
 /* Reference-style horizontal Job Connect cards */
 .job-connect-page .connect-job-card { grid-template-columns: 220px minmax(300px, 1fr) 200px; min-height: 205px; gap: 0; padding: 0; }
-.job-connect-page .connect-match-ribbon { width: 76px; height: 70px; }
-.job-connect-page .connect-match-ribbon strong { font-size: 19px; }
-.job-connect-page .job-company-logo { width: auto; height: 170px; margin: 16px 14px; border-radius: 2px; }
-.job-connect-page .job-company-logo img { width: 82%; height: 82%; object-fit: contain; filter: drop-shadow(0 0 7px #41b7df); }
+.job-connect-page .job-match-panel { width: auto; height: 170px; margin: 16px 14px; border-radius: 12px; box-shadow: 0 8px 20px rgba(112,0,29,.32), inset 0 1px 0 rgba(255,255,255,.08); }
+.job-connect-page .job-match-panel .job-match-score strong { font-size: 44px; text-shadow: 0 2px 12px rgba(0,0,0,.4); }
+.job-connect-page .job-match-panel .job-match-score span { font-size: 12px; }
 .job-connect-page .connect-job-main { position: relative; align-self: center; padding: 22px 20px; }
 .job-connect-page .connect-job-title h3 { font-size: 18px; }
 .job-connect-page .connect-job-title p { color: #30272a; font-size: 10px; line-height: 1.25; }
@@ -1048,10 +1101,6 @@ body.dark-mode .apply-job.already-applied { border-color: #4a3d41; background: #
 .cancel-application:hover { background: #fbe9ec; }
 body.dark-mode .cancel-application { border-color: rgba(255,150,160,.4); color: #ffb4b4; }
 body.dark-mode .cancel-application:hover { background: rgba(185,28,28,.18); }
-.apply-job.apply-locked { border-color: #cdbec2 !important; background: #f3edef !important; color: #9a8b8f !important; cursor: not-allowed; }
-body.dark-mode .apply-job.apply-locked { border-color: #4a3d41 !important; background: #2a2226 !important; color: #a2939a !important; }
-.apply-gate-note { margin: 8px 0 0; color: #8a0b2c; font-size: 9px; font-weight: 700; }
-body.dark-mode .apply-gate-note { color: #ffb4b4; }
 .connect-job-title > div:first-child { min-width: 0; flex: 1 1 auto; }
 .application-status-select {
   -webkit-appearance: none;
@@ -1095,8 +1144,6 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
 .job-connect-page .connect-skill-gap > b { margin-bottom: 30px; font-size: 14px; }
 .job-connect-page .connect-skill-gap span { padding: 6px 8px; font-size: 9px; }
 .job-connect-page .connect-skill-gap small { margin-top: 20px; font-size: 8px; }
-.job-connect-page .design-job .job-company-logo { background: #111526; }
-.job-connect-page .design-job .job-company-logo img { filter: hue-rotate(75deg) saturate(1.7) drop-shadow(0 0 7px #c649ef); }
 .job-partner { position: absolute; right: 18px; bottom: 7px; color: #8a1740 !important; font-size: 7px !important; }
 .job-view-more { display: block; margin-top: 8px; color: #70001d; font-size: 10px; font-weight: 800; text-align: right; text-decoration: underline; }
 
@@ -1107,7 +1154,6 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
 
 @media (max-width: 600px) {
   .job-connect-page .connect-job-card { grid-template-columns: 1fr; }
-  .job-connect-page .job-company-logo { min-height: 190px; }
   .job-connect-page .connect-job-main { padding: 18px; }
   .connect-posted { position: static; display: inline-block; margin-bottom: 12px; }
   .job-connect-page .connect-skill-gap { grid-column: auto; }
@@ -1183,18 +1229,14 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
 
 @media (max-width: 480px) { .service-grid { grid-template-columns: 1fr; } }
 
-/* Preserve the original match and skill-gap job card design inside Job Connect.
-   4 explicit column tracks for only 3 real grid items (logo, main content,
-   and the "Job Match" panel — .connect-match-ribbon is position:absolute,
-   not a grid item) meant auto-placement dropped the skill-gap panel into
-   the narrow 95px 3rd track instead of the intended 155px 4th one, and its
-   -17px bleed margin (sized for the wider track) then overflowed past the
-   card's own edge and got clipped by overflow:hidden — cutting chips off
-   mid-word instead of wrapping them cleanly. */
 .connect-job-card { position: relative; grid-template-columns: 70px minmax(0,1fr) 190px; overflow: hidden; }
-.connect-match-ribbon { position: absolute; z-index: 2; top: 0; left: 0; display: grid; place-content: center; width: 62px; height: 55px; background: #70001d; color: #f0cd70; text-align: center; }
-.connect-match-ribbon strong { font-size: 14px; }.connect-match-ribbon span { color: #fff; font-size: 8px; }
-.connect-job-card .job-company-logo { margin-top: 28px; background: #091523; box-shadow: inset 0 0 18px rgba(67,183,220,.35); }
+.connect-job-card .job-match-panel { display: flex; align-items: center; justify-content: center; background: radial-gradient(120% 130% at 30% 15%, #b3123f 0%, #82001f 48%, #4c0014 100%); border: 1px solid rgba(255,214,140,.16); }
+.job-match-panel { text-align: center; }
+.job-match-panel .job-match-score { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.job-match-panel .job-match-score strong { display: block; font-size: 18px; font-weight: 800; line-height: 1; color: #f9dd8f; text-shadow: 0 1px 0 rgba(0,0,0,.25); }
+.job-match-panel .job-match-score span { position: relative; display: block; padding-top: 8px; font-size: 8px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.8); }
+.job-match-panel .job-match-score span::before { content: ""; position: absolute; top: 0; left: 50%; width: 26px; height: 2px; background: rgba(249,221,143,.55); border-radius: 2px; transform: translateX(-50%); }
+.job-match-panel--empty { display: flex; align-items: center; justify-content: center; padding: 0 8px; font-size: 8px; font-weight: 700; text-align: center; color: rgba(255,255,255,.6); }
 .connect-job-description { margin: 8px 0; color: #75686c; font-size: 9px; line-height: 1.45; }
 .connect-skill-gap { margin: -17px; padding: 18px 13px; background: #70001d; color: #fff; }
 .connect-skill-gap > b { display: block; margin-bottom: 18px; text-align: center; font-size: 11px; }
@@ -1202,6 +1244,7 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
 .connect-skill-gap span { padding: 5px 7px; border-radius: 12px; background: #fff; color: #4d313a; font-size: 8px; font-weight: 700; }
 .connect-skill-gap span.skill-have { background: #eaf7ee; color: #1f6b3a; }
 .connect-skill-gap span.skill-missing { background: transparent; border: 1px dashed rgba(255,255,255,.5); color: #fff; }
+.connect-skill-gap span.skill-more { background: transparent; border: 0; padding: 5px 2px; color: rgba(255,255,255,.65); font-style: italic; }
 .connect-skill-gap small { display: block; margin-top: 15px; color: rgba(255,255,255,.7); font-size: 7px; line-height: 1.5; }
 .skill-match-ratio { display: block; margin-bottom: 14px; padding: 0 !important; border: 0 !important; background: none !important; text-align: center; text-transform: uppercase; letter-spacing: .05em; font-size: 8px !important; font-weight: 700; color: rgba(255,255,255,.72) !important; }
 .connect-skill-gap .skill-match-ratio { margin-top: -12px; }
@@ -1229,13 +1272,21 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
   border-radius: 3px;
   background: #fff;
   color: #252124;
+  font-family: "Times New Roman", Times, serif;
   box-shadow: 0 10px 20px rgba(61, 24, 35, .08);
 }
 .resume-contact {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 12px;
   padding-bottom: 10px;
   border-bottom: 1px solid #d9d1d4;
 }
+.resume-contact-text { flex: 1 1 auto; min-width: 0; }
+.resume-photo { flex: 0 0 auto; width: 52px; height: 52px; border-radius: 8px; overflow: hidden; background: #f0e3e6; }
+.resume-photo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .resume-preview strong {
   display: block;
   color: #161315;
@@ -1270,12 +1321,31 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
   font-size: 8.5px;
   line-height: 1.45;
 }
-.resume-skills-list {
-  column-count: 2;
-  column-gap: 14px;
+.resume-skills-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.resume-skills-col {
+  flex: 1 1 130px;
+  min-width: 0;
+}
+.resume-skills-col h4 {
+  margin: 0 0 4px;
+  color: #4a1420;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
 }
 .resume-skills-list li {
   break-inside: avoid;
+}
+.resume-entry {
+  margin-bottom: 10px;
+}
+.resume-entry:last-child {
+  margin-bottom: 0;
 }
 .resume-entry-title {
   display: block;
@@ -1290,10 +1360,6 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
   font-size: 8px !important;
   font-style: italic;
 }
-/* Editing now happens in a modal the same width as the resume preview
-   (.resume-editor-modal, reusing .resume-preview-modal) instead of squeezed
-   into the narrow sidebar card, so fields can be sized to actually read
-   comfortably while typing instead of the old 8-9px sidebar text. */
 .resume-editor-modal {
   display: flex;
   flex-direction: column;
@@ -1319,6 +1385,27 @@ body.dark-mode .job-source-filter button.active { border-color: #fac853; backgro
   font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
+}
+.resume-experience-note {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px dashed #d8c8cd;
+  border-radius: 6px;
+  background: #f7f4f5;
+}
+.resume-experience-note span {
+  color: #7a686e;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.resume-experience-note p {
+  margin: 0;
+  color: #8a767c;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .resume-editor input,
 .resume-editor textarea {
@@ -1581,10 +1668,6 @@ body.dark-mode .resume-empty p { color: #c9b3b9; }
   font-size: 10px !important;
 }
 
-/* Flex column so the header and footer (Apply button) keep their natural
-   size and only the middle description area absorbs the modal's max-height
-   cap — previously the footer sat inside the scrolling body itself, so a
-   long description could push "Apply now" below the fold entirely. */
 .job-details-modal { display: flex; flex-direction: column; }
 .job-details-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 22px 24px; }
 .job-details-footer { flex: 0 0 auto; padding: 14px 24px; border-top: 1px solid #e4d9dc; background: #fff; }
@@ -1661,8 +1744,7 @@ body.dark-mode .resume-empty p { color: #c9b3b9; }
   color: #f3cf66;
 }
 
-.alumni-app .announcement-image img,
-.alumni-app .job-company-logo img {
+.alumni-app .announcement-image img {
   display: block;
   max-width: 100%;
   max-height: 100%;
@@ -1680,9 +1762,13 @@ body.dark-mode .resume-empty p { color: #c9b3b9; }
 
   .employment-grid,
   .career-layout,
-  .job-connect-layout,
-  .alumni-home-layout {
+  .job-connect-layout {
     grid-template-columns: 1fr;
+  }
+
+  /* minmax(0, …): a plain 1fr track grows to fit the horizontally scrolling update list. */
+  .alumni-home-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .profile-summary-card {
@@ -1838,15 +1924,16 @@ body.dark-mode .resume-empty p { color: #c9b3b9; }
   }
 
   .job-match-card .announcement-image,
-  .job-connect-page .job-company-logo {
+  .job-connect-page .job-match-panel {
+    width: auto;
+    height: auto;
     min-height: 0;
     aspect-ratio: 16 / 10;
     margin: 14px;
   }
 
-  .job-connect-page .job-company-logo img {
-    width: 62%;
-    height: 62%;
+  .job-connect-page .job-match-panel .job-match-score strong {
+    font-size: 30px;
   }
 
   .job-connect-page .connect-job-main,
@@ -2050,26 +2137,12 @@ body.dark-mode .resume-empty p { color: #c9b3b9; }
   }
 }
 
-/* ============================================================
-   Dark mode
-   Reuses the same palette as the Admin/Coordinator dark theme
-   (card bg #241116, borders/labels in gold rgba(250,200,83,*),
-   body text #f3e7ea) so switching roles doesn't feel like a
-   different app. `.main`/`.topbar`/`.app` already get dark
-   treatment for free from admin-mod.css since those base shell
-   classes aren't scoped to any one role — everything below only
-   needs to cover classes that are actually alumni-specific.
-   ============================================================ */
+/* Dark mode: alumni-only classes (shared shell classes are covered in admin-mod.css). */
 
 .alumni-top-panel .theme-setting { flex-direction: column; align-items: stretch; gap: 10px; }
 .alumni-top-panel .theme-options { width: 100%; }
 
-/* Scoped + !important: the shared .theme-chip/.theme-options rules already
-   carry light/dark variants with their own !important flags for the admin
-   settings modal, and layering another context on top of that (this panel
-   living inside .alumni-top-panel, not .settings-form) produced an
-   unreadable state — the inactive chip rendered gold-on-gold. Redeclared
-   here, fully scoped to this panel, so there's nothing left to fight. */
+/* Scoped + !important to beat the shared .theme-chip !important rules. */
 .alumni-top-panel .theme-chip { background: transparent !important; color: #70001d !important; }
 .alumni-top-panel .theme-chip.active { background: #70001d !important; color: #fff !important; }
 body.dark-mode .alumni-top-panel .theme-options { background: #321820 !important; }
@@ -2130,6 +2203,13 @@ body.dark-mode .alumni-action-modal-buttons .details-btn { border-color: #fac853
 body.dark-mode .alumni-action-modal-buttons .details-btn:hover { background: #351721; }
 body.dark-mode .comments { border-color: rgba(250, 200, 83, .14); }
 body.dark-mode .comment-row p { border-color: rgba(250, 200, 83, .2); background: #2f171e; color: #f3e7ea; }
+body.dark-mode .comment-row-actions button, body.dark-mode .comment-row-edited { color: #bfa9ae; }
+body.dark-mode .comment-row-actions button:hover, body.dark-mode .comment-row-actions button:focus-visible { color: #fac853; }
+body.dark-mode .comment-row-actions button.danger:hover, body.dark-mode .comment-row-actions button.danger:focus-visible { color: #ff8a8a; }
+body.dark-mode .comment-row-edit { border-color: #fac853; background: #2f171e; color: #f3e7ea; }
+body.dark-mode .comment-row-edit textarea { border-color: #69404b; background: #1e0e12; color: #f3e7ea; }
+body.dark-mode .comment-row-edit-actions button { border-color: #69404b; background: transparent; color: #e0cdd2; }
+body.dark-mode .comment-row-edit-actions button.primary { border-color: #fac853; background: #7a0f2c; color: #fff; }
 body.dark-mode .comment-input { background: #2f171e; color: #b99ba4; }
 body.dark-mode .comment-input b { color: #fac853; }
 body.dark-mode .alumni-comment-composer input { background: #2f171e; border-color: #69404b; color: #f3e7ea; }
@@ -2229,6 +2309,15 @@ body.dark-mode .skills-group-label { color: #f6d98a; }
 body.dark-mode .secondary-employment-btn { border-color: rgba(250, 200, 83, .3); background: #241116; color: #e7cfd4; }
 body.dark-mode .profile-course,
 body.dark-mode .profile-email { color: rgba(255, 255, 255, .7); }
+body.dark-mode .work-history-add-form { border-top-color: rgba(250, 200, 83, .22); }
+body.dark-mode .work-history-add-form textarea { border-color: rgba(250, 200, 83, .22); background: #321820; color: #f8eef1; }
+body.dark-mode .work-history-add-form textarea:focus { border-color: #fac853; box-shadow: 0 0 0 3px rgba(250, 200, 83, .15); }
+body.dark-mode .work-history-editor .work-history-entry-card { background: #2b141a; border-color: rgba(250, 200, 83, .22); }
+body.dark-mode .work-history-editor .work-history-entry-body strong { color: #fff6f8; }
+body.dark-mode .work-history-editor .work-history-entry-meta { color: #b99ba4; }
+body.dark-mode .work-history-editor .work-history-entry-desc { color: #d4bdc3; }
+body.dark-mode .work-history-editor .work-history-remove-btn { background: #3a2027; color: #f2b8c2; }
+body.dark-mode .work-history-editor .work-history-remove-btn:hover { background: #70001d; color: #fff; }
 
 /* Suggested alumni directory */
 body.dark-mode .directory-toolbar { box-shadow: 0 12px 28px rgba(0, 0, 0, .35); }
@@ -2370,6 +2459,11 @@ body.dark-mode .resume-format-section h3 { border-color: rgba(250, 200, 83, .16)
 body.dark-mode .resume-format-section li { color: #d4bdc3; }
 body.dark-mode .resume-entry-title { color: #fff6f8; }
 body.dark-mode .resume-entry-meta { color: #b99ba4; }
+body.dark-mode .resume-skills-col h4 { color: #f6d98a; }
+body.dark-mode .resume-photo { background: #3a2027; }
+body.dark-mode .resume-experience-note { border-color: rgba(250, 200, 83, .22); background: #2b141a; }
+body.dark-mode .resume-experience-note span { color: #b99ba4; }
+body.dark-mode .resume-experience-note p { color: #d4bdc3; }
 body.dark-mode .resume-editor label span { color: #b99ba4; }
 body.dark-mode .resume-editor input,
 body.dark-mode .resume-editor textarea { border-color: rgba(250, 200, 83, .22); background: #321820; color: #f8eef1; }
@@ -2483,12 +2577,7 @@ body.dark-mode .resume-preview-modal-head button { border-color: rgba(250, 200, 
 
 .network-empty { align-content: center; gap: 10px; }
 .network-empty span { margin: 0; color: #9a898e; }
-/* .coord-alumni-profile (coordinator-dashboard.css) sets overflow:hidden to
-   clip its header banner to the modal's rounded corners — harmless for the
-   coordinator's own shorter profile modal, but this alumni-facing modal has
-   more rows (match banner, social links) and needs to scroll once content
-   exceeds .tracer-modal's max-height. Same specificity as that rule, but
-   this file loads after coordinator-dashboard.css in main.jsx, so it wins. */
+/* Wins over coordinator-dashboard.css only because this file loads after it (main.jsx). */
 .network-profile-modal { width: min(530px, calc(100vw - 28px)); overflow-y: auto; }
 .network-profile-summary { align-items: center; padding: 22px; }
 .directory-avatar.large { width: 76px; height: 76px; font-size: 20px; }
@@ -2744,22 +2833,43 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   text-align: left;
 }
 
-.app:not(.sidebar-collapsed) .sidebar .toptsu-logo {
+/* Official TSU seal (unaltered) + typed name. The alumni row below uses the same
+   40px logo column and 8px gap so both names start at the same x. */
+.app:not(.sidebar-collapsed) .sidebar .tsu-lockup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .tsu-lockup img {
   display: block;
-  width: 100%;
-  max-width: 158px;
-  height: 42px;
+  flex: none;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
-  object-position: left center;
+}
+
+.app:not(.sidebar-collapsed) .sidebar .tsu-lockup span,
+.app:not(.sidebar-collapsed) .sidebar .alumni-brand p {
+  color: #fff;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 15px;
+  font-weight: 400;
+  font-variant: small-caps;
+  line-height: 1;
+  letter-spacing: .01em;
+  text-align: left;
+  text-transform: none;
 }
 
 .app:not(.sidebar-collapsed) .sidebar .alumni-brand {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   width: calc(100% + 7px);
-  min-height: 42px;
+  min-height: 50px;
   margin: 0 0 0 -7px;
   padding: 5px 7px;
   box-sizing: border-box;
@@ -2768,20 +2878,13 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
 
 .app:not(.sidebar-collapsed) .sidebar .alumni-logo {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 40px;
+  height: 40px;
   object-fit: contain;
 }
 
 .app:not(.sidebar-collapsed) .sidebar .alumni-brand p {
   margin: 0;
-  color: #fff;
-  font-family: Georgia, "Times New Roman", serif;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.05;
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 @media (max-width: 600px) {
@@ -2797,9 +2900,6 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
 .alumni-app .alumni-page-content > div:not(.resume-preview-overlay):not(.alumni-action-overlay) {
   animation: alumni-rise-in 460ms cubic-bezier(.2,.8,.2,1) both;
 }
-/* Modal overlays are fixed-position children of the page content — the
-   rise-in transform/opacity delay made them look like nothing happened
-   on click. Let them use their own instant overlay entrance instead. */
 .alumni-app .alumni-page-content > .resume-preview-overlay,
 .alumni-app .alumni-page-content > .alumni-action-overlay {
   animation: alumni-overlay-in 200ms ease both;
@@ -2929,7 +3029,7 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   color: #65676b;
 }
 .alumni-app .announcement-meta time { margin-right: 12px; color: #65676b; font-size: 12px; }
-.alumni-app .meta-action {
+:is(.alumni-app, .post-viewer-modal) .meta-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2940,7 +3040,7 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   color: #65676b;
   font-size: 12px;
 }
-.alumni-app .social-action-icon {
+:is(.alumni-app, .post-viewer-modal) .social-action-icon {
   width: 16px;
   height: 16px;
   fill: none;
@@ -2949,8 +3049,8 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.alumni-app .meta-action:hover { background: #f0f2f5; }
-.alumni-app .meta-action.active { color: #70001d; background: #fbe9ed; }
+:is(.alumni-app, .post-viewer-modal) .meta-action:hover { background: #f0f2f5; }
+:is(.alumni-app, .post-viewer-modal) .meta-action.active { color: #70001d; background: #fbe9ed; }
 .alumni-app .event-card .announcement-body { padding-bottom: 16px; }
 .alumni-app .event-card .announcement-image { order: 2; }
 .alumni-app .event-detail { margin: 5px 0; color: #65676b; font-size: 13px; }
@@ -2962,11 +3062,7 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   color: #70001d;
   font-size: 11px;
 }
-/* Same specificity as the base .card-bell.active rule (two classes each),
-   so without this override this rule's own unconditional maroon text color
-   above wins on source order alone even when .active is also applied,
-   leaving "On" rendered in maroon on the active state's own maroon
-   background — invisible. */
+/* Keeps the active state from rendering maroon-on-maroon. */
 .alumni-app .card-bell.active {
   color: #fff;
 }
@@ -2989,6 +3085,9 @@ body.dark-mode .network-mail-sent { background: rgba(39,130,70,.2); color: #9ee4
   box-shadow: 0 1px 2px rgba(16, 24, 40, .06);
 }
 .alumni-app .completed-event .announcement-image { width: 112px; height: 78px; }
+/* `.completed-event > div { flex: 1 }` would otherwise stretch the thumbnail and squeeze the feedback block. */
+.alumni-app .completed-event > .announcement-image { order: 0; flex: 0 0 auto; }
+.alumni-app .completed-event > .completed-event-feedback { flex: 0 0 auto; min-width: 0; }
 .alumni-app .completed-event > span { background: #e7f3eb; color: #24733d; }
 body.dark-mode .alumni-app .announcement-filter-bar,
 body.dark-mode .alumni-app .announcement-card,
@@ -2998,12 +3097,12 @@ body.dark-mode .alumni-app .section-heading > h3,
 body.dark-mode .alumni-app .announcement-body h2 { color: #fff6f8; }
 body.dark-mode .alumni-app .announcement-filter-bar button,
 body.dark-mode .alumni-app .announcement-meta time,
-body.dark-mode .alumni-app .meta-action,
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .meta-action,
 body.dark-mode .alumni-app .event-detail { color: #d4bdc3; }
 body.dark-mode .alumni-app .announcement-filter-bar button:hover,
-body.dark-mode .alumni-app .meta-action:hover { background: #351721; }
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .meta-action:hover { background: #351721; }
 body.dark-mode .alumni-app .announcement-filter-bar button.active,
-body.dark-mode .alumni-app .meta-action.active { background: #48212c; color: #fac853; }
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .meta-action.active { background: #48212c; color: #fac853; }
 body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83, .14); }
 
 @media (max-width: 620px) {
@@ -3013,22 +3112,35 @@ body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83,
   .alumni-app .announcement-image { height: 150px; }
   .alumni-app .announcement-meta { flex-wrap: wrap; gap: 3px; }
   .alumni-app .announcement-meta time { flex-basis: 100%; margin-bottom: 4px; }
-  .alumni-app .meta-action { flex: 1; min-width: 0; }
+  :is(.alumni-app, .post-viewer-modal) .meta-action { flex: 1; min-width: 0; }
   .alumni-app .completed-event .announcement-image { width: 88px; height: 66px; }
   .alumni-app .completed-event b { font-size: 12px; }
   .alumni-app .completed-event > span { padding: 4px 7px; font-size: 9px; }
+  .alumni-app .completed-event { flex-wrap: wrap; }
+  .alumni-app .completed-event > .completed-event-feedback {
+    flex-basis: 100%;
+    max-width: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    padding-top: 8px;
+    border-top: 1px solid #eef0f2;
+    text-align: left;
+  }
+  body.dark-mode .alumni-app .completed-event > .completed-event-feedback { border-top-color: rgba(250, 200, 83, .14); }
 }
 
 /* News feed — full Facebook-style post: author header, body text, edge-to-edge
    media, engagement summary, then an evenly-split Like / Comment / Share bar. */
-.alumni-app .news-post { padding: 0; }
-.alumni-app .news-post-head {
+:is(.alumni-app, .post-viewer-modal) .news-post { padding: 0; }
+:is(.alumni-app, .post-viewer-modal) .news-post-head {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 16px 6px;
 }
-.alumni-app .news-post-avatar {
+:is(.alumni-app, .post-viewer-modal) .news-post-avatar {
   flex-shrink: 0;
   width: 40px;
   height: 40px;
@@ -3037,25 +3149,25 @@ body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83,
   border-radius: 50%;
   background: #fff;
 }
-.alumni-app .news-post-avatar img { width: 100%; height: 100%; object-fit: contain; }
-.alumni-app .news-post-byline { display: flex; flex-direction: column; min-width: 0; line-height: 1.32; }
-.alumni-app .news-post-byline b { color: #1c1e21; font-size: 14px; font-weight: 700; }
-.alumni-app .news-post-byline > span { color: #65676b; font-size: 12px; }
-.alumni-app .news-post-tag { color: #70001d; font-weight: 700; }
-.alumni-app .news-post-text { padding: 2px 16px 12px; }
-.alumni-app .news-post-text h2 { max-width: none; margin: 0 0 6px; color: #1c1e21; font-size: 18px; line-height: 1.3; }
-.alumni-app .news-post-text p { max-width: none; margin: 0; color: #1c1e21; font-size: 14px; line-height: 1.45; }
-.alumni-app .news-post-text .announcement-location { margin: 6px 0 0 !important; }
-.alumni-app .news-post-media {
+:is(.alumni-app, .post-viewer-modal) .news-post-avatar img { width: 100%; height: 100%; object-fit: contain; }
+:is(.alumni-app, .post-viewer-modal) .news-post-byline { display: flex; flex-direction: column; min-width: 0; line-height: 1.32; }
+:is(.alumni-app, .post-viewer-modal) .news-post-byline b { color: #1c1e21; font-size: 14px; font-weight: 700; }
+:is(.alumni-app, .post-viewer-modal) .news-post-byline > span { color: #65676b; font-size: 12px; }
+:is(.alumni-app, .post-viewer-modal) .news-post-tag { color: #70001d; font-weight: 700; }
+:is(.alumni-app, .post-viewer-modal) .news-post-text { padding: 2px 16px 12px; }
+:is(.alumni-app, .post-viewer-modal) .news-post-text h2 { max-width: none; margin: 0 0 6px; color: #1c1e21; font-size: 18px; line-height: 1.3; }
+:is(.alumni-app, .post-viewer-modal) .news-post-text p { max-width: none; margin: 0; color: #1c1e21; font-size: 14px; line-height: 1.45; }
+:is(.alumni-app, .post-viewer-modal) .news-post-text .announcement-location { margin: 6px 0 0 !important; }
+:is(.alumni-app, .post-viewer-modal) .news-post-media {
   width: 100%;
   border-top: 1px solid #e4e6eb;
   border-bottom: 1px solid #e4e6eb;
   background: #f0f2f5;
 }
-.alumni-app .news-post-media img { display: block; width: 100%; max-height: 320px; object-fit: contain; }
-.alumni-app .news-post-media.logo-fallback { box-sizing: border-box; padding: 30px; text-align: center; }
-.alumni-app .news-post-media.logo-fallback img { width: 110px; height: 110px; margin: 0 auto; object-fit: contain; }
-.alumni-app .news-post-counts {
+:is(.alumni-app, .post-viewer-modal) .news-post-media img { display: block; width: 100%; max-height: 320px; object-fit: contain; }
+:is(.alumni-app, .post-viewer-modal) .news-post-media.logo-fallback { box-sizing: border-box; padding: 30px; text-align: center; }
+:is(.alumni-app, .post-viewer-modal) .news-post-media.logo-fallback img { width: 110px; height: 110px; margin: 0 auto; object-fit: contain; }
+:is(.alumni-app, .post-viewer-modal) .news-post-counts {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3064,8 +3176,8 @@ body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83,
   color: #65676b;
   font-size: 13px;
 }
-.alumni-app .news-post-likes { display: inline-flex; align-items: center; gap: 6px; min-height: 18px; }
-.alumni-app .news-post-likes .social-action-icon {
+:is(.alumni-app, .post-viewer-modal) .news-post-likes { display: inline-flex; align-items: center; gap: 6px; min-height: 18px; }
+:is(.alumni-app, .post-viewer-modal) .news-post-likes .social-action-icon {
   box-sizing: border-box;
   width: 18px;
   height: 18px;
@@ -3075,16 +3187,16 @@ body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83,
   fill: #fff;
   stroke: #fff;
 }
-.alumni-app .news-post-cs { display: inline-flex; gap: 10px; }
-.alumni-app .news-post-cs button { border: 0; background: transparent; color: #65676b; font-size: 13px; cursor: pointer; }
-.alumni-app .news-post-cs button:hover { text-decoration: underline; }
-.alumni-app .news-post-actions {
+:is(.alumni-app, .post-viewer-modal) .news-post-cs { display: inline-flex; gap: 10px; }
+:is(.alumni-app, .post-viewer-modal) .news-post-cs button { border: 0; background: transparent; color: #65676b; font-size: 13px; cursor: pointer; }
+:is(.alumni-app, .post-viewer-modal) .news-post-cs button:hover { text-decoration: underline; }
+:is(.alumni-app, .post-viewer-modal) .news-post-actions {
   display: flex;
   gap: 4px;
   padding: 4px 8px;
   border-top: 1px solid #e4e6eb;
 }
-.alumni-app .news-post-actions .meta-action {
+:is(.alumni-app, .post-viewer-modal) .news-post-actions .meta-action {
   flex: 1;
   gap: 8px;
   min-width: 0;
@@ -3092,23 +3204,106 @@ body.dark-mode .alumni-app .announcement-meta { border-color: rgba(250, 200, 83,
   font-size: 13px;
   font-weight: 600;
 }
-.alumni-app .news-post-actions .meta-action.active .social-action-icon { fill: currentColor; }
+:is(.alumni-app, .post-viewer-modal) .news-post-actions .meta-action.active .social-action-icon { fill: currentColor; }
 
-body.dark-mode .alumni-app .news-post-avatar { border-color: rgba(250, 200, 83, .18); background: #241116; }
-body.dark-mode .alumni-app .news-post-byline b,
-body.dark-mode .alumni-app .news-post-text h2,
-body.dark-mode .alumni-app .news-post-text p { color: #fff6f8; }
-body.dark-mode .alumni-app .news-post-byline > span,
-body.dark-mode .alumni-app .news-post-counts,
-body.dark-mode .alumni-app .news-post-cs button { color: #d4bdc3; }
-body.dark-mode .alumni-app .news-post-media,
-body.dark-mode .alumni-app .news-post-actions { border-color: rgba(250, 200, 83, .14); }
-body.dark-mode .alumni-app .news-post-media { background: #1c0d11; }
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-avatar { border-color: rgba(250, 200, 83, .18); background: #241116; }
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-byline b,
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-text h2,
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-text p { color: #fff6f8; }
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-byline > span,
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-counts,
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-cs button { color: #d4bdc3; }
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-media,
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-actions { border-color: rgba(250, 200, 83, .14); }
+body.dark-mode :is(.alumni-app, .post-viewer-modal) .news-post-media { background: #1c0d11; }
 
 @media (max-width: 620px) {
-  .alumni-app .news-post-text { padding: 2px 14px 12px; }
-  .alumni-app .news-post-text h2 { font-size: 16px; }
-  .alumni-app .news-post-actions .meta-action { padding: 8px 4px; font-size: 12px; }
+  :is(.alumni-app, .post-viewer-modal) .news-post-text { padding: 2px 14px 12px; }
+  :is(.alumni-app, .post-viewer-modal) .news-post-text h2 { font-size: 16px; }
+  :is(.alumni-app, .post-viewer-modal) .news-post-actions .meta-action { padding: 8px 4px; font-size: 12px; }
+}
+
+/* Picture on a news card opens the full post viewer — a <button> so it's
+   keyboard reachable; reset to look exactly like the old static media box. */
+.alumni-app .news-post-media.is-clickable {
+  display: block;
+  padding: 0;
+  border-left: 0;
+  border-right: 0;
+  font: inherit;
+  cursor: zoom-in;
+}
+.alumni-app .news-post-media.is-clickable:hover img { opacity: .94; }
+.alumni-app .news-post-media.is-clickable:focus-visible { outline: 2px solid #b8891e; outline-offset: -2px; }
+
+/* Comment thread — inline under a card, and inside the post viewer. */
+.news-post-comments { padding: 4px 16px 14px; border-top: 1px solid #e4e6eb; }
+.comment-thread-list { margin: 0 0 10px; }
+.comment-thread-empty { margin: 10px 0; color: #76656a; font-size: 13px; }
+.news-post-comments .alumni-comment-composer .primary-card-btn { flex-shrink: 0; }
+body.dark-mode .news-post-comments { border-color: rgba(250, 200, 83, .14); }
+body.dark-mode .comment-thread-empty { color: #c9b3b8; }
+
+/* Full post viewer (picture click) — picture on the left, post + comments on
+   the right; stacks into one scrolling column on narrow screens. */
+.post-viewer-overlay { padding: 20px; }
+.post-viewer-modal {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+  width: min(1180px, 100%);
+  height: min(86vh, 820px);
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(32, 0, 9, .35);
+}
+.post-viewer-media {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  background: #120609;
+}
+.post-viewer-media img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.post-viewer-side { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.post-viewer-side .news-post-text p { white-space: pre-line; }
+.post-viewer-side .news-post-comments { flex: 1; }
+.post-viewer-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.post-viewer-close:hover, .post-viewer-close:focus-visible { background: rgba(0, 0, 0, .75); outline: none; }
+body.dark-mode .post-viewer-modal { background: #241116; }
+body.dark-mode .post-viewer-modal .news-post-byline b,
+body.dark-mode .post-viewer-modal .news-post-text h2,
+body.dark-mode .post-viewer-modal .news-post-text p { color: #fff6f8; }
+body.dark-mode .post-viewer-modal .news-post-byline > span,
+body.dark-mode .post-viewer-modal .news-post-counts { color: #d4bdc3; }
+
+@media (max-width: 860px) {
+  .post-viewer-overlay { padding: 0; }
+  .post-viewer-modal {
+    grid-template-columns: 1fr;
+    height: 100%;
+    border-radius: 0;
+    overflow-y: auto;
+  }
+  .post-viewer-media { max-height: 50vh; }
+  .post-viewer-media img { max-height: 50vh; }
+  .post-viewer-side { overflow: visible; }
 }
 
 /* Group labels keep every role's sidebar easy to scan without becoming links. */
@@ -3160,4 +3355,14 @@ body.dark-mode .network-profile-modal .coord-profile-details a { color: #fac853;
    plain `.job-search-bar{grid-template-columns:1fr}` in the ~600px block loses. */
 @media (max-width: 620px) {
   .alumni-app .job-search-bar { grid-template-columns: 1fr; }
+}
+
+/* JobConnect branding — topbar mark + hero logo on the Job Connect section */
+.topbar-title-logo { flex: 0 0 auto; width: 38px; height: 38px; margin-right: -14px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px rgba(237,196,94,.55); }
+.job-connect-hero { gap: 18px; }
+.job-connect-hero-logo { flex: 0 0 auto; width: 76px; height: 76px; border-radius: 50%; object-fit: cover; box-shadow: 0 6px 18px rgba(0,0,0,.28); }
+.job-connect-hero-copy { flex: 1 1 auto; min-width: 0; }
+@media (max-width: 760px) {
+  .topbar-title-logo { width: 30px; height: 30px; margin-right: -8px; }
+  .job-connect-hero-logo { width: 60px; height: 60px; }
 }

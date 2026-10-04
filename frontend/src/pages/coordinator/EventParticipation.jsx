@@ -479,7 +479,7 @@ export default function EventParticipation() {
                         {r.status}
                       </span>
                     </td>
-                    <td data-label="Feedback">{r.feedback ? "Yes" : ""}</td>
+                    <td data-label="Feedback">{r.feedback ? "Yes" : "No feedback yet"}</td>
                     <td data-label="Action">
                       <div className="coord-row-actions">
                         <button type="button" aria-label={`Edit attendance for ${r.name}`} onClick={() => openEditAttendance(r)}>
@@ -524,10 +524,7 @@ export default function EventParticipation() {
       </section>
 
       {/* ── Edit Attendance Modal ── */}
-      {/* Portaled straight onto <body> — see EventManagement.jsx's matching
-          comment: this page's root section carries a page-entrance
-          transform animation, which breaks position:fixed for any
-          descendant rendered inline instead of portaled out. */}
+      {/* Portaled to <body>; the page's entrance transform would break position: fixed. */}
       {editRecord && ReactDOM.createPortal(
         <div className="coord-modal-backdrop" onClick={() => setEditRecord(null)}>
           <div className="coord-modal coord-modal-sm" onClick={e => e.stopPropagation()}>

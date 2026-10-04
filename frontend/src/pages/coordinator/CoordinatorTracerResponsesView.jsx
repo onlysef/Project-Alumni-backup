@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { Modal } from "../../components/common/Primitives.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { CoursePill, EmploymentStatusPill } from "../../components/common/TracerPills.jsx";
 import { API, authHeaders } from "../../services/api.js";
 
 const MAROON = "#570013";
@@ -78,9 +79,7 @@ function RatingsTable({ ratings }) {
 function DetailModal({ response, onClose }) {
   const [questionLabels, setQuestionLabels] = useState({});
 
-  // extra_answers is stored keyed by each custom question's internal id —
-  // fetching the coordinator's own tracer form config (always resolved to
-  // their assigned college server-side) maps id -> current readable label.
+  // Map custom-question ids to their current labels.
   useEffect(() => {
     fetch(`${API}/coordinator/tracer-form-config`, { headers: authHeaders() })
       .then(r => r.json())
@@ -230,10 +229,7 @@ function DetailModal({ response, onClose }) {
   );
 }
 
-// ── Main Page ────────────────────────────────────────────────────────────────
-// Coordinator's own take on the admin Tracer Responses page — same browse/
-// filter/detail flow, scoped to just their assigned college (no college
-// picker; the backend forces it regardless).
+// Main Page
 
 export default function CoordinatorTracerResponsesView() {
   const { showToast } = useOutletContext();
@@ -324,7 +320,7 @@ export default function CoordinatorTracerResponsesView() {
       </div>
 
       <section className="employment-card">
-        <div className="emp-search-row">
+        <div className="emp-search-row tracer-filter-row">
           <input
             type="text"
             className="emp-search"
@@ -332,35 +328,32 @@ export default function CoordinatorTracerResponsesView() {
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
           />
-          <select className="table-filter" style={{ marginBottom: 0, minHeight: 36 }} value={batch} onChange={e => { setBatch(e.target.value); setPage(1); }}>
+          <select className="table-filter tracer-filter-select" value={batch} onChange={e => { setBatch(e.target.value); setPage(1); }}>
             <option value="">All batches</option>
             {batches.map(b => <option key={b} value={b}>Batch {b}</option>)}
           </select>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 12, color: "#76656a", whiteSpace: "nowrap" }}>Date:</span>
+          <div className="tracer-date-range">
+            <span className="tracer-date-label">Date:</span>
             <input
               type="date"
               title="Date submitted from"
               value={dateFrom}
               onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-              className="emp-search"
-              style={{ minWidth: 130, flex: "none" }}
+              className="emp-search tracer-date-input"
             />
-            <span style={{ fontSize: 12, color: "#76656a" }}>–</span>
+            <span className="tracer-date-label">–</span>
             <input
               type="date"
               title="Date submitted to"
               value={dateTo}
               onChange={e => { setDateTo(e.target.value); setPage(1); }}
-              className="emp-search"
-              style={{ minWidth: 130, flex: "none" }}
+              className="emp-search tracer-date-input"
             />
           </div>
           {hasActiveFilters && (
             <button
               type="button"
-              className="see-toggle"
-              style={{ marginTop: 0 }}
+              className="see-toggle tracer-clear-btn"
               onClick={() => {
                 setBatch("");
                 setDateFrom(""); setDateTo("");
@@ -373,24 +366,26 @@ export default function CoordinatorTracerResponsesView() {
           )}
         </div>
 
-        <table className="employment-table" style={{ width: "100%" }}>
+        <table className="employment-table tracer-responses-table" style={{ width: "100%" }}>
           <thead>
             <tr>
               <th>Name</th>
               <th>Course</th>
+              <th>Status</th>
               <th>Date Submitted</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="emp-loading">Loading responses…</td></tr>
+              <tr><td colSpan={5} className="emp-loading">Loading responses…</td></tr>
             ) : responses.length === 0 ? (
-              <tr><td colSpan={4} className="emp-empty">No tracer form submissions found.</td></tr>
+              <tr><td colSpan={5} className="emp-empty">No tracer form submissions found.</td></tr>
             ) : responses.map(r => (
               <tr key={r._id}>
                 <td data-label="Name">{r.name}</td>
-                <td data-label="Course">{r.course || "—"}</td>
+                <td data-label="Course"><CoursePill course={r.course} /></td>
+                <td data-label="Status"><EmploymentStatusPill status={r.employmentStatus} /></td>
                 <td data-label="Date Submitted">{fmtDate(r.submittedAt)}</td>
                 <td data-label="Actions">
                   <button
@@ -411,6 +406,34 @@ export default function CoordinatorTracerResponsesView() {
             ))}
           </tbody>
         </table>
+
+        {/* Mobile-only card list — see admin TracerResponsesView.jsx for why. */}
+        <div className="tracer-response-cards">
+          {loading ? (
+            <p className="emp-loading">Loading responses…</p>
+          ) : responses.length === 0 ? (
+            <p className="emp-empty">No tracer form submissions found.</p>
+          ) : responses.map(r => (
+            <article className="tracer-response-card" key={r._id}>
+              <div className="tracer-response-card-head">
+                <strong>{r.name}</strong>
+                <span className="tracer-response-card-pills">
+                  <CoursePill course={r.course} />
+                  <EmploymentStatusPill status={r.employmentStatus} />
+                </span>
+              </div>
+              <div className="tracer-response-card-date">Submitted {fmtDate(r.submittedAt)}</div>
+              <button
+                type="button"
+                className="tracer-response-card-btn"
+                disabled={detailLoading}
+                onClick={() => handleViewAnswer(r.alumni_id)}
+              >
+                View Answer
+              </button>
+            </article>
+          ))}
+        </div>
 
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",

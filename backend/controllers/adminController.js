@@ -44,6 +44,34 @@ const upload = multer({
 
 const SAFE_FIELDS = '-password -twoFactorOTP -twoFactorOTPExpiry -twoFactorToken -twoFactorTokenExpiry -resetOTP -resetOTPExpiry -resetToken -resetTokenExpiry';
 
+// Reverse of alumniController.js's mapProgramToCourse/mapProgramToTrack.
+// Graduate.program always stores the FULL spelled-out name a tracer
+// submission wrote there ("Bachelor of Science in Information Technology -
+// Specialized in Technical Service Management"), never the short
+// User.course/track codes used in Accounts/import. Every site that seeds or
+// syncs Graduate.program off course/track must go through this instead of
+// writing the bare code directly — that literally happened once (a real
+// alumna's already-submitted full program name got silently replaced with
+// just "BSIT" the next time an admin edited her account for an unrelated
+// reason), which broke her row in every program-grouped stat/chart.
+const COURSE_BASE_NAMES = {
+  BSIT: 'Bachelor of Science in Information Technology',
+  BSCS: 'Bachelor of Science in Computer Science',
+  BSIS: 'Bachelor of Science in Information Systems',
+  BSIM: 'Bachelor of Science in Information Management',
+};
+const TRACK_NAMES = {
+  TSM: 'Technical Service Management',
+  WMA: 'Web and Mobile Application',
+  NA:  'Network Administration',
+};
+function courseCodeToProgramName(course, track) {
+  const base = COURSE_BASE_NAMES[(course || '').toUpperCase()];
+  if (!base) return course || null;
+  const trackName = TRACK_NAMES[(track || '').toUpperCase()];
+  return trackName ? `${base} - Specialized in ${trackName}` : base;
+}
+
 function generateTempPassword() {
   const upper   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const lower   = 'abcdefghijklmnopqrstuvwxyz';
@@ -165,7 +193,7 @@ const createUser = async (req, res) => {
           user_id:       user._id,
           name:          `${userData.firstName} ${userData.lastName}`.trim(),
           email:         userData.email,
-          program:       userData.course || null,
+          program:       courseCodeToProgramName(userData.course, userData.track),
           yearGraduated: userData.graduationYear || null,
         },
         // Graduate.data is a required field (holds the raw tracer-study row
@@ -195,11 +223,52 @@ const createUser = async (req, res) => {
   }
 };
 
-// GET /api/admin/users
+// Fields AccountsView.jsx's mapUser() actually reads — notably NOT
+// avatarUrl. This endpoint used to return every field (minus only the
+// auth/security ones already excluded via SAFE_FIELDS) for EVERY user in
+// the system, unpaginated — avatarUrl is a base64 data URI that can run to
+// 1-2MB of text per row, and AccountsView never even displays it. Hundreds
+// of users meant tens of MB downloaded and immediately discarded on every
+// single load of this page, for nothing.
+const ACCOUNT_LIST_FIELDS = 'firstName middleInitial lastName email role status college course track graduationYear company partnershipId';
+
+// GET /api/admin/users?page=&limit=&search=&role=&status=
 const getUsers = async (req, res) => {
   try {
-    const users = await User.find({}, SAFE_FIELDS).sort({ createdAt: -1 });
-    res.json({ users });
+    const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+    // Capped generously (not at the Accounts table's own ~50/page) — this
+    // endpoint also backs a couple of "pick one from the full list" search
+    // dropdowns (AppointmentsView.jsx's admin-staff and alumnus pickers)
+    // that need every matching account in one call, not one page of them.
+    const limit = Math.min(1000, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const { search, role, status } = req.query;
+
+    const match = {};
+    // Case-insensitive on purpose — the frontend's filter menus show
+    // Title-Case labels ("Alumni", "Active") while role/status are stored
+    // lowercase, and this endpoint shouldn't have to know which casing
+    // convention the caller happens to use.
+    if (role   && !['role', 'all'].includes(role.toLowerCase()))   match.role   = role.toLowerCase();
+    if (status && !['status', 'all'].includes(status.toLowerCase())) match.status = status.toLowerCase();
+    if (search && search.trim()) {
+      const re = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      match.$or = [{ firstName: re }, { lastName: re }, { email: re }, { company: re }];
+    }
+
+    // activeCount/pendingCount are the "X Active / Y Pending" summary tiles.
+    // Scoped to the role filter (so switching the role dropdown to "Alumni"
+    // shows how many alumni accounts are active/pending, not the system-wide
+    // total) but NOT to search/status, since those tiles are always "how
+    // many are Active" / "how many are Pending" regardless of what status
+    // tab or search text the table itself is currently showing.
+    const roleMatch = role && !['role', 'all'].includes(role.toLowerCase()) ? { role: role.toLowerCase() } : {};
+    const [users, total, activeCount, pendingCount] = await Promise.all([
+      User.find(match, ACCOUNT_LIST_FIELDS).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      User.countDocuments(match),
+      User.countDocuments({ ...roleMatch, status: 'active' }),
+      User.countDocuments({ ...roleMatch, status: 'pending' }),
+    ]);
+    res.json({ users, total, totalPages: Math.max(1, Math.ceil(total / limit)), page, activeCount, pendingCount });
   } catch (err) {
     console.error('getUsers error:', err);
     res.status(500).json({ message: 'Server error.' });
@@ -279,18 +348,33 @@ const updateUser = async (req, res) => {
       const deleted = await AlumniEmployment.findOneAndDelete({ alumni_id: req.params.id });
       if (deleted) employmentRemoved = true;
 
-      // Also drop the linked Graduate row (and its RAG chunk) — otherwise an
-      // account promoted to coordinator/admin/employer keeps being counted
-      // as an alumnus in every tracer-study statistic and AC chatbot answer
-      // forever, since Graduate has no role field of its own to filter on.
-      const graduate = await Graduate.findOneAndDelete({
+      // Also drop the account's own tracer submission — otherwise it stays
+      // behind as an orphaned TracerStudyResponse forever (same gap
+      // deleteUser()'s cascade already closes for an actually-deleted
+      // account, just missing here for a role change). The Tracer Dashboard
+      // already filters these out at query time via its own role==='alumni'
+      // guard, so this doesn't change any visible stat — it just stops dead
+      // rows from accumulating for an account that's never going back to
+      // being counted as an alumnus's submission.
+      await TracerStudyResponse.deleteOne({ alumni_id: req.params.id });
+
+      // Also drop the linked Graduate row(s) (and their RAG chunks) —
+      // otherwise an account promoted to coordinator/admin/employer keeps
+      // being counted as an alumnus in every tracer-study statistic and AC
+      // chatbot answer forever, since Graduate has no role field of its own
+      // to filter on. deleteMany, not findOneAndDelete — a person can have
+      // MORE THAN ONE Graduate document (see deleteUser()'s own comment on
+      // this exact gap) — findOneAndDelete only ever removed the first,
+      // silently leaving any duplicate behind still counted as an alumnus.
+      const graduates = await Graduate.find({
         $or: [
           { user_id: req.params.id },
           { $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, existing.email.toLowerCase().trim()] } },
         ],
-      });
-      if (graduate) {
-        await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
+      }).select('_id').lean();
+      if (graduates.length) {
+        await Graduate.deleteMany({ _id: { $in: graduates.map(g => g._id) } });
+        await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': { $in: graduates.map(g => String(g._id)) } });
         answerCache.bumpDataVersion();
       }
     }
@@ -304,14 +388,16 @@ const updateUser = async (req, res) => {
     // name/program/year forever. Matched by user_id first (the reliable FK,
     // unaffected by this edit) with the PRE-update email as a fallback for
     // older rows that predate user_id ever being backfilled onto them.
-    const graduateSyncFields = ['firstName', 'lastName', 'email', 'course', 'graduationYear'];
+    const graduateSyncFields = ['firstName', 'lastName', 'email', 'course', 'track', 'graduationYear'];
     if (finalRole === 'alumni' && graduateSyncFields.some((f) => updates[f] !== undefined)) {
       const graduateSet = {};
       if (updates.firstName !== undefined || updates.lastName !== undefined) {
         graduateSet.name = `${user.firstName} ${user.lastName}`.trim();
       }
-      if (updates.email          !== undefined) graduateSet.email          = user.email;
-      if (updates.course         !== undefined) graduateSet.program        = user.course || null;
+      if (updates.email !== undefined) graduateSet.email = user.email;
+      if (updates.course !== undefined || updates.track !== undefined) {
+        graduateSet.program = courseCodeToProgramName(user.course, user.track);
+      }
       if (updates.graduationYear !== undefined) graduateSet.yearGraduated  = user.graduationYear || null;
       Graduate.findOneAndUpdate(
         { $or: [{ user_id: user._id }, { email: existing.email }] },
@@ -370,19 +456,33 @@ const deleteUser = async (req, res) => {
       Job.updateMany({ postedBy: req.params.id, status: 'open' }, { status: 'closed' }),
       (async () => {
         if (!user.email) return;
+        // deleteMany, not findOneAndDelete — a person can have MORE THAN ONE
+        // Graduate document (repeated bulk-import files over time create a
+        // new row rather than merging into an existing one; aggregationService
+        // .js's shared DEDUP stage papers over the duplicates for ordinary
+        // queries by always picking the newest one). findOneAndDelete here
+        // only ever removed the FIRST match, silently leaving any OTHER
+        // duplicate row behind as a permanent orphan — still counted in
+        // every tracer-study statistic and AC chatbot answer forever, for an
+        // account that no longer exists. Caught live: a deleted "Sample
+        // Only" test account's Graduate row kept showing up in batch-2023
+        // headcounts (48) while its own employment-rate denominator (47,
+        // respondents only) correctly excluded it, reading as two
+        // disagreeing answers for the same real bug.
         // Prefer the indexed user_id FK (set whenever a live tracer/employment
         // action touched this record); Graduate.email isn't schema-normalized
         // to lowercase (bulk-imported rows keep the source spreadsheet's
         // original casing), so an exact match there would still silently miss
         // records — kept as a fallback for rows that predate user_id.
-        const graduate = await Graduate.findOneAndDelete({
+        const graduates = await Graduate.find({
           $or: [
             { user_id: req.params.id },
             { $expr: { $eq: [{ $toLower: { $ifNull: ['$email', ''] } }, user.email.toLowerCase().trim()] } },
           ],
-        });
-        if (graduate) {
-          await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduate._id) });
+        }).select('_id').lean();
+        if (graduates.length) {
+          await Graduate.deleteMany({ _id: { $in: graduates.map(g => g._id) } });
+          await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': { $in: graduates.map(g => String(g._id)) } });
         }
       })(),
     ]);
@@ -562,7 +662,7 @@ const importUsers = async (req, res) => {
           user_id:       user._id,
           name:          `${user.firstName} ${user.lastName}`.trim(),
           email:         user.email,
-          program:       user.course || null,
+          program:       courseCodeToProgramName(user.course, user.track),
           yearGraduated: user.graduationYear || null,
         },
         $setOnInsert: { data: {} },

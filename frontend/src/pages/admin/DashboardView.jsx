@@ -2,6 +2,7 @@
 import { useOutletContext } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
 import { Dropdown } from "../../components/common/Primitives.jsx";
+import acLogo from "../../assets/images/ac-logo.png";
 
 import { API, authHeaders } from "../../services/api.js";
 
@@ -13,10 +14,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-// Module-level, not state — survives this component unmounting when the
-// admin navigates away and back, so returning to the Dashboard shows the
-// last-known numbers instantly instead of flashing "—" again while a fresh
-// copy loads silently in the background.
+// Module-level cache so returning to the page shows the last numbers instantly.
 let cachedTotalUsers = null;
 let cachedActiveCount = null;
 let cachedInactiveCount = null;
@@ -35,22 +33,15 @@ export default function DashboardView() {
 
     async function fetchTotalUsers() {
       try {
-        const res = await fetch(`${API}/admin/users`, { headers: authHeaders() });
+        // /admin/users is paginated; use its server-computed totals, not users.length.
+        const res = await fetch(`${API}/admin/users?limit=1`, { headers: authHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        const users = data.users || [];
-        // "Total Users" is every account regardless of status — the
-        // Active/Inactive tiles right next to it are the meaningful
-        // breakdown of that same total, so this must include everyone they
-        // add up to, not just the active subset (an earlier version of this
-        // tile only counted active accounts on its own, which made it
-        // silently equal the Active tile once that was added).
         // "Inactive" = anything that isn't 'active' (pending activation OR
         // suspended) — the User model only has these 3 statuses.
-        const active = users.filter(u => u.status === "active").length;
-        cachedTotalUsers    = users.length;
-        cachedActiveCount   = active;
-        cachedInactiveCount = users.length - active;
+        cachedTotalUsers    = data.total || 0;
+        cachedActiveCount   = data.activeCount || 0;
+        cachedInactiveCount = cachedTotalUsers - cachedActiveCount;
         setTotalUsers(cachedTotalUsers);
         setActiveCount(cachedActiveCount);
         setInactiveCount(cachedInactiveCount);
@@ -68,9 +59,6 @@ export default function DashboardView() {
     const cached = cachedPostActivities.get(activityWindow);
     if (cached) { setPostActivities(cached); setActivitiesLoading(false); }
     else setActivitiesLoading(true);
-    // Admin actions (export/print/etc.) + alumni tracer submissions —
-    // deliberately not post like/comment/share activity, which belongs in
-    // the notification bell instead of this feed.
     async function fetchActivities() {
       try {
         const limit = activityWindow === "all" ? 50 : 25;
@@ -226,8 +214,8 @@ function Assistant({ showToast }) {
     <section className={`panel${collapsedPanel ? " assistant-collapsed" : ""}`}>
       <div className="panel-head">
         <div className="left-title">
-          <span className="tiny-logo">AC</span>
-          <span>AC - Assistant</span>
+          <img className="tiny-logo" src={acLogo} alt="" />
+          <span>ATREIA - Assistant</span>
         </div>
         <span style={{ position: "relative" }}>
           <button
@@ -284,7 +272,7 @@ function Assistant({ showToast }) {
       <div className={`assistant-body${thinking ? " is-thinking" : ""}`}>
         {messages.map((m, i) => (
           <div className={m.type === "user" ? "chat-row user" : "chat-row"} key={i}>
-            {m.type === "bot" && <div className="bot">AC</div>}
+            {m.type === "bot" && <img className="bot" src={acLogo} alt="ATREIA" />}
             <div>
               <div className="bubble" style={{ whiteSpace: "pre-line" }}>{m.text}</div>
               <div className="chat-time">{m.time}</div>

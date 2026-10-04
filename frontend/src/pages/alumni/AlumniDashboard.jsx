@@ -27,10 +27,6 @@ function EventImage({ date, second = false, image, title }) {
   if (image) {
     return <div className="announcement-image"><img src={image} alt={title || ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} /></div>;
   }
-  // No real photo uploaded for this event — a plain gradient placeholder
-  // with just the date badge (no fake caption text, which used to be a
-  // hardcoded "CCS ALUMNI CAREER TALK" string baked into the CSS and shown
-  // for every event regardless of what it actually was).
   return <div className={`announcement-image event-image${second ? " second" : ""}`}><div className="event-people"><i /><i /><i /></div><span>{date}</span></div>;
 }
 
@@ -45,13 +41,7 @@ function fmtEventTime(ev) {
   return `${start} - ${new Date(ev.end_datetime).toLocaleTimeString("en-PH", opts)}`;
 }
 
-// Same "ended" definition as coordinator/EventManagement.jsx's computeStatus()
-// and the backend's feedbackController.isEventEnded() — an event that has
-// started but not yet reached its end (or end-of-start-day, with no
-// end_datetime) is still ongoing, not "completed". Splitting on bare
-// event_datetime instead used to drop a same-day event into "Recently
-// Completed" — hidden from the default Events section — the moment its
-// start time passed, even while it was still actively running.
+// Same "ended" rule as EventManagement's computeStatus and the backend's isEventEnded.
 function isEventOver(ev) {
   const start = new Date(ev.event_datetime);
   const end = ev.end_datetime
@@ -61,7 +51,7 @@ function isEventOver(ev) {
 }
 
 export default function AlumniDashboard() {
-  const { section = "home", sidebarCollapsed = false } = useOutletContext() || {};
+  const { section = "home", sidebarCollapsed = false, showToast } = useOutletContext() || {};
   const location = useLocation();
   const navigate = useNavigate();
   const filter = section === "jobconnect" ? "Job Postings" : (new URLSearchParams(location.search).get("filter") || "All");
@@ -78,10 +68,14 @@ export default function AlumniDashboard() {
 }
 
 function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
+  const { user } = useAuth();
   const [modal, setModal] = useState(null);
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(true);
-  const [commentsModal, setCommentsModal] = useState(null);
+  // Per-post comment threads, shared by the inline view and the post viewer.
+  const [threads, setThreads] = useState({});
+  const [viewerId, setViewerId] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { annId, commentId }
   const [appliedUrls, setAppliedUrls] = useState([]);
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -102,9 +96,6 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
       .then((r) => r.json())
       .then((d) => setSavedJobs(d.jobs || []))
       .catch(() => {});
-    // Was never loaded at all — every job card on this page rendered as if
-    // nothing had been applied to yet, even for jobs the alumnus already
-    // applied to here or on Job Connect (which does load this correctly).
     fetch(`${API}/alumni/applications`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => setAppliedUrls((d.applications || []).map((a) => a.url)))
@@ -139,12 +130,21 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   }, []);
 
   async function toggleRemind(ev) {
+    if (!ev.isInterestedByMe && isEventOver(ev)) {
+      showToast?.("This event has already ended.");
+      return;
+    }
     // Optimistic flip, same pattern as toggleLikeNews.
     setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: !e.isInterestedByMe, interested_count: e.interested_count + (e.isInterestedByMe ? -1 : 1) } : e));
     try {
       const res  = await fetch(`${API}/alumni/events/${ev._id}/interested`, { method: "POST", headers: authHeaders() });
       const data = await res.json();
-      if (res.ok) setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: data.interested } : e));
+      if (res.ok) {
+        setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: data.interested } : e));
+      } else {
+        setEvents((prev) => prev.map((e) => e._id === ev._id ? { ...e, isInterestedByMe: ev.isInterestedByMe, interested_count: ev.interested_count } : e));
+        showToast?.(data.message || "Couldn't update your interest for this event.");
+      }
     } catch { /* keep optimistic state on network failure */ }
   }
 
@@ -217,12 +217,6 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
   }
 
   async function shareNews(ann) {
-    // "Share" silently incrementing a counter with no visible action felt
-    // broken — use the real native share sheet where supported, or copy a
-    // shareable summary to the clipboard as a fallback, so something the
-    // user can actually see/use happens before the count is recorded. This
-    // action itself can run every time (sharing the same post to a second
-    // friend is normal) — only the count/tracking below is one-time.
     const shareText = `${ann.title}\n\n${ann.description}`;
     try {
       if (navigator.share) {
@@ -244,22 +238,40 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     } catch { /* keep optimistic state on network failure */ }
   }
 
-  async function openComments(ann) {
-    setCommentsModal({ announcement: ann, comments: [], loading: true, text: "", submitting: false });
+  const patchThread = (annId, patch) =>
+    setThreads((t) => ({ ...t, [annId]: { ...t[annId], ...(typeof patch === "function" ? patch(t[annId]) : patch) } }));
+
+  // Fetches once per post; reopening an already-loaded thread reuses it.
+  async function loadThread(annId) {
+    if (threads[annId]?.loaded || threads[annId]?.loading) return;
+    patchThread(annId, { comments: [], loading: true, text: threads[annId]?.text || "", submitting: false });
     try {
-      const res  = await fetch(`${API}/alumni/announcements/${ann._id}/comments`, { headers: authHeaders() });
+      const res  = await fetch(`${API}/alumni/announcements/${annId}/comments`, { headers: authHeaders() });
       const data = await res.json();
-      setCommentsModal((m) => (m && m.announcement._id === ann._id) ? { ...m, comments: data.comments || [], loading: false } : m);
+      patchThread(annId, { comments: data.comments || [], loading: false, loaded: res.ok });
     } catch {
-      setCommentsModal((m) => m ? { ...m, loading: false } : m);
+      patchThread(annId, { loading: false });
     }
   }
 
-  async function submitComment() {
-    if (!commentsModal?.text?.trim() || commentsModal.submitting) return;
-    const annId = commentsModal.announcement._id;
-    const text  = commentsModal.text.trim();
-    setCommentsModal((m) => ({ ...m, submitting: true }));
+  // "Comment" / "N comments" expand the thread right under the post.
+  function toggleInlineComments(ann) {
+    const willOpen = !threads[ann._id]?.open;
+    patchThread(ann._id, { open: willOpen });
+    if (willOpen) loadThread(ann._id);
+  }
+
+  // Clicking the post's picture opens the full post viewer instead.
+  function openPostViewer(ann) {
+    setViewerId(ann._id);
+    loadThread(ann._id);
+  }
+
+  async function submitComment(annId) {
+    const thread = threads[annId];
+    if (!thread?.text?.trim() || thread.submitting) return;
+    const text = thread.text.trim();
+    patchThread(annId, { submitting: true });
     try {
       const res  = await fetch(`${API}/alumni/announcements/${annId}/comment`, {
         method: "POST",
@@ -267,13 +279,53 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
-      if (!res.ok) { setCommentsModal((m) => ({ ...m, submitting: false })); return; }
-      setCommentsModal((m) => (m && m.announcement._id === annId) ? { ...m, comments: [...m.comments, data.comment], text: "", submitting: false } : m);
+      if (!res.ok) { patchThread(annId, { submitting: false }); return; }
+      patchThread(annId, (t) => ({ comments: [...(t?.comments || []), data.comment], text: "", submitting: false }));
       setNews((prev) => prev.map((a) => a._id === annId ? { ...a, commentsCount: data.commentsCount } : a));
     } catch {
-      setCommentsModal((m) => m ? { ...m, submitting: false } : m);
+      patchThread(annId, { submitting: false });
     }
   }
+
+  // Resolves true on success so the thread knows whether to leave edit mode —
+  // on failure the alumnus keeps their unsaved text and can retry.
+  async function editComment(annId, commentId, text) {
+    try {
+      const res  = await fetch(`${API}/alumni/announcements/${annId}/comment/${commentId}`, {
+        method: "PUT", headers: authHeaders(), body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok) return false;
+      patchThread(annId, (t) => ({ comments: (t?.comments || []).map((c) => c._id === commentId ? { ...c, ...data.comment } : c) }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function deleteComment({ annId, commentId }) {
+    try {
+      const res  = await fetch(`${API}/alumni/announcements/${annId}/comment/${commentId}`, {
+        method: "DELETE", headers: authHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) return;
+      patchThread(annId, (t) => ({ comments: (t?.comments || []).filter((c) => c._id !== commentId) }));
+      setNews((prev) => prev.map((a) => a._id === annId ? { ...a, commentsCount: data.commentsCount } : a));
+    } catch {
+      // Silently ignored — the comment simply stays visible, and the alumnus can retry.
+    }
+  }
+
+  const threadProps = (annId) => ({
+    thread: threads[annId] || { comments: [], loading: true, text: "" },
+    currentUserId: user?.id,
+    onChangeText: (text) => patchThread(annId, { text }),
+    onSubmit: () => submitComment(annId),
+    onEdit: (commentId, text) => editComment(annId, commentId, text),
+    onDelete: (commentId) => setDeleteTarget({ annId, commentId }),
+  });
+  const viewerAnn = viewerId ? news.find((a) => a._id === viewerId) : null;
 
   const visible = (type) => filter === "All" || filter === type;
   const setFilter = (item) => navigate(item === "All" ? "/alumni/dashboard?section=announcements" : `/alumni/dashboard?section=announcements&filter=${encodeURIComponent(item)}`);
@@ -284,11 +336,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     action: "Go to Job Connect",
     onAction: () => navigate("/alumni/dashboard?section=jobconnect"),
   });
-  // The shared JobCard's "Apply now" is a real <a href={job.url}
-  // target="_blank"> — the browser already opens the real Careerjet
-  // posting on click, so this only needs to log it (same as Job Connect's
-  // own Apply button) so it shows up in "Your Applications" too, instead of
-  // a separate fake "submitted" toast that recorded nothing.
+  // "Apply now" already opens the posting; this just logs the application.
   const applyJob = (job) => {
     if (!appliedUrls.includes(job.url)) {
       setAppliedUrls(prev => [...prev, job.url]);
@@ -334,7 +382,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
             {ann.location && <p className="announcement-location">📍 {ann.location}</p>}
           </div>
           {ann.imageUrl
-            ? <div className="news-post-media"><img src={ann.imageUrl} alt="" /></div>
+            ? <button type="button" className="news-post-media is-clickable" aria-label={`Open post: ${ann.title}`} onClick={() => openPostViewer(ann)}><img src={ann.imageUrl} alt="" /></button>
             : <div className="news-post-media logo-fallback"><img src={alumniLogo} alt="" /></div>}
           {(ann.likesCount > 0 || ann.commentsCount > 0 || ann.sharesCount > 0) && (
             <div className="news-post-counts">
@@ -342,16 +390,21 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
                 {ann.likesCount > 0 && <><SocialActionIcon type="like" />{ann.likesCount}</>}
               </span>
               <span className="news-post-cs">
-                {ann.commentsCount > 0 && <button type="button" onClick={() => openComments(ann)}>{ann.commentsCount} comment{ann.commentsCount === 1 ? "" : "s"}</button>}
+                {ann.commentsCount > 0 && <button type="button" onClick={() => toggleInlineComments(ann)}>{ann.commentsCount} comment{ann.commentsCount === 1 ? "" : "s"}</button>}
                 {ann.sharesCount > 0 && <span>{ann.sharesCount} share{ann.sharesCount === 1 ? "" : "s"}</span>}
               </span>
             </div>
           )}
           <div className="news-post-actions">
             <button className={`meta-action${ann.isLikedByMe ? " active" : ""}`} type="button" onClick={() => toggleLikeNews(ann)}><SocialActionIcon type="like" />Like</button>
-            <button className="meta-action" type="button" onClick={() => openComments(ann)}><SocialActionIcon type="comment" />Comment</button>
+            <button className={`meta-action${threads[ann._id]?.open ? " active" : ""}`} type="button" aria-expanded={!!threads[ann._id]?.open} onClick={() => toggleInlineComments(ann)}><SocialActionIcon type="comment" />Comment</button>
             <button className={`meta-action${ann.isSharedByMe ? " active" : ""}`} type="button" onClick={() => shareNews(ann)}><SocialActionIcon type="share" />Share</button>
           </div>
+          {threads[ann._id]?.open && (
+            <div className="news-post-comments">
+              <CommentThread {...threadProps(ann._id)} autoFocus />
+            </div>
+          )}
         </article>
       ))}
     </section>}
@@ -360,9 +413,6 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
       {jobsLoading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading job postings…</p>}
       {!jobsLoading && jobPostings.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No matching job postings yet — complete your Alumni Profile to get recommendations.</p>}
       {!jobsLoading && jobPostings.length > 0 && (
-        // Reuses Job Connect's own card sizing (scoped under .job-connect-page)
-        // so this preview looks identical to the real list, not a smaller
-        // hand-tuned variant that can drift out of sync with it.
         <div className="job-connect-page">
           <div className="job-connect-list">
             {jobPostings.slice(0, filter === "Job Postings" ? jobPostings.length : 3).map((job) => (
@@ -395,7 +445,7 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
         />
       ))}
       {filter === "Events" && completedEvents.length > 0 && <>
-        <h3 className="recent-title">Recently Completed</h3>
+        <h3 className="recent-title">Past Events</h3>
         {completedEvents.map((ev) => (
           <article className="completed-event" key={ev._id}>
             <EventImage date={fmtEventDate(ev.event_datetime)} image={ev.image} title={ev.title} />
@@ -418,21 +468,32 @@ function AnnouncementsPage({ filter, sidebarCollapsed, navigate }) {
     {responseModal && (
       <EventFeedbackResponseModal state={responseModal} onClose={() => setResponseModal(null)} />
     )}
-    {commentsModal && (
-      <CommentsModal
-        state={commentsModal}
-        onClose={() => setCommentsModal(null)}
-        onChangeText={(text) => setCommentsModal((m) => ({ ...m, text }))}
-        onSubmit={submitComment}
+    {viewerAnn && (
+      <PostViewerModal
+        ann={viewerAnn}
+        onClose={() => setViewerId(null)}
+        onLike={() => toggleLikeNews(viewerAnn)}
+        onShare={() => shareNews(viewerAnn)}
+        threadProps={threadProps(viewerAnn._id)}
       />
+    )}
+    {deleteTarget && ReactDOM.createPortal(
+      <div className="alumni-confirm-overlay" role="dialog" aria-modal="true" aria-label="Delete comment">
+        <div className="alumni-confirm-card">
+          <h3>Delete comment?</h3>
+          <p>This can't be undone.</p>
+          <div className="alumni-confirm-actions">
+            <button type="button" className="alumni-confirm-cancel" onClick={() => setDeleteTarget(null)}>Cancel</button>
+            <button type="button" className="alumni-confirm-delete" onClick={() => { deleteComment(deleteTarget); setDeleteTarget(null); }}>Delete</button>
+          </div>
+        </div>
+      </div>,
+      document.body
     )}
   </div>;
 }
 
-// Module-level, not state — survives this component unmounting when the
-// alumnus navigates away and back, so returning Home shows the last-known
-// summary instantly instead of flashing "…" again while a fresh copy loads
-// silently in the background.
+// Module-level cache so returning Home shows the last summary instantly.
 let cachedHomeSummary = null;
 
 function AlumniHome({ navigate }) {
@@ -455,11 +516,6 @@ function AlumniHome({ navigate }) {
         .catch((err) => console.error("AlumniHome: could not load home summary", err))
         .finally(() => setSummaryLoading(false));
     }
-    // This only ran once on mount before — an alumnus who stays on the Home
-    // page while an admin posts a new announcement (or they update their own
-    // employment record from elsewhere) never saw the quick-stat cards or
-    // profile ring change until a full page reload. Poll for the same reason
-    // the topbar notifications and tracer form config already do.
     fetchSummary();
     const interval = setInterval(fetchSummary, 30000);
     return () => clearInterval(interval);
@@ -486,7 +542,7 @@ function AlumniHome({ navigate }) {
       </div>
       <div className="alumni-welcome-badge" aria-hidden="true">
         <img src={alumniLogo} alt="" />
-        <strong>TSU Alumni Association Inc.</strong>
+        <strong>TSU Alumni Association, Inc.</strong>
         <span>Connected - Updated - Career-ready</span>
       </div>
     </section>
@@ -587,10 +643,7 @@ function EventCard({ title, text, time, place, date, second, image, reminded = f
   return <article className="announcement-card event-card"><EventImage date={date} second={second} image={image} title={title} /><div className="announcement-body"><button className={`card-bell${reminded ? " active" : ""}`} type="button" onClick={onReminder} aria-label={reminded ? "Remove reminder" : "Set reminder"}>{reminded ? "On" : "Remind"}</button><h2>{title}</h2><p>{text}</p><div className="event-detail">Time: <b>{time}</b></div><div className="event-detail">Location: <b>{place}</b></div><div className="event-detail">Feedback: <b>Not Available</b></div><button className="primary-card-btn next-btn" type="button" onClick={onDetails}><span>View Details</span><Icon name="icon-arrow-right" /></button></div></article>;
 }
 
-// Drives the status pill + action button on a "Recently Completed" event
-// card — entirely from what the backend already resolved (ev.attended,
-// ev.feedbackStatus). Never independently re-derives "has this ended" or
-// "did they attend" on the frontend — the backend is the actual gate.
+// Driven entirely by the backend-resolved ev.attended / ev.feedbackStatus.
 function EventFeedbackAction({ event, onGiveFeedback, onViewResponse }) {
   if (event.feedbackStatus === "submitted") {
     return <div className="completed-event-feedback">
@@ -631,16 +684,7 @@ function StarRating({ label, value, onChange, size = "md", readOnly = false }) {
   </div>;
 }
 
-// Portaled straight onto <body> (not rendered inline in the page tree) —
-// .alumni-page-content and its ancestors carry the page's own entrance
-// animation, which briefly (and on some layouts, persistently) puts a
-// `transform` on that ancestor. Any `position: fixed` descendant of an
-// element with an active transform is repositioned relative to THAT
-// ancestor's box instead of the viewport, per the CSS spec's containing-
-// block rules — so the overlay could render centered on the full scrolled
-// page height instead of the visible viewport, needing a scroll to find it.
-// Portaling out from under that ancestor sidesteps the whole problem, same
-// pattern as the shared Modal in Primitives.jsx.
+// Portaled to <body>; an ancestor's transform would break position: fixed.
 function EventFeedbackFormModal({ state, onClose, onChange, onSubmit }) {
   const { event, rating, ratings, comments, submitting, error } = state;
   return ReactDOM.createPortal(
@@ -716,21 +760,67 @@ function ActionModal({ modal, onClose }) {
 
 const COMMENT_EMOJIS = ["😀", "😂", "😍", "👍", "❤️", "🎉"];
 
-function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
-  const { announcement, comments, loading, text, submitting } = state;
-  return ReactDOM.createPortal(
-    <div className="alumni-action-overlay" role="dialog" aria-modal="true" aria-label="Comments">
-    <div className="alumni-action-modal" style={{ display: "flex", flexDirection: "column", maxHeight: "78vh" }}>
-      <div><span>Comments</span><h2 style={{ marginBottom: 0 }}>{announcement.title}</h2></div>
-      <div style={{ flex: 1, overflowY: "auto", margin: "12px 0", minHeight: 60 }}>
-        {loading && <p style={{ color: "#76656a", fontSize: 13 }}>Loading…</p>}
-        {!loading && comments.length === 0 && <p style={{ color: "#76656a", fontSize: 13 }}>No comments yet. Be the first!</p>}
-        {comments.map((c, i) => (
-          <div className="comment-row" key={c._id || i}>
-            <i>{(c.userName || "?")[0]}</i>
-            <p><b>{c.userName}</b><br />{c.text}</p>
-          </div>
-        ))}
+// Comment list + composer, used inline and in PostViewerModal.
+function CommentThread({ thread, currentUserId, onChangeText, onSubmit, onDelete, onEdit, autoFocus = false }) {
+  const { comments = [], loading, text = "", submitting } = thread;
+  const [editing, setEditing] = useState(null); // { id, text, saving }
+
+  async function saveEdit() {
+    if (!editing?.text.trim() || editing.saving) return;
+    setEditing((ed) => ({ ...ed, saving: true }));
+    const ok = await onEdit(editing.id, editing.text.trim());
+    setEditing((ed) => ok ? null : ed && { ...ed, saving: false });
+  }
+
+  return (
+    <div className="comment-thread">
+      <div className="comment-thread-list">
+        {loading && <p className="comment-thread-empty">Loading…</p>}
+        {!loading && comments.length === 0 && <p className="comment-thread-empty">No comments yet. Be the first!</p>}
+        {comments.map((c, i) => {
+          const isMine = currentUserId && String(c.user?._id || c.user || "") === String(currentUserId);
+          return (
+            <div className="comment-row" key={c._id || i}>
+              {c.avatarUrl ? (
+                <img className="comment-row-avatar" src={c.avatarUrl} alt={c.userName || "Commenter"} />
+              ) : (
+                <i>{(c.userName || "?")[0]}</i>
+              )}
+              <div className="comment-row-body">
+                {editing?.id === c._id ? (
+                  <div className="comment-row-edit">
+                    <b>{c.userName}</b>
+                    <textarea
+                      rows={2}
+                      value={editing.text}
+                      onChange={(e) => setEditing((ed) => ({ ...ed, text: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                        if (e.key === "Escape") { e.stopPropagation(); setEditing(null); }
+                      }}
+                      autoFocus
+                    />
+                    <div className="comment-row-edit-actions">
+                      <button type="button" onClick={() => setEditing(null)}>Cancel</button>
+                      <button type="button" className="primary" disabled={editing.saving || !editing.text.trim()} onClick={saveEdit}>
+                        {editing.saving ? "Saving…" : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p><b>{c.userName}</b><br />{c.text}</p>
+                )}
+                {(isMine || c.editedAt) && editing?.id !== c._id && (
+                  <div className="comment-row-actions">
+                    {c.editedAt && <span className="comment-row-edited">Edited</span>}
+                    {isMine && <button type="button" onClick={() => setEditing({ id: c._id, text: c.text, saving: false })}>Edit</button>}
+                    {isMine && <button type="button" className="danger" onClick={() => onDelete(c._id)}>Delete</button>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
       <div className="alumni-comment-composer">
         <div className="alumni-comment-emojis" aria-label="Add emoji">
@@ -746,14 +836,63 @@ function CommentsModal({ state, onClose, onChangeText, onSubmit }) {
           onChange={(e) => onChangeText(e.target.value)}
           placeholder="Write a comment…"
           onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); }}
+          autoFocus={autoFocus}
         />
         <button type="button" className="primary-card-btn" disabled={submitting || !text.trim()} onClick={onSubmit}>Send</button>
       </div>
-      <div className="alumni-action-modal-buttons">
-        <button type="button" className="details-btn" onClick={onClose}>Close</button>
-      </div>
     </div>
-  </div>,
+  );
+}
+
+function PostViewerModal({ ann, onClose, onLike, onShare, threadProps }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return ReactDOM.createPortal(
+    <div className="alumni-action-overlay post-viewer-overlay" role="dialog" aria-modal="true" aria-label={ann.title} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="post-viewer-modal">
+        <button type="button" className="post-viewer-close" aria-label="Close" onClick={onClose}>×</button>
+        <div className="post-viewer-media">
+          <img src={ann.imageUrl} alt={ann.title} />
+        </div>
+        <div className="post-viewer-side">
+          <header className="news-post-head">
+            <span className="news-post-avatar"><img src={alumniLogo} alt="" /></span>
+            <div className="news-post-byline">
+              <b>TSU Alumni Association Office</b>
+              <span>
+                {new Date(ann.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "2-digit" })}
+                {" · "}<span className="news-post-tag">{ann.type}</span>
+              </span>
+            </div>
+          </header>
+          <div className="news-post-text">
+            <h2>{ann.title}</h2>
+            <p>{ann.description}</p>
+            {ann.location && <p className="announcement-location">📍 {ann.location}</p>}
+          </div>
+          <div className="news-post-counts">
+            <span className="news-post-likes">
+              {ann.likesCount > 0 && <><SocialActionIcon type="like" />{ann.likesCount}</>}
+            </span>
+            <span className="news-post-cs">
+              {ann.commentsCount > 0 && <span>{ann.commentsCount} comment{ann.commentsCount === 1 ? "" : "s"}</span>}
+              {ann.sharesCount > 0 && <span>{ann.sharesCount} share{ann.sharesCount === 1 ? "" : "s"}</span>}
+            </span>
+          </div>
+          <div className="news-post-actions">
+            <button className={`meta-action${ann.isLikedByMe ? " active" : ""}`} type="button" onClick={onLike}><SocialActionIcon type="like" />Like</button>
+            <button className={`meta-action${ann.isSharedByMe ? " active" : ""}`} type="button" onClick={onShare}><SocialActionIcon type="share" />Share</button>
+          </div>
+          <div className="news-post-comments">
+            <CommentThread {...threadProps} />
+          </div>
+        </div>
+      </div>
+    </div>,
     document.body
   );
 }

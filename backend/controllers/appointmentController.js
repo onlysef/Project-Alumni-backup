@@ -4,6 +4,8 @@ const Appointment    = require('../models/Appointment');
 const User           = require('../models/User');
 const Notification   = require('../models/Notification');
 const { escapeRegex } = require('../utils/escapeRegex');
+const { sendAppointmentScheduledEmail } = require('../utils/emailService');
+const { phDateTime, todayInPH } = require('../utils/phTime');
 
 function toMinutes(t) {
   if (!t) return 0;
@@ -12,9 +14,7 @@ function toMinutes(t) {
 }
 
 function isPastDateTime(dateStr, timeStr) {
-  const [y, mo, d] = dateStr.split('-').map(Number);
-  const [h, mi] = (timeStr || '00:00').split(':').map(Number);
-  return new Date(y, mo - 1, d, h, mi).getTime() < Date.now();
+  return phDateTime(dateStr, timeStr).getTime() < Date.now();
 }
 
 // "YYYY-MM-DD" + "HH:MM" → "Jul 28, 2026 · 8:30 AM", matching the format
@@ -33,8 +33,7 @@ function formatApptDateTime(dateStr, timeStr) {
 // the time they booked. Sweep those to "Missed" so the coordinator queue
 // only shows requests that can still be acted on.
 async function expireStalePendingAppointments() {
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = todayInPH();
   const candidates = await Appointment.find({
     status: 'Pending',
     appointment_date: { $lte: todayStr },
@@ -208,8 +207,7 @@ async function createAppointmentRecord({ alumni_id, alumni_name, staff_id, appoi
     // closure) — it must not block booking a future date the office will
     // actually be open for. A planned future closure belongs in `holidays`
     // instead; see that check right below.
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayStr = todayInPH();
     if (settings.office_status === 'Closed' && appointment_date === todayStr) {
       return { ok: false, status: 400, message: 'The office is closed today. Appointments cannot be booked for today, but you can still book a future date.' };
     }
@@ -266,6 +264,34 @@ async function createAppointmentRecord({ alumni_id, alumni_name, staff_id, appoi
   const populated = await Appointment.findById(appointment._id)
     .populate('staff_id',  'name role status')
     .populate('alumni_id', 'firstName lastName email');
+
+  // Neither an in-app Notification nor an email ever went out when an
+  // appointment was created — an alumnus who booked for themselves at least
+  // saw an on-screen confirmation, but one an ADMIN/coordinator set up on
+  // their behalf had no way to find out about it at all until they happened
+  // to check their own Appointments page. Both are fire-and-forget: a
+  // failed notification/email is never a reason to fail the booking that
+  // already succeeded.
+  if (populated.alumni_id) {
+    const when = formatApptDateTime(appointment_date, appointment_time);
+    Notification.create({
+      user_id: populated.alumni_id._id,
+      title:   'Appointment Scheduled',
+      message: `An appointment with ${staff.name} has been scheduled for ${when}${populated.purpose ? ` (${populated.purpose})` : ''}. Status: Pending.`,
+      is_read: false,
+      type:    'appointment',
+    }).catch(() => {});
+
+    if (populated.alumni_id.email) {
+      sendAppointmentScheduledEmail(
+        populated.alumni_id.email,
+        `${populated.alumni_id.firstName} ${populated.alumni_id.lastName}`,
+        staff.name,
+        when,
+        populated.purpose,
+      ).catch(() => {});
+    }
+  }
 
   return { ok: true, appointment: populated };
 }

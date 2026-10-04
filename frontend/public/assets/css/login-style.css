@@ -106,14 +106,15 @@ body {
   position: static;
   text-align: center;
   padding: 12px 16px;
-  color: var(--frame);
+  color: #fff;
   font-family: 'Manrope', sans-serif;
   font-size: 10px;
   font-weight: 700;
   line-height: 15px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  opacity: 0.4;
+  opacity: 0.92;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
 
 /* Right shell — login panel */
@@ -219,6 +220,22 @@ label {
   transform: translateY(-50%);
   color: var(--gray-text);
   pointer-events: none;
+}
+
+/* Without an explicit appearance reset, mobile WebKit (iOS Safari, in-app
+   browsers like Messenger) ignores a select's padding-left and renders its
+   own chrome, which visually collides with the absolutely-positioned
+   .input-icon on top of it. Desktop browsers mostly honor padding-left
+   regardless of appearance, so this bug is mobile-only and easy to miss
+   testing on desktop. */
+.input-wrap select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 16px center;
+  background-size: 16px;
 }
 
 input[type="email"],
@@ -339,6 +356,47 @@ input::placeholder {
 }
 
 #info-modal-content p { margin: 0 0 14px; }
+
+/* About Us — official TSU Facebook pages + website, under the modal copy. */
+.info-modal-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #eee3e6;
+}
+
+.info-modal-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #e2d3d7;
+  border-radius: 999px;
+  color: var(--maroon);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.info-modal-links a:hover,
+.info-modal-links a:focus-visible {
+  border-color: var(--maroon);
+  background: #f7eef0;
+  outline: none;
+}
+
+.info-modal-links svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Facebook's own blue on its logo so the two FB links read at a glance. */
+.info-modal-links a[href*="facebook.com"] svg { color: #1877f2; }
 
 .info-modal-close {
   position: absolute;
@@ -489,7 +547,7 @@ body {
   overflow-y: auto;
   background:
     linear-gradient(rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.08)),
-    url('/assets/images/alumni-office.jpg') center / cover no-repeat fixed;
+    url('/assets/images/alumni-center.jpg?v=2') center / cover no-repeat fixed;
 }
 
 body::before {
@@ -613,7 +671,7 @@ input[type="text"] {
   .login-footer {
     max-width: none;
     padding: 14px 28px;
-    color: #4d3d3f;
+    color: #fff;
     text-align: center;
   }
 }
@@ -691,7 +749,7 @@ input[type="text"] {
     max-width: none;
     margin: 0 auto;
     padding: 12px 0;
-    color: #4d3d3f;
+    color: #fff;
     text-align: center;
   }
 }
@@ -988,4 +1046,230 @@ input[type="text"] {
     width: 100%;
     height: 100%;
   }
+}
+
+/* Background video crossfade (see /assets/js/bg-video.js); the <body> photo is the fallback. */
+.page-bg-video {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+body::before {
+  z-index: 2;
+}
+
+.page {
+  z-index: 3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-bg-video {
+    display: none;
+  }
+}
+
+/* Desktop: size the glass card to its content instead of ~88% of the
+   viewport, which left large empty bands above and below the panels. */
+@media (min-width: 1051px) {
+  .card {
+    width: min(100%, 1140px);
+    height: auto;
+    min-height: 0;
+    gap: clamp(24px, 3.4vw, 52px);
+    padding: clamp(26px, 4vh, 44px) clamp(30px, 4vw, 60px);
+  }
+
+  .card {
+    align-items: stretch;
+  }
+
+  .left-panel {
+    height: auto;
+    justify-content: stretch;
+  }
+
+  .welcome-copy {
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    align-content: center;
+    column-gap: clamp(16px, 2vw, 28px);
+    padding-right: clamp(26px, 3.5vw, 46px);
+  }
+
+  .welcome-copy .welcome-heading {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    margin-bottom: 0;
+  }
+
+  .welcome-wave {
+    position: relative;
+    top: auto;
+    right: auto;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .welcome-sub {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 20px;
+  }
+}
+
+/* Welcome card banner: Alumni Center photo with the TSU and Alumni
+   Association logos, above "Welcome! TSUsian" at every screen size. */
+.welcome-banner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(92, 0, 24, 0.15) 0%, rgba(92, 0, 24, 0.55) 100%),
+    url('/assets/images/alumni-center.jpg?v=2') center 45% / cover no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.welcome-banner-logos {
+  display: flex;
+  gap: 10px;
+}
+
+.welcome-banner-logos img {
+  padding: 4px;
+  border-radius: 50%;
+  background: #fff;
+  object-fit: contain;
+  box-shadow: 0 6px 16px rgba(30, 0, 8, 0.35);
+}
+
+@media (min-width: 1051px) {
+  /* Banner row takes whatever height the stretched card has left over. */
+  .welcome-copy {
+    grid-template-rows: minmax(clamp(96px, 13vh, 130px), 1fr) auto auto;
+    align-content: stretch;
+  }
+
+  .welcome-banner {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    margin-bottom: clamp(22px, 3.5vh, 34px);
+    padding: 0 clamp(16px, 2vw, 24px);
+  }
+
+  .welcome-banner-logos { gap: 12px; }
+
+  .welcome-banner-logos img {
+    width: clamp(54px, 5vw, 70px);
+    height: clamp(54px, 5vw, 70px);
+  }
+
+  .welcome-copy .welcome-heading,
+  .welcome-wave {
+    grid-row: 2;
+  }
+
+  .welcome-sub {
+    grid-row: 3;
+  }
+}
+
+/* Tablet / mobile: same banner -> heading + hand -> subtitle grid. The hand
+   used to be pinned to the card's top-right corner, where the banner now is. */
+@media (max-width: 1050px) {
+  .welcome-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 14px;
+    padding-right: 28px;
+  }
+
+  .welcome-banner {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    height: clamp(96px, 24vw, 150px);
+    margin-bottom: 18px;
+    padding: 0 16px;
+  }
+
+  .welcome-banner-logos img {
+    width: clamp(46px, 9vw, 60px);
+    height: clamp(46px, 9vw, 60px);
+  }
+
+  .welcome-copy .welcome-heading {
+    grid-column: 1;
+    grid-row: 2;
+    align-self: center;
+    max-width: none;
+    margin-bottom: 0;
+  }
+
+  .welcome-wave {
+    position: relative;
+    top: auto;
+    right: auto;
+    grid-column: 2;
+    grid-row: 2;
+    align-self: center;
+  }
+
+  .welcome-sub {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin-top: 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .welcome-copy {
+    padding-right: 20px;
+  }
+
+  .welcome-banner {
+    margin-bottom: 14px;
+    padding: 0 12px;
+  }
+}
+
+/* Footer: a solid bar above the background video instead of text floating
+   over the moving footage. Overrides the narrower per-breakpoint widths. */
+.login-footer {
+  position: relative;
+  z-index: 3;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 12px 16px;
+  background: #3d0010;
+  color: rgba(255, 255, 255, 0.88);
+  text-shadow: none;
+  opacity: 1;
+}
+
+@media (max-width: 1050px) {
+  .login-footer {
+    width: 100%;
+    padding: 12px 20px;
+  }
+}
+
+/* The right panel is a left-aligned flex column, which shrank these two to
+   their text width and pushed them to the left edge. */
+#msg-box {
+  align-self: stretch;
+  box-sizing: border-box;
+}
+
+.signup-prompt {
+  align-self: center;
 }

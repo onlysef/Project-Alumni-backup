@@ -9,6 +9,8 @@
 <script src="/config.js"></script>
 </head>
 <body>
+<video class="page-bg-video" muted playsinline preload="none" poster="/assets/images/alumni-center.jpg?v=2" data-src="/assets/videos/login-bg.mp4" aria-hidden="true" tabindex="-1"></video>
+<script src="/assets/js/bg-video.js?v=3" defer></script>
 
 <main class="page">
   <div class="card">
@@ -16,6 +18,12 @@
     <!-- Left -->
     <section class="left-panel">
       <div class="welcome-copy">
+        <div class="welcome-banner">
+          <div class="welcome-banner-logos">
+            <img src="/assets/images/tsu-logo.png" alt="Tarlac State University" width="64" height="64">
+            <img src="/assets/images/alumni-logo.png" alt="TSU Alumni Association" width="64" height="64">
+          </div>
+        </div>
         <p class="welcome-heading">Reset <span class="name">Password</span></p>
         <p class="welcome-sub" id="left-sub">
           No worries — it happens.<br>
@@ -86,12 +94,12 @@
         <p class="form-hint">We sent a 6-digit code to your email.<br>Enter it below to continue.</p>
 
         <div class="otp-row">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)">
-          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 0)" onpaste="otpPaste(event, 0)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 1)" onpaste="otpPaste(event, 1)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 2)" onpaste="otpPaste(event, 2)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 3)" onpaste="otpPaste(event, 3)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 4)" onpaste="otpPaste(event, 4)">
+          <input class="otp-input" type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" oninput="otpNext(this, 5)" onpaste="otpPaste(event, 5)">
         </div>
 
         <div class="otp-resend">Didn't receive it? <a href="#" id="resend-link" onclick="resendCode(); return false;">Resend Code</a></div>
@@ -219,6 +227,21 @@
   const API = window.APP_CONFIG.API;
   let resetEmail = '';
   let resetToken = '';
+
+  // Mirrors frontend/src/utils/passwordValidation.js — this is a standalone
+  // static page with no bundler/module system, so the rule is inlined here
+  // rather than imported; keep both in sync. The strength meter below used
+  // to score length/uppercase/digit/symbol independently for COSMETIC
+  // display only, never actually gating submission, so it could show a
+  // "strong" green bar for a password that still failed the real 8-char-only
+  // check just above it — misleading. Now driven by the same real rule.
+  const PASSWORD_REQUIREMENT_MESSAGE = 'Password must be more than 8 characters and include at least one uppercase letter and one symbol.';
+  function isStrongPassword(password) {
+    if (typeof password !== 'string' || password.length <= 8) return false;
+    if (!/[A-Z]/.test(password)) return false;
+    if (!/[^A-Za-z0-9]/.test(password)) return false;
+    return true;
+  }
 
   const leftSubs = [
     "No worries — it happens.<br>Enter your email and we'll send<br>a verification code to get you<br>back into your account.",
@@ -367,7 +390,7 @@
 
     if (!newPassword || !confirm) return showMsg('panel3', 'Please fill in both fields.');
     if (newPassword !== confirm) return showMsg('panel3', 'Passwords do not match.');
-    if (newPassword.length < 8) return showMsg('panel3', 'Password must be at least 8 characters.');
+    if (!isStrongPassword(newPassword)) return showMsg('panel3', PASSWORD_REQUIREMENT_MESSAGE);
 
     const btn = document.getElementById('btn3');
     btn.disabled = true;
@@ -403,6 +426,24 @@
     if (el.value && idx < 5) inputs[idx + 1].focus();
   }
 
+  // maxlength="1" only stops typed keystrokes — a paste still lands as the
+  // full clipboard string in a single box (browsers apply maxlength after
+  // paste truncates the *displayed* value, not the digits themselves), which
+  // is why copy-pasting a 6-digit code used to only fill the first box.
+  function otpPaste(e, idx) {
+    e.preventDefault();
+    const digits = (e.clipboardData || window.clipboardData).getData('text').replace(/[^0-9]/g, '');
+    if (!digits) return;
+    const inputs = document.querySelectorAll('.otp-input');
+    let i = idx;
+    for (const d of digits) {
+      if (i > 5) break;
+      inputs[i].value = d;
+      i++;
+    }
+    inputs[Math.min(i, 5)].focus();
+  }
+
   document.addEventListener('keydown', function(e) {
     if (e.key === 'Backspace') {
       const inputs = document.querySelectorAll('.otp-input');
@@ -415,11 +456,14 @@
   });
 
   function updateStrength(val) {
+    // Each bar now maps to one real, gating requirement (not an arbitrary
+    // cosmetic point), so a fully-lit meter means the password will actually
+    // pass the isStrongPassword() check above it, not just look strong.
     let score = 0;
-    if (val.length >= 8) score++;
+    if (val.length > 8) score++;
     if (/[A-Z]/.test(val)) score++;
-    if (/[0-9]/.test(val)) score++;
     if (/[^A-Za-z0-9]/.test(val)) score++;
+    if (isStrongPassword(val)) score++;
     const colors = ['#e53e3e', '#dd6b20', '#d69e2e', '#38a169'];
     for (let i = 1; i <= 4; i++) {
       const bar = document.getElementById('bar' + i);
@@ -440,6 +484,15 @@
     });
   });
 
+  const FB_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M24 12.07C24 5.41 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.04V9.41c0-3.02 1.8-4.7 4.54-4.7 1.31 0 2.68.24 2.68.24v2.97h-1.5c-1.5 0-1.96.93-1.96 1.89v2.26h3.32l-.53 3.5h-2.8V24C19.62 23.1 24 18.1 24 12.07"/></svg>';
+  const WEB_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+  const ABOUT_LINKS_HTML = `
+    <div class="info-modal-links" aria-label="Official TSU pages">
+      <a href="https://www.facebook.com/TarlacStateU" target="_blank" rel="noopener noreferrer">${FB_ICON}<span>Tarlac State University</span></a>
+      <a href="https://www.facebook.com/TSUAAI" target="_blank" rel="noopener noreferrer">${FB_ICON}<span>TSU Alumni Association</span></a>
+      <a href="https://www.tsu.edu.ph/" target="_blank" rel="noopener noreferrer">${WEB_ICON}<span>tsu.edu.ph</span></a>
+    </div>`;
+
   const infoModalContent = {
     privacy: {
       title: 'Privacy Policy',
@@ -456,6 +509,7 @@
         <p>The Alumni Portal helps Tarlac State University graduates stay connected with the university and their fellow alumni.</p>
         <p>Through the portal, alumni can maintain their professional information, participate in tracer studies, discover career opportunities, receive announcements, and engage with university events and services.</p>
         <p>Our goal is to support lifelong connections, professional growth, and continuous improvement of programs for the TSU alumni community.</p>
+        ${ABOUT_LINKS_HTML}
       `
     }
   };

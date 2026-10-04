@@ -13,10 +13,10 @@ export const employmentSets = [
 ];
 
 export const assistantGreetings = [
-  "Good day. I am AC, your AI assistant. How may I assist you today?\nYou may inquire about alumni records, tracer surveys, or employment data.",
-  "Good day. I am AC. I am able to assist you in reviewing alumni records, employment status, and tracer survey results.",
-  "Welcome back. I am AC, your AI assistant for tracer records and graduate employment insights.",
-  "Good day. I am AC. You may ask about alumni profiles, course alignment, survey completion, or employment outcomes.",
+  "Good day. I am ATREIA, your AI assistant. How may I assist you today?\nYou may inquire about alumni records, tracer surveys, or employment data.",
+  "Good day. I am ATREIA. I am able to assist you in reviewing alumni records, employment status, and tracer survey results.",
+  "Welcome back. I am ATREIA, your AI assistant for tracer records and graduate employment insights.",
+  "Good day. I am ATREIA. You may ask about alumni profiles, course alignment, survey completion, or employment outcomes.",
 ];
 
 export function assistantReply(message) {
@@ -28,7 +28,7 @@ export function assistantReply(message) {
   if (n.includes("employment") || n.includes("employed"))
     return "### Employment Summary\n\nThe dashboard contains **260 alumni employment records**.\n\n| Status | Alumni | Share |\n| :--- | ---: | ---: |\n| Employed | 169 | 65% |\n| Unemployed | 52 | 20% |\n| Unidentified | 39 | 15% |\n\n1. Review unidentified records first.\n2. Use the employment chart to compare each status.\n3. Filter by course for a more focused breakdown.";
   if (n.includes("job") || n.includes("opportunit"))
-    return "AC is focused on tracer-study data. I can help with alumni records, survey responses, employment status, and course-related employment outcomes.";
+    return "ATREIA is focused on tracer-study data. I can help with alumni records, survey responses, employment status, and course-related employment outcomes.";
   return "### What I can help with\n\n- Alumni records\n- Tracer surveys\n- Employment status\n- Course-related employment outcomes\n\nTry one of the quick buttons or ask a question about these areas.";
 }
 
@@ -46,8 +46,8 @@ export const viewRoutes = {
   accounts: "Manage Accounts",
   announcements: "Post Announcements",
   partnerships: "Partnerships",
-  aiassistant: "AC - AI Assistant",
-  about: "Alumni Association Inc.",
+  aiassistant: "ATREIA - AI Assistant",
+  about: "Alumni Association, Inc.",
 };
 
 export const navGroups = [
@@ -90,7 +90,7 @@ export const navGroups = [
           { key: "Coordinator", label: "Coordinator" },
           { key: "Employer", label: "Employer" },
       ] },
-      { view: "aiassistant", icon: "icon-15", label: "AC - AI Assistant" },
+      { view: "aiassistant", icon: "icon-15", label: "ATREIA - AI Assistant" },
     ],
   },
 ];
@@ -133,22 +133,10 @@ export const reportFilters = [
 
 export function accountActionList(status, role) {
   if (status === "Pending") {
-    // Alumni/Coordinator accounts activate themselves on first login —
-    // "pending" for them just means "hasn't logged in yet," not "awaiting
-    // review." Approve has no real effect beyond flipping status early, so
-    // showing it implies it gates access the way it genuinely does for
-    // Employer accounts (blocked from login until approved). Reject removed
-    // per explicit request — every account type here reaches Active on its
-    // own (self-activation on first login, or admin Approve for Employer),
-    // so there's no real "review and deny" step to reject FROM; Reject was
-    // functionally just an alias for Suspend (handleAction() mapped both to
-    // the same status: "suspended" write) with no behavior of its own.
+    // No Approve/Reject for alumni/coordinator accounts; they activate on first login.
     const canApprove = role !== "Alumni" && role !== "Coordinator";
     return canApprove ? ["edit", "approve", "resend"] : ["edit", "resend"];
   }
-  // "unsuspend" (not the shared "activate" key partnerActionList/job listings
-  // use below) — a suspended ACCOUNT is being restored, not a partnership or
-  // job listing being reopened, and the label should say so.
   if (status === "Suspended") return ["edit", "unsuspend"];
   return ["edit", "suspend"];
 }

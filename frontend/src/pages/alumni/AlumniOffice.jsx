@@ -41,11 +41,7 @@ function todayISO() {
 // Aligned with the backend's JS_DAY_TO_LABEL (Date.getDay(): 0=Sun..6=Sat)
 const JS_DAY_TO_LABEL = [null, "M", "T", "W", "TH", "F", "S"];
 
-// Only the next `count` dates that are actually working days and not a
-// marked holiday — nothing else is selectable. `office_status: Closed` only
-// takes today off the list (an unplanned same-day closure) — it doesn't
-// block booking a future date the office will actually be open for; a
-// planned future closure belongs in the holidays list instead.
+// "Closed" only removes today; planned closures go in the holidays list.
 function generateValidDates(workingDays, holidays = [], officeClosedToday = false, count = 14) {
   const dates = [];
   const base = new Date();
@@ -204,7 +200,7 @@ export default function AlumniOffice() {
       <div className="office-side"><section className="office-contact-card"><h2>Contact & Location</h2><div className="contact-row"><img className="contact-icon" src={OFFICE_ICONS.location} alt="" aria-hidden="true" /><div><span>Visit us</span><strong>Alumni Center, Lucinda Campus<br />Tarlac State University</strong></div></div><div className="contact-row"><img className="contact-icon" src={OFFICE_ICONS.phone} alt="" aria-hidden="true" /><div><span>Call us</span><strong>(045) 606-8123 local 205</strong></div></div><div className="contact-row"><img className="contact-icon" src={OFFICE_ICONS.mail} alt="" aria-hidden="true" /><div><span>Email us</span><strong>{OFFICE_EMAIL}</strong></div></div><InquiryForm /></section><section className="visit-reminder"><b>Before you visit</b><p>Bring one valid ID and your alumni or student number for faster verification.</p></section></div>
     </div>
 
-    <section className="office-services"><div className="office-services-head"><span>Available assistance</span><h2>Alumni Office Services</h2><p className="office-services-hint">Tap a service to see what to bring and how the process works.</p></div><div className="service-grid">{OFFICE_SERVICES.map((s) => <Service key={s.key} service={s} icon={OFFICE_ICONS[s.iconKey]} open={openService === s.key} onToggle={() => setOpenService(openService === s.key ? null : s.key)} />)}</div>{OFFICE_SERVICES.filter((s) => s.key === openService).map((s) => <ServiceDetail key={s.key} service={s} />)}</section>
+    <section className="office-services"><div className="office-services-head"><span>Available assistance</span><h2>Alumni Office Services</h2><p className="office-services-hint">Tap a service to see what to bring and how the process works.</p></div><div className="service-grid">{OFFICE_SERVICES.map((s) => <React.Fragment key={s.key}><Service service={s} icon={OFFICE_ICONS[s.iconKey]} open={openService === s.key} onToggle={() => setOpenService(openService === s.key ? null : s.key)} />{openService === s.key && <ServiceDetail service={s} />}</React.Fragment>)}</div></section>
   </div>;
 }
 
@@ -306,9 +302,6 @@ function AppointmentForm({ settings }) {
       .finally(() => setLoading(false));
   }, [open]);
 
-  // "Closed" only takes today off the bookable list (see generateValidDates)
-  // — it no longer disables the whole form, since a same-day closure
-  // shouldn't stop booking a future date the office will be open for.
   const officeClosedToday = settings?.office_status === "Closed";
   const validDates = generateValidDates(settings?.working_days || [], settings?.holidays || [], officeClosedToday);
   const noDatesAvailable = !loading && validDates.length === 0;

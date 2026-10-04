@@ -234,12 +234,20 @@ function tracerRowToText(row, year) {
   if (row.relevance)             parts.push(`Job Related to Course: ${row.relevance}`);
   if (row.job_duration)          parts.push(`Years in Current Job: ${row.job_duration}`);
   if (row.reason_unemployed)     parts.push(`Reason Not Employed: ${row.reason_unemployed}`);
+  // Multi-select live-submission reasons (distinct from the free-text/bulk-
+  // import reason_unemployed above) — see Graduate.js's own comment on
+  // reasonsNotEmployed for why this exists.
+  if (Array.isArray(row.reasons_not_employed) && row.reasons_not_employed.length) {
+    parts.push(`Reasons Not Employed: ${row.reasons_not_employed.join(', ')}`);
+  }
   if (row.board_exam)            parts.push(`Took Professional Exam: ${row.board_exam}`);
   if (row.board_exam_name)       parts.push(`Exam Taken: ${row.board_exam_name}`);
   if (row.further_studies)       parts.push(`Pursued Further Studies: ${row.further_studies}`);
   if (row.further_studies_details) parts.push(`Further Studies Details: ${row.further_studies_details}`);
   if (row.trainings)             parts.push(`Pursued Trainings: ${row.trainings}`);
+  if (row.training_type)         parts.push(`Training Type: ${row.training_type}`);
   if (row.promoted)              parts.push(`Promoted: ${row.promoted}`);
+  if (row.accomplishments)       parts.push(`Significant Accomplishment: ${row.accomplishments}`);
   if (row.certifications)        parts.push(`Professional Certifications: ${row.certifications}`);
   return parts.join('. ') + '.';
 }
@@ -307,7 +315,20 @@ function parseExcel(buffer, fileName) {
     const columnMap = type === 'tracer'
       ? { ...ROSTER_COLUMNS, ...TRACER_COLUMNS }
       : type === 'roster' ? ROSTER_COLUMNS : SUMMARY_COLUMNS;
-    const BATCH_SIZE = type === 'tracer' ? 3 : 15;
+    // Tracer rows are one per chunk (not batched) — batching 3 respondents
+    // into a single newline-joined chunk previously caused a documented live
+    // bug (ragService.js's isolatePerson() comment): one alumnus's job title
+    // and tenure bled into an answer correctly labeled with a DIFFERENT,
+    // similarly-processed alumnus's name. isolatePerson() only mitigates this
+    // on the person-lookup path — a general qualitative question ("what
+    // challenges do unemployed graduates face") still retrieved the full
+    // blended chunk with no isolation. One row per chunk costs more embedding
+    // calls at ingest time (a one-time cost, already bounded by
+    // EMBED_CONCURRENCY) in exchange for removing that bleed risk from every
+    // qualitative question going forward. Roster/summary rows are lower-risk
+    // (short structured listings, not free-text per-person narrative) and
+    // stay batched.
+    const BATCH_SIZE = type === 'tracer' ? 1 : 15;
     let   batchLines = [];
 
     const flushBatch = () => {

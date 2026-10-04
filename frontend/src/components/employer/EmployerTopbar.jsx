@@ -62,12 +62,7 @@ export default function EmployerTopbar({
     function closeOnOutsidePointer(event) {
       const target = event.target;
       if (!(target instanceof Element)) return;
-      // .avatar-cropper-modal — AccountPanel's own nested AvatarCropper
-      // Modal portals separately into document.body, so it's never a DOM
-      // descendant of .topbar-modal. Without this exclusion, clicking
-      // "Save Photo" registered as an outside click on this capture-phase
-      // listener and closed the whole account panel before Save's own
-      // onClick could run.
+      // The cropper is its own portal; don't treat clicks inside it as outside the panel.
       if (target.closest(".topbar-modal") || target.closest(".top-actions") || target.closest(".avatar-cropper-modal")) return;
       if (panel === "settings") closeSettings();
       else setPanel(null);

@@ -16,10 +16,6 @@ function initials(name = "") {
   return String(name).split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "A";
 }
 
-// Was hardcoded to 2000-2025 — every batch that graduated (or will
-// graduate) after that ceiling had no way to be isolated by this filter at
-// all, a gap that gets stale by design if left as a fixed number. Deriving
-// the ceiling from the current year means it never needs another manual bump.
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2000 + 1 }, (_, i) => CURRENT_YEAR - i);
 
@@ -87,12 +83,7 @@ export default function AlumniContacts() {
     setEditForm(null);
   }
 
-  // Only the actual contact-reachability fields are editable here — this is
-  // the Alumni CONTACTS page, not a full profile editor. Name/course/
-  // graduation year/position stay display-only (the backend endpoint still
-  // accepts them, it just never receives those keys from this form — see
-  // routes/coordinator.js's PATCH /alumni/:id, each field checked with
-  // `!== undefined` so omitting a key is a no-op there, not an error).
+  // Only contact fields are editable here; the backend ignores omitted keys.
   function startEdit() {
     setEditForm({
       email: selectedContact.email || "",
@@ -190,7 +181,9 @@ export default function AlumniContacts() {
                       <strong>{c.name}</strong>
                       <small className="coord-contact-profile-hint">View profile</small>
                     </td>
-                    <td data-label="Position">{c.title || "—"}</td>
+                    <td data-label="Position" className="coord-contact-position">
+                      <span title={c.title || undefined}>{c.title || "—"}</span>
+                    </td>
                     <td data-label="Graduation Year">{c.year || "—"}</td>
                     <td data-label="Course"><CourseBadge course={c.course} /></td>
                     <td data-label="Email">{c.email}</td>

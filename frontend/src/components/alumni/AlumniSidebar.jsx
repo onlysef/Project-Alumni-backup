@@ -3,8 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Icon from "../common/Icon.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
-import tsuLogo from "../../assets/images/tsu_logo-removebg.png";
-import toptsuLogo from "../../assets/images/tsu-top-header.webp";
+import tsuLogo from "../../assets/images/tsu-seal-2026.png";
 
 const ITEMS = [
   ["home", "Home", "alumni-home"],
@@ -14,22 +13,14 @@ const ITEMS = [
   ["suggested", "Alumni Network", "alumni-suggested"],
   ["career", "Career Recommendation", "alumni-career"],
   ["jobconnect", "Job Connect", "alumni-job-connect"],
-  // Not a `?section=` view like the others above — the tracer study form is
-  // its own top-level route (see AppRoutes.jsx's "tracer-study" path), so
-  // this key is special-cased in the render loop below to navigate there
-  // directly instead of going through select()'s dashboard-section
-  // mechanism. Previously the ONLY way to reach this page at all was the
-  // single-item "restricted" nav shown during the mandatory first-time
-  // completion flow — once that flow finished, the link disappeared
-  // entirely and an alumni who wanted to review or correct their own
-  // answers later had no way back in short of typing the URL by hand.
+  // Its own route (not a ?section= view), so it's navigated to directly below.
   ["tracer-study", "Tracer Study", "alumni-tracer"],
 ];
 
 const NAV_SECTIONS = [
   { label: "Overview", items: ITEMS.slice(0, 1) },
   { label: "Community", items: [ITEMS[1], ITEMS[3], ITEMS[4]] },
-  { label: "Career", items: [ITEMS[2], ITEMS[5], ITEMS[6], ITEMS[7]] },
+  { label: "Professional Growth", items: [ITEMS[2], ITEMS[5], ITEMS[6], ITEMS[7]] },
 ];
 
 export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restrictedLabel = "Account Setup" }) {
@@ -40,10 +31,6 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
   const active = params.get("section") || "home";
   const currentFilter = params.get("filter") || "All";
   const [announcementsOpen, setAnnouncementsOpen] = useState(true);
-  // The brand/logo buttons above sit outside the `<nav>` that's withheld
-  // below when restricted, so without this guard they still fired a
-  // navigation — one the route guard immediately bounced back from, which
-  // just looked like the click did nothing rather than visibly doing nothing.
   const select = (section) => {
     if (restricted) return;
     navigate(section === "home" ? "/alumni/dashboard" : `/alumni/dashboard?section=${section}`);
@@ -79,20 +66,14 @@ export function AlumniSidebar({ collapsed, onNavigate, restricted = false, restr
             onClick={() => openInstitutionPage("tsu")}
             aria-label="Open Tarlac State University profile"
           >
-            <img src={toptsuLogo} alt="Tarlac State University" className="toptsu-logo" />
+            <span className="tsu-lockup"><img src={tsuLogo} alt="" /><span>Tarlac State<br />University</span></span>
           </button>
           <div className="alumni-brand" onClick={() => openInstitutionPage("about")}>
             <img src={alumniLogo} alt="Alumni" className="alumni-logo" />
-            <p>Alumni Association<br /> Inc.</p>
+            <p>Alumni Association,<br /> Inc.</p>
           </div>
         </div>
       </div>
-      {/* An alumni who hasn't finished onboarding/the tracer study yet
-          shouldn't see the rest of the portal's sections as available —
-          the real nav list is swapped for a single non-interactive status
-          item instead of every other section's link, so nothing else reads
-          as available during that restricted state. Brand header and
-          Logout above/below still render normally. */}
       {restricted ? (
         <nav className="nav" aria-label="Alumni navigation">
           <a href="#" className="active" onClick={(e) => e.preventDefault()}>

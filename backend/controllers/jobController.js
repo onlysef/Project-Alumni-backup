@@ -6,6 +6,8 @@ const Interview       = require('../models/Interview');
 const Notification    = require('../models/Notification');
 const { sendApplicantMessageEmail, sendInterviewInvitationEmail } = require('../utils/emailService');
 const { getResumeForAlumnus } = require('../utils/resumeBuilder');
+const { phDateTime } = require('../utils/phTime');
+const { isJunkText } = require('../utils/textQuality');
 
 // Every employer account linked to the same partnershipId (company) shares
 // one workspace — jobs, applicants, and interviews posted/scheduled by any
@@ -22,11 +24,66 @@ async function getCompanyJobIds(partnershipId) {
   return Job.find({ partnershipId }).distinct('_id');
 }
 
+// Mirrors the Job schema's own `jobType` enum — checked here too so a bad
+// value gets a clean 400 with the allowed list, instead of falling through
+// to Mongoose's ValidationError on .create()/.save(), which the generic
+// catch below turns into an opaque 500.
+const JOB_TYPES = ['Full-time', 'Part-time', 'Internship', 'Contract'];
+
+// The four rich-text sections plus salary are all optional, but if the
+// client sends a non-string (e.g. an array/object slipped in by a buggy
+// caller) it would otherwise reach Mongoose as-is and either get silently
+// coerced into something like "[object Object]" or throw a CastError that
+// the generic catch below reports as an unhelpful 500.
+const OPTIONAL_TEXT_FIELDS = ['keyResponsibilities', 'qualifications', 'preferredSkills', 'salaryRange', 'location'];
+function findInvalidTextField(body) {
+  return OPTIONAL_TEXT_FIELDS.find((f) => body[f] !== undefined && typeof body[f] !== 'string');
+}
+
+// A plain non-empty (or "has some letters") check let keyboard-mashing
+// ("@@@@@@@@@@@", "asdadswdad@2323123123", "rwedfwfewfwef") straight through
+// as a "valid" job posting. requireMultiWord (2+ separate letter runs) is
+// what catches a single mashed token in the prose fields; title/location
+// stay single-word-tolerant ("Manila", "Cashier" are real, valid values).
+const JUNK_FIELD_RULES = {
+  title:               { requireWord: true,  minLength: 3, blockAtSymbol: true },
+  jobDescription:      { requireWord: true,  minLength: 15, requireMultiWord: true },
+  keyResponsibilities: { requireWord: true,  requireMultiWord: true },
+  qualifications:      { requireWord: true,  requireMultiWord: true },
+  preferredSkills:     { requireWord: true,  requireMultiWord: true },
+  location:            { requireWord: true,  blockAtSymbol: true, blockLongDigitRun: true },
+  salaryRange:         { requireWord: false, requireDigitOrPhrase: true },
+};
+const JUNK_FIELD_MESSAGES = {
+  title: 'That doesn\'t look like a real job title.',
+  jobDescription: 'The job description looks like random text. Please write an actual description of the role.',
+  keyResponsibilities: 'Key responsibilities looks like random text. Please list the actual duties for this role.',
+  qualifications: 'Qualifications & requirements looks like random text. Please list the actual qualifications needed.',
+  preferredSkills: 'Preferred skills looks like random text. Please list actual skills.',
+  location: 'That doesn\'t look like a real location.',
+  salaryRange: 'That doesn\'t look like a real salary range.',
+};
+function findJunkField(body) {
+  return Object.keys(JUNK_FIELD_RULES).find(
+    (f) => body[f] !== undefined && body[f] !== '' && isJunkText(body[f], JUNK_FIELD_RULES[f])
+  );
+}
+
 // POST /api/employer/jobs  — employer posts a job
 const postJob = async (req, res) => {
   try {
-    const { title, description, jobType, location } = req.body;
-    if (!title) return res.status(400).json({ message: 'title is required.' });
+    const { title, jobDescription, keyResponsibilities, qualifications, preferredSkills, salaryRange, jobType, location } = req.body;
+    if (!title || typeof title !== 'string' || !title.trim()) return res.status(400).json({ message: 'title is required.' });
+    if (!jobDescription || typeof jobDescription !== 'string' || !jobDescription.trim()) {
+      return res.status(400).json({ message: 'A job description is required.' });
+    }
+    if (jobType !== undefined && !JOB_TYPES.includes(jobType)) {
+      return res.status(400).json({ message: `Invalid job type. Must be one of: ${JOB_TYPES.join(', ')}.` });
+    }
+    const invalidField = findInvalidTextField(req.body);
+    if (invalidField) return res.status(400).json({ message: `${invalidField} must be text.` });
+    const junkField = findJunkField(req.body);
+    if (junkField) return res.status(400).json({ message: JUNK_FIELD_MESSAGES[junkField] });
 
     // partnershipId always comes from the employer's own linked account, never
     // from the request body — a free-choice field here let any employer post
@@ -46,7 +103,8 @@ const postJob = async (req, res) => {
     }
 
     let job = await Job.create({
-      title, description, partnershipId: employer.partnershipId, jobType, location,
+      title, jobDescription, keyResponsibilities, qualifications, preferredSkills, salaryRange,
+      partnershipId: employer.partnershipId, jobType, location,
       postedBy: req.user.id,
     });
     // Without this, the just-created job's partnershipId is a bare ObjectId
@@ -82,12 +140,17 @@ const getMyJobs = async (req, res) => {
 const getActivePartnerships = async (req, res) => {
   try {
     const employer = await User.findById(req.user.id).select('partnershipId').lean();
-    if (!employer?.partnershipId) return res.json({ partnerships: [] });
-    const partnership = await Partnership.findOne(
-      { _id: employer.partnershipId, status: { $ne: 'Archived' } },
-      'name type'
-    );
-    res.json({ partnerships: partnership ? [partnership] : [] });
+    if (!employer?.partnershipId) return res.json({ partnerships: [], linkedPartnership: null });
+    const partnership = await Partnership.findById(employer.partnershipId, 'name type status');
+    const isUsable = partnership && partnership.status !== 'Archived';
+    // linkedPartnership always reflects the raw record (even Archived) so
+    // the frontend can tell "never linked to a company" apart from "linked,
+    // but that company's partnership was archived" and show the right copy
+    // instead of one generic "not linked" message for both.
+    res.json({
+      partnerships: isUsable ? [partnership] : [],
+      linkedPartnership: partnership ? { name: partnership.name, status: partnership.status } : null,
+    });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });
   }
@@ -103,12 +166,27 @@ const updateJob = async (req, res) => {
 
     // partnershipId is intentionally not editable here — same reasoning as
     // postJob, it's tied to the account, not a per-post choice.
-    const { title, description, jobType, location } = req.body;
+    const { title, jobDescription, keyResponsibilities, qualifications, preferredSkills, salaryRange, jobType, location } = req.body;
     if (title !== undefined) {
-      if (!title.trim()) return res.status(400).json({ message: 'Title is required.' });
+      if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
       job.title = title.trim();
     }
-    if (description !== undefined) job.description = description;
+    if (jobDescription !== undefined) {
+      if (typeof jobDescription !== 'string' || !jobDescription.trim()) return res.status(400).json({ message: 'A job description is required.' });
+      job.jobDescription = jobDescription;
+    }
+    if (jobType !== undefined && !JOB_TYPES.includes(jobType)) {
+      return res.status(400).json({ message: `Invalid job type. Must be one of: ${JOB_TYPES.join(', ')}.` });
+    }
+    const invalidField = findInvalidTextField(req.body);
+    if (invalidField) return res.status(400).json({ message: `${invalidField} must be text.` });
+    const junkField = findJunkField(req.body);
+    if (junkField) return res.status(400).json({ message: JUNK_FIELD_MESSAGES[junkField] });
+
+    if (keyResponsibilities !== undefined) job.keyResponsibilities = keyResponsibilities;
+    if (qualifications     !== undefined) job.qualifications     = qualifications;
+    if (preferredSkills    !== undefined) job.preferredSkills    = preferredSkills;
+    if (salaryRange        !== undefined) job.salaryRange        = salaryRange;
     if (jobType !== undefined) job.jobType = jobType;
     if (location !== undefined) job.location = location;
     const titleChanged = title !== undefined;
@@ -320,11 +398,7 @@ function formatInterviewWhen(dateStr, timeStr) {
 async function expirePastInterviews(jobIds) {
   const now = Date.now();
   const upcoming = await Interview.find({ job_id: { $in: jobIds }, status: 'Upcoming' }).select('_id date time');
-  const staleIds = upcoming.filter((i) => {
-    const [y, mo, d] = i.date.split('-').map(Number);
-    const [h, mi] = (i.time || '00:00').split(':').map(Number);
-    return new Date(y, mo - 1, d, h, mi).getTime() < now;
-  }).map((i) => i._id);
+  const staleIds = upcoming.filter((i) => phDateTime(i.date, i.time).getTime() < now).map((i) => i._id);
   if (staleIds.length) await Interview.updateMany({ _id: { $in: staleIds } }, { status: 'Completed' });
 }
 
@@ -462,7 +536,8 @@ const getAllJobs = async (req, res) => {
     const jobs = await Job.find()
       .populate('partnershipId', 'name')
       .populate('postedBy', 'firstName lastName email')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json({ jobs });
   } catch (err) {
     res.status(500).json({ message: 'Server error.' });

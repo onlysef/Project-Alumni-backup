@@ -83,12 +83,31 @@ const getEvents = async (req, res) => {
   }
 };
 
+// A start date already in the past, or an end date that doesn't fall
+// strictly after the start (same instant, or earlier), produced events that
+// posted as already-"Ended" — silently useless since no alumnus could ever
+// see them as upcoming. Shared by createEvent (always "now" as the floor)
+// and updateEvent (only enforces the floor when the start is actually being
+// moved, so editing an already-past event's title/location still works).
+function validateEventDateRange(startDate, endDate, enforcePastCheck) {
+  if (isNaN(startDate.getTime())) return 'Invalid start date & time.';
+  if (enforcePastCheck && startDate < new Date()) return 'Event date & time cannot be in the past.';
+  if (endDate) {
+    if (isNaN(endDate.getTime())) return 'Invalid end date & time.';
+    if (endDate <= startDate) return 'End date & time must be after the start date & time.';
+  }
+  return null;
+}
+
 // POST /coordinator/events
 const createEvent = async (req, res) => {
   try {
     const { title, description, image, location, event_datetime, end_datetime, visibility, capacity } = req.body;
     if (!title?.trim())    return res.status(400).json({ message: 'Title is required.' });
     if (!event_datetime)   return res.status(400).json({ message: 'Date & time is required.' });
+
+    const dateError = validateEventDateRange(new Date(event_datetime), end_datetime ? new Date(end_datetime) : null, true);
+    if (dateError) return res.status(400).json({ message: dateError });
 
     const eventVisibility = visibility || 'Public';
     const visibilityError = assertVisibilityAllowed(req.user, eventVisibility);
@@ -140,9 +159,15 @@ const updateEvent = async (req, res) => {
     // coordinator who created an event before its college field was set
     // (or otherwise left blank/mismatched) couldn't manage their own event
     // under a college-only check, so the creator is always let through too.
-    if (req.user.college) {
-      const existing = await Event.findById(req.params.id, 'college created_by').lean();
+    // Also fetched (for any editor) whenever a date field is being changed,
+    // so the range check below has the other side of the range to compare
+    // against even if only one of start/end is present in this request.
+    let existing = null;
+    if (req.user.college || event_datetime !== undefined || end_datetime !== undefined) {
+      existing = await Event.findById(req.params.id, 'college created_by event_datetime end_datetime').lean();
       if (!existing) return res.status(404).json({ message: 'Event not found.' });
+    }
+    if (req.user.college) {
       const ownsIt = String(existing.created_by) === String(req.user.id);
       if (!ownsIt && existing.college !== req.user.college) {
         return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
@@ -156,6 +181,21 @@ const updateEvent = async (req, res) => {
     if (location       !== undefined) updates.location       = location.trim();
     if (event_datetime !== undefined) updates.event_datetime = new Date(event_datetime);
     if (end_datetime   !== undefined) updates.end_datetime   = end_datetime ? new Date(end_datetime) : null;
+
+    if (updates.event_datetime || updates.end_datetime !== undefined) {
+      const effectiveStart = updates.event_datetime || new Date(existing.event_datetime);
+      const effectiveEnd = updates.end_datetime !== undefined
+        ? updates.end_datetime
+        : (existing.end_datetime ? new Date(existing.end_datetime) : null);
+      // Only enforce the "not in the past" floor when the start is actually
+      // moving to a new instant — re-saving an already-past event's other
+      // fields (fixing a typo, say) must not be blocked by its own old date.
+      const startIsChanging = !!updates.event_datetime &&
+        (!existing.event_datetime || updates.event_datetime.getTime() !== new Date(existing.event_datetime).getTime());
+      const dateError = validateEventDateRange(effectiveStart, effectiveEnd, startIsChanging);
+      if (dateError) return res.status(400).json({ message: dateError });
+    }
+
     if (visibility     !== undefined) {
       const visibilityError = assertVisibilityAllowed(req.user, visibility);
       if (visibilityError) return res.status(403).json({ message: visibilityError });
@@ -363,44 +403,52 @@ const getAlumniEvents = async (req, res) => {
 // POST /api/events/:id/interested  (alumni-accessible — separate route)
 const toggleInterested = async (req, res) => {
   try {
+    const event = await Event.findById(req.params.id).lean();
+    if (!event) return res.status(404).json({ message: 'Event not found.' });
+
     const existing = await EventInterested.findOne({
       event_id:  req.params.id,
       alumni_id: req.user.id,
     });
 
+    // Un-marking interest is always allowed (harmless, and lets an alumnus
+    // clear a reminder for an event that ended without them attending) —
+    // only NEW interest is blocked once the event is over, since "Reminder
+    // Set" / "you'll get a reminder on <past date>" makes no sense for
+    // something that already happened.
     if (existing) {
       await existing.deleteOne();
       return res.json({ interested: false });
+    }
+    if (isEventEnded(event)) {
+      return res.status(400).json({ message: 'This event has already ended.' });
     }
 
     await EventInterested.create({ event_id: req.params.id, alumni_id: req.user.id });
 
     // Notify the event creator (coordinator)
-    const event = await Event.findById(req.params.id).lean();
-    if (event) {
-      const alumni = await User.findById(req.user.id, 'firstName lastName').lean();
-      await Notification.create({
-        user_id:  event.created_by,
-        title:    'Alumni Interested',
-        message:  `${alumni ? `${alumni.firstName} ${alumni.lastName}` : 'An alumni'} marked interest in "${event.title}"`,
-        is_read:  false,
-        event_id: event._id,
-        type:     'interested',
-      });
+    const alumni = await User.findById(req.user.id, 'firstName lastName').lean();
+    await Notification.create({
+      user_id:  event.created_by,
+      title:    'Alumni Interested',
+      message:  `${alumni ? `${alumni.firstName} ${alumni.lastName}` : 'An alumni'} marked interest in "${event.title}"`,
+      is_read:  false,
+      event_id: event._id,
+      type:     'interested',
+    });
 
-      // Confirm the "Remind" click actually did something — the button
-      // toggling isInterestedByMe alone was invisible to the alumnus once
-      // they left the events page; this gives them a real notification
-      // that a reminder is now set for this event.
-      await Notification.create({
-        user_id:  req.user.id,
-        title:    'Reminder Set',
-        message:  `You'll get a reminder for "${event.title}" on ${new Date(event.event_datetime).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: '2-digit' })}.`,
-        is_read:  false,
-        event_id: event._id,
-        type:     'reminder_set',
-      });
-    }
+    // Confirm the "Remind" click actually did something — the button
+    // toggling isInterestedByMe alone was invisible to the alumnus once
+    // they left the events page; this gives them a real notification
+    // that a reminder is now set for this event.
+    await Notification.create({
+      user_id:  req.user.id,
+      title:    'Reminder Set',
+      message:  `You'll get a reminder for "${event.title}" on ${new Date(event.event_datetime).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: '2-digit' })}.`,
+      is_read:  false,
+      event_id: event._id,
+      type:     'reminder_set',
+    });
 
     res.json({ interested: true });
   } catch (err) {

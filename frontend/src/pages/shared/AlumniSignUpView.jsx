@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { API } from "../../services/api.js";
 import { COLLEGE_CODES as COLLEGES, COURSES_BY_COLLEGE } from "../../constants/colleges.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 const BSIT_TRACKS = ["TSM", "WMA", "NA"];
 const CURRENT_YEAR = new Date().getFullYear();
@@ -50,8 +51,8 @@ export default function AlumniSignUpView() {
       setError("Please fill in all required fields.");
       return;
     }
-    if (form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!isStrongPassword(form.password)) {
+      setError(PASSWORD_REQUIREMENT_MESSAGE);
       return;
     }
     if (form.password !== form.confirmPassword) {
@@ -94,10 +95,7 @@ export default function AlumniSignUpView() {
       <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Serif:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
       <link rel="stylesheet" href="/assets/css/login-style.css" />
       <style>{`
-        /* Sign-up-only additions — the shared login-style.css was sized for
-           a short email+password form, not this many fields. Everything
-           else (the glass card, background, colors, inputs, button) comes
-           from that shared stylesheet untouched. */
+        /* Sign-up-only additions on top of login-style.css. */
         .right-panel.signup-panel { max-height: min(84vh, 760px); overflow-y: auto; }
         .signup-note { font-size: 11px; color: var(--gray-text); margin-top: -4px; }
       `}</style>
@@ -182,7 +180,7 @@ export default function AlumniSignUpView() {
                   <div className="form-group">
                     <label htmlFor="college">College</label>
                     <div className="input-wrap">
-                      <select id="college" value={form.college} onChange={handleCollegeChange} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                      <select id="college" value={form.college} onChange={handleCollegeChange} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                         <option value="">— Select college —</option>
                         {COLLEGES.map((c) => <option key={c}>{c}</option>)}
                       </select>
@@ -200,7 +198,7 @@ export default function AlumniSignUpView() {
                         value={form.course}
                         onChange={update("course")}
                         disabled={!form.college}
-                        style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}
+                        style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}
                       >
                         <option value="">{form.college ? "— Select course —" : "Select a college first"}</option>
                         {(COURSES_BY_COLLEGE[form.college] || []).map((c) => <option key={c}>{c}</option>)}
@@ -215,7 +213,7 @@ export default function AlumniSignUpView() {
                     <div className="form-group">
                       <label htmlFor="track">BSIT Track <span className="signup-note">(optional)</span></label>
                       <div className="input-wrap">
-                        <select id="track" value={form.track} onChange={update("track")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                        <select id="track" value={form.track} onChange={update("track")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 16px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                           <option value="">— Select track —</option>
                           {BSIT_TRACKS.map((t) => <option key={t}>{t}</option>)}
                         </select>
@@ -229,7 +227,7 @@ export default function AlumniSignUpView() {
                       <svg className="input-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      <select id="gradyear" value={form.graduationYear} onChange={update("graduationYear")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                      <select id="gradyear" value={form.graduationYear} onChange={update("graduationYear")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                         <option value="">— Select year —</option>
                         {BATCH_YEARS.map((y) => <option key={y}>{y}</option>)}
                       </select>

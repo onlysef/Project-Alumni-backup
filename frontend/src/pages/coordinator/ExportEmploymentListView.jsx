@@ -14,10 +14,6 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString("en-PH", { year: "numeric", month: "2-digit", day: "2-digit" });
 }
 
-// Same shape as the admin Export Alumni Record page, minus the College
-// filter — every /coordinator/employment* route already force-scopes
-// `college` server-side to the coordinator's own assigned college, so
-// there's nothing for that filter to choose between here.
 export default function ExportEmploymentListView() {
   const { showToast } = useOutletContext();
   const [filters, setFilters]     = useState(EMPTY_FILTERS);
@@ -35,9 +31,6 @@ export default function ExportEmploymentListView() {
 
   const hasActiveFilters = Object.values(filters).some(Boolean);
 
-  // Live preview of how many records the current filters match — fetched
-  // from the same list endpoint the Alumni Record table itself uses, just
-  // with limit=1 so only pagination.total is needed.
   useEffect(() => {
     let cancelled = false;
     const timer = setTimeout(() => {
@@ -52,11 +45,7 @@ export default function ExportEmploymentListView() {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [filters]);
 
-  // CSV/Excel carry every tracer-study answer as its own column — a PDF
-  // page can't reasonably fit that many columns per row and stay readable.
-  // PDF is a compact, printable overview table instead (core fields only);
-  // the full answer set is still there in CSV/Excel for anyone who needs
-  // to process the raw data.
+  // PDF is a compact overview; CSV/Excel carry every tracer answer.
   async function exportPdf() {
     const PAGE_SIZE = 200;
     let page = 1, pages = 1;
@@ -229,18 +218,20 @@ export default function ExportEmploymentListView() {
           <span style={{ fontSize: 13, color: "#76656a" }}>
             {counting ? "Counting matching records…" : total === null ? "" : `${total} record${total !== 1 ? "s" : ""} match these filters`}
           </span>
-          <Dropdown
-            menuClassName="admin-menu"
-            portal
-            options={["CSV", "Excel", "PDF"]}
-            onSelect={(choice) => handleExport(choice.toLowerCase())}
-            trigger={(toggle) => (
-              <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
-                <span><Icon name="icon-17" /></span>
-                <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
-              </button>
-            )}
-          />
+          <div style={{ marginLeft: "auto" }}>
+            <Dropdown
+              menuClassName="admin-menu"
+              portal
+              options={["CSV", "Excel", "PDF"]}
+              onSelect={(choice) => handleExport(choice.toLowerCase())}
+              trigger={(toggle) => (
+                <button type="button" className="maroon-action" disabled={exporting !== null} onClick={toggle}>
+                  <span><Icon name="icon-17" /></span>
+                  <span>{exporting ? `Exporting ${exporting.toUpperCase()}…` : "Export ▾"}</span>
+                </button>
+              )}
+            />
+          </div>
         </div>
       </section>
     </section>

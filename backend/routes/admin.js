@@ -6,7 +6,7 @@ const { updateAlumniTracerData, extractSkills } = require('../controllers/alumni
 const {
   getAnnouncements, getAnnouncement, getRecentAnnouncements,
   createAnnouncement, updateAnnouncement, deleteAnnouncement,
-  toggleLike, getComments, addComment, trackShare, getRecentActivity,
+  toggleLike, getComments, addComment, updateComment, deleteComment, trackShare, getRecentActivity,
   updateEventAdmin, updateJobAdmin, deleteEventAdmin, deleteJobAdmin,
 } = require('../controllers/announcementController');
 const {
@@ -68,6 +68,8 @@ router.delete('/announcements/jobs/:id',        deleteJobAdmin);
 router.post('/announcements/:id/like',          toggleLike);
 router.get('/announcements/:id/comments',       getComments);
 router.post('/announcements/:id/comment',       addComment);
+router.put('/announcements/:id/comment/:commentId',    updateComment);
+router.delete('/announcements/:id/comment/:commentId', deleteComment);
 router.post('/announcements/:id/share',         trackShare);
 
 router.get('/partnerships',        getPartnerships);

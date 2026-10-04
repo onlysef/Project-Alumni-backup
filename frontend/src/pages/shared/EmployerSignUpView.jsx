@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { API } from "../../services/api.js";
+import { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } from "../../utils/passwordValidation.js";
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -66,8 +67,8 @@ export default function EmployerSignUpView() {
       setError("Please fill in all required fields.");
       return;
     }
-    if (form.password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (!isStrongPassword(form.password)) {
+      setError(PASSWORD_REQUIREMENT_MESSAGE);
       return;
     }
     if (form.password !== form.confirmPassword) {
@@ -208,7 +209,7 @@ export default function EmployerSignUpView() {
                   <div className="form-group">
                     <label htmlFor="partnerType">Industry Type</label>
                     <div className="input-wrap">
-                      <select id="partnerType" value={form.partnerType} onChange={update("partnerType")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 16px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
+                      <select id="partnerType" value={form.partnerType} onChange={update("partnerType")} style={{ width: "100%", height: 56, border: 0, borderRadius: 8, padding: "0 40px 0 48px", background: "var(--input-bg)", color: "var(--gray-text)", fontFamily: "Manrope, sans-serif", fontSize: 16 }}>
                         <option value="">— Select industry —</option>
                         {PARTNER_TYPES.map((t) => <option key={t}>{t}</option>)}
                       </select>

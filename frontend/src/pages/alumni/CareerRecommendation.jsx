@@ -20,11 +20,7 @@ export default function CareerRecommendation() {
       .then((r) => r.json())
       .then((d) => {
         setData(d);
-        // The personalized "next step" sentence is a slow (~4s) AI call —
-        // the main response above already comes back with a fast template
-        // fallback for it so the career cards render immediately; this
-        // fetches the personalized version in the background and swaps it
-        // in once ready, without blocking anything the user is looking at.
+        // The slow AI sentence loads in the background; the template fallback shows first.
         const topCareer = d?.careers?.[0];
         if (topCareer) {
           setNextStepLoading(true);

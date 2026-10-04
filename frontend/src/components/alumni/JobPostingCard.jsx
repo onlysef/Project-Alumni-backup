@@ -1,10 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import alumniLogo from "../../assets/images/alumni-removebg.png";
 import { API, authHeaders } from "../../services/api.js";
 
-// Shared between Job Connect's own list and the Announcements page's "Job
-// Postings" preview, so both surfaces render the exact same card instead of
-// two hand-maintained designs drifting apart from each other.
+export const SKILL_CHIP_LIMIT = 12;
 
 export function truncate(value, max) {
   return value.length > max ? `${value.slice(0, max).trim()}…` : value;
@@ -14,11 +11,7 @@ export function formatSavedDate(iso) {
   return new Date(iso).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Careerjet's `date` field comes back as a raw server timestamp string
-// (e.g. "Sat, 15 Aug 2026 05:23:51 GMT") — shown as-is before, which meant
-// job cards displayed that literal string instead of a readable date. Falls
-// back to the raw value if it's ever unparseable rather than showing
-// "Invalid Date".
+// Careerjet dates are raw server strings; fall back to the raw value if unparseable.
 export function formatPostedDate(value) {
   if (!value) return value;
   const d = new Date(value);
@@ -27,10 +20,7 @@ export function formatPostedDate(value) {
     : d.toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Careerjet's description field has no real structural markup — only
-// inline <b> keyword-highlight tags — but the original paragraph/bullet
-// boundaries survive as runs of 2+ raw spaces once tags are stripped, so
-// that's the only signal available to rebuild readable structure from.
+// Careerjet descriptions: runs of 2+ spaces mark the original paragraph/bullet breaks.
 export function splitDescriptionSegments(value) {
   const withoutInlineTags = String(value || "").replace(/<\/?(b|strong|em|i)>/gi, "");
   const withoutOtherTags = withoutInlineTags.replace(/<[^>]*>/g, " ");
@@ -46,9 +36,6 @@ export function isHeaderSegment(segment) {
   return SECTION_HEADER_PATTERN.test(segment);
 }
 
-// Groups the flat segment list into intro paragraphs, then bullet lists
-// under whichever section header preceded them (postings are consistently
-// shaped: intro text, then Header, then its bullet items, repeat).
 export function structureDescription(value) {
   const segments = splitDescriptionSegments(value);
   const blocks = [];
@@ -74,9 +61,6 @@ export function structureDescription(value) {
   return blocks;
 }
 
-// Compact card preview: just the intro prose before the first section
-// header (if any), truncated — avoids gluing unrelated bullet items
-// together the way a naive whitespace-collapse would.
 export function descriptionPreview(value, max) {
   const segments = splitDescriptionSegments(value);
   const intro = [];
@@ -96,14 +80,7 @@ export function ArrowIcon() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
 }
 
-// Skill-gap tips are personalized per job (see backend getJobSkillTip) and
-// each costs a real ~4s LLM call — a results page can list 20+ jobs at
-// once, so fetching this the moment every card mounts would fire that many
-// calls in parallel for no reason (most never get scrolled to). Instead
-// each card only asks for its tip once it actually scrolls into view, and
-// the result is cached by job URL so it isn't re-fetched if the same job
-// scrolls in and out of view again, or appears in more than one list (Job
-// Connect and the Announcements "Job Postings" preview share this card).
+// Tips are slow LLM calls: fetch only once the card scrolls into view, cached by job URL.
 const skillTipCache = new Map();
 
 function useSkillTip(job) {
@@ -138,43 +115,28 @@ function useSkillTip(job) {
   return { tip, ref };
 }
 
-// Careerjet's search API has no company-logo field, and free logo lookup
-// services aren't viable here — unavatar.io's guess-the-domain approach
-// often misses (tried and reverted), and its free tier caps out at 25
-// requests before a ~24h lockout, which a single page of job cards would
-// blow through instantly. The TSU logo placeholder stays until there's a
-// real, reliable source of per-company logos.
-const MIN_APPLY_MATCH = 50;
-
 export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onApply }) {
   const description = descriptionPreview(job.description, 220);
   const { tip: skillTip, ref: skillGapRef } = useSkillTip(job);
   const hasMatch = job.match !== null && job.match !== undefined;
-  const locked = !applied && hasMatch && job.match < MIN_APPLY_MATCH;
   return <article className="connect-job-card">
-    {hasMatch && (
-      <div className="connect-match-ribbon"><strong>{job.match}%</strong><span>Match</span></div>
-    )}
-    {/* Real logo only for TSU partner postings, whose employer account
-        actually uploaded one — Careerjet gives no logo or domain to look one
-        up for, so the TSU placeholder stays for those. */}
-    <div className="job-company-logo"><img src={job.companyLogo || alumniLogo} alt={`${job.company} logo`} /></div>
+    <div className={`job-match-panel${hasMatch ? "" : " job-match-panel--empty"}`}>
+      {hasMatch ? (
+        <div className="job-match-score"><strong>{job.match}%</strong><span>Match</span></div>
+      ) : (
+        <span>No match score</span>
+      )}
+    </div>
     <div className="connect-job-main">
       {job.posted && <span className="connect-posted">Posted: {formatPostedDate(job.posted)}</span>}
       {job.createdAt && <span className="connect-posted connect-saved-date">Saved {formatSavedDate(job.createdAt)}</span>}
       <div className="connect-job-title"><div><h3>{job.title}</h3><p>{job.company}<br />{[job.location, job.type].filter(Boolean).join(" | ")}</p></div>{applied && <span className="connect-applied-badge">{job.internal ? "✓ Applied" : "✓ Viewed"}</span>}</div>
       {description && <p className="connect-job-description">{description}</p>}
       <div className="connect-card-buttons">
-        {locked ? (
-          <button className="apply-job apply-locked" type="button" disabled aria-disabled="true">Apply now</button>
-        ) : job.internal ? (
+        {job.internal ? (
           <button className={`apply-job${applied ? " already-applied" : ""}`} type="button" onClick={onApply}>{applied ? "Applied ✓" : "Apply now"}</button>
         ) : (
-          // External (Careerjet) postings only ever open the listing in a new
-          // tab — the system has no way to confirm the alumnus actually
-          // completed an application there, so it can't honestly claim
-          // "Applied" the way it can for internal/partner postings (which do
-          // create a real, employer-visible application record).
+          // External postings can't confirm an application, so they're never marked Applied.
           <a className={`apply-job${applied ? " already-applied" : ""}`} href={job.url} target="_blank" rel="noopener noreferrer" onClick={onApply}>{applied ? "Viewed ✓" : "Apply now"}</a>
         )}
         <button className="view-job" type="button" onClick={onViewDetails}>See details <ArrowIcon /></button>
@@ -184,17 +146,21 @@ export function JobCard({ job, saved, applied, onToggleSave, onViewDetails, onAp
           </button>
         )}
       </div>
-      {locked && <p className="apply-gate-note">You need at least {MIN_APPLY_MATCH}% match to apply. Add the missing skills to your profile to unlock this.</p>}
       <small className="job-partner">{job.internal ? "Posted by a TSU partner employer" : "via Careerjet"}</small>
     </div>
     {job.skills?.length > 0 && (() => {
       const sorted = [...job.skills].sort((a, b) => Number(b.matched) - Number(a.matched));
+      const shown = sorted.slice(0, SKILL_CHIP_LIMIT);
+      const hidden = sorted.length - shown.length;
       const have = job.skills.filter(s => s.matched).length;
       return (
         <aside className="connect-skill-gap" ref={skillGapRef}>
           <b>Job Match</b>
           <span className="skill-match-ratio">{have} of {job.skills.length} skills matched</span>
-          <div>{sorted.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}</div>
+          <div>
+            {shown.map(skill => <span key={skill.name} className={skill.matched ? "skill-have" : "skill-missing"}>{skill.name}</span>)}
+            {hidden > 0 && <span className="skill-more">+{hidden} more</span>}
+          </div>
           <small>
             {skillTip || (have ? "The green skills are already on your profile — add the rest to raise your match." : "None of these are on your profile yet — adding them raises your match.")}
             {job.createdAt && " (based on your profile as of when you saved this job)"}

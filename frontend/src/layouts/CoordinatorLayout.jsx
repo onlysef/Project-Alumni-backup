@@ -17,7 +17,7 @@ const PATH_TITLES = {
   "/coordinator/notify-alumni": "Notify Alumni",
   "/coordinator/contacts":     "Alumni Contacts",
   "/coordinator/aiassistant":  "AI Assistant",
-  "/coordinator/about":        "Alumni Association Inc.",
+  "/coordinator/about":        "Alumni Association, Inc.",
   "/coordinator/tsu":          "Tarlac State University",
 };
 

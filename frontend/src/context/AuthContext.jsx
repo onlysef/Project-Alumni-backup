@@ -55,11 +55,7 @@ export function AuthProvider({ children }) {
   const [needsTracerUpdate, setNeedsTracerUpdateState] = useState(null);
   const [tracerUpdateChecked, setTracerUpdateChecked] = useState(false);
 
-  // `user` is otherwise just a snapshot frozen at login time, only ever
-  // patched in-place by this same tab's own actions (updateUser) — a change
-  // saved from another device/tab/session (e.g. an avatar upload there)
-  // would never show up here until the next full re-login. One refetch on
-  // app load keeps this session's copy honest without needing that.
+  // Refetch on load so profile changes made in another session show up.
   useEffect(() => {
     if (!token) return;
     fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
@@ -97,11 +93,6 @@ export function AuthProvider({ children }) {
     setNeedsTracerUpdateState(false);
   }
 
-  // Patches the logged-in user's own cached profile (name, email, etc.) after
-  // a self-edit — without this, `user` stays frozen at whatever it was at
-  // login until the next full sign-in, so a changed name keeps showing the
-  // old value everywhere it's read from this context (e.g. the AC assistant
-  // greeting) even though the database was updated successfully.
   function updateUser(patch) {
     setUser((prev) => {
       const next = { ...(prev || {}), ...patch };
@@ -114,14 +105,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("auth_token");
     localStorage.removeItem("auth_user");
     localStorage.removeItem("auth_first_login");
-    // The AC AI Assistant keeps its in-progress conversation in localStorage
-    // (acCurrentChat_<role>_<user>) so a refresh doesn't lose it — but
-    // logging out should still start the next session fresh instead of
-    // resuming whatever was left open. Archive it into that account's
-    // history (acChatHistory_<role>_<user>) first, mirroring
-    // AiAssistantView's own buildArchivedHistory/newChat logic, so the
-    // conversation is still reachable from History next login instead of
-    // being silently discarded.
+    // Archive the in-progress AI chat into history on logout (mirrors AiAssistantView's newChat).
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);

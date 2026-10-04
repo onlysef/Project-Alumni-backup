@@ -1,13 +1,54 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { useOutletContext, useLocation, useNavigate } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
-import { Modal, ConfirmDialog, Dropdown } from "../../components/common/Primitives.jsx";
+import { Modal, ConfirmDialog } from "../../components/common/Primitives.jsx";
 import AdminMenu from "../../components/admin/AdminMenu.jsx";
 import ActionMenu from "../../components/admin/ActionMenu.jsx";
 import { adminMenuChoices } from "../../data.js";
 import alumniLogo from "../../assets/images/alumni-removebg.png";
+import { useAuth } from "../../context/AuthContext.jsx";
 
 import { API, authHeaders } from "../../services/api.js";
+import { isJunkText } from "../../utils/textQuality.js";
+
+const JOB_JUNK_FIELD_RULES = {
+  title:               { requireWord: true,  minLength: 3, blockAtSymbol: true },
+  jobDescription:      { requireWord: true,  minLength: 15, requireMultiWord: true },
+  keyResponsibilities: { requireWord: true,  requireMultiWord: true },
+  qualifications:      { requireWord: true,  requireMultiWord: true },
+  preferredSkills:     { requireWord: true,  requireMultiWord: true },
+  location:            { requireWord: true,  blockAtSymbol: true, blockLongDigitRun: true },
+  salaryRange:         { requireWord: false, requireDigitOrPhrase: true },
+};
+const JOB_JUNK_FIELD_MESSAGES = {
+  title: "That doesn't look like a real job title.",
+  jobDescription: "The job description looks like random text. Please write an actual description of the role.",
+  keyResponsibilities: "Key responsibilities looks like random text. Please list the actual duties for this role.",
+  qualifications: "Qualifications & requirements looks like random text. Please list the actual qualifications needed.",
+  preferredSkills: "Preferred skills looks like random text. Please list actual skills.",
+  location: "That doesn't look like a real location.",
+  salaryRange: "That doesn't look like a real salary range.",
+};
+// Matches the modal's visual top-to-bottom field order, used to pick which
+// field to scroll into view when more than one has an error.
+const JOB_FIELD_ORDER = ["title", "location", "salaryRange", "jobDescription", "keyResponsibilities", "qualifications", "preferredSkills"];
+
+// Returns every invalid field at once (not just the first) so each one can
+// show its own message under its own box instead of one banner the admin
+// has to match back to whichever field it's actually about.
+function validateJobFields(fields) {
+  const errors = {};
+  if (!fields.title.trim()) errors.title = "Job title is required.";
+  else if (isJunkText(fields.title, JOB_JUNK_FIELD_RULES.title)) errors.title = JOB_JUNK_FIELD_MESSAGES.title;
+
+  if (!fields.jobDescription.trim()) errors.jobDescription = "A job description is required.";
+  else if (isJunkText(fields.jobDescription, JOB_JUNK_FIELD_RULES.jobDescription)) errors.jobDescription = JOB_JUNK_FIELD_MESSAGES.jobDescription;
+
+  ["keyResponsibilities", "qualifications", "preferredSkills", "location", "salaryRange"].forEach((f) => {
+    if (fields[f] && isJunkText(fields[f], JOB_JUNK_FIELD_RULES[f])) errors[f] = JOB_JUNK_FIELD_MESSAGES[f];
+  });
+  return errors;
+}
 const TYPE_ART_CLASS = { News: "" };
 const COMMENT_EMOJIS = ["😀", "😂", "😍", "👍", "❤️", "🎉"];
 
@@ -16,30 +57,51 @@ async function safeJson(res) {
   try { return JSON.parse(text); } catch { return { message: `Server error (${res.status})` }; }
 }
 
-// Display-only — capitalizes each word's first letter without touching the
-// rest, so acronyms already in a title (e.g. "BSIT", "CCS") survive
-// untouched. Applied only where titles are shown, never to the underlying
-// stored value, so editing a post still starts from exactly what was typed
-// rather than a silently "corrected" version. Needed because Event/Job
-// titles pulled into this feed (see getAnnouncements' union) come straight
-// from Coordinator/Employer free-text input, unlike admin's own posts which
-// are typed with a title case habit already — "web dev"/"test" read as
-// noticeably less polished sitting next to "Bar Exam Results".
+// Display-only title case; keeps acronyms and never changes the stored value.
 function toTitleCase(str = "") {
   return str.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// <input type="datetime-local"> requires "YYYY-MM-DDTHH:mm" in LOCAL time —
-// toISOString() gives UTC, which would silently shift the displayed value by
-// the browser's timezone offset every time the modal opens. Slicing off the
-// offset after subtracting it back out keeps the input showing the same
-// wall-clock time the event was actually saved with.
+const DESCRIPTION_PREVIEW_CHARS = 160;
+
+function ExpandableText({ text = "" }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!text) return "—";
+  const isLong = text.length > DESCRIPTION_PREVIEW_CHARS;
+  return (
+    <div className="expandable-text">
+      <p className={isLong && !expanded ? "is-clamped" : ""}>{text}</p>
+      {isLong && (
+        <button type="button" className="expandable-text-toggle" aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>
+          {expanded ? "See less" : "See more"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// datetime-local needs local time; toISOString() is UTC.
 function toDatetimeLocal(value) {
   if (!value) return "";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+// The past-date check applies only when the start is being changed.
+function validateEventDates(startStr, endStr, previousStartStr) {
+  if (!startStr) return "";
+  const start = new Date(startStr);
+  if (isNaN(start.getTime())) return "Invalid start date & time.";
+  const startIsChanging = previousStartStr === undefined || startStr !== previousStartStr;
+  if (startIsChanging && start < new Date()) return "Event date & time cannot be in the past.";
+  if (endStr) {
+    const end = new Date(endStr);
+    if (isNaN(end.getTime())) return "Invalid end date & time.";
+    if (end <= start) return "End date & time must be after the start date & time.";
+  }
+  return "";
 }
 
 // Relative time for the Recent Activity feed — "3h ago" reads faster than a
@@ -63,6 +125,11 @@ function mapRow(a) {
     id:            String(a._id),
     title:         a.title,
     description:   a.description,
+    jobDescription:      a.jobDescription || "",
+    keyResponsibilities: a.keyResponsibilities || "",
+    qualifications:      a.qualifications || "",
+    preferredSkills:     a.preferredSkills || "",
+    salaryRange:         a.salaryRange || "",
     type:          a.type,
     imageUrl:      a.imageUrl || "",
     location:      a.location || "",
@@ -73,11 +140,6 @@ function mapRow(a) {
     shared:        a.isSharedByMe ?? false,
     sharesCount:   a.sharesCount  ?? 0,
     date:          a.createdAt,
-    // "announcement" (admin-authored) vs "event"/"job" (pulled in from
-    // Coordinator's Event Management / Employer's Job Connect — see
-    // announcementController's getAnnouncements union) — all three are
-    // editable here, but each routes Edit to its own modal/endpoint since
-    // they don't share a field set (see the Actions column below).
     source:         a.source || "announcement",
     posterName:     a.posterName || "",
     eventDatetime:  a.event_datetime || "",
@@ -135,12 +197,7 @@ export default function AnnouncementsView() {
       .catch(() => {});
   }, []);
 
-  // Built already (see backend's getRecentActivity), never actually surfaced
-  // anywhere in the UI — a real, useful feed (who liked/commented/shared
-  // which post, and when) sitting unused. hours=all rather than the
-  // endpoint's own 24h default, since a freshly-loaded admin panel showing
-  // "no activity" most of the time (this data is sparse) looks broken
-  // rather than genuinely empty.
+  // hours=all: the default 24h window is usually empty.
   useEffect(() => {
     fetch(`${API}/admin/announcements/activity?limit=8&hours=all`, { headers: authHeaders() })
       .then(safeJson)
@@ -219,10 +276,7 @@ export default function AnnouncementsView() {
     }
   }
 
-  // Event/Job rows come back from updateEventAdmin/updateJobAdmin as the raw
-  // Mongoose document (no source/posterName/type — those only exist on the
-  // MERGED shape mapRow() builds), so the response is folded into the
-  // existing row in place rather than replaced wholesale with mapRow(json).
+  // Event/Job updates return the raw document, so merge into the existing row instead of mapRow().
   async function handleEventSave(data) {
     try {
       const res  = await fetch(`${API}/admin/announcements/events/${eventEdit.id}`, {
@@ -244,23 +298,30 @@ export default function AnnouncementsView() {
     }
   }
 
+  // Returns an error message string on failure (so JobEditModal can show it
+  // inline, scrolled into view) or null on success — a thrown/toasted error
+  // alone left the modal open with no visible reason why, same issue fixed
+  // on the employer's own Create/Edit modal.
   async function handleJobSave(data) {
     try {
       const res  = await fetch(`${API}/admin/announcements/jobs/${jobEdit.id}`, {
         method: "PATCH", headers: authHeaders(), body: JSON.stringify(data),
       });
       const json = await safeJson(res);
-      if (!res.ok) { showToast(json.message || "Failed to save job."); return; }
+      if (!res.ok) return json.message || "Failed to save job.";
       const j = json.job;
       setRows((prev) => prev.map((r) => r.id === jobEdit.id ? {
         ...r,
-        title: j.title, description: j.description, location: j.location || "",
-        jobType: j.jobType || "",
+        title: j.title, location: j.location || "", jobType: j.jobType || "",
+        jobDescription: j.jobDescription || "", keyResponsibilities: j.keyResponsibilities || "",
+        qualifications: j.qualifications || "", preferredSkills: j.preferredSkills || "",
+        salaryRange: j.salaryRange || "",
       } : r));
       showToast("Job updated.");
       setJobEdit(null);
+      return null;
     } catch {
-      showToast("Could not connect to server.");
+      return "Could not connect to server.";
     }
   }
 
@@ -332,10 +393,6 @@ export default function AnnouncementsView() {
     const post = rows.find(r => r.id === id);
     if (!post) return;
 
-    // Silently copying to the clipboard produced no visible feedback the
-    // user could actually notice besides the count changing — use the real
-    // native share sheet where supported (a clearly visible action), with
-    // clipboard-copy + toast only as the fallback for browsers without it.
     const shareUrl  = `${window.location.origin}${window.location.pathname}?post=${id}`;
     const shareText = `${post.title}\n\n${post.description}`;
     try {
@@ -385,103 +442,6 @@ export default function AnnouncementsView() {
 
   return (
     <section className={`content admin-view announcements-view view active-view`}>
-      <section className="admin-card">
-        <div className="admin-card-head">
-          <h3>Posted Announcements</h3>
-          <div>
-            <AdminMenu menuKey="announcement-date" label={dateFilter} onSelect={setDateFilter} />
-            <AdminMenu menuKey="announcement-type" label={typeFilter} onSelect={setTypeFilter} />
-            <input
-              className="admin-search"
-              type="text"
-              placeholder="Search announcements..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </div>
-        <div className="table-scroll">
-        <table className="admin-table announcement-table">
-          <thead>
-            <tr>
-              <th>Post Title</th>
-              <th>Description</th>
-              <th>Type</th>
-              <th>Posted By</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.map((r) => (
-              <tr key={r.id}>
-                <td>{toTitleCase(r.title)}</td>
-                <td>{r.description}</td>
-                <td>{r.type}</td>
-                <td>{r.posterName || "—"}</td>
-                <td>
-                  {/* Edit and Delete are both offered for all three sources,
-                      each routed to the matching modal/endpoint — see
-                      handleDelete()/the edit branches below for how an
-                      Event/Job row's real underlying record (not just an
-                      Announcement) gets updated or removed. */}
-                  <div className="announcement-action-menu">
-                    <ActionMenu
-                      actions={["edit", "delete"]}
-                      onSelect={(action) => {
-                        if (action === "edit") {
-                          if (r.source === "event") { setEventEdit(r); return; }
-                          if (r.source === "job") { setJobEdit(r); return; }
-                          setComposer({ row: r });
-                          showToast("Post loaded in composer.");
-                        } else {
-                          handleDelete(r);
-                        }
-                      }}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
-                  No announcements match the current filter.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        </div>
-        {totalPages > 1 && (
-          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
-            <button
-              type="button"
-              disabled={page <= 1}
-              onClick={() => setPage(p => p - 1)}
-              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
-            >
-              ‹ Prev
-            </button>
-            <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
-            <button
-              type="button"
-              disabled={page >= totalPages}
-              onClick={() => setPage(p => p + 1)}
-              style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
-            >
-              Next ›
-            </button>
-          </div>
-        )}
-      </section>
-
       <div className="announcement-grid">
         <div className="announcement-left-col">
           <section
@@ -529,6 +489,98 @@ export default function AnnouncementsView() {
               </div>
             ))}
           </section>
+
+          <section className="admin-card">
+            <div className="admin-card-head">
+              <h3>Posted Announcements</h3>
+              <div>
+                <AdminMenu menuKey="announcement-date" label={dateFilter} onSelect={setDateFilter} />
+                <AdminMenu menuKey="announcement-type" label={typeFilter} onSelect={setTypeFilter} />
+                <input
+                  className="admin-search"
+                  type="text"
+                  placeholder="Search announcements..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="table-scroll">
+            <table className="admin-table announcement-table">
+              <thead>
+                <tr>
+                  <th>Post Title</th>
+                  <th>Description</th>
+                  <th>Type</th>
+                  <th>Posted By</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!loading && filtered.map((r) => (
+                  <tr key={r.id}>
+                    <td>{toTitleCase(r.title)}</td>
+                    <td><ExpandableText text={r.description ?? r.jobDescription} /></td>
+                    <td>{r.type}</td>
+                    <td>{r.posterName || "—"}</td>
+                    <td>
+                      <div className="announcement-action-menu">
+                        <ActionMenu
+                          actions={["edit", "delete"]}
+                          onSelect={(action) => {
+                            if (action === "edit") {
+                              if (r.source === "event") { setEventEdit(r); return; }
+                              if (r.source === "job") { setJobEdit(r); return; }
+                              setComposer({ row: r });
+                              showToast("Post loaded in composer.");
+                            } else {
+                              handleDelete(r);
+                            }
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td colSpan="5" style={{ textAlign: "center", color: "#999", padding: "28px 0" }}>
+                      No announcements match the current filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            </div>
+            {totalPages > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "12px 0" }}>
+                <button
+                  type="button"
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => p - 1)}
+                  style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page <= 1 ? "not-allowed" : "pointer", opacity: page <= 1 ? 0.4 : 1 }}
+                >
+                  ‹ Prev
+                </button>
+                <span style={{ fontSize: 13, color: "#76656a" }}>Page {page} of {totalPages}</span>
+                <button
+                  type="button"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(p => p + 1)}
+                  style={{ padding: "4px 12px", borderRadius: 6, border: "1px solid #ccc", cursor: page >= totalPages ? "not-allowed" : "pointer", opacity: page >= totalPages ? 0.4 : 1 }}
+                >
+                  Next ›
+                </button>
+              </div>
+            )}
+          </section>
         </div>
 
         <aside className="recent-posts">
@@ -550,10 +602,6 @@ export default function AnnouncementsView() {
                   </div>
                 )}
                 <div className="post-meta">
-                  {/* The title only repeats here when there's a real image —
-                      the no-image "post-art" placeholder above already shows
-                      it once as its own decorative text, so showing it AGAIN
-                      right below read as a plain, redundant duplicate. */}
                   {p.imageUrl && <span className="post-meta-title">{toTitleCase(p.title)}</span>}
                   {p.type && <span className="post-meta-type">{p.type}</span>}
                 </div>
@@ -636,6 +684,7 @@ export default function AnnouncementsView() {
 // ─── Comment Modal ────────────────────────────────────────────────────────────
 
 function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShare }) {
+  const { user } = useAuth();
   const postId = post?.id;
   const [fullPost, setFullPost]   = useState(null);
   const [comments, setComments]   = useState([]);
@@ -643,12 +692,15 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
   const [notFound, setNotFound]   = useState(false);
   const [text, setText]           = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [editing, setEditing]     = useState(null); // { id, text, saving }
 
   useEffect(() => {
     if (!postId) return;
     setFullPost(null);
     setComments([]);
     setText("");
+    setEditing(null);
     setLoading(true);
     setNotFound(false);
     fetch(`${API}/admin/announcements/${postId}`, { headers: authHeaders() })
@@ -687,9 +739,50 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
     }
   }
 
+  async function handleSaveEdit() {
+    if (!editing?.text.trim() || editing.saving) return;
+    const { id, text: newText } = editing;
+    setEditing(ed => ({ ...ed, saving: true }));
+    try {
+      const res  = await fetch(`${API}/admin/announcements/${postId}/comment/${id}`, {
+        method: "PUT", headers: authHeaders(), body: JSON.stringify({ text: newText }),
+      });
+      const json = await safeJson(res);
+      if (!res.ok) { showToast(json.message || "Failed to update comment."); setEditing(ed => ed && { ...ed, saving: false }); return; }
+      setComments(prev => prev.map(c => c._id === id ? { ...c, ...json.comment } : c));
+      setEditing(null);
+      showToast("Comment updated.");
+    } catch {
+      showToast("Could not connect to server.");
+      setEditing(ed => ed && { ...ed, saving: false });
+    }
+  }
+
+  function handleDeleteComment(comment) {
+    setDeleteConfirm({
+      message: "Delete this comment? This cannot be undone.",
+      onConfirm: async () => {
+        setDeleteConfirm(null);
+        try {
+          const res  = await fetch(`${API}/admin/announcements/${postId}/comment/${comment._id}`, {
+            method: "DELETE", headers: authHeaders(),
+          });
+          const json = await safeJson(res);
+          if (!res.ok) { showToast(json.message || "Failed to delete comment."); return; }
+          setComments(prev => prev.filter(c => c._id !== comment._id));
+          onCommentAdded?.(postId, json.commentsCount);
+          showToast("Comment deleted.");
+        } catch {
+          showToast("Could not connect to server.");
+        }
+      },
+    });
+  }
+
   if (!postId) return null;
 
   return (
+    <>
     <Modal open={!!postId} onClose={onClose}>
       <section className="tracer-modal post-viewer" role="dialog" aria-modal="true">
         <div className="modal-head">
@@ -737,16 +830,55 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
                 {!loading && comments.length === 0 && (
                   <p className="comment-empty">No comments yet. Be the first!</p>
                 )}
-                {comments.map((c, i) => (
-                  <div key={c._id || i} className="comment-item">
-                    <div className="comment-avatar">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
-                    <div className="comment-bubble">
-                      <strong>{c.userName}</strong>
-                      <p>{c.text}</p>
-                      <time>{new Date(c.createdAt).toLocaleString()}</time>
+                {comments.map((c, i) => {
+                  const isMine    = !!user?.id && String(c.user?._id || c.user || "") === String(user.id);
+                  const isEditing = editing?.id === c._id;
+                  return (
+                    <div key={c._id || i} className="comment-item">
+                      {c.avatarUrl ? (
+                        <img className="comment-avatar" src={c.avatarUrl} alt={c.userName || "Commenter"} />
+                      ) : (
+                        <div className="comment-avatar comment-avatar-fallback">{c.userName?.charAt(0)?.toUpperCase() || "?"}</div>
+                      )}
+                      <div className="comment-bubble">
+                        <strong>{c.userName}</strong>
+                        {isEditing ? (
+                          <div className="comment-edit">
+                            <textarea
+                              rows={2}
+                              value={editing.text}
+                              onChange={e => setEditing(ed => ({ ...ed, text: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
+                                if (e.key === "Escape") { e.stopPropagation(); setEditing(null); }
+                              }}
+                              autoFocus
+                            />
+                            <div className="comment-edit-actions">
+                              <button type="button" onClick={() => setEditing(null)}>Cancel</button>
+                              <button type="button" className="primary" disabled={editing.saving || !editing.text.trim()} onClick={handleSaveEdit}>
+                                {editing.saving ? "Saving…" : "Save"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p>{c.text}</p>
+                        )}
+                        <div className="comment-meta">
+                          <time>{new Date(c.createdAt).toLocaleString()}</time>
+                          {c.editedAt && <span className="comment-edited">· Edited</span>}
+                          {!isEditing && isMine && (
+                            <button type="button" className="comment-action" onClick={() => setEditing({ id: c._id, text: c.text, saving: false })}>Edit</button>
+                          )}
+                          {/* Admins moderate, so Delete shows on every comment, not just their own. */}
+                          {!isEditing && (
+                            <button type="button" className="comment-action danger" onClick={() => handleDeleteComment(c)}>Delete</button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
@@ -775,6 +907,15 @@ function CommentModal({ post, onClose, showToast, onCommentAdded, onLike, onShar
         )}
       </section>
     </Modal>
+    <ConfirmDialog
+      open={!!deleteConfirm}
+      message={deleteConfirm?.message}
+      confirmLabel="Delete"
+      danger
+      onConfirm={deleteConfirm?.onConfirm}
+      onCancel={() => setDeleteConfirm(null)}
+    />
+    </>
   );
 }
 
@@ -877,27 +1018,7 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
           <div className="composer-avatar"><img src={alumniLogo} alt="Alumni Association" /></div>
           <div>
             <strong>TSU Alumni Office</strong>
-            <Dropdown
-              menuClassName="filter-menu composer-category-menu"
-              active={category}
-              options={["News", "Announcement", "Job Posting"]}
-              onSelect={setCategory}
-              trigger={(toggle, open) => (
-                <button
-                  type="button"
-                  className="admin-choice composer-category"
-                  aria-expanded={open}
-                  onClick={toggle}
-                >
-                  {category}
-                  <span className="composer-category-caret" aria-hidden="true">
-                    <svg viewBox="0 0 12 8" width="10" height="7" fill="none">
-                      <path d="M1 1.25 6 6.25l5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                </button>
-              )}
-            />
+            <span className="admin-choice composer-category" aria-hidden="false">{category}</span>
           </div>
         </div>
         <div className="create-post-body">
@@ -1005,11 +1126,6 @@ function PostComposerModal({ composer, onClose, onSubmit, showToast }) {
 
 // ─── Event Edit Modal (admin editing a Coordinator's Event) ───────────────────
 
-// Same tracer-modal/admin-entry-modal markup PartnershipsView/AccountsView
-// already use for their own edit modals — mirrors that established admin
-// look instead of the Facebook-composer style (dark background, oversized
-// type) borrowed from PostComposerModal above, which read as visibly
-// out of place next to every other admin modal once seen side by side.
 function EventEditModal({ row, onClose, onSubmit }) {
   const [title, setTitle]             = useState("");
   const [description, setDescription] = useState("");
@@ -1018,6 +1134,7 @@ function EventEditModal({ row, onClose, onSubmit }) {
   const [endDatetime, setEndDatetime] = useState("");
   const [capacity, setCapacity]       = useState("");
   const [saving, setSaving]           = useState(false);
+  const [dateError, setDateError]     = useState("");
 
   useEffect(() => {
     if (!row) return;
@@ -1028,6 +1145,7 @@ function EventEditModal({ row, onClose, onSubmit }) {
     setEndDatetime(toDatetimeLocal(row.endDatetime));
     setCapacity(row.capacity ?? "");
     setSaving(false);
+    setDateError("");
   }, [row]);
 
   if (!row) return null;
@@ -1035,6 +1153,9 @@ function EventEditModal({ row, onClose, onSubmit }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!title.trim()) return;
+    const err = validateEventDates(eventDatetime, endDatetime, toDatetimeLocal(row.eventDatetime));
+    if (err) { setDateError(err); return; }
+    setDateError("");
     setSaving(true);
     await onSubmit({
       title: title.trim(),
@@ -1069,11 +1190,12 @@ function EventEditModal({ row, onClose, onSubmit }) {
               <input type="number" min="0" placeholder="e.g. 100" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
             </label>
             <label>Start Date &amp; Time
-              <input type="datetime-local" value={eventDatetime} onChange={(e) => setEventDatetime(e.target.value)} />
+              <input type="datetime-local" value={eventDatetime} onChange={(e) => { setEventDatetime(e.target.value); setDateError(""); }} />
             </label>
             <label>End Date &amp; Time
-              <input type="datetime-local" value={endDatetime} onChange={(e) => setEndDatetime(e.target.value)} />
+              <input type="datetime-local" value={endDatetime} onChange={(e) => { setEndDatetime(e.target.value); setDateError(""); }} />
             </label>
+            {dateError && <span className="field-error">{dateError}</span>}
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
@@ -1090,63 +1212,132 @@ function EventEditModal({ row, onClose, onSubmit }) {
 const JOB_TYPES = ["Full-time", "Part-time", "Internship", "Contract"];
 
 function JobEditModal({ row, onClose, onSubmit }) {
-  const [title, setTitle]             = useState("");
-  const [description, setDescription] = useState("");
-  const [location, setLocation]       = useState("");
-  const [jobType, setJobType]         = useState("Full-time");
-  const [saving, setSaving]           = useState(false);
+  const [title, setTitle]                             = useState("");
+  const [jobDescription, setJobDescription]           = useState("");
+  const [keyResponsibilities, setKeyResponsibilities] = useState("");
+  const [qualifications, setQualifications]           = useState("");
+  const [preferredSkills, setPreferredSkills]         = useState("");
+  const [salaryRange, setSalaryRange]                 = useState("");
+  const [location, setLocation]                       = useState("");
+  const [jobType, setJobType]                         = useState("Full-time");
+  const [saving, setSaving]                           = useState(false);
+  const [error, setError]                             = useState("");
+  const [fieldErrors, setFieldErrors]                 = useState({});
+  const modalRef = useRef(null);
+  const fieldRefs = useRef({});
+
+  // Same reasoning as the employer's own Create/Edit modal: the form body
+  // scrolls independently, so an error on a field the admin has scrolled
+  // past can render off-screen unless it's scrolled into view.
+  function reportError(message) {
+    setError(message);
+    modalRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function scrollToField(name) {
+    fieldRefs.current[name]?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  const setters = {
+    title: setTitle, jobDescription: setJobDescription, keyResponsibilities: setKeyResponsibilities,
+    qualifications: setQualifications, preferredSkills: setPreferredSkills, salaryRange: setSalaryRange,
+    location: setLocation,
+  };
+  function updateField(field, value) {
+    setters[field](value);
+    setFieldErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev));
+  }
 
   useEffect(() => {
     if (!row) return;
     setTitle(row.title || "");
-    setDescription(row.description || "");
+    setJobDescription(row.jobDescription || "");
+    setKeyResponsibilities(row.keyResponsibilities || "");
+    setQualifications(row.qualifications || "");
+    setPreferredSkills(row.preferredSkills || "");
+    setSalaryRange(row.salaryRange || "");
     setLocation(row.location || "");
     setJobType(row.jobType || "Full-time");
     setSaving(false);
+    setError("");
+    setFieldErrors({});
   }, [row]);
 
   if (!row) return null;
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!title.trim()) return;
+    const fields = { title, jobDescription, keyResponsibilities, qualifications, preferredSkills, salaryRange, location };
+    const errors = validateJobFields(fields);
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      scrollToField(JOB_FIELD_ORDER.find((f) => errors[f]));
+      return;
+    }
+    setFieldErrors({});
+    setError("");
     setSaving(true);
-    await onSubmit({
+    const failMessage = await onSubmit({
       title: title.trim(),
-      description: description.trim(),
+      jobDescription: jobDescription.trim(),
+      keyResponsibilities: keyResponsibilities.trim(),
+      qualifications: qualifications.trim(),
+      preferredSkills: preferredSkills.trim(),
+      salaryRange: salaryRange.trim(),
       location: location.trim(),
       jobType,
     });
     setSaving(false);
+    if (failMessage) reportError(failMessage);
   }
 
   return (
     <Modal open={!!row} onClose={onClose}>
-      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true">
+      <section className="tracer-modal admin-entry-modal" role="dialog" aria-modal="true" ref={modalRef}>
         <div className="modal-head">
           <h3>Edit Job Posting</h3>
           <button type="button" aria-label="Close" onClick={onClose}>×</button>
         </div>
         <form className="admin-entry-form" onSubmit={handleSubmit}>
+          {error && <p className="field-error">{error}</p>}
           <div className="admin-entry-fields">
-            <label>Job Title
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <label ref={(el) => (fieldRefs.current.title = el)}>Job Title
+              <input type="text" value={title} onChange={(e) => updateField("title", e.target.value)} />
+              {fieldErrors.title && <span className="field-error">{fieldErrors.title}</span>}
             </label>
             <label>Employment Type
               <select value={jobType} onChange={(e) => setJobType(e.target.value)}>
                 {JOB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </label>
-            <label>Location
-              <input type="text" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="City, hybrid, or remote" />
+            <label ref={(el) => (fieldRefs.current.location = el)}>Location
+              <input type="text" value={location} onChange={(e) => updateField("location", e.target.value)} placeholder="City, hybrid, or remote" />
+              {fieldErrors.location && <span className="field-error">{fieldErrors.location}</span>}
             </label>
-            <label>Description
-              <textarea rows="4" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <label ref={(el) => (fieldRefs.current.salaryRange = el)}>Salary Range
+              <input type="text" value={salaryRange} onChange={(e) => updateField("salaryRange", e.target.value)} placeholder="e.g. ₱25,000 - ₱35,000 /month" />
+              {fieldErrors.salaryRange && <span className="field-error">{fieldErrors.salaryRange}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.jobDescription = el)}>Job Description
+              <textarea rows="4" value={jobDescription} onChange={(e) => updateField("jobDescription", e.target.value)} />
+              {fieldErrors.jobDescription && <span className="field-error">{fieldErrors.jobDescription}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.keyResponsibilities = el)}>Key Responsibilities
+              <textarea rows="4" value={keyResponsibilities} onChange={(e) => updateField("keyResponsibilities", e.target.value)} />
+              {fieldErrors.keyResponsibilities && <span className="field-error">{fieldErrors.keyResponsibilities}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.qualifications = el)}>Qualifications &amp; Requirements
+              <textarea rows="4" value={qualifications} onChange={(e) => updateField("qualifications", e.target.value)} />
+              {fieldErrors.qualifications && <span className="field-error">{fieldErrors.qualifications}</span>}
+            </label>
+            <label ref={(el) => (fieldRefs.current.preferredSkills = el)}>Preferred Skills (Plus)
+              <textarea rows="3" value={preferredSkills} onChange={(e) => updateField("preferredSkills", e.target.value)} />
+              {fieldErrors.preferredSkills && <span className="field-error">{fieldErrors.preferredSkills}</span>}
             </label>
           </div>
           <div className="modal-actions">
             <button type="button" onClick={onClose}>Cancel</button>
-            <button type="submit" disabled={saving || !title.trim()}>{saving ? "Saving…" : "Save"}</button>
+            <button type="submit" disabled={saving || !title.trim() || !jobDescription.trim()}>{saving ? "Saving…" : "Save"}</button>
           </div>
         </form>
       </section>

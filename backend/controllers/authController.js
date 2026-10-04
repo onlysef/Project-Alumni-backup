@@ -6,6 +6,7 @@ const Partnership = require('../models/Partnership');
 const Graduate = require('../models/Graduate');
 const EmployerInvite = require('../models/EmployerInvite');
 const { generateOTP, sendOTPEmail } = require('../utils/emailService');
+const { isStrongPassword, PASSWORD_REQUIREMENT_MESSAGE } = require('../utils/passwordValidation');
 
 const signToken = (userId, role, college = '', tokenVersion = 0) =>
   jwt.sign({ id: userId, role, college, tokenVersion }, process.env.JWT_SECRET, {
@@ -285,8 +286,8 @@ const resetPassword = async (req, res) => {
     if (!resetToken || !newPassword) {
       return res.status(400).json({ message: 'Token and new password are required.' });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    if (!isStrongPassword(newPassword)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENT_MESSAGE });
     }
 
     const user = await User.findOne({
@@ -352,8 +353,8 @@ const registerAlumni = async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return res.status(400).json({ message: 'Please enter a valid email address.' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENT_MESSAGE });
     }
 
     const existing = await User.findOne({ email: email.toLowerCase().trim() });
@@ -414,8 +415,8 @@ const registerPartner = async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       return res.status(400).json({ message: 'Please enter a valid email address.' });
     }
-    if (password.length < 8) {
-      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    if (!isStrongPassword(password)) {
+      return res.status(400).json({ message: PASSWORD_REQUIREMENT_MESSAGE });
     }
 
     // There is no public sign-up page for employers — this endpoint only

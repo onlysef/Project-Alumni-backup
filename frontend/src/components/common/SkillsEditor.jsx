@@ -1,17 +1,13 @@
 import { useState } from "react";
 import { API, authHeaders } from "../../services/api.js";
-import { classifySkill } from "../../utils/skillClassification.js";
+import { classifySkill, isNonSkillEntry } from "../../utils/skillClassification.js";
 
-// Comma-separated skills string, edited as removable chips + an "add"
-// input, plus a "describe your skills" textarea that extracts recognized
-// skill keywords from a full sentence instead of forcing one chip at a
-// time. Originally the alumni's own Employment Details editor — shared
-// here so admin/coordinator's Edit Alumni Record modal offers the identical
-// editing experience when setting this on someone else's behalf.
-// `extractEndpoint` lets each caller point at its own role's route
-// (/alumni, /admin, /coordinator all expose the same handler).
+// Chip-based skills editor shared by alumni and admin/coordinator; `extractEndpoint` picks the role's route.
+const HAS_LETTER_RE = /[A-Za-zÀ-ÖØ-öø-ÿ]/;
+
 export default function SkillsEditor({ value, onChange, extractEndpoint = "/alumni/skills/extract" }) {
   const [draft, setDraft] = useState("");
+  const [draftError, setDraftError] = useState("");
   const [sentence, setSentence] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState("");
@@ -27,6 +23,15 @@ export default function SkillsEditor({ value, onChange, extractEndpoint = "/alum
   const addSkill = () => {
     const skill = draft.trim().replace(/,+/g, "");
     if (!skill) { setDraft(""); return; }
+    if (!HAS_LETTER_RE.test(skill)) {
+      setDraftError("A skill should include letters, not just symbols or numbers.");
+      return;
+    }
+    if (isNonSkillEntry(skill)) {
+      setDraftError("That doesn't look like a real skill — please enter an actual skill or hobby relevant to your work.");
+      return;
+    }
+    setDraftError("");
     addSkills([skill]);
     setDraft("");
   };
@@ -57,9 +62,6 @@ export default function SkillsEditor({ value, onChange, extractEndpoint = "/alum
     }
   };
 
-  // Split for display only (soft/technical/other), so alumni and admins can
-  // scan the two skill types separately instead of one flat mixed list.
-  // Removing/adding still operates on the single comma-separated `value`.
   const softSkills = skills.filter((s) => classifySkill(s) === "soft");
   const hardSkills = skills.filter((s) => classifySkill(s) === "hard");
   const otherSkills = skills.filter((s) => classifySkill(s) === "other");
@@ -104,8 +106,9 @@ export default function SkillsEditor({ value, onChange, extractEndpoint = "/alum
     )}
 
     <div className="skills-chip-list skills-edit-list">
-      <input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addSkill(); } }} placeholder={skills.length ? "Add another skill" : "e.g. Python"} />
+      <input value={draft} onChange={(event) => { setDraft(event.target.value); setDraftError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addSkill(); } }} placeholder={skills.length ? "Add another skill" : "e.g. Python"} maxLength={50} />
     </div>
     <button type="button" className="add-skill-button" onClick={addSkill}>+ Add skill</button>
+    {draftError && <p className="skills-extract-error">{draftError}</p>}
   </div>;
 }

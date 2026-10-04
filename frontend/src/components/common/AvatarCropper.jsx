@@ -1,12 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Modal } from "./Primitives.jsx";
 
-// Drag-to-reposition + zoom-slider cropper, producing a square JPEG data
-// URI. Originally built for the alumni's own "Upload Photo" flow
-// (AlumniEmploymentDetails.jsx) — extracted here so admin/coordinator's
-// Edit Alumni Record modal can offer the exact same crop experience when
-// setting a photo on someone else's behalf.
-export default function AvatarCropper({ src, busy, onCancel, onSave }) {
+// Square JPEG cropper. `inline` skips the built-in modal for callers that swap it into their own open modal.
+export default function AvatarCropper({ src, busy, onCancel, onSave, inline = false }) {
   const VIEW = 260;
   const OUTPUT = 320;
   const imgRef = useRef(null);
@@ -61,35 +57,41 @@ export default function AvatarCropper({ src, busy, onCancel, onSave }) {
     onSave(canvas.toDataURL("image/jpeg", 0.9));
   }
 
+  const content = (
+    <div className="avatar-cropper" role="dialog" aria-modal="true" aria-label="Adjust profile photo">
+      <div className="modal-head"><h3>Adjust photo</h3><button type="button" aria-label="Cancel" disabled={busy} onClick={onCancel}>×</button></div>
+      <p className="avatar-cropper-hint">Drag to reposition · use the slider to zoom.</p>
+      <div
+        className="avatar-cropper-stage"
+        style={{ width: VIEW, height: VIEW }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <img
+          ref={imgRef}
+          src={src}
+          alt=""
+          draggable="false"
+          onLoad={onImgLoad}
+          style={{ width: dispW || "auto", height: dispH || "auto", transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
+        />
+        <div className="avatar-cropper-ring" />
+      </div>
+      <input type="range" min="1" max="3" step="0.01" value={zoom} disabled={busy} onChange={(e) => setZoom(Number(e.target.value))} aria-label="Zoom" />
+      <div className="avatar-cropper-actions">
+        <button type="button" className="secondary-employment-btn" disabled={busy} onClick={onCancel}>Cancel</button>
+        <button type="button" className="primary-employment-btn" disabled={busy || !nat.w} onClick={handleSave}>{busy ? "Saving…" : "Save Photo"}</button>
+      </div>
+    </div>
+  );
+
+  if (inline) return content;
+
   return (
     <Modal open onClose={busy ? () => {} : onCancel} className="avatar-cropper-modal">
-      <div className="avatar-cropper" role="dialog" aria-modal="true" aria-label="Adjust profile photo">
-        <div className="modal-head"><h3>Adjust photo</h3><button type="button" aria-label="Cancel" disabled={busy} onClick={onCancel}>×</button></div>
-        <p className="avatar-cropper-hint">Drag to reposition · use the slider to zoom.</p>
-        <div
-          className="avatar-cropper-stage"
-          style={{ width: VIEW, height: VIEW }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-        >
-          <img
-            ref={imgRef}
-            src={src}
-            alt=""
-            draggable="false"
-            onLoad={onImgLoad}
-            style={{ width: dispW || "auto", height: dispH || "auto", transform: `translate(-50%, -50%) translate(${pos.x}px, ${pos.y}px)` }}
-          />
-          <div className="avatar-cropper-ring" />
-        </div>
-        <input type="range" min="1" max="3" step="0.01" value={zoom} disabled={busy} onChange={(e) => setZoom(Number(e.target.value))} aria-label="Zoom" />
-        <div className="avatar-cropper-actions">
-          <button type="button" className="secondary-employment-btn" disabled={busy} onClick={onCancel}>Cancel</button>
-          <button type="button" className="primary-employment-btn" disabled={busy || !nat.w} onClick={handleSave}>{busy ? "Saving…" : "Save Photo"}</button>
-        </div>
-      </div>
+      {content}
     </Modal>
   );
 }
