@@ -42,7 +42,7 @@ const DEFAULT_CONFIG = {
           type: 'text',
           label: 'Contact Number',
           placeholder: 'e.g. 09xxxxxxxxx',
-          required: false,
+          required: true,
           order: 0,
         },
         {

@@ -2155,6 +2155,15 @@
             overflow: visible;
         }
 
+        /* Wide layout (many/long x-axis labels, e.g. a per-program
+           breakdown — see TrendLine's own comment) renders at its own
+           natural pixel width instead of being squeezed into the card, and
+           scrolls horizontally — same "give every category real room,
+           scroll instead of cram" pattern .tracer-vbar-chart already uses. */
+        .tracer-trend-line-scroll {
+            overflow-x: auto;
+        }
+
         .trend-gridline {
             stroke: #f0e2e2;
             stroke-width: 1;
@@ -2167,6 +2176,32 @@
         .trend-axis-label {
             font-size: 13px;
             fill: var(--muted, #76656a);
+        }
+
+        /* Y-axis gridline numbers — bold, same visual emphasis as
+           MiniBarChart's own in-bar value numbers (.tracer-vbar-value), just
+           in the brand maroon instead of white since there's no colored bar
+           behind these to sit on top of. */
+        .trend-yaxis-value {
+            font-weight: 700;
+            fill: var(--maroon, #570013);
+        }
+
+        body.dark-mode .trend-yaxis-value {
+            fill: #fac853;
+        }
+
+        /* x-axis category labels — plain, horizontal, the same small
+           readable size/color as MiniBarChart's own .tracer-vbar-label
+           (not the larger .trend-axis-label size above, which is now only
+           used for the y-axis numbers). */
+        .trend-xaxis-label {
+            font-size: 10.5px;
+            fill: #67575c;
+        }
+
+        body.dark-mode .trend-xaxis-label {
+            fill: #dbc5cb;
         }
 
         .trend-line-path {
@@ -2214,6 +2249,19 @@
         body.dark-mode .trend-line-point {
             fill: #fac853;
             stroke: #241116;
+        }
+
+        /* Always-visible per-point value — same bold emphasis as
+           MiniBarChart's own in-bar numbers (.tracer-vbar-value), so a
+           point's value no longer requires hovering to read. */
+        .trend-point-value {
+            font-size: 10px;
+            font-weight: 700;
+            fill: var(--maroon);
+        }
+
+        body.dark-mode .trend-point-value {
+            fill: #fac853;
         }
 
         .trend-tooltip {

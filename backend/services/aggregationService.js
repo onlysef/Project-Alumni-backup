@@ -193,6 +193,55 @@ const SALARY_PATTERN = /\bsalar(?:y|ies)\b|\bincome\b|\bcompensation\b|\bwages?\
 // the verb-phrase form ("paano lumago...") without the noun "paglago" itself.
 const PERSONAL_GROWTH_PATTERN = /\b(?:personal|professional)\s+growth\b|\b(?:personal|propesyonal)\s+na\s+(?:paglago|pag-?unlad)\b|\bpaglago\s+(?:bilang\s+)?(?:tao|indibidwal|propesyonal)\b/i;
 
+// queryInner()'s trend-detection bypass (below) used to match the verb-root
+// alternatives (improv/declin/increas/decreas/grow/worsen/drop) completely
+// BARE — each one is an ordinary English word with no inherent connection to
+// a trend question on its own ("improving their skills," "a drop in
+// temperature"), the exact same false-positive shape "grow" already had
+// against "personal/professional GROWTH" (see isPersonalOrProfessionalGrowth
+// at this bypass's own call site) before that one got its own targeted
+// exclusion. Caught live, far more sharply: a question opening with "DROP
+// TABLE tracer_responses; --" (a SQL-injection-style string pasted ahead of
+// a real question) matched the bare "drop" alternative and silently
+// replaced the real embedded question ("What is the employment rate?") with
+// an unrelated by-year breakdown. Not an actual SQL injection risk — this
+// backend is MongoDB/Mongoose throughout, no raw query string is ever built
+// from user text, "DROP TABLE" is inert here — but a real false-positive in
+// this heuristic's own word list, generalized here to every verb-root at
+// once (not just "grow") rather than patching each collision one at a time
+// as it's found. Each verb-root now only counts as a trend signal when it
+// actually sits near a rate/employment-shaped subject word, in either word
+// order ("employment IS DROPPING" / "DROPPING employment rate") — "trend"/
+// "year-over-year"/"over time" are unambiguous on their own and stay bare.
+const TREND_SUBJECT_WORD = '(?:rate|employment|job|jobs|percentage|percent|numbers?|alumni|graduates?)';
+const TREND_VERB_ROOT = '(?:improv|declin|increas|decreas|grow(?:ing|th)?|worsen|drop(?:ping|ped)?)\\w*';
+const TREND_PATTERN = new RegExp(
+  '\\btrend\\b|\\byear[\\s-]over[\\s-]year\\b|\\bover\\s+time\\b'
+  + `|\\b${TREND_VERB_ROOT}\\b.{0,30}\\b${TREND_SUBJECT_WORD}\\b`
+  + `|\\b${TREND_SUBJECT_WORD}\\b.{0,30}\\b${TREND_VERB_ROOT}\\b`,
+  'i'
+);
+
+// "Which batch year had the most graduates?" / "Which batch has the highest
+// unemployment rate?" — the trigger for queryInner()'s own "which batch/year
+// has the highest/lowest X" ranking bypass (further below). Named and
+// extracted here (not left inline at that one call site) because a SECOND
+// place needs the exact same test: the "bare chart-only continuation" guard
+// a few hundred lines earlier checks `topic === null` to decide whether a
+// chart-type request carries no real content of its own and should bail out
+// for ragService.js to retry with the real prior question — but this
+// ranking bypass runs INDEPENDENTLY of detectTopic()/topic (it matches
+// directly against the raw question text), so `topic` stays null even for a
+// fully self-contained, answerable ranking question like "which batch had
+// the most graduates." Caught live: "which batch had the most graduates
+// (make it a line graph)" has real content of its own (the ranking
+// question) but got wrongly bailed out as if it were a bare, content-free
+// "make it a line graph" follow-up, because topic was null and a chart was
+// requested — never even reaching the ranking bypass that would have
+// answered it correctly. See that guard's own comment for the full fix.
+const BATCH_YEAR_SUPERLATIVE_PATTERN = /\bwhich\s+(?:graduation\s+)?(batch|year)\b/i;
+const SUPERLATIVE_DIRECTION_WORD_PATTERN = /\b(most|highest|fewest|least|lowest)\b/i;
+
 // "What trainings did alumni attend?" / "which seminars/workshops have
 // alumni attended?" ask about SELF-REPORTED tracer-study professional
 // development (Graduate.furtherTraining) — but 'events' sits much earlier
@@ -234,15 +283,63 @@ const UNTRACKED_EMPLOYMENT_CONCEPTS = [
     label: 'job satisfaction',
   },
   {
-    pattern: /\bhow\s+long\b.{0,25}\b(?:find|land|get|secure|got)\b.{0,20}\b(?:first\s+)?(?:jobs?|employ\w*)\b|\btime\s+to\b.{0,15}\b(?:first\s+)?(?:jobs?|employ\w*)\b|\bgaano\s+katagal\b.{0,25}\b(?:makahanap|nakahanap|makakuha|nakakuha)\b.{0,15}\btrabaho\b/i,
+    // "...found a job WITHIN 6 months of graduation" / "...within a year
+    // after graduating" added — a different grammatical shape of the exact
+    // same untracked concept (time elapsed before finding a job), caught
+    // live: this phrasing matched NEITHER the "how long"/"time to"
+    // alternatives already here, so the question fell all the way through
+    // to the generic employment-status topic and answered with the bare
+    // OVERALL employment rate (68.6%) as if it had actually addressed the
+    // "within 6 months" timing — a real, correctly-computed number
+    // answering a completely different question than the one asked.
+    pattern: /\bhow\s+long\b.{0,25}\b(?:find|land|get|secure|got)\b.{0,20}\b(?:first\s+)?(?:jobs?|employ\w*)\b|\btime\s+to\b.{0,15}\b(?:first\s+)?(?:jobs?|employ\w*)\b|\b(?:found|landed|got|secured)\b.{0,15}\b(?:a\s+)?jobs?\b.{0,15}\bwithin\b.{0,25}\b(?:months?|years?)\b|\bwithin\b.{0,25}\b(?:months?|years?)\b.{0,25}\bof\s+graduat\w*\b|\bgaano\s+katagal\b.{0,25}\b(?:makahanap|nakahanap|makakuha|nakakuha)\b.{0,15}\btrabaho\b/i,
     label: 'how long it takes alumni to find their first job',
+    // The overall employment rate is a genuinely useful "closest available"
+    // substitute here (someone employed AT ALL is at least informative when
+    // "employed within a specific timeframe" isn't tracked) — unlike job
+    // satisfaction/salary just above and below, which have no comparably
+    // close substitute at all. Read by the dedicated handler just below
+    // untrackedEmploymentConceptMessage() that offers it as a suggestion,
+    // mirroring queryWorkType()'s own "full-time" -> "Regular/Permanent"
+    // redirect (see that function's own comment).
+    hasRateAlternative: true,
   },
-  { pattern: SALARY_PATTERN, label: 'salary/income/compensation' },
+  {
+    pattern: SALARY_PATTERN, label: 'salary/income/compensation',
+    // Overrides the generic "not tracked" wording below — salary genuinely
+    // isn't a tracer study SURVEY question, but it's not entirely unavailable
+    // either: a handful of alumni have separately added a salary range to
+    // their own Employment Details profile (AlumniEmployment.salary_range —
+    // see buildPersonLookupResult()'s own comment). Too sparse a sample
+    // (checked live: 4 of 293 profiles) to report as a dataset-wide average
+    // or breakdown without it being misleading, but a question naming ONE
+    // specific alumnus can check their own profile directly, so the decline
+    // should point there instead of flatly claiming no salary data exists
+    // anywhere at all.
+    customMessage: `Salary/income is not one of the official tracer study survey questions, so there's no dataset-wide average or breakdown to report. A small number of alumni have optionally added a salary range to their own Employment Details profile instead — ask about one specific alumnus by name (e.g. "What is Juan Dela Cruz's salary?") and I can check their profile directly.`,
+  },
 ];
+// Exposes the matched entry itself (not just its rendered message) so the
+// 'employment' dispatch below can check `hasRateAlternative` and enrich the
+// plain decline with a real suggested follow-up for the one concept
+// (time-to-employment) that actually has a sensible closest-available
+// substitute — see that entry's own comment.
+function matchUntrackedEmploymentConcept(question) {
+  return UNTRACKED_EMPLOYMENT_CONCEPTS.find(({ pattern }) => pattern.test(question)) || null;
+}
+// Bulleted (not a run-on comma sentence), shared by both places that render
+// this exact "what IS available instead" list (this function, and the
+// hasRateAlternative branch in queryInner() further below) so a future edit
+// only has to happen once. Bullet formatting also makes ragService.js's
+// bulletLineCount>=2 check skip LLM narration entirely for either caller's
+// answer, the same protection every other verified deterministic message
+// already gets — guarantees these exact lines reach the user unparaphrased.
+const AVAILABLE_EMPLOYMENT_MEASURES_LIST = '\n\n- Employment status\n- Employment type\n- Industry\n- Work location\n- Job relevance to course of study\n- Further studies/training\n\n';
 function untrackedEmploymentConceptMessage(question) {
-  const match = UNTRACKED_EMPLOYMENT_CONCEPTS.find(({ pattern }) => pattern.test(question));
+  const match = matchUntrackedEmploymentConcept(question);
   if (!match) return null;
-  return `The tracer study does not track ${match.label} as its own question. What IS available: employment status, employment type, industry, work location, job relevance to course of study, and further studies/training. Please ask about one of those instead.`;
+  if (match.customMessage) return match.customMessage;
+  return `The tracer study does not track ${match.label} as its own question. What is available:${AVAILABLE_EMPLOYMENT_MEASURES_LIST}Please ask about one of those instead.`;
 }
 
 // "What is the most common reason alumni gave for being unemployed?" /
@@ -584,7 +681,16 @@ const TOPIC_PATTERNS = {
   // between "un" and "employment"), so "unemployment rate" silently missed
   // this pattern entirely and fell all the way through to the generic "I
   // don't have enough data" refusal instead of answering.
-  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|(un)?employment\s+rate|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job|porsyento|porsiyento)\b/i,
+  // "rates" (plural) added — "comparing employment RATES across all
+  // specializations" has no singular "rate" anywhere (the trailing \b on
+  // this whole alternation requires a boundary right after "rate", which
+  // "rates" never has — 's' is a word character), so this matched NONE of
+  // the alternatives here and fell through past 'rate' entirely, reaching
+  // 'by_program' (or, before that pattern itself recognized
+  // "specializations"/"across all", the EMPLOYMENT_SIGNAL fallback) instead
+  // — losing the "rate" framing and answering with a plain headcount/
+  // breakdown instead of the employment RATE comparison actually asked for.
+  rate:            /\b(what\s+(percentage|percent|rate)|how\s+many\s+percent|(un)?employment\s+rates?|percentage\s+of\s+(?:\w+\s+){0,3}(graduates?|alumni)|found\s+a\s+job|got\s+a\s+job|porsyento|porsiyento)\b/i,
   // "give me tracer study information" (and similar "tracer ... info/
   // information/details" phrasings, either order) used to match NONE of the
   // alternatives below — "general (data|info|...)" only fires with the
@@ -761,7 +867,17 @@ const TOPIC_PATTERNS = {
   // nothing here (or anything else) and fell through unanswered — same
   // "that has/with" gap as job_positions/top_companies/
   // BY_PROGRAM_QUESTION_PATTERN above.
-  by_program:      /\b(by program|by course|per program|per course|each program|program breakdown|bawat\s+(kurso|programa)|per\s+(kurso|programa))\b|\b(?:program|course|degree)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top|more|fewer)\b/i,
+  // "specialization(s)"/"track(s)" added as synonyms alongside program/
+  // course — "specialization" is this app's own vocabulary for a
+  // program's track (see PROGRAM_SPECIALIZATIONS above), every bit as real
+  // a way to ask for a per-program breakdown as the word "program" itself.
+  // "across (all|every) specializations" added as a connector synonym for
+  // "by/per/each" — caught live: "compare employment rates across all
+  // specializations" matched NONE of the original alternatives (no "by/
+  // per/each", no "program"/"course"/"degree" noun at all) and silently
+  // fell through to the generic single-number overall rate, completely
+  // ignoring the explicit "across all specializations" comparison request.
+  by_program:      /\b(by\s+(?:program|course|specialization|track)s?|per\s+(?:program|course|specialization|track)s?|each\s+(?:program|course|specialization|track)|across\s+(?:all|every)\b(?:\s+\w+){0,2}\s+(?:programs?|courses?|specializations?|tracks?)|(?:program|specialization)\s+breakdown|bawat\s+(kurso|programa)|per\s+(kurso|programa))\b|\b(?:program|course|degree|specialization|track)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top|more|fewer)\b/i,
   by_year:         /\b(by (batch|year|graduation)|per (batch|year)|each (batch|year)|year breakdown|batch breakdown|bawat\s+taon|kada\s+taon|per\s+taon)\b|\b(?:batch|year)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:most|least|highest|top|more|fewer)\b/i,
   // lgbt\w* also covers "lgbtq"/"lgbtqia"/"lgbtqia+" (the actual stored
   // value) — the survey's gender field only has one umbrella option for
@@ -897,6 +1013,23 @@ function detectTopic(question) {
   // filter to set), silently answering the plain unfiltered headcount (703)
   // instead of the real promoted/not-promoted breakdown.
   if (TOPIC_PATTERNS.promotion.test(question)) return 'promotion';
+  // 'names' sits earlier than 'rate' in TOPIC_PATTERNS below, and its own
+  // broad "who (is|are) ... (working|employed|unemployed|self-employed)"
+  // alternative (built for a genuine roster request like "who is currently
+  // employed?") wins outright before 'rate' ever gets a turn whenever a
+  // RATE question's own phrasing happens to use the same "who are ...
+  // employed" construction as part of a larger sentence — same object-order
+  // collision class as every other override above. Caught live: "Show me
+  // the percentage of Computer Science graduates who are currently employed
+  // full-time and work locally" explicitly asks for a PERCENTAGE (TOPIC_
+  // PATTERNS.rate's own "percentage of ... graduates" alternative matches
+  // it directly), but also contains "...graduates WHO ARE currently
+  // employed," which satisfied 'names' first and returned a full
+  // alphabetical roster instead of the real rate. TOPIC_PATTERNS.rate's own
+  // triggers (percentage/percent/rate/porsyento) are unambiguous, explicit
+  // statistical vocabulary — never a generic phrase a genuine names request
+  // would also use — so it's safe to let it win outright whenever present.
+  if (TOPIC_PATTERNS.rate.test(question)) return 'rate';
   for (const [topic, pattern] of Object.entries(TOPIC_PATTERNS)) {
     if (pattern.test(question)) return topic;
   }
@@ -914,9 +1047,19 @@ function detectTopic(question) {
 // fewest" anywhere in the question is checked FIRST and wins outright
 // regardless of any unrelated "most" elsewhere; only when none of those are
 // present does an actual "most/highest" get treated as asking for the top end.
+// "fewer"/"less" and "more"/"greater" added alongside the existing
+// superlative words — a COMPARATIVE phrasing ("which program will have MORE
+// employed next year") is just as clear a direction signal as the
+// superlative ("most"), but neither word list recognized it at all, so
+// `wantsHighestDirection` fell through to its own false default and
+// confidently named the LOWEST-performing program as the answer to a
+// question explicitly asking for the one with MORE. Caught live, right
+// after the OUT_OF_SCOPE_TOPICS predict/next-year exclusion above started
+// letting this exact question shape ("predict which program will have more
+// employed next year") reach this function for the first time.
 function wantsHighestDirection(question) {
-  if (/\b(lowest|least|fewest)\b/i.test(question)) return false;
-  return /\b(most|highest)\b/i.test(question);
+  if (/\b(lowest|least|fewest|fewer|less)\b/i.test(question)) return false;
+  return /\b(most|highest|more|greater)\b/i.test(question);
 }
 
 // A negation word appearing shortly before a phrase — "not self-employed",
@@ -953,22 +1096,163 @@ function extractFilters(question) {
   question = normalizeQuestion(question);
   const filters = {};
 
-  // Combined program+track shorthand: "BSIT-TSM", "BSIT/WMA", "BSIT NA".
-  // Must run BEFORE the generic BS-prefix match below, which stops at the
-  // hyphen/slash and would otherwise truncate this to plain "BSIT" — silently
-  // dropping the track and matching the whole Information Technology program
-  // instead of the specific specialization asked about. filters.program is
+  // "How many total alumni RECORDS and tracer survey RESPONSES are
+  // currently in the system?" — a bare, unfiltered count question that
+  // explicitly names BOTH "records" and "responses" as if asking for two
+  // separate figures. Graduate's own row count answers both (every row IS
+  // both an alumni record and, thanks to LIVE_SUBMISSION_ONLY, a real
+  // tracer survey response), so the NUMBER queryCount() already gives is
+  // correct — but its default wording only ever says "graduates," never
+  // acknowledging the question's own "records"/"responses" framing at all.
+  // Read by queryCount()'s bare-total branch to phrase the SAME correct
+  // number so it explicitly answers both halves of what was actually asked,
+  // instead of reading as though only one half got addressed. Bidirectional
+  // ("records...responses" OR "responses...records") since either word
+  // order is natural phrasing.
+  if (/\brecords?\b.{0,40}\b(?:responses?|submissions?)\b|\b(?:responses?|submissions?)\b.{0,40}\brecords?\b/i.test(question)) {
+    filters.mentionsRecordsAndResponses = true;
+  }
+
+  // Combined program+specialization shorthand: "BSIT-TSM", "BSIS Business
+  // Analytics", "BSIT major in Network Administration". filters.program is
   // used as a MongoDB regex, so "X.*Y" requires both substrings present in
   // order, matching the real stored format ("...Information Technology -
   // Specialized in Technical Service Management").
-  const TRACK_MAP = { TSM: 'Technical Service Management', WMA: 'Web and Mobile Application', NA: 'Network Administration' };
-  const trackMatch = question.match(/\bBS[- ]?IT\s*[-\/]\s*(TSM|WMA|NA)\b/i);
-  if (trackMatch) {
-    const track = TRACK_MAP[trackMatch[1].toUpperCase()];
-    filters.program = `Information Technology.*${track}`;
+  //
+  // Every REAL program+specialization combination currently on file (see
+  // Graduate.program) — not just IT. Originally hardcoded to IT's three
+  // tracks alone; generalized here so a NEW specialization under ANY
+  // program/college (not just IT) only ever needs ONE new entry added to
+  // this list, not a parallel copy of the whole matching mechanism. `code`
+  // is the short form some users naturally type ("BSIT TSM") — omit it
+  // (null) for a specialization with no safe short code of its own (e.g.
+  // "BA" for Business Analytics collides too easily with "Bachelor of
+  // Arts"/"Business Administration" to ever safely stand alone); the fully
+  // spelled-out form below still works for those regardless.
+  // `name` is the single CANONICAL form used for filters.program/programLabel
+  // (must match how Graduate.program actually stores it); `aliases` are
+  // OTHER ways someone naturally types the same specialization that should
+  // still resolve to that same canonical name — "&" instead of "and",
+  // "App(s)" instead of "Application", "Networking" as the everyday word for
+  // "Network Administration". Aliases are only ever matched INSIDE an
+  // explicit program-prefixed or connector-worded context below (never as a
+  // context-free bare trigger the way the canonical `name`/`code` are
+  // further down in SPEC_ABBR) — "Networking" alone, with no "BSIT"/
+  // "specialized in"/"major in" anywhere nearby, is an ordinary English word
+  // (professional networking, a networking event) far too likely to appear
+  // in an unrelated question to ever safely stand alone, the same collision
+  // risk this file's own comment above already calls out for why bare "BA"
+  // was deliberately never added for Business Analytics.
+  const PROGRAM_SPECIALIZATIONS = [
+    { abbr: 'IT', base: 'Information Technology', code: 'TSM', name: 'Technical Service Management', aliases: [] },
+    { abbr: 'IT', base: 'Information Technology', code: 'WMA', name: 'Web and Mobile Application', aliases: ['Web and Mobile Applications', 'Web & Mobile Application', 'Web & Mobile Applications', 'Web and Mobile App', 'Web and Mobile Apps', 'Web & Mobile App', 'Web & Mobile Apps'] },
+    // "Network Administrator" (the ROLE/PERSON noun) added alongside
+    // "Networking" — a different, equally natural way someone refers to
+    // this same specialization ("Network Administration" is the course
+    // name; "Network Administrator" is what someone who takes it becomes),
+    // not previously recognized at all. Caught live: "BSIT - Specialized in
+    // Network Administrator vs Web and Mobile Application" only resolved
+    // the RIGHT side; the left silently fell back to the whole "Information
+    // Technology" base program (157, every IT specialization combined)
+    // instead of just the Network Administration track, since "Administrator"
+    // never matches the literal word "Administration" this list otherwise
+    // requires.
+    { abbr: 'IT', base: 'Information Technology', code: 'NA',  name: 'Network Administration', aliases: ['Networking', 'Network Administrator', 'Network Administrators'] },
+    { abbr: 'IS', base: 'Information Systems',    code: null, name: 'Business Analytics', aliases: [] },
+  ];
+  // Short-code OR full-name form glued directly onto the program
+  // abbreviation — "BSIT TSM", "BSIT Technical Service Management", "BSIS
+  // Business Analytics" (no "major in" connector needed for any of these).
+  // [-\/\s]+ (not just [-\/]) between the abbreviation and what follows, and
+  // requires it to directly follow THIS SAME program's own abbreviation
+  // (never a different program's), so e.g. "TSM" only ever resolves under
+  // "BSIT", never accidentally under "BSIS". Caught live twice: "BSIT TSM"
+  // (a plain SPACE, no hyphen/slash — only the hyphenated "BSIT-TSM" form
+  // worked before this) and "BSIS Business Analytics" (no short code exists
+  // for this one, and no "major in" connector was used either) both
+  // answered with the WHOLE program's number as if no specialization had
+  // been named at all.
+  //
+  // The PREFIX before that separator also needs every natural way someone
+  // actually spells out the base program, not just its short abbreviation —
+  // "BS Information Systems - Business Analytics" has no "BSIS"/"BS IS"
+  // anywhere in it at all, just the fully spelled-out base name glued the
+  // same way, and fell through this whole block untouched (then also missed
+  // the plain full-name PROGRAM_KEYWORDS match further below, since THAT
+  // regex has no "- Business Analytics" suffix awareness either) — the
+  // question matched literally nothing in the database and fell all the way
+  // through to the generic "I could not find relevant information" refusal.
+  // Caught live. `BS\s+(?:in\s+)?` and the full "Bachelor of Science in"
+  // form are both optional — a bare base name immediately followed by the
+  // separator+specialization ("Information Systems - Business Analytics",
+  // no "BS" at all) is just as natural and equally unambiguous here (the
+  // specialization name/code right after it is what makes this narrow
+  // pattern safe, not the presence of "BS").
+  // Connector between the program prefix and the specialization — was just
+  // "[-\/\s]+" (a bare hyphen/slash/space), which only covers the GLUED
+  // phrasing ("BSIT-TSM"). The database's OWN stored format spells this out
+  // as "...- Specialized in Technical Service Management" (see this
+  // function's own comment on filters.program further up), yet a question
+  // using that exact connector word ("BSIT students specialized in Network
+  // Administration") had no match of its own at all — neither this glued
+  // form (no bare separator directly before the name) nor the "major in"
+  // form just below (wrong connector word entirely). "sa" (Tagalog "in")
+  // covers the equally natural Taglish "nag-major SA Technical Service
+  // Management" / "nag-specialize SA Network Administration" idiom, same
+  // bilingual-gap reasoning this file applies elsewhere (see e.g. the
+  // "ihambing/ikumpara" compare-trigger comment).
+  // "*" (zero-or-more), not "+" — a typo that drops the space entirely
+  // ("bsittechnical service management graduates," no separator whatsoever
+  // between the abbreviation and the specialization name) is a real, live
+  // case, and the ORIGINAL "+" (one-or-more) required at least one
+  // separator character to exist at all, so a fully-glued typo like this
+  // matched nothing here. Safe to allow zero: the trailing specAlt
+  // alternation right after it is one of only 4 highly specific, fully
+  // spelled-out specialization names/codes (never a generic word), so a
+  // false positive would need an unrelated sentence to coincidentally glue
+  // one of those exact phrases directly onto "BSIT"/"Information
+  // Technology"/etc. with nothing between them at all — effectively
+  // impossible by accident.
+  const SPEC_CONNECTOR = '(?:[-\\/\\s]*|\\s*(?:nag[- ]?)?(?:specializ(?:ed|ation)|major(?:ing)?|track(?:ing)?)\\s+(?:in|on|sa)\\s+|\\s+under(?:\\s+the)?\\s+)';
+  const specGluedMatch = PROGRAM_SPECIALIZATIONS
+    .map((s) => {
+      const specAlt = [s.code, s.name, ...s.aliases].filter(Boolean).map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+      const baseEsc = escapeRegex(s.base);
+      const prefixAlt = [`BS[- ]?${s.abbr}`, `BS\\s+(?:in\\s+)?${baseEsc}`, `Bachelor\\s+of\\s+Science\\s+in\\s+${baseEsc}`, baseEsc].join('|');
+      // No "\b" between the prefix group and the connector (unlike the
+      // leading/trailing "\b" around the whole match, which stay) — a "\b"
+      // there would itself block the zero-separator typo case above, since
+      // two adjacent word characters ("...IT" immediately followed by
+      // "Technical...") never satisfy a word boundary regardless of what
+      // SPEC_CONNECTOR allows.
+      return { s, re: new RegExp(`\\b(?:${prefixAlt})${SPEC_CONNECTOR}(?:${specAlt})\\b`, 'i') };
+    })
+    .find(({ re }) => re.test(question));
+  // Fully spelled-out form with NO program prefix at all: "majoring in
+  // Business Analytics," "specialized in Network Administration," "nag-major
+  // sa Technical Service Management" — just as natural a phrasing as the
+  // short code, and equally silently dropped before this existed (same live
+  // case: "BSIT MAJOR IN TECHNICAL SERVICE MANAGEMENT" answered the
+  // whole-program number too). The specialization's full name/alias is
+  // unique enough on its own that this doesn't also need the program
+  // abbreviation to disambiguate — matched case-insensitively so an all-caps
+  // question (as typed live) still resolves to the properly-cased canonical
+  // name. Shares SPEC_CONNECTOR's connector-word alternatives (minus the bare
+  // separator, which needs an actual program prefix right before it to mean
+  // anything — a bare "- Business Analytics" with nothing in front of the
+  // hyphen isn't a real phrase).
+  const specNameMatch = !specGluedMatch && PROGRAM_SPECIALIZATIONS
+    .map((s) => {
+      const specAlt = [s.code, s.name, ...s.aliases].filter(Boolean).map((v) => v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+      return { s, re: new RegExp(`\\b(?:nag[- ]?)?(?:specializ(?:ed|ation)|major(?:ing)?|track(?:ing)?)\\s+(?:in|on|sa)\\s+(?:${specAlt})\\b`, 'i') };
+    })
+    .find(({ re }) => re.test(question));
+  const resolvedSpec = specGluedMatch?.s || specNameMatch?.s;
+  if (resolvedSpec) {
+    filters.program = `${resolvedSpec.base}.*${resolvedSpec.name}`;
     // filterLabel() prefers this for display so the answer reads naturally
     // instead of showing the raw ".*" regex used for matching.
-    filters.programLabel = `Information Technology - ${track}`;
+    filters.programLabel = `${resolvedSpec.base} - ${resolvedSpec.name}`;
   }
 
   // Program name: "BSCS graduates", "BSIT students", etc.
@@ -990,8 +1274,8 @@ function extractFilters(question) {
   // here is exactly 2 words after "in" — "Information Management,"
   // "Computer Science," "Information Technology," "Information Systems";
   // track-specific names like "...Specialized in Technical Service
-  // Management" are matched by a dedicated TRACK_MAP/trackMatch regex above,
-  // not this generic branch) — an earlier, uncapped
+  // Management" are matched by the dedicated PROGRAM_SPECIALIZATIONS
+  // matching above, not this generic branch) — an earlier, uncapped
   // `[A-Za-z]+(?:\s+[A-Za-z]+)*` greedily consumed every following word in
   // the WHOLE SENTENCE, not just the program name itself (caught live:
   // "...Bachelor of Science in Information Management PROGRAM WERE
@@ -1022,7 +1306,28 @@ function extractFilters(question) {
       BSACCT:'Accountancy',
     };
     const expanded = ABBR[filters.program.toUpperCase()];
-    if (expanded) filters.program = expanded;
+    if (expanded) {
+      filters.program = expanded;
+    } else {
+      // The SPACED form ("BS Information Technology", "B.S. Information
+      // Technology") — not the glued "BSIT" the ABBR map above expects.
+      // The regex alternative that allows a space after "BS" deliberately
+      // captures the whole "BS Information Technology" span (so the degree
+      // name right after it isn't cut off), but that means the ABBR lookup
+      // above (keyed on glued forms only) never finds it, and filters.program
+      // was left as the raw, un-normalized "BS Information Technology" —
+      // which then matched ZERO real Graduate.program values (the stored
+      // form spells out "Bachelor of Science in Information Technology,"
+      // never literally "BS Information Technology" as a substring).
+      // Caught live: "how many BS Information Technology graduates..."
+      // silently returned 0 real matches and fell through to RAG's generic
+      // "could not find relevant information" refusal instead of the real
+      // count. Stripping the "BS"/"B.S." prefix recovers the already-valid,
+      // already-matchable program name sitting right behind it —
+      // "Information Technology" alone IS a real substring of the full
+      // stored name, same as if the question had just said that directly.
+      filters.program = filters.program.replace(/^B\.?S\.?\s+/i, '');
+    }
   }
 
   // "nasa IT/CS/IS/IM" ("in/at IT/CS/IS/IM") — Filipino "nasa" signals a
@@ -1142,6 +1447,13 @@ function extractFilters(question) {
     const SPEC_ABBR = [
       [/\bTSM\b/i,                              'Technical Service Management'],
       [/\bWMA\b/i,                              'Web and Mobile Application'],
+      // "&" and shortened "App(s)" are just as natural as the fully spelled-
+      // out "Web and Mobile Application" — these are specific enough
+      // multi-word phrases (unlike a bare generic word) to stay safe as a
+      // context-free bare trigger, same reasoning PROGRAM_SPECIALIZATIONS'
+      // own aliases comment gives for why "Networking" alone does NOT get
+      // the same treatment here.
+      [/\bWeb\s+(?:and|&)\s+Mobile\s+(?:Application|Applications|App|Apps)\b/i, 'Web and Mobile Application'],
       [/\bNet(?:work)?\s*Admin\w*\b/i,          'Network Administration'],
       [/\bNA\b/,                                'Network Administration'],   // case-sensitive: avoids Filipino "na"
       [/\bBusiness\s*Analytics?\b/i,            'Business Analytics'],
@@ -1221,6 +1533,44 @@ function extractFilters(question) {
     if (keyword) filters.program = keyword;
   }
 
+  // "How many Computer Science and TSM graduates are currently working in
+  // roles somewhat related to their degree?" — every single-value step above
+  // (courseMatch/SPEC_ABBR/PROGRAM_KEYWORDS) is deliberately gated behind
+  // `if (!filters.program)`, correct for ONE program but meaning whichever
+  // step matches FIRST (SPEC_ABBR's bare "TSM" runs before the full-name
+  // PROGRAM_KEYWORDS loop) silently blocks a second, equally real program
+  // named later in the SAME question from ever being attempted at all.
+  // Caught live: that exact question answered for TSM alone, with "Computer
+  // Science" discarded with no indication anything had been dropped — the
+  // user's own words, "dapat pwede rin yung dalawa ang maraming courses"
+  // ("it should be possible for there to be two or many courses").
+  // Independent of (and must never fire alongside) the compare/vs/versus
+  // path — queryInner() routes that to queryCompare() separately, which
+  // wants the two cohorts kept APART for a side-by-side comparison; "and"
+  // here instead means "combine into one answer," the opposite intent.
+  if (!/\b(compare|\bvs\.?\b|\bversus\b|difference\s+between|ihambing|ikumpara|paghambingin|pagkakaiba\s+ng)\b/i.test(question)) {
+    const mentions = findAllProgramMentions(question);
+    const distinct = [];
+    for (const m of mentions) {
+      // Same program named twice in different forms ("IT" ... "Information
+      // Technology") must count once, not be treated as two cohorts to combine.
+      if (!distinct.some((d) => d.label === m.label)) distinct.push(m);
+    }
+    if (distinct.length >= 2) {
+      // Only combine mentions separated by nothing but a plain connector
+      // ("and"/","/"&") — two program names that happen to appear far apart
+      // in an otherwise unrelated multi-part question should NOT be silently
+      // merged into one filter neither name's own half of the question
+      // actually intended to share.
+      const adjacent = distinct.every((m, i) => i === 0 || /^\s*(?:,|&|and)\s*$/i.test(question.slice(distinct[i - 1].end, m.index)));
+      if (adjacent) {
+        filters.program = distinct.map((d) => `(?:${d.pattern})`).join('|');
+        const labels = distinct.map((d) => d.label);
+        filters.programLabel = labels.length === 2 ? labels.join(' and ') : labels.join(', ').replace(/, ([^,]*)$/, ' and $1');
+      }
+    }
+  }
+
   // Graduation year RANGE: "batch 2020 to 2022", "2020-2022", "2020 hanggang
   // 2022", "between 2020 and 2022" — a closed, INCLUSIVE range (2020, 2021,
   // AND 2022), distinct from the yearFrom-only "past N years" case below
@@ -1291,12 +1641,93 @@ function extractFilters(question) {
     }
   }
 
+  // "the most recent/latest/newest batch" — a RELATIVE reference to
+  // whichever graduation year actually has the newest data on file, not a
+  // literal year typed anywhere in the question. Without this, "how many
+  // graduates from the most recent batch are still seeking employment"
+  // resolved NO year filter at all (no 4-digit number anywhere to match)
+  // and silently answered with the ALL-TIME unemployed count across every
+  // batch ever recorded — caught live. extractFilters() itself has no DB
+  // access to know which year is actually "most recent," so this only sets
+  // a bare sentinel; queryInner() (the one place in this flow with a live
+  // DB round-trip) resolves it into a concrete filters.yearGraduated before
+  // dispatch, after which every downstream function scopes to it exactly
+  // like a literal "batch 2024" question already does via
+  // yearMatchCondition(). Skipped whenever an explicit year/range already
+  // won above — a question naming BOTH ("most recent batch, 2022") is
+  // self-contradictory and the literal year should win regardless.
+  if (!filters.yearGraduated && !filters.yearsGraduated && !filters.yearFrom) {
+    if (/\b(?:most\s+)?(?:recent|latest|newest)\s+(batch|year|graduat\w*|class)\b/i.test(question)) {
+      filters.mostRecentBatch = true;
+    }
+  }
+
+  // "across all/every programs/specializations/courses/tracks" — an
+  // explicit instruction that THIS comparison must span every one of them,
+  // not just whichever single program/batch a PRIOR turn happened to narrow
+  // to. Without this, a bare follow-up like "can you show me a bar chart
+  // comparing employment rates across all specializations" inherits
+  // whatever filters.program/yearGraduated an earlier, unrelated turn left
+  // behind (e.g. "the most recent batch" two turns ago) via seedFilters —
+  // this turn's own text sets neither itself, so the merge in queryInner()
+  // silently kept the old narrow scope, collapsing "across all
+  // specializations" down to just the ONE specialization/batch combination
+  // that happened to still have data, the exact opposite of what was asked.
+  // Caught live. Resolved in queryInner() (the one place seedFilters and
+  // ownFilters are merged) — same "set a bare sentinel here, act on it where
+  // the merge happens" split as filters.mostRecentBatch just above.
+  // (?:\s+\w+){0,2} tolerates a word or two sitting between "all/every" and
+  // the noun ("across all CCS specializations") — caught live: the plain
+  // adjacency-only version above matched "across all specializations" fine
+  // but silently missed "across all CCS SPECIALIZATIONS" entirely (the
+  // college code breaks direct adjacency), falling all the way back to the
+  // single overall rate again despite "across all" being right there.
+  if (/\bacross\s+(?:all|every)\b(?:\s+\w+){0,2}\s+(?:programs?|courses?|specializations?|tracks?)\b/i.test(question)) {
+    filters.showAllPrograms = true;
+  }
+
+  // "specialization(s)"/"track(s)" specifically (not the broader "program(s)
+  // "/"course(s)") — narrows a by-program breakdown down to only the genuine
+  // TRACK-level rows (program values containing "- Specialized in ", e.g.
+  // TSM/NA/WMA/Business Analytics — see PROGRAM_SPECIALIZATIONS above),
+  // excluding the bare base-degree rows ("Bachelor of Science in Computer
+  // Science", "...Information Management", etc.) that aren't a
+  // specialization/track of anything. Without this, "comparing employment
+  // rates across all CCS specializations" answered with EVERY program
+  // (including non-specialized base degrees the question never asked about)
+  // mixed in alongside the actual TSM/NA/WMA/Business-Analytics tracks —
+  // caught live: the user explicitly wanted "specialization lang like TSM,
+  // NA, and WMA," not the full program list. Resolved in the by-program
+  // query functions themselves (queryEmploymentRateByProgram() etc.), not
+  // here — extractFilters() just flags the intent.
+  if (/\bspecializations?\b|\btracks?\b/i.test(question) && !/\bprograms?\b|\bcourses?\b/i.test(question)) {
+    filters.specializationsOnly = true;
+  }
+
   // Industry — path 1: explicit "industry/sector/field" keyword
   // Note: no \b after "industr" — "industry"/"industries" don't have boundary after "industr"
   let industryMatchIndex = null;
   if (/\bindustr|\bsector\b|\bfield\b/i.test(question)) {
     const indMatch = question.match(/\b(?:works?\s+in|working\s+in|employed\s+in|in)\s+(?:the\s+)?([a-zA-Z](?:[a-zA-Z ]){1,49}?)(?=\s+(?:industr|sector|field))/i);
-    if (indMatch) { filters.industry = indMatch[1].trim(); industryMatchIndex = indMatch.index; }
+    // "...currently working IN roles directly related to their FIELD of
+    // study" — the trailing literal word "field" is exactly this path's own
+    // lookahead anchor (zero-width, never part of indMatch[0] itself), so
+    // the job-relevance idiom path 2 below already guards against ("related
+    // to their field," meaning field OF STUDY, not an industry name)
+    // slipped past THIS path entirely, which had no equivalent exclusion.
+    // Checks a real WINDOW of the original text starting at the match (the
+    // captured candidate plus whatever genuinely follows it) rather than
+    // guessing which of industr/sector/field the lookahead actually matched.
+    // Caught live: captured "roles directly related to their" (everything up
+    // to the lookahead's own "field") as a bogus industry name, searched
+    // Graduate.industry for that literal string, found nothing, and declined
+    // the whole question outright despite the real jobRelated='directly'
+    // filter it should have combined with instead.
+    const isJobRelevancePhraseP1 = indMatch
+      && /\brelated\s+to\s+(?:their|his|her|its)?\s*(course|degree|program|study|studies|field)\b/i.test(
+        question.slice(indMatch.index, indMatch.index + indMatch[0].length + 20)
+      );
+    if (indMatch && !isJobRelevancePhraseP1) { filters.industry = indMatch[1].trim(); industryMatchIndex = indMatch.index; }
   }
   // Industry — path 2: verb-based "work(s) in / working in / employed in X" without keyword.
   // The (?<!self[- ])(?<!never\s) guards stop "self-employed in BSIT" / "never
@@ -1315,9 +1746,57 @@ function extractFilters(question) {
       // this idiom outright — it belongs to the jobRelated filter below,
       // not here.
       const isJobRelevancePhrase = /\brelated\s+to\s+(?:their|his|her|its)?\s*(course|degree|program|study|studies|field)\b/i.test(candidate);
-      if (!isJobRelevancePhrase && !/^(the|a|an|this|that|those|our|their|its|any|all|database|system|table|records?|fields?)$/i.test(candidate)) {
+      // "managerial or supervisor ROLES/POSITIONS" describes a JOB ROLE, not
+      // an industry/sector, despite matching this SAME "working in X" verb
+      // shape — redirect it to jobTitleRegex instead of letting it become a
+      // bogus industry name with zero real matches. Caught live: "...are
+      // currently working in managerial or supervisor roles" captured the
+      // whole phrase as filters.industry (no alumnus has an industry
+      // literally called "managerial or supervisor roles"), instead of a
+      // real per-person jobTitle match against stored titles like "Operations
+      // Manager"/"IT Support Supervisor".
+      const isRolePhrase = /\b(?:role|roles|position|positions|capacity)\s*$/i.test(candidate);
+      if (isRolePhrase) {
+        const ROLE_WORD_MAP = [
+          [/\bmanageri?al\b/i,   'manager'],
+          [/\bsupervisory?\b/i,  'supervisor'],
+          [/\bdirectors?\b/i,    'director'],
+          [/\bexecutives?\b/i,   'executive'],
+          [/\bteam\s*leads?\b/i, 'lead'],
+          [/\bheads?\b/i,        'head'],
+        ];
+        const matchedWords = ROLE_WORD_MAP.filter(([pat]) => pat.test(candidate)).map(([, w]) => w);
+        if (matchedWords.length) {
+          filters.jobTitle = matchedWords.join(' or ');
+          filters.jobTitleRegex = matchedWords.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+        }
+      } else if (!isJobRelevancePhrase && !/^(the|a|an|this|that|those|our|their|its|any|all|database|system|table|records?|fields?)$/i.test(candidate)) {
         filters.industry = candidate;
         industryMatchIndex = verbMatch.index;
+      }
+    }
+  }
+  // Path 3: bare "X industry" with NO preceding verb at all ("the Healthcare
+  // industry", "Healthcare industry alumni") — needed because a shared verb
+  // phrase elides itself on the SECOND half of a two-way split: "alumni IN
+  // the IT industry vs the Healthcare industry" only ever states "in" once,
+  // before the first industry, the same way "across all CCS specializations"
+  // elsewhere in this file only states "all" once for a whole list.
+  // splitCompareQuestion() (used by queryCompare()) has no way to restore
+  // that shared "in" onto the second half's own text, so without this, the
+  // right side's own extractFilters() call came back with filters.industry
+  // completely unset. Caught live: "compare the number of alumni in the IT
+  // industry vs the Healthcare industry" resolved the IT side correctly but
+  // silently dropped Healthcare entirely, falling through with no comparison
+  // at all. The trailing literal word "industry" is itself a strong, narrow
+  // enough anchor that no preceding verb is needed to trust the capture.
+  if (!filters.industry) {
+    const bareMatch = question.match(/\b(?:the\s+)?([A-Za-z][A-Za-z &/-]{1,49}?)\s+industry\b/i);
+    if (bareMatch) {
+      const candidate = bareMatch[1].trim();
+      if (!/^(the|a|an|this|that|those|our|their|its|any|all|same|whole|entire)$/i.test(candidate)) {
+        filters.industry = candidate;
+        industryMatchIndex = bareMatch.index;
       }
     }
   }
@@ -1335,6 +1814,16 @@ function extractFilters(question) {
     if (/\bnagta+trabaho\s+sa\s+gobyerno\b|\bnagtrabaho\s+sa\s+gobyerno\b/i.test(question)) {
       filters.industry = 'government';
     } else if (/\bnagta+trabaho\s+sa\s+pribado\b|\bnagtrabaho\s+sa\s+pribado\b/i.test(question)) {
+      filters.industry = 'private';
+    // English equivalent of the Tagalog check just above — "government
+    // positions/jobs/sector" / "private sector/company" was never
+    // recognized at all in English, only Tagalog "gobyerno"/"pribado".
+    // Caught live: "...currently in Regular/Permanent GOVERNMENT positions
+    // versus PRIVATE SECTOR roles?" resolved neither side, silently
+    // dropping the entire government-vs-private comparison.
+    } else if (/\bgovernment\s+(?:position|job|role|sector|agenc|office)/i.test(question)) {
+      filters.industry = 'government';
+    } else if (/\bprivate\s+(?:sector|compan|firm|position|job|role)/i.test(question)) {
       filters.industry = 'private';
     }
   }
@@ -1386,7 +1875,20 @@ function extractFilters(question) {
   // form) so a compound sentence like "who are the alumni that are X" still
   // captures the correct (shorter) span from the "that are" branch instead
   // of the bare "who are" branch grabbing the whole rest of the sentence.
-  const jobTitleMatch = question.match(/\b(?:working|works?|employed)\s+as\s+(?:an?\s+)?([a-zA-Z][a-zA-Z\s-]{1,49}?)(?=[?,!.]|$)/i)
+  // (?:locally|abroad|remotely|overseas|domestically|internationally|
+  // currently|now|part-?time|full-?time)\s+)? tolerates ONE work-location/
+  // status adverb wedged between "working" and "as" — a filters.workLocation
+  // word (see the separate "local"/"abroad" extraction below, which already
+  // resolved this half correctly on its own) sitting in the SAME clause as
+  // the job title broke the original tight "working as X" adjacency
+  // entirely, with no match at all. Caught live: "...are working LOCALLY as
+  // Front-end Developer" extracted workLocation='local' correctly but
+  // jobTitle not at all — the combined question then searched for the
+  // program+year+location alone, found zero real matches for the
+  // unnormalized program text (see the courseMatch fix just above), and the
+  // honest "0 results" never even got a chance to run with the job title
+  // also applied.
+  const jobTitleMatch = question.match(/\b(?:working|works?|employed)\s+(?:(?:locally|abroad|remotely|overseas|domestically|internationally|currently|now|part-?time|full-?time)\s+)?as\s+(?:an?\s+)?([a-zA-Z][a-zA-Z\s-]{1,49}?)(?=[?,!.]|$)/i)
     // Tagalog "nagtatrabaho/nagwowork bilang X" ("working as X") — English-
     // only above, so "sino sino ang mga nagtatrabaho bilang software
     // developer" extracted no job title at all and fell through to a bare
@@ -1464,6 +1966,44 @@ function extractFilters(question) {
       // both sides of the phrase there), so this doesn't lose the
       // legitimate partial-title matches that already worked.
       filters.jobTitleRegex = '\\b' + candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/s$/i, 's?') + '\\b';
+    }
+  }
+
+  // "self-employed or freelancers IN [FIELD]" — freelance/self-employed
+  // work described by FIELD/ACTIVITY ("freelancers in web development",
+  // "self-employed in graphic design") rather than a "working in X" verb
+  // phrase or the literal word "industry"/"sector"/"field" — fails every
+  // industry-extraction path above AND the main jobTitleMatch block just
+  // above (which needs a "working as"-style frame), so the field was
+  // silently dropped entirely. Caught live: "...graduates from 2022 to 2024
+  // who are self-employed or freelancers in Web Development" correctly
+  // resolved yearFrom/yearTo + employmentStatus='Self-Employed' but
+  // silently ignored "Web Development," returning EVERY self-employed
+  // alumnus regardless of field. Reuses the SAME filters.jobTitle/
+  // jobTitleRegex every job-title lookup already uses (not a new filter key
+  // needing its own wiring into every consumer) — a plain substring match
+  // (not the word-boundary EXACT-phrase form jobTitleMatch above builds),
+  // since a named field is rarely how an alumnus's own jobTitle is
+  // literally worded, and almost never matches Graduate.industry's own
+  // stored categories either (those are broad — "Information Technology" —
+  // not narrow activities; see that field's real distinct values). If
+  // genuinely nothing on file contains it, that's an honest, reportable
+  // zero — not something to paper over by guessing a "web/full-stack/
+  // front-end" synonym expansion this file has no real basis for asserting
+  // are equivalent.
+  if (!filters.jobTitle && /\b(?:self-?employed|freelanc\w*)\b/i.test(question)) {
+    const fieldMatch = question.match(/\b(?:self-?employed|freelanc\w*)\b(?:\s+\w+){0,4}?\s+in\s+(?:the\s+)?([A-Za-z][A-Za-z &/-]{1,49}?)(?=[?,!.]|$)/i);
+    if (fieldMatch) {
+      const candidate = fieldMatch[1].trim();
+      // Rejects a bare year ("self-employed ... in 2023") and the same
+      // generic-filler list the other job-title/industry paths above
+      // already use — this capture has no "working as"/"industry" anchor
+      // of its own to lean on, so it's the most permissive of the three and
+      // needs the widest guard against an obviously-wrong candidate.
+      if (!/^\d{4}$/.test(candidate) && !/^(?:the|a|an|this|that|those|our|their|its|any|all)$/i.test(candidate)) {
+        filters.jobTitle = candidate;
+        filters.jobTitleRegex = candidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
     }
   }
 
@@ -1734,10 +2274,46 @@ function extractFilters(question) {
   // the question) so an unrelated real question mentioning "bar" in passing
   // can't misfire. 'pie'/'trend'/'column' map to this app's real chart
   // types — no separate pie renderer (MiniDonut already covers that shape).
-  const chartTypeMatch = question.match(/\b(line|trend|bar|bars|column|pie|donut)\s*(?:chart|graph|plot)\b/i);
+  //
+  // Takes the LAST match in the question, not the first — critical for
+  // exactly the merged-string shape described above. "can you show me a BAR
+  // chart comparing employment rates across all CCS specializations (make
+  // it a PIE chart)" contains TWO chart-type phrases: the original
+  // question's own "bar chart," and the just-appended "pie chart" the user
+  // actually just asked for. A plain (non-global) .match() always returns
+  // the FIRST one in the string, which is the STALE type from the ORIGINAL
+  // question — not the one just requested — so a chart-type continuation
+  // asked right after another chart-type continuation silently kept
+  // re-rendering the OLD type and never recognized the new request at all.
+  // Caught live, reported by name ("bakit di narerecognize ito") after "make
+  // it a pie chart" right after "make it bar graph" right after the original
+  // bar-chart question kept showing the bar chart.
+  const chartTypeMatches = [...question.matchAll(/\b(line|trend|bar|bars|column|pie|donut)\s*(?:chart|graph|plot)\b/gi)];
+  const chartTypeMatch = chartTypeMatches[chartTypeMatches.length - 1];
   if (chartTypeMatch) {
     const CHART_TYPE_WORD_MAP = { line: 'line', trend: 'line', bar: 'bars', bars: 'bars', column: 'bars', pie: 'donut', donut: 'donut' };
     filters.requestedChartType = CHART_TYPE_WORD_MAP[chartTypeMatch[1].toLowerCase()];
+  } else if (VISUALIZATION_REQUEST_PATTERN.test(question)) {
+    // "can you present it in a graph, chart or visual presentation?" — the
+    // SAME "bare follow-up, no topic of its own" shape as the typed version
+    // just above (chartTypeMatch), just without naming a specific type.
+    // Coordinators/admins asking for "a graph" (no type) is at least as
+    // common as naming one, but chartTypeMatch's own regex requires a type
+    // word immediately before chart/graph/plot and simply doesn't match
+    // this — this question then resolved NO filters at all, so
+    // ragService.js's isChartTypeOnlyContinuation() (which only recognizes
+    // requestedChartType) never treated it as a continuation either, and it
+    // fell through as a fresh, topic-less message straight to the generic
+    // "I could not find relevant information" refusal. filters.wantsChart
+    // mirrors requestedChartType's own "carries no topic content of its
+    // own" exemption everywhere that filter is special-cased (see
+    // isGenericChartRequestContinuation() in ragService.js and this file's
+    // own null-topic fallback below) — the underlying query function's
+    // EXISTING default chart (already wired via VISUALIZATION_REQUEST_
+    // PATTERN/wantsRateChart elsewhere in this file) is what actually
+    // renders once the real prior question is correctly re-resolved; this
+    // flag only has to get the continuation recognized and merged.
+    filters.wantsChart = true;
   }
 
   // Superlative ranking direction ("least common"/"most common", "lowest"/
@@ -1881,6 +2457,29 @@ function extractFilters(question) {
       if (value === 'Self-employed' && (filters.employmentStatus === 'Self-Employed' || filters.excludeEmploymentStatus === 'Self-Employed')) continue;
       if (pat.test(question)) { filters.employmentType = value; break; }
     }
+    // "full-time" named as a SECONDARY modifier on a different primary
+    // question ("...employed full-time locally versus full-time abroad" —
+    // the primary ask is the LOCAL/ABROAD split, not the employment type
+    // itself) — unlike the comparison-mode branch above (queryWorkType()'s
+    // own "ask first, don't silently substitute" flow for when full-time
+    // IS the primary subject), silently answering with NO employment-type
+    // scope at all here would just drop the qualifier with zero indication,
+    // the same "correct-looking but silently wrong" class of bug this file
+    // has fixed repeatedly. No real WORK_TYPE_MAP entry exists for
+    // "full-time" (see FULL_TIME_PATTERN's own comment — no stored value
+    // corresponds to it exactly), so this applies the SAME closest-real-
+    // category substitution (Regular/Permanent) queryWorkType() already
+    // uses, but directly (this is a modifier on an already-answerable
+    // question, not the question's own main subject) — filters.
+    // fullTimeSubstituted lets the answer text disclose the substitution
+    // instead of silently presenting it as an exact match. Caught live:
+    // "How many BS Computer Science graduates are employed full-time
+    // locally versus employed full-time abroad?" silently dropped
+    // "full-time" entirely and answered the unscoped Local/Abroad split.
+    if (!filters.employmentType && FULL_TIME_PATTERN.test(question)) {
+      filters.employmentType = 'Regular/Permanent';
+      filters.fullTimeSubstituted = true;
+    }
   }
 
   // Job relevance filter — requires "job/jobs" or "field" (a common synonym
@@ -1945,6 +2544,36 @@ function extractFilters(question) {
   ];
   for (const [pat, key] of COMP_MAP) {
     if (pat.test(question)) { filters.competency = key; break; }
+  }
+
+  // Specific competency RATING LEVEL — only meaningful alongside
+  // filters.competency just above (which skill), narrows to one specific
+  // self-rating tier ("rated their Critical Thinking as 'High Competent'").
+  // The REAL stored values (Graduate.competencies.<skill>, confirmed live
+  // against the actual database) are exactly five: Beginner, Competent,
+  // Excellent, Non-Acceptable, Satisfactory. A common intensifier ("high,"
+  // "very," "highly") is stripped from the question first, so "High
+  // Competent" matches the literal stored word "Competent" directly rather
+  // than guessing it means something else — this is a literal match
+  // against the real vocabulary, not an invented synonym. The few
+  // additional synonyms mapped below (excellent/outstanding/exceptional ->
+  // Excellent, poor/weak/unacceptable -> Non-Acceptable, novice/basic ->
+  // Beginner) are unambiguous, common casual phrasings for the same tier —
+  // deliberately NOT a broad fuzzy/semantic map, since a wrong guess here
+  // would silently search for the WRONG rating tier with no indication
+  // anything was misread.
+  if (filters.competency) {
+    const ratingText = question.replace(/\b(?:high|highly|very|extremely|so|quite|really)\b/gi, ' ');
+    const RATING_LEVEL_MAP = [
+      [/\b(?:excellent|outstanding|exceptional|expert)\b/i, 'Excellent'],
+      [/\bcompetent\b/i,                                     'Competent'],
+      [/\bsatisfactory\b/i,                                  'Satisfactory'],
+      [/\b(?:non-?acceptable|unacceptable|poor|weak)\b/i,    'Non-Acceptable'],
+      [/\b(?:beginner|novice|basic)\b/i,                     'Beginner'],
+    ];
+    for (const [pat, value] of RATING_LEVEL_MAP) {
+      if (pat.test(ratingText)) { filters.competencyRating = value; break; }
+    }
   }
 
   // Board / licensure exam filter — negation must bind to the RIGHT verb.
@@ -2076,6 +2705,40 @@ function filterLabel(filters) {
   // misleading sentence" failure class as the college fix below).
   if (filters.industry) parts.push(`${filters.industry} industry`);
   else if (filters.excludeIndustry) parts.push(`excluding ${filters.excludeIndustry} industry`);
+  // Was missing, same "correct number, silent/misleading sentence" failure
+  // class as college/industry above — a job-title-scoped queryCount()
+  // answer read identically to the unfiltered total, with zero indication
+  // the number was actually narrowed to that one title. Caught live: "how
+  // many BS Information Technology graduates from Batch 2024 are working
+  // locally as Front-end Developer" correctly counted 26 matching that
+  // exact title, but the answer sentence said only "(Information
+  // Technology, Batch 2024)" — no mention of "Front-end Developer" at all.
+  if (filters.jobTitle) parts.push(`working as ${filters.jobTitle}`);
+  // Was missing — same "correct number, silent/misleading sentence" failure
+  // class as every entry above: queryCount()/queryNames() now actually
+  // APPLY filters.competency+competencyRating as a real match condition
+  // (see queryCount()'s own comment), but without this, the answer text
+  // stayed completely silent about it, reading identically to a plain
+  // unfiltered count. Only shown when BOTH are set — a bare filters.competency
+  // with no rating level never reaches queryCount() at all (still redirects
+  // to queryCompetencies()'s full distribution instead).
+  if (filters.competency && filters.competencyRating) {
+    const skillLabel = COMP_LABEL[filters.competency] || filters.competency;
+    parts.push(`rated ${skillLabel} as ${filters.competencyRating}`);
+  }
+  // Was missing, same "correct number, silent/misleading sentence" failure
+  // class as every entry above — stablePipeline() now actually APPLIES
+  // filters.employmentType (see its own comment), but the answer text
+  // stayed silent about it. filters.fullTimeSubstituted (set in
+  // extractFilters() when "full-time" has no exact WORK_TYPE_MAP entry and
+  // got mapped to the closest real category instead) gets an explicit
+  // "(treated as ...)" note rather than reading as if "full-time" were
+  // itself a real stored value — see FULL_TIME_PATTERN's own comment.
+  if (filters.employmentType) {
+    parts.push(filters.fullTimeSubstituted
+      ? `full-time, treated as ${filters.employmentType}`
+      : filters.employmentType);
+  }
   if (filters.yearsGraduated) parts.push(`Batches ${filters.yearsGraduated.slice().sort((a, b) => a - b).join(', ')}`);
   else if (filters.yearGraduated) parts.push(`Batch ${filters.yearGraduated}`);
   else if (filters.yearFrom && filters.yearTo) parts.push(`Batch ${filters.yearFrom} to ${filters.yearTo}`);
@@ -2122,6 +2785,28 @@ function withChart(text, { type = 'donut', title, rows, labelField = '_id', limi
   if (unit != null) chart.unit = unit;
   if (max != null) chart.max = max;
   return { text, chart };
+}
+
+// "make it a pie/bar/line chart" — mutates `chart` in place to the
+// requested type, same recompute queryInner()'s own generic dispatch
+// wrapper (further below) already does for a whole chart. That generic
+// wrapper only ever runs on the fn()-dispatch path — every `direct: true`
+// EARLY-RETURN bypass in this file (queryCompare(), the TREND_PATTERN
+// by-year shortcut, the "which batch/year has the highest/lowest X"
+// ranking shortcut, and any new one added later) skips it entirely and has
+// to apply the override itself, or a chart-type follow-up right after that
+// bypass's own answer silently keeps whatever type it hardcoded no matter
+// what was actually requested. Found and fixed three separate times as
+// three "separate" bugs before becoming one shared helper — call this from
+// every CURRENT and FUTURE `direct: true` return site that includes a
+// chart, rather than re-deriving the same few lines a fourth time.
+function applyRequestedChartType(chart, requestedChartType) {
+  if (!requestedChartType || !chart) return;
+  chart.type = requestedChartType;
+  if (requestedChartType === 'line' && chart.unit !== '%') {
+    chart.unit = '';
+    chart.max = Math.ceil(Math.max(...chart.rows.map(r => r.count || 0), 1) * 1.1);
+  }
 }
 
 // Recognizes a "by program" question shape — used at every rate/relevance/
@@ -2182,7 +2867,21 @@ function withChart(text, { type = 'donut', title, rows, labelField = '_id', limi
 // figure. A far more serious failure than simply answering the wrong
 // question: it fabricated a plausible-sounding but completely fictitious
 // entity name to paper over the dropped "which program" framing.
-const BY_PROGRAM_QUESTION_PATTERN = /\b(?:which|what)\s+(?:program|course|degree)\b|\b(?:aling|anong)\s+(?:programa|kurso)\b|\branking\s+of\s+(?:programs?|courses?)\b|\b(?:programs?|courses?)\s+(?:ranking|ranked)\b|\brank(?:ed)?\s+(?:the\s+)?(?:programs?|courses?)\b|\b(?:program|course|degree)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:highest|lowest|best|worst)\b|\bby\s+(?:program|course)\b|\bper\s+(?:program|course)\b|\beach\s+(?:program|course)\b|\bkada\s+(?:programa|kurso)\b|\bbawat\s+(?:programa|kurso)\b|\b(?:show|see|list|display)\s+(?:all|every)\s+(?:the\s+)?(?:programs?|courses?)\b/i;
+// "specialization(s)"/"track(s)" added as synonyms alongside program/course/
+// degree, and "across (all|every) ..." added as a connector synonym for
+// "by/per/each" — same gap, same fix shape as TOPIC_PATTERNS.by_program's
+// own comment above: "compare employment rates across all specializations"
+// matched none of the original alternatives (no "by/per/each", no "which/
+// what program", no "program"+"that has"), so it silently fell through to
+// the generic single-number overall rate with the per-specialization
+// comparison completely dropped.
+// across\s+(?:all|every)\b(?:\s+\w+){0,2}\s+(?:programs?|...) — the
+// (?:\s+\w+){0,2} tolerates a word or two between "all/every" and the noun
+// ("across all CCS specializations"); same gap, same fix shape as
+// TOPIC_PATTERNS.by_program's own identical alternative — a plain-adjacency
+// version matched "across all specializations" but missed the college-code-
+// in-the-middle phrasing entirely. Caught live.
+const BY_PROGRAM_QUESTION_PATTERN = /\b(?:which|what)\s+(?:program|course|degree|specialization|track)\b|\b(?:aling|anong)\s+(?:programa|kurso)\b|\branking\s+of\s+(?:programs?|courses?|specializations?|tracks?)\b|\b(?:programs?|courses?|specializations?|tracks?)\s+(?:ranking|ranked)\b|\brank(?:ed)?\s+(?:the\s+)?(?:programs?|courses?|specializations?|tracks?)\b|\b(?:program|course|degree|specialization|track)\b.{0,20}\b(?:that\s+has|has|with)\b.{0,20}\b(?:highest|lowest|best|worst)\b|\bby\s+(?:program|course|specialization|track)\b|\bper\s+(?:program|course|specialization|track)\b|\beach\s+(?:program|course|specialization|track)\b|\bacross\s+(?:all|every)\b(?:\s+\w+){0,2}\s+(?:programs?|courses?|specializations?|tracks?)\b|\bkada\s+(?:programa|kurso)\b|\bbawat\s+(?:programa|kurso)\b|\b(?:show|see|list|display)\s+(?:all|every)\s+(?:the\s+)?(?:programs?|courses?|specializations?|tracks?)\b/i;
 
 // Same shape/reasoning as BY_PROGRAM_QUESTION_PATTERN above, for "which
 // industry/sector" superlative-rate questions instead. Caught live: "Which
@@ -2331,6 +3030,42 @@ function stablePipeline(filters) {
   // above.
   if (filters.industry)      match.industry      = { $regex: filters.industry, $options: 'i' };
   else if (filters.excludeIndustry) match.industry = { $not: { $regex: filters.excludeIndustry, $options: 'i' } };
+  // Was missing, same "extracted but never applied by every stablePipeline()
+  // consumer" gap as gender/industry above — queryWorkLocation() (and every
+  // other function that builds its own match straight off this base) had no
+  // idea filters.employmentType existed at all. Caught live: "How many BS
+  // Computer Science graduates are employed FULL-TIME locally versus
+  // employed full-time abroad?" silently dropped the employment-type half
+  // entirely and answered the unscoped Local/Abroad split for every
+  // employment type combined.
+  if (filters.employmentType) match.employmentType = { $regex: `^${escapeRegex(filters.employmentType)}`, $options: 'i' };
+  // Was missing, same "extracted but never applied by every stablePipeline()
+  // consumer" gap as gender/industry/employmentType above — any function
+  // built straight off this base (queryPromotion, queryLicensure,
+  // queryFurtherStudies, queryFurtherTraining, queryYearsInJobRate/Count,
+  // queryCompetencyRatingCompare, queryJobRelatedCompare, ...) had no idea
+  // filters.workLocation existed at all. Caught live: "...currently employed
+  // full-time locally and reported that their job is 'directly related'
+  // versus 'somewhat related'..." resolved workLocation='local' correctly
+  // but the comparison silently included BOTH local AND abroad respondents
+  // (2, not the real local-only 1) with no indication "locally" was ever
+  // dropped. queryWorkLocation() already applies this exact same condition
+  // itself after its own stablePipeline() call (for the by-location
+  // breakdown shape) — harmlessly redundant there (same condition ANDed
+  // twice), same as the industry case above.
+  if (filters.workLocation) match.workLocation = workLocationCondition(filters.workLocation, filters.negateWorkLocation);
+  // Was missing, same gap as gender/industry/employmentType/workLocation
+  // above — queryCompare()'s own headcount comparison path (the one case
+  // this was caught on) builds its base straight off stablePipeline() with
+  // no separate postDedup step of its own (unlike queryCount(), which
+  // already applies tookExamMatch() itself after its own stablePipeline()
+  // call). Caught live: "How many respondents who PASSED PROFESSIONAL
+  // EXAMINATIONS are currently in Regular/Permanent government positions
+  // versus private sector roles?" correctly carried tookExam='passed' into
+  // both comparison sides (see queryCompare()'s own sharedFilters fix) but
+  // the headcount query itself had no idea what to do with it, silently
+  // counting EVERY government/private alumnus regardless of exam result.
+  if (filters.tookExam) Object.assign(match, tookExamMatch(filters.tookExam));
   return [...LIVE_SUBMISSION_ONLY, { $match: match }, ...DEDUP];
 }
 
@@ -2471,7 +3206,10 @@ async function queryIndustry(filters, wantsHighest = true, wantsSummarySentence 
     ...caseMergeGroup('$industry'),
     { $sort: { count: wantsHighest ? -1 : 1 } },
   );
-  if (!filters.industry && !filters.excludeIndustry && !filters.showAllIndustries) pipeline.push({ $limit: 10 });
+  // Same filters.showLimit gap as queryJobPositions()/queryTopCompanies() —
+  // "top 3 industries" ignored the "3" and always showed 10 (or, with
+  // showAllIndustries, every row) regardless of a specific number asked for.
+  if (!filters.industry && !filters.excludeIndustry && !filters.showAllIndustries) pipeline.push({ $limit: filters.showLimit || 10 });
 
   const rows = toDisplayRows(await Graduate.aggregate(pipeline));
   if (!rows.length) return null;
@@ -2593,10 +3331,15 @@ async function queryJobPositions(filters, wantsHighest) {
   if (filters.excludeIndustry) pipeline.push({ $match: { industry: { $not: { $regex: filters.excludeIndustry, $options: 'i' } } } });
   if (filters.workLocation) pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
 
+  // filters.showLimit ("top 5"/"top 3"/"top 10" — see extractFilters()'s own
+  // comment on it) was resolved correctly but never read here at all — this
+  // hardcoded $limit: 10 regardless, so "top 5 most common job titles"
+  // silently returned the same 10-row list as a bare "most common job
+  // titles" question with no number in it. Caught live.
   pipeline.push(
     ...caseMergeGroup('$jobTitle'),
     { $sort: { count: wantsHighest ? -1 : 1 } },
-    { $limit: 10 },
+    { $limit: filters.showLimit || 10 },
   );
 
   const rows = toDisplayRows(await Graduate.aggregate(pipeline));
@@ -2628,10 +3371,12 @@ async function queryTopCompanies(filters, wantsHighest) {
   if (filters.excludeIndustry) pipeline.push({ $match: { industry: { $not: { $regex: filters.excludeIndustry, $options: 'i' } } } });
   if (filters.workLocation) pipeline.push({ $match: { workLocation: workLocationCondition(filters.workLocation, filters.negateWorkLocation) } });
 
+  // Same filters.showLimit gap as queryJobPositions() just above — "top 5
+  // companies employing the most alumni" ignored the "5" entirely.
   pipeline.push(
     ...caseMergeGroup('$companyName'),
     { $sort: { count: wantsHighest ? -1 : 1 } },
-    { $limit: 10 },
+    { $limit: filters.showLimit || 10 },
   );
 
   const rows = toDisplayRows(await Graduate.aggregate(pipeline));
@@ -2979,10 +3724,55 @@ async function queryWorkType(filters) {
     : `**Employment type breakdown${gPrefix ? ` for ${gPrefix}alumni` : ''}${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.count} (${pct(r.count, total)})\n`; });
   requestedButMissing.forEach(label => { out += `- **${label}**: 0 (0.0%) — no alumni recorded under this type yet\n`; });
+  // A redirect to the closest real category ("the closest real category is
+  // Regular/Permanent" below) used to just sit there as a sentence — the
+  // admin still had to notice it, then type a brand new question to
+  // actually SEE that number, when the whole point of naming the closest
+  // category was to offer it as the next thing to look at. Computed BEFORE
+  // `out` is finalized so the SAME question can be woven into the answer
+  // text itself (inline, impossible to miss — feedback live: "mas maganda
+  // kung sa mismong narration rin may suggestion katulad sa chip"), not just
+  // left as a separate "you might also ask" chip below it (that chip is
+  // still ALSO set, via this function's own `suggestions` field — see
+  // queryInner()'s final return further down this file — for admins who
+  // scroll past the text and click chips directly). If the original
+  // question already named another REAL employment type alongside the
+  // untracked "full-time" (e.g. "full-time vs self-employed" resolved
+  // employmentTypesRequested=['Self-employed'], the untracked half silently
+  // dropped from that list), the comparison the admin actually wanted is
+  // still answerable, just with Regular/Permanent standing in for
+  // "full-time": "Regular/Permanent vs Self-employed." Only a bare
+  // single-category offer otherwise. Self-contained (names the same
+  // program/gender scope `out` already uses) so it resolves correctly even
+  // asked as a fresh, standalone question later, not just in this exchange.
+  let closestCategorySuggestion = null;
   if (filters.mentionsUntrackedFullTime) {
-    out += `\n"Full-time" is not tracked as its own separate category in the tracer study data — the closest real category is **Regular/Permanent**.`;
+    // "for X graduates" (a trailing clause), not a leading noun pile-up
+    // ("...see Information Technology Regular/Permanent...", which reads as
+    // one garbled phrase) — program/gender context sits more naturally
+    // attached to "graduates" than wedged directly in front of the category
+    // names themselves.
+    const gradsClause = `${genderPrefix(filters)}${(filters.programLabel || filters.program) ? `${filters.programLabel || filters.program} ` : ''}graduates`;
+    const otherTypes = (filters.employmentTypesRequested || []).filter((t) => t !== 'Regular/Permanent');
+    closestCategorySuggestion = otherTypes.length
+      ? `Would you like to see Regular/Permanent versus ${otherTypes.join(' versus ')} for ${gradsClause} instead?`
+      : `Would you like to see how many ${gradsClause} are Regular/Permanent employees instead?`;
+    out += `\n"Full-time" is not tracked as its own separate category in the tracer study data — the closest real category is **Regular/Permanent**. ${closestCategorySuggestion}`;
   }
-  return withChart(out, { type: 'donut', title: isComparison ? 'Employment Type Comparison' : 'Employment Type', rows });
+  const chartResult = withChart(out, { type: 'donut', title: isComparison ? 'Employment Type Comparison' : 'Employment Type', rows });
+  if (!closestCategorySuggestion || !chartResult) return chartResult;
+  // The chip reuses a direct, answerable QUESTION phrasing (not the
+  // "Would you like..." framing woven into `out` above, which reads
+  // naturally inline but would resolve oddly if re-asked verbatim as its
+  // own fresh question later).
+  const progPrefix = (filters.programLabel || filters.program) ? `${filters.programLabel || filters.program} ` : '';
+  const otherTypes = (filters.employmentTypesRequested || []).filter((t) => t !== 'Regular/Permanent');
+  const chipSuggestion = otherTypes.length
+    ? `How many ${genderPrefix(filters)}${progPrefix}graduates are Regular/Permanent versus ${otherTypes.join(' versus ')}?`
+    : `How many ${genderPrefix(filters)}${progPrefix}graduates are Regular/Permanent employees?`;
+  return typeof chartResult === 'string'
+    ? { text: chartResult, suggestions: [chipSuggestion] }
+    : { ...chartResult, suggestions: [chipSuggestion] };
 }
 
 async function querySector(filters) {
@@ -3024,6 +3814,76 @@ async function queryJobRelevance(filters) {
   return withChart(out, { type: 'donut', title: 'Job Relevance to Course', rows });
 }
 
+// Shared by every by-program query function below (right after each one's
+// own `_prog` field is computed) — narrows the breakdown to genuine
+// specialization/track rows only ("- Specialized in ...", e.g. TSM/NA/WMA/
+// Business Analytics — see PROGRAM_SPECIALIZATIONS above) when
+// filters.specializationsOnly is set (see extractFilters()'s own comment on
+// that flag), a no-op empty spread otherwise. One shared definition so the
+// "specialization(s)" vs "program(s)" distinction only had to be taught to
+// the pipeline once, not separately re-derived in all 6 of these functions.
+function specializationOnlyStage(filters) {
+  return filters.specializationsOnly
+    ? [{ $match: { _prog: { $regex: '-\\s*Specialized in', $options: 'i' } } }]
+    : [];
+}
+
+// Standard short codes for this file's own base-program/specialization
+// vocabulary — mirrors the BSIT/BSCS/BSIS/BSIM course abbreviations
+// Charts.jsx's own COURSE_COLORS already uses, and the TSM/WMA/NA codes
+// PROGRAM_SPECIALIZATIONS (in extractFilters() above) already recognizes as
+// input. A separate small map rather than importing PROGRAM_SPECIALIZATIONS
+// itself — that one is declared local to extractFilters() (a parsing
+// concern: recognizing a specialization NAMED in a question), while this is
+// purely a DISPLAY concern for chart labels, with no need for the aliases/
+// glue-pattern machinery the parsing one carries.
+const BASE_PROGRAM_ABBR = {
+  'Information Technology': 'BSIT',
+  'Computer Science':       'BSCS',
+  'Information Systems':    'BSIS',
+  'Information Management': 'BSIM',
+};
+const SPECIALIZATION_ABBR = {
+  'Technical Service Management':  'TSM',
+  'Web and Mobile Application':    'WMA',
+  'Network Administration':        'NA',
+  // No 3-letter code exists for this one (see PROGRAM_SPECIALIZATIONS'
+  // own comment on why "BA" was never added — collides with "Bachelor of
+  // Arts"/"Business Administration") — already short enough as-is.
+  'Business Analytics':            'Business Analytics',
+};
+
+// A raw Graduate.program value ("Bachelor of Science in Information
+// Technology - Specialized in Technical Service Management") is far too
+// long to fit as a vertical bar-graph label — MiniBarChart's columns clamp
+// to 2 lines and silently cut the text off mid-word ("Bachelor of Science
+// in Information Technolo...", "- Specialized in Web..."), unreadable.
+// Caught live. Shortens it to "BSIT - TSM" (or just "BSCS"/"BSIS"/"BSIM" for
+// a base program with no specialization) for the CHART label only — the
+// prose bullet list above each chart still uses the full, unabbreviated
+// name (r._id directly), so nothing about the actual answer text changes.
+function shortProgramLabel(fullName) {
+  if (!fullName) return fullName;
+  // \s+ between every word of "Bachelor of Science in" — NOT literal spaces
+  // — at least one real stored Graduate.program value was found live to use
+  // a NON-BREAKING SPACE (U+00A0, a bad Excel/Word copy-paste artifact —
+  // same known issue this file's own programRegex()/filters.program
+  // comments elsewhere already document) between "of" and "Science". \s
+  // matches both; a literal space in the pattern only matches the first.
+  // Caught live: "Bachelor of Science in Information Management" silently
+  // never shortened to "BSIM" while every OTHER program on the same chart
+  // did, because only THIS one record's text actually had the NBSP.
+  const specMatch = fullName.match(/^Bachelor\s+of\s+Science\s+in\s+(.+?)\s*-\s*Specialized\s+in\s*(.+)$/i);
+  if (specMatch) {
+    const base = BASE_PROGRAM_ABBR[specMatch[1].trim()] || specMatch[1].trim();
+    const spec = SPECIALIZATION_ABBR[specMatch[2].trim()] || specMatch[2].trim();
+    return `${base} - ${spec}`;
+  }
+  const baseMatch = fullName.match(/^Bachelor\s+of\s+Science\s+in\s+(.+)$/i);
+  if (baseMatch) return BASE_PROGRAM_ABBR[baseMatch[1].trim()] || fullName;
+  return fullName;
+}
+
 // Answers "which program leads to the most job-aligned graduates?" — computed
 // directly from MongoDB (job-related rate per program), never estimated by
 // the LLM. Programs with fewer than 3 respondents are excluded so a single
@@ -3041,6 +3901,7 @@ async function queryJobAlignmentByProgram(filters) {
     { $match: { program: { $nin: [null, ''] }, jobRelated: { $nin: [null, ''] } } },
     { $addFields: { _prog: { $trim: { input: { $arrayElemAt: [{ $split: ['$program', ';'] }, 0] } } } } },
     { $match: { _prog: { $gt: '' } } },
+    ...specializationOnlyStage(filters),
     {
       $group: {
         _id:     '$_prog',
@@ -3061,8 +3922,8 @@ async function queryJobAlignmentByProgram(filters) {
   let out = `**Job alignment to field of study, by program:**\n\n`;
   ranked.forEach(r => { out += `- **${r._id}**: ${r.related}/${r.total} job-related (${pct(r.related, r.total)})\n`; });
   out += `\n**${top._id}** has the highest rate of graduates whose job aligns with what they studied, at **${pct(top.related, top.total)}**.`;
-  const chartRows = ranked.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
-  return withChart(out, { type: 'bars', title: 'Job Alignment Rate by Program (%)', rows: chartRows });
+  const chartRows = ranked.map(r => ({ _id: shortProgramLabel(r._id), count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: 'Job Alignment Rate by Program (%)', rows: chartRows, unit: '%' });
 }
 
 async function queryLicensure(filters) {
@@ -3285,6 +4146,28 @@ async function queryAccomplishments(filters) {
   return withChart(out, { type: 'donut', title: 'Significant Accomplishments', rows: chartRows });
 }
 
+// "...graduates in the Customer Service and Support industry who have
+// participated in professional development activities (workshops/seminars)
+// OR earned awards" — an OR combination of two separate Yes/No fields
+// (furtherTraining, significantAccomplishments), scoped by whatever other
+// filters (here, industry) are already set. Checked as an early bypass in
+// queryInner() (see its own call site) rather than wired into one specific
+// topic's dispatch arm, same reasoning as queryJobRelatedCompare() above.
+const WANTS_TRAINING_OR_AWARDS_PATTERN = /\b(?:professional\s+development|trainings?|seminars?|workshops?)\b[^.?!]{0,40}\bor\b[^.?!]{0,40}\b(?:awards?|accomplishments?|recognitions?)\b|\b(?:awards?|accomplishments?|recognitions?)\b[^.?!]{0,40}\bor\b[^.?!]{0,40}\b(?:professional\s+development|trainings?|seminars?|workshops?)\b/i;
+async function queryTrainingOrAwards(filters) {
+  const base = stablePipeline(filters);
+  const condition = {
+    $or: [
+      { furtherTraining: { $regex: '^yes', $options: 'i' } },
+      { significantAccomplishments: { $regex: '^yes', $options: 'i' } },
+    ],
+  };
+  const matchRows = await Graduate.aggregate([...base, { $match: condition }, { $count: 'total' }]);
+  const matched = matchRows[0]?.total ?? 0;
+  const lbl = filterLabel(filters);
+  return `There are **${matched}** graduates${lbl} who have participated in professional development activities (trainings/seminars/workshops) or reported a significant accomplishment/award.`;
+}
+
 const COMP_LABEL = {
   technicalSkills:   'Technical Skills',
   communication:     'Communication',
@@ -3295,6 +4178,61 @@ const COMP_LABEL = {
   workLifeBalance:   'Work-Life Balance',
   criticalThinking:  'Critical Thinking',
 };
+
+// Every rating-level word actually mentioned in the question, in FIXED
+// canonical order (not text left-to-right) — used for "rated Technical
+// Skills as Excellent vs Competent"-style comparisons, where BOTH levels
+// matter, unlike extractFilters()'s own single-level filters.competencyRating
+// (which only ever needs the first/dominant one for a plain scoped count).
+// Same intensifier-stripping + literal-vocabulary-match reasoning as that
+// extraction — see its own comment in extractFilters().
+function extractAllRatingLevels(text) {
+  const stripped = text.replace(/\b(?:high|highly|very|extremely|so|quite|really)\b/gi, ' ');
+  const RATING_LEVEL_WORDS = [
+    [/\b(?:excellent|outstanding|exceptional|expert)\b/i, 'Excellent'],
+    [/\bcompetent\b/i,                                     'Competent'],
+    [/\bsatisfactory\b/i,                                  'Satisfactory'],
+    [/\b(?:non-?acceptable|unacceptable|poor|weak)\b/i,    'Non-Acceptable'],
+    [/\b(?:beginner|novice|basic)\b/i,                     'Beginner'],
+  ];
+  const found = [];
+  for (const [pat, value] of RATING_LEVEL_WORDS) {
+    if (pat.test(stripped) && !found.includes(value)) found.push(value);
+  }
+  return found;
+}
+
+// "What percentage rated Technical Skills as 'Excellent' vs. 'Competent'?"
+// — compares TWO (or more) rating LEVELS for the SAME skill side by side,
+// rather than a single filtered percentage (queryInner()'s 'rate' dispatch
+// arm checks this before the single competency+competencyRating case just
+// below, which only ever resolves one level). Known, documented scope
+// limit: a question naming TWO skills together ("Technical Skills or
+// Problem-Solving Skills") only ever compares ratings for the FIRST skill
+// COMP_MAP resolves (extractFilters()'s own single-competency extraction,
+// unchanged here) — comparing two SKILLS at once as well as two RATINGS at
+// once is a real but rarer compound shape, left for a future pass rather
+// than guessed at now.
+async function queryCompetencyRatingCompare(filters, levels) {
+  const field = `competencies.${filters.competency}`;
+  const skillLabel = COMP_LABEL[filters.competency] || filters.competency;
+  const base = stablePipeline({ ...filters, competency: undefined, competencyRating: undefined });
+  const [totalRows, ...levelRows] = await Promise.all([
+    Graduate.aggregate([...base, { $match: { [field]: { $nin: [null, ''] } } }, { $count: 'total' }]),
+    ...levels.map((lvl) => Graduate.aggregate([...base, { $match: { [field]: { $regex: `^${lvl}`, $options: 'i' } } }, { $count: 'total' }])),
+  ]);
+  const total = totalRows[0]?.total ?? 0;
+  if (total === 0) return null;
+  const lbl = filterLabel({ ...filters, competency: undefined, competencyRating: undefined });
+  let out = `**${skillLabel} rating comparison${lbl}:**\n\n`;
+  const chartRows = [];
+  levels.forEach((lvl, i) => {
+    const count = levelRows[i][0]?.total ?? 0;
+    out += `- **${lvl}**: ${pct(count, total)} (${count}/${total})\n`;
+    chartRows.push({ _id: lvl, count: Math.round((count / total) * 100) });
+  });
+  return withChart(out, { type: 'bars', title: `${skillLabel} Ratings (%)`, rows: chartRows, unit: '%' });
+}
 
 // wantsHighest true = "most common" self-rating per category (the
 // long-standing default), false = "least common" — the rating VALUE
@@ -3461,7 +4399,7 @@ async function queryCompetencyRanking(filters, wantsHighest = true) {
   ranked.forEach(c => { out += `- ${c.label}: ${pct(c.positive, c.total)} rated Excellent or Competent\n`; });
   out += `\n**${top.label}** has the ${direction} share of Excellent/Competent self-ratings, at **${pct(top.positive, top.total)}**.`;
   const chartRows = ranked.map(c => ({ _id: c.label, count: Math.round(c.rate * 100) }));
-  return withChart(out, { type: 'bars', title: 'Competency Comparison (% Excellent/Competent)', rows: chartRows });
+  return withChart(out, { type: 'bars', title: 'Competency Comparison (% Excellent/Competent)', rows: chartRows, unit: '%' });
 }
 
 async function queryWorkLocation(filters) {
@@ -3523,6 +4461,7 @@ async function queryByProgram(filters) {
     // Some alumni listed multiple programs separated by ";". Take only the first one.
     { $addFields: { _prog: { $trim: { input: { $arrayElemAt: [{ $split: ['$program', ';'] }, 0] } } } } },
     { $match: { _prog: { $gt: '' } } },
+    ...specializationOnlyStage(filters),
     {
       $group: {
         _id:      '$_prog',
@@ -3542,7 +4481,7 @@ async function queryByProgram(filters) {
     const emp = r.employed + r.selfEmp;
     out += `- **${r._id}**: ${r.total} respondents, ${emp} employed (${pct(emp, r.total)})\n`;
   });
-  const chartRows = rows.map(r => ({ _id: r._id, count: r.total }));
+  const chartRows = rows.map(r => ({ _id: shortProgramLabel(r._id), count: r.total }));
   return withChart(out, { type: 'bars', title: 'Respondents by Program', rows: chartRows });
 }
 
@@ -3571,6 +4510,7 @@ async function queryEmploymentRateByProgram(filters, direction = 'highest') {
     { $match: { program: { $nin: [null, ''] }, employmentStatus: { $nin: [null, ''] } } },
     { $addFields: { _prog: { $trim: { input: { $arrayElemAt: [{ $split: ['$program', ';'] }, 0] } } } } },
     { $match: { _prog: { $gt: '' } } },
+    ...specializationOnlyStage(filters),
     {
       $group: {
         _id:      '$_prog',
@@ -3594,8 +4534,8 @@ async function queryEmploymentRateByProgram(filters, direction = 'highest') {
   out += `\n**${top._id}** has the ${direction} employment rate at **${pct(top.emp, top.total)}** (${top.emp} out of ${top.total}, including self-employed).`;
   // Chart bars show each program's employment RATE (%), not raw headcount —
   // that's the actual thing being compared/ranked here.
-  const chartRows = ranked.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
-  return withChart(out, { type: 'bars', title: 'Employment Rate by Program (%)', rows: chartRows });
+  const chartRows = ranked.map(r => ({ _id: shortProgramLabel(r._id), count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: 'Employment Rate by Program (%)', rows: chartRows, unit: '%' });
 }
 
 // Answers "which course produces the most unemployed graduates?" / "which
@@ -3623,6 +4563,7 @@ async function queryProgramRateExtreme(filters, direction, metric) {
     { $match: { program: { $nin: [null, ''] }, employmentStatus: { $nin: [null, ''] } } },
     { $addFields: { _prog: { $trim: { input: { $arrayElemAt: [{ $split: ['$program', ';'] }, 0] } } } } },
     { $match: { _prog: { $gt: '' } } },
+    ...specializationOnlyStage(filters),
     {
       $group: {
         _id:      '$_prog',
@@ -3654,8 +4595,8 @@ async function queryProgramRateExtreme(filters, direction, metric) {
   });
   const topShown = metric === 'unemployment' ? top.notEmp : top.emp;
   out += `\n**${top._id}** had the ${direction} ${metric} rate, at **${pct(topShown, top.total)}** (${topShown} out of ${top.total}).`;
-  const chartRows = ranked.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
-  return withChart(out, { type: 'bars', title: `${label} Rate by Program (%)`, rows: chartRows });
+  const chartRows = ranked.map(r => ({ _id: shortProgramLabel(r._id), count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: `${label} Rate by Program (%)`, rows: chartRows, unit: '%' });
 }
 
 // Generic per-program breakdown for any simple Yes/No Graduate field
@@ -3687,6 +4628,7 @@ async function queryYesNoFieldByProgram(filters, { field, yesRegex, restrictRege
     { $match: { program: { $nin: [null, ''] }, [field]: { $nin: [null, ''] } } },
     { $addFields: { _prog: { $trim: { input: { $arrayElemAt: [{ $split: ['$program', ';'] }, 0] } } } } },
     { $match: { _prog: { $gt: '' } } },
+    ...specializationOnlyStage(filters),
     ...(restrictRegex ? [{ $match: { [field]: { $regex: restrictRegex } } }] : []),
     {
       $group: {
@@ -3766,8 +4708,8 @@ async function queryYesNoFieldByProgram(filters, { field, yesRegex, restrictRege
       out += `\n\n*${omitted.length} additional ${programWord} fewer than ${minSample} respondents (${omittedTotal} total, ${omittedYes} matching) and ${omitted.length === 1 ? 'is' : 'are'} omitted from the per-program ranking above as too small a sample for a reliable rate — still included in the overall (non-by-program) total. Say "show all the programs" to list them individually.*`;
     }
   }
-  const chartRows = displayRows.map(r => ({ _id: r._id, count: Math.round(r.rate * 100) }));
-  return withChart(out, { type: 'bars', title: `${chartTitle} (%)`, rows: chartRows });
+  const chartRows = displayRows.map(r => ({ _id: shortProgramLabel(r._id), count: Math.round(r.rate * 100) }));
+  return withChart(out, { type: 'bars', title: `${chartTitle} (%)`, rows: chartRows, unit: '%' });
 }
 
 // Same shape as queryYesNoFieldByProgram() just above — grouped by
@@ -3849,7 +4791,7 @@ async function queryYesNoFieldByIndustry(filters, { field, yesRegex, restrictReg
     out += `\n\n*${omitted.length} additional ${industryWord} fewer than ${minSample} respondents (${omittedTotal} total, ${omittedYes} matching) and ${omitted.length === 1 ? 'is' : 'are'} omitted from the per-industry ranking above as too small a sample for a reliable rate — still included in the overall (non-by-industry) total.*`;
   }
   const chartRows = displayRows.map(r => ({ _id: r.label, count: Math.round(r.rate * 100) }));
-  return withChart(out, { type: 'bars', title: `${chartTitle} (%)`, rows: chartRows });
+  return withChart(out, { type: 'bars', title: `${chartTitle} (%)`, rows: chartRows, unit: '%' });
 }
 
 // Answers "which program has the most alumni working abroad/locally?" — a
@@ -3872,6 +4814,7 @@ async function queryWorkLocationByProgram(filters, location) {
     { $match: { program: { $nin: [null, ''] }, workLocation: { $nin: [null, ''] } } },
     { $addFields: { _prog: { $trim: { input: { $arrayElemAt: [{ $split: ['$program', ';'] }, 0] } } } } },
     { $match: { _prog: { $gt: '' } } },
+    ...specializationOnlyStage(filters),
     {
       $group: {
         _id:     '$_prog',
@@ -3895,8 +4838,67 @@ async function queryWorkLocationByProgram(filters, location) {
   let out = `**Alumni ${label}, by program:**\n\n`;
   rows.forEach(r => { out += `- **${r._id}**: ${r.matched}/${r.total} ${label} (${pct(r.matched, r.total)})\n`; });
   out += `\n**${top._id}** has the most alumni ${label}, with **${top.matched}**.`;
-  const chartRows = rows.map(r => ({ _id: r._id, count: Math.round((r.matched / r.total) * 100) }));
-  return withChart(out, { type: 'bars', title: `Alumni ${toTitleCase(label)} Rate by Program (%)`, rows: chartRows });
+  const chartRows = rows.map(r => ({ _id: shortProgramLabel(r._id), count: Math.round((r.matched / r.total) * 100) }));
+  return withChart(out, { type: 'bars', title: `Alumni ${toTitleCase(label)} Rate by Program (%)`, rows: chartRows, unit: '%' });
+}
+
+// Same shape as queryWorkLocationByProgram() just above, grouped by
+// yearGraduated instead of program — the by-YEAR equivalent needed for
+// "which batch has the highest ratio of abroad versus local employment"
+// (see queryInner()'s "which batch/year has the highest/lowest X" bypass
+// below). That bypass had branches for job alignment/unemployment/self-
+// employment/generic employment rate but NONE for work location — "abroad
+// VERSUS LOCAL EMPLOYMENT" contains the bare substring "employ," so it fell
+// into the generic employment-RATE branch and silently answered a
+// completely different metric ("Batch 2020 had the highest employment
+// rate...") than the abroad-vs-local ratio actually asked about. `direction`
+// ('highest'/'lowest') mirrors every sibling ranking function in that same
+// bypass — unlike queryWorkLocationByProgram() (which only ever answers
+// "most"), a by-year ranking question can just as naturally ask for the
+// LOWEST ratio.
+async function queryWorkLocationByYear(filters, location, direction = 'highest') {
+  const stableMatch = {};
+  if (filters.program) stableMatch.program = { $regex: programRegex(filters.program), $options: 'i' };
+  if (filters.gender)  stableMatch.gender  = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
+  const yearRange = yearRangeCondition(filters);
+  if (yearRange) stableMatch.yearGraduated = yearRange;
+
+  const rows = await Graduate.aggregate([
+    ...LIVE_SUBMISSION_ONLY,
+    { $match: stableMatch },
+    ...DEDUP,
+    { $match: { yearGraduated: { $ne: null }, workLocation: { $nin: [null, ''] } } },
+    {
+      $group: {
+        _id:     '$yearGraduated',
+        total:   { $sum: 1 },
+        matched: { $sum: { $cond: [
+          location === 'abroad'
+            ? { $regexMatch: { input: '$workLocation', regex: ABROAD_REGEX } }
+            : { $not: [{ $regexMatch: { input: '$workLocation', regex: ABROAD_REGEX } }] },
+          1, 0,
+        ] } },
+      },
+    },
+    // Same minimum-sample guard as queryWorkLocationByProgram() — a batch
+    // with only 1-2 people reporting a work location would otherwise let a
+    // trivial 100%/0% swing win the "highest/lowest ratio" ranking.
+    { $match: { total: { $gte: 3 } } },
+    { $sort: { _id: -1 } },
+  ]);
+  if (!rows.length) return null;
+
+  const label = location === 'abroad' ? 'working abroad' : 'working locally';
+  const ranked = [...rows].sort((a, b) => direction === 'highest'
+    ? (b.matched / b.total) - (a.matched / a.total)
+    : (a.matched / a.total) - (b.matched / b.total));
+  const top = ranked[0];
+
+  let out = `**Alumni ${label}, by batch:**\n\n`;
+  rows.forEach(r => { out += `- **Batch ${r._id}**: ${r.matched}/${r.total} ${label} (${pct(r.matched, r.total)})\n`; });
+  out += `\n**Batch ${top._id}** has the ${direction} ratio of alumni ${label}, at **${pct(top.matched, top.total)}**.`;
+  const chartRows = rows.map(r => ({ _id: `Batch ${r._id}`, count: Math.round((r.matched / r.total) * 100) }));
+  return withChart(out, { type: 'bars', title: `Alumni ${toTitleCase(label)} Rate by Batch (%)`, rows: chartRows, unit: '%' });
 }
 
 async function queryByYear(filters) {
@@ -3974,7 +4976,7 @@ async function queryByYear(filters) {
 // per year, computed directly from MongoDB. Unlike the rate-ranking function
 // below, no minimum-sample threshold applies here: a year with few graduates
 // is itself a real, meaningful answer to a headcount question, not noise.
-async function queryYearWithMostGraduates(filters, direction) {
+async function queryYearWithMostGraduates(filters, direction, wantsChart = false) {
   const stableMatch = {};
   if (filters.program) stableMatch.program = { $regex: programRegex(filters.program), $options: 'i' };
   if (filters.gender)  stableMatch.gender  = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
@@ -4003,6 +5005,12 @@ async function queryYearWithMostGraduates(filters, direction) {
   out += tied.length > 1
     ? `\n**${tied.length} batches** are tied for the ${direction === 'highest' ? 'most' : 'fewest'} graduates, each with **${top.total}**: ${tied.map(r => `Batch ${r._id}`).join(', ')}.`
     : `\n**Batch ${top._id}** had the ${direction === 'highest' ? 'most' : 'fewest'} graduates, with **${top.total}**.`;
+  // A "which batch/year" superlative question already names ONE winning
+  // batch in plain text above — attaching a full by-year chart by default
+  // added visual noise (most bars near-zero/irrelevant) to what's really a
+  // single-fact answer. Chart now only renders when explicitly asked for,
+  // same wantsChart gating queryRate()/queryCount() already use. Caught live.
+  if (!wantsChart) return out;
   const chartRows = [...rows].reverse().map(r => ({ _id: `Batch ${r._id}`, count: r.total }));
   return withChart(out, { type: 'bars', title: 'Graduates by Batch Year', rows: chartRows });
 }
@@ -4013,7 +5021,7 @@ async function queryYearWithMostGraduates(filters, direction) {
 // just listing all of them. Years with fewer than 3 respondents are excluded
 // so a single lucky/unlucky record can't swing the "highest/lowest" result —
 // same threshold used by queryEmploymentRateByProgram() for the same reason.
-async function queryYearRateExtreme(filters, direction, metric) {
+async function queryYearRateExtreme(filters, direction, metric, asRate = false, wantsChart = false) {
   const stableMatch = {};
   if (filters.program) stableMatch.program = { $regex: programRegex(filters.program), $options: 'i' };
   if (filters.gender)  stableMatch.gender  = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
@@ -4036,26 +5044,80 @@ async function queryYearRateExtreme(filters, direction, metric) {
   ]);
   if (!rows.length) return null;
 
+  // metric === 'self-employed' was missing entirely — r.selfEmp was already
+  // computed in the $group stage above but only ever folded into the
+  // combined 'employment' figure (emp = employed + selfEmp), with no way to
+  // isolate it on its own. "Which graduation year has the highest number of
+  // self-employed respondents?" has no dedicated metric to ask for, so the
+  // dispatch site below fell through to the generic 'employment' branch
+  // (its own \bemploy\b-style check matches the substring inside "self-
+  // employed" too) and answered with the combined employed+self-employed
+  // rate — mixing the two statuses together instead of isolating the one
+  // actually asked about, with no "self" distinction anywhere in the answer.
+  //
+  // Was first treated as a RATE (self-employed / respondents that year),
+  // mirroring how "most unemployed" is normalized to a rate elsewhere in
+  // this file — but corrected live: the question literally says "highest
+  // NUMBER of self-employed respondents," a raw headcount ranking, not a
+  // rate one, and the rate framing also produced a nonsensical chart (its
+  // "count" field held a RATE-as-percentage value like 9, which the chart
+  // widget then treated as a literal count and computed a second,
+  // meaningless "share of all these percentages added together" percentage
+  // on top of it). employment/unemployment keep their existing RATE-based
+  // ranking (not reported as wrong) — only self-employed switches to a raw
+  // count. BUT that fix was itself only half right — it made EVERY
+  // self-employed question a raw count, so "which year has the highest
+  // RATE of self-employed respondents" (explicit "rate" wording) now
+  // wrongly got the raw-count answer too (Batch 2022, the headcount winner)
+  // instead of the genuinely different rate winner (Batch 2021). `asRate`
+  // (set by the caller from the question's own "rate"/"percentage" wording)
+  // lets the two phrasings diverge correctly instead of collapsing onto
+  // whichever one was fixed most recently.
+  const isRawCount = metric === 'self-employed' && !asRate;
   const withRate = rows.map(r => {
     const emp    = r.employed + r.selfEmp;
     const notEmp = r.total - emp;
-    const rate   = metric === 'unemployment' ? notEmp / r.total : emp / r.total;
+    // self-employed-as-RATE needs r.selfEmp/r.total specifically — the
+    // combined `emp` (employed + self-employed) the plain 'employment'
+    // branch uses would silently answer a different, broader metric than
+    // "self-employed rate" actually asked for.
+    const rate   = metric === 'unemployment'  ? notEmp / r.total
+                 : metric === 'self-employed' ? r.selfEmp / r.total
+                 : emp / r.total;
     return { ...r, emp, notEmp, rate };
   });
-  const ranked = [...withRate].sort((a, b) => direction === 'highest' ? b.rate - a.rate : a.rate - b.rate);
+  const rankValue = (r) => isRawCount ? r.selfEmp : r.rate;
+  const ranked = [...withRate].sort((a, b) => direction === 'highest' ? rankValue(b) - rankValue(a) : rankValue(a) - rankValue(b));
   const top = ranked[0];
-  const label = metric === 'unemployment' ? 'Unemployment' : 'Employment';
+  const label = metric === 'unemployment' ? 'Unemployment' : metric === 'self-employed' ? 'Self-Employment' : 'Employment';
   const lbl = filterLabel(filters);
 
-  let out = `**${label} rate by batch year${lbl}:**\n\n`;
-  withRate.forEach(r => {
-    const shown = metric === 'unemployment' ? r.notEmp : r.emp;
-    out += `- **Batch ${r._id}**: ${pct(shown, r.total)} (${shown}/${r.total})\n`;
-  });
-  const topShown = metric === 'unemployment' ? top.notEmp : top.emp;
-  out += `\n**Batch ${top._id}** had the ${direction} ${metric} rate, at **${pct(topShown, top.total)}** (${topShown} out of ${top.total}).`;
-  const chartRows = [...ranked].reverse().map(r => ({ _id: `Batch ${r._id}`, count: Math.round(r.rate * 100) }));
-  return withChart(out, { type: 'bars', title: `${label} Rate by Batch Year (%)`, rows: chartRows });
+  // This only ever answers a "WHICH batch/year had the highest/lowest X"
+  // superlative question (its one and only call site) — the user asked to
+  // name ONE winning batch, not to see every batch's figure restated first.
+  // Was a full bulleted breakdown of every batch PLUS this sentence; trimmed
+  // to just the direct answer — the chart below still carries the full
+  // per-batch breakdown visually for anyone who wants it.
+  // lbl (program/gender scope, if any — see filterLabel()) kept in the
+  // sentence itself, not dropped along with the rest of the breakdown — a
+  // scoped question ("...for BSIT?") must still say so in the one sentence
+  // that survives, or the answer reads as if it covered every program.
+  const topShown = metric === 'unemployment' ? top.notEmp : metric === 'self-employed' ? top.selfEmp : top.emp;
+  const out = isRawCount
+    ? `**Batch ${top._id}** had the ${direction} number of self-employed respondents${lbl}, with **${topShown}** (out of ${top.total} total respondents that year).`
+    : `**Batch ${top._id}** had the ${direction} ${metric === 'self-employed' ? 'self-employment' : metric} rate${lbl}, at **${pct(topShown, top.total)}** (${topShown} out of ${top.total}).`;
+  // Same "which batch/year" superlative shape as queryYearWithMostGraduates()
+  // just above — one winning batch is the whole answer, so the full by-year
+  // chart (mostly nonzero-only-for-one-bar noise, as seen live with the
+  // self-employment-rate case) only renders on an explicit chart/graph ask.
+  if (!wantsChart) return out;
+  const chartRows = [...ranked].reverse().map(r => ({ _id: `Batch ${r._id}`, count: isRawCount ? r.selfEmp : Math.round(r.rate * 100) }));
+  const chartTitle = isRawCount ? 'Self-Employed Respondents by Batch Year' : `${label} Rate by Batch Year (%)`;
+  // unit: '%' only for the rate case — isRawCount's rows are a genuine
+  // headcount (r.selfEmp), not a 0-100 percentage, so it must keep the
+  // dynamic max a raw-count chart needs (see withChart()'s own line-chart-
+  // conversion comment in queryInner() for what this flag controls).
+  return withChart(out, { type: 'bars', title: chartTitle, rows: chartRows, ...(isRawCount ? {} : { unit: '%' }) });
 }
 
 // Answers "which batch has the highest/lowest job-course relevance rate?" —
@@ -4064,7 +5126,7 @@ async function queryYearRateExtreme(filters, direction, metric) {
 // "lowest" (queryJobAlignmentByProgram() only ever surfaces the highest).
 // Years with fewer than 3 respondents are excluded for the same small-sample
 // reason used everywhere else in this file.
-async function queryYearJobAlignment(filters, direction) {
+async function queryYearJobAlignment(filters, direction, wantsChart = false) {
   const stableMatch = {};
   if (filters.program) stableMatch.program = { $regex: programRegex(filters.program), $options: 'i' };
   if (filters.gender)  stableMatch.gender  = { $regex: `^${escapeRegex(filters.gender)}$`, $options: 'i' };
@@ -4095,8 +5157,11 @@ async function queryYearJobAlignment(filters, direction) {
   let out = `**Job-course relevance rate by batch year${lbl}:**\n\n`;
   rows.forEach(r => { out += `- **Batch ${r._id}**: ${r.related}/${r.total} job-related (${pct(r.related, r.total)})\n`; });
   out += `\n**Batch ${top._id}** had the ${direction} job-course relevance rate, at **${pct(top.related, top.total)}** (${top.related} out of ${top.total}).`;
+  // Same wantsChart gating as queryYearRateExtreme()/queryYearWithMostGraduates()
+  // just above — this is a "which batch" superlative question first.
+  if (!wantsChart) return out;
   const chartRows = [...ranked].reverse().map(r => ({ _id: `Batch ${r._id}`, count: Math.round(r.rate * 100) }));
-  return withChart(out, { type: 'bars', title: 'Job-Course Relevance Rate by Batch Year (%)', rows: chartRows });
+  return withChart(out, { type: 'bars', title: 'Job-Course Relevance Rate by Batch Year (%)', rows: chartRows, unit: '%' });
 }
 
 const EMOJI_RE = /[\u{1F300}-\u{1FFFF}\u{2600}-\u{27BF}]/gu;
@@ -4164,7 +5229,7 @@ const PERSON_LOOKUP_PATTERNS = [
   // topic, and answered with the TSU-wide top-10 industries list — a
   // population-level statistic standing in for what should have been one
   // specific person's own industry (Information Technology).
-  /\bwhat(?:'s|\s+(?:is|does|was))\s+([A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+(?:\s+[A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+){0,4})(?:'s)?\s+(?:first\s+(?:job|position|occupation|employer|company)|job|occupation|position|current\s+job|current\s+role|working\s+as|company|employer|industry|(?:work(?:ing)?\s+)?location|employment\s+status|(?:contact|phone|cell(?:phone)?|mobile)\s+number|number|contact\s+(?:info|information|details)|email(?:\s+address)?)\b/i,
+  /\bwhat(?:'s|\s+(?:is|does|was))\s+([A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+(?:\s+[A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+){0,4})(?:'s)?\s+(?:first\s+(?:job|position|occupation|employer|company)|job|occupation|position|current\s+job|current\s+role|working\s+as|company|employer|industry|(?:work(?:ing)?\s+)?location|employment\s+status|(?:contact|phone|cell(?:phone)?|mobile)\s+number|number|contact\s+(?:info|information|details)|email(?:\s+address)?|(?:exact\s+)?(?:salary|income|compensation|wage))\b/i,
   // Mirror-image word order of the possessive pattern just above — "what is
   // the JOB OF X" instead of "what is X's JOB". English speakers use both
   // interchangeably, but only the possessive form was ever recognized here.
@@ -4173,7 +5238,18 @@ const PERSON_LOOKUP_PATTERNS = [
   // found nothing specific to say, and ultimately landed in the catch-all
   // "I'm not sure what you're asking" clarify fallback — for a question that
   // named a real, on-file alumnus by name.
-  /\bwhat(?:'s|\s+(?:is|does|was))\s+(?:the\s+)?(?:first\s+(?:job|position|occupation|employer|company)|job|occupation|position|current\s+job|current\s+role|company|employer|industry|(?:work(?:ing)?\s+)?location|employment\s+status)\s+of\s+([A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+(?:\s+[A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+){0,4})\b/i,
+  /\bwhat(?:'s|\s+(?:is|does|was))\s+(?:the\s+)?(?:first\s+(?:job|position|occupation|employer|company)|job|occupation|position|current\s+job|current\s+role|company|employer|industry|(?:work(?:ing)?\s+)?location|employment\s+status|(?:exact\s+)?(?:salary|income|compensation|wage))\s+of\s+([A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+(?:\s+[A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+){0,4})\b/i,
+  // "show me/give me/tell me the (exact) salary of X" — the two patterns
+  // above only ever fire off a "what is/what's/what does/what was" lead-in;
+  // a direct imperative ("show me...") is at least as natural a way to ask
+  // for one person's own salary and matched NEITHER of them. Caught live:
+  // "show me the exact salary of Nani Nateetorn" extracted no name at all
+  // and fell straight through to the generic, population-wide "salary isn't
+  // tracked" decline — true for the TRACER STUDY, but not the whole truth:
+  // a few alumni have separately added a salary range to their own
+  // Employment Details profile (AlumniEmployment.salary_range, surfaced by
+  // buildPersonLookupResult() below) — the decline never even looked.
+  /\b(?:show\s+me|give\s+me|tell\s+me)\s+(?:the\s+)?(?:exact\s+)?(?:salary|income|compensation|wage)\s+(?:of|for)\s+([A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+(?:\s+[A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+){0,4})\b/i,
   /\bis\s+([A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+(?:\s+[A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+){0,4})\s+(?:currently\s+)?employed\b/i,
   /\bwhat\s+company\s+does\s+([A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+(?:\s+[A-Z][a-zA-ZÀ-ÖØ-öø-ÿ.'-]+){0,4})\s+work\s+(?:for|at)\b/i,
   // "who is X working for/with/at" is now handled by WHO_IS_PATTERN below
@@ -4496,6 +5572,10 @@ const PERSON_ATTRIBUTE_TRIGGERS = [
   // pattern collides), but placed here alongside it since both concern the
   // same underlying job-title context.
   { attribute: 'jobRelated', label: '- Job Related to Course:', pattern: /\brelated\s+to\s+(?:his|her|their|its|the(?:ir)?)?\s*(?:job|course|degree|field|program)\b/i },
+  // Not a tracer study field — see buildPersonLookupResult()'s own comment
+  // on where this line actually comes from (AlumniEmployment.salary_range,
+  // a separate, optional self-reported profile field).
+  { attribute: 'salary', label: '- Salary Range:', pattern: /\b(?:salary|income|compensation|wages?)\b/i },
 ];
 
 // Returns which single attribute (if any) a person-lookup question targets,
@@ -4595,6 +5675,45 @@ const PROGRAM_KEYWORDS = [
 function programKeywordFrom(rawProgram) {
   if (!rawProgram) return null;
   return PROGRAM_KEYWORDS.find(k => rawProgram.toLowerCase().includes(k.toLowerCase())) || null;
+}
+
+// Used only by extractFilters()'s multi-program combination pass further up
+// (the "Computer Science and TSM graduates" case) — kept as its own
+// independent flat list, same reasoning as PROGRAM_KEYWORDS' own comment
+// just above ("rather than reaching into extractFilters()'s internal ABBR/
+// SPEC_ABBR, which aren't built for this"): those are tuned for picking a
+// SINGLE winning match with early-exit `break`/`find()` semantics, not for
+// collecting every distinct program/specialization mentioned in one
+// question. Each `re` is deliberately simpler than extractFilters()'s own
+// single-value SPEC_ABBR patterns (no "nasa"/"-related"/"industry" negative
+// lookahead) — those exist to stop a BARE "IT"/"CS" abbreviation from being
+// misread as a program when it actually meant an industry/workplace
+// elsewhere in the question; this list only ever matches the spelled-out
+// PROGRAM_KEYWORDS names plus specialization NAMES/codes that are never
+// legitimately read as anything else, so that ambiguity doesn't apply here.
+const PROGRAM_MENTION_CANDIDATES = [
+  ...PROGRAM_KEYWORDS.map((k) => ({ label: k, pattern: k, re: new RegExp(`\\b${k}\\b(?!\\s+(?:industry|sector|field)\\b)`, 'i') })),
+  { label: 'Technical Service Management', pattern: 'Technical Service Management', re: /\bTSM\b/i },
+  { label: 'Web and Mobile Application',    pattern: 'Web and Mobile Application',    re: /\bWMA\b|\bWeb\s+(?:and|&)\s+Mobile\s+(?:Application|Applications|App|Apps)\b/i },
+  { label: 'Network Administration',        pattern: 'Network Administration',        re: /\bNet(?:work)?\s*Admin\w*\b/i },
+  // Bare "Networking" deliberately excluded here too — same collision-risk
+  // reasoning as extractFilters()'s own PROGRAM_SPECIALIZATIONS aliases
+  // comment (an ordinary English word, far too likely to appear in an
+  // unrelated question to ever safely stand alone as a program trigger).
+  { label: 'Business Analytics',            pattern: 'Business Analytics',            re: /\bBusiness\s*Analytics?\b/i },
+];
+// "further education"/"continuing education"/"pursue(d) education" is the
+// idiom-not-a-program-name guard PROGRAM_KEYWORDS' own single-value match
+// already applies (see its own comment) — duplicated here since this is a
+// deliberately separate list/pass, not a shared call site.
+function findAllProgramMentions(question) {
+  const found = [];
+  for (const { label, pattern, re } of PROGRAM_MENTION_CANDIDATES) {
+    if (label === 'Education' && /\b(further|continuing|pursue[ds]?)\s+education\b/i.test(question)) continue;
+    const m = re.exec(question);
+    if (m) found.push({ label, pattern, index: m.index, end: m.index + m[0].length });
+  }
+  return found.sort((a, b) => a.index - b.index);
 }
 
 // Names in this dataset appear in inconsistent formats ("Bryan Canlapan" vs
@@ -4798,6 +5917,25 @@ async function buildPersonLookupResult(match, requestedAttribute = null) {
   }
   if (match.contact) facts.push(`- Contact Number: **${match.contact}**`);
   if (match.email) facts.push(`- Email: **${match.email}**`);
+  // NOT a tracer study field — Graduate/TracerStudyResponse have no salary
+  // question at all (see SALARY_PATTERN's own comment, aggregationService.js
+  // top of file). This is a SEPARATE, optional field on the alumnus's own
+  // self-maintained Employment Details profile (AlumniEmployment.salary_range)
+  // that most alumni never fill in — only shown when actually on file, same
+  // as every other optional fact above, never asserted as "not tracked" for
+  // THIS person just because it's rare overall. Looked up by user_id (shared
+  // key between Graduate and AlumniEmployment, both reference User._id) —
+  // a legacy bulk-imported Graduate row with no linked portal account has no
+  // user_id and so can never have an AlumniEmployment profile either.
+  if (match.user_id) {
+    const employmentProfile = await AlumniEmployment.findOne({ alumni_id: match.user_id }).select('salary_range').lean();
+    // "(only a range, not an exact figure)" disclaimer — the profile field
+    // itself only ever stores a bracket ("PHP 25,000 - PHP 35,000"), never a
+    // precise number, so a question asking for the "EXACT salary" needs this
+    // stated up front rather than silently showing a range as if it were the
+    // exact figure asked for.
+    if (employmentProfile?.salary_range) facts.push(`- Salary Range: **${employmentProfile.salary_range}** (only a range is recorded, not an exact figure)`);
+  }
   if (!facts.length) {
     facts.push('- (No further details on file — no job title, industry, location, employment status, contact number, or email recorded.)');
   }
@@ -4824,6 +5962,25 @@ async function buildPersonLookupResult(match, requestedAttribute = null) {
     const scopedFact = facts.find((f) => f.startsWith(attributeTrigger.label));
     if (scopedFact) {
       return { text: `**${displayName}**\n\n${scopedFact}`, ambiguous: false, personFilters };
+    }
+    // Salary is the one exception to "fall through to the full dump" just
+    // below — every OTHER attribute here is a real tracer-study field, so a
+    // missing one is already explained by the Tracer Study Status line
+    // elsewhere in the dump (not submitted yet / submitted but left blank),
+    // making the full profile a genuinely useful fallback. Salary Range
+    // isn't a tracer-study field at all (see the fact-building block above)
+    // — showing someone's entire UNRELATED profile (program, job title,
+    // company...) in response to a salary question, with no mention of
+    // salary anywhere in it, reads as if the question got ignored rather
+    // than honestly answered "not on file." Caught live: "show me the exact
+    // salary of Nani Nateetorn" (no salary on her Employment Details
+    // profile) dumped her full tracer-study profile instead.
+    if (attributeTrigger.attribute === 'salary') {
+      return {
+        text: `**${displayName}**\n\n- Salary Range: Not available — this alumnus/alumna hasn't added a salary range to their Employment Details profile.`,
+        ambiguous: false,
+        personFilters,
+      };
     }
   }
 
@@ -4896,6 +6053,13 @@ async function queryNames(filters, question = '') {
     ]}});
   } else if (filters.hasPromotion) {
     pipeline.push({ $match: { hasPromotion: { $regex: '^yes', $options: 'i' } } });
+  }
+  // Same competency+rating-level filter queryCount() now applies — see its
+  // own comment for the live bug this fixes. Mirrored here so "WHO rated
+  // their Critical Thinking as High Competent and works as a supervisor"
+  // (a names request, not just a count) is equally answerable.
+  if (filters.competency && filters.competencyRating) {
+    pipeline.push({ $match: { [`competencies.${filters.competency}`]: { $regex: `^${escapeRegex(filters.competencyRating)}`, $options: 'i' } } });
   }
 
   // Was a flat 50 always — a bare "who is working?"-style question dumped up
@@ -4979,6 +6143,26 @@ async function queryNames(filters, question = '') {
   // the job-title default.
   const showLocation = /\b(saan|where)\b.{0,25}\b(nagtatrabaho|nagwowork|naninirahan|nakatira|work(?:ing)?)\b/i.test(question);
   const showYear = /\b(kailan|when)\b.{0,20}\b(nagtapos|natapos|graduate)\b/i.test(question);
+  // "list all unemployed and their CONTACT INFORMATION" — a request to
+  // display Graduate.contact alongside each name, same "detail flag read
+  // off the question text" shape as showLocation/showYear above. Without
+  // this, the field simply never appeared in any queryNames() output no
+  // matter how explicitly asked for — the list only ever showed job
+  // title/company, regardless of question wording. Caught live.
+  const showContact = /\bcontacts?\b|\bphone\s*(?:number)?\b|\bnumbers?\s+to\s+(?:call|reach)\b|\bmobile\s*(?:number)?\b/i.test(question);
+  // UNLIKE showLocation/showYear/showContact above, home address is not a
+  // Graduate field AT ALL — no tracer study question or alumni profile
+  // field ever collects it (see SYSTEM_PROMPT's own "NOT tracked" list in
+  // ragService.js). A per-row "— address not on file" would read as if it
+  // were a real field that just happens to be empty for everyone, the same
+  // misleading shape queryPersonLookup() deliberately avoids for untracked
+  // concepts. Flagged once, up front, instead — caught live: "Export the
+  // full list of unemployed graduates with their home addresses" silently
+  // answered with names only and zero acknowledgment that half the request
+  // (the address half) was never addressed at all, reading as if the
+  // question had been fully understood when only the "unemployed" keyword
+  // actually got matched.
+  const requestsAddress = /\b(?:home\s+)?address(?:es)?\b|\btirahan\b/i.test(question);
 
   const suffix = docs.length < total ? ` (showing ${docs.length} of ${total} — say "show all" or "show 50" to see more)` : ` (${total} total)`;
   let out = `**Alumni${label ? ` ${label}` : ''}${suffix}:**\n\n`;
@@ -4988,9 +6172,21 @@ async function queryNames(filters, question = '') {
     if (showCompany && d.companyName) out += ` at ${toTitleCase(cleanText(d.companyName))}`;
     if (showLocation) out += d.workLocation ? ` — ${toTitleCase(cleanText(d.workLocation))}` : ` — location not on file`;
     if (showYear) out += d.yearGraduated ? ` — graduated ${d.yearGraduated}` : ` — graduation year not on file`;
+    if (showContact) out += d.contact ? ` — ${d.contact}` : ` — no contact number on file`;
     out += '\n';
   });
-  return out;
+  // rephraseNotice: a short, FIXED fact ragService.js rewords into one
+  // natural sentence before prepending to this (untouched) list — see
+  // ragService.js's own comment on why this is safe to narrate (a short,
+  // already-fully-known scope-limitation sentence) when the names/numbers
+  // below it deliberately are not. Returning an object here (instead of the
+  // plain string every other queryNames() call returns) is safe everywhere
+  // this function is called — every call site already unwraps either shape
+  // via the shared `typeof result === 'string' ? ... : result` check in
+  // queryInner().
+  return requestsAddress
+    ? { text: out, rephraseNotice: 'Home address is not tracked by the tracer study or any alumni profile.' }
+    : out;
 }
 
 // ─── Events ─────────────────────────────────────────────────────────────────
@@ -5900,6 +7096,207 @@ async function queryEventFeedback(question) {
 // yes/no-shaped question (took the exam, pursued further studies, works
 // locally, etc.), so a plain matched/unmatched donut fits every caller alike
 // without needing a caller-specific chart shape.
+// Years-in-current-job tenure brackets, ordered lowest to highest, each with
+// its own MINIMUM threshold in years — Graduate.yearsInJob stores one of
+// these six exact string labels (confirmed live against the real database),
+// never a raw number, so a threshold question ("2 years or longer," "less
+// than 1 year") has to resolve against this ordered list, not a numeric
+// comparison.
+const YEARS_IN_JOB_BRACKETS = [
+  { label: 'Less than 6 months', min: 0 },
+  { label: '6 months to 1 year', min: 0.5 },
+  { label: '1 to 2 years',       min: 1 },
+  { label: '2 to 3 years',       min: 2 },
+  { label: '3 to 5 years',       min: 3 },
+  { label: 'More than 5 years',  min: 5 },
+];
+
+// "...in their current job for 2 to 3 years or longer" / "at least 2 years"
+// / "2+ years" / "less than 1 year" — resolves a stated threshold to the SET
+// of real stored brackets that qualify, since the field is bracketed text,
+// not a number ("2 to 3 years or longer" means the "2 to 3 years" bracket
+// AND every bracket above it). Deliberately conservative: only recognizes
+// these specific phrasings — an unrecognized/ambiguous threshold returns
+// null rather than guessing which brackets were meant.
+function extractYearsInJobThreshold(question) {
+  const atLeastMatch = question.match(/\b(\d+)\s*(?:to\s*\d+\s*)?years?\s+or\s+(?:longer|more)\b|\bat\s+least\s+(\d+)\s+years?\b|\b(\d+)\+\s*years?\b/i);
+  if (atLeastMatch) {
+    const years = parseInt(atLeastMatch[1] || atLeastMatch[2] || atLeastMatch[3], 10);
+    return { direction: 'atLeast', years, brackets: YEARS_IN_JOB_BRACKETS.filter(b => b.min >= years) };
+  }
+  const lessThanMatch = question.match(/\bless\s+than\s+(\d+)\s+years?\b/i);
+  if (lessThanMatch) {
+    const years = parseInt(lessThanMatch[1], 10);
+    return { direction: 'lessThan', years, brackets: YEARS_IN_JOB_BRACKETS.filter(b => b.min < years) };
+  }
+  // A SINGLE bracket named directly, with no "or longer"/"at least"/"+"
+  // open-ended qualifier at all ("...for 3 to 5 years?", "6 months to 1
+  // year in their current job") — the simplest, most literal tenure
+  // question shape, and genuinely common (most people naming one exact
+  // bracket aren't also implying "and everything above it"). Reuses
+  // extractMentionedYearsInJobBrackets() (see its own comment) — when it
+  // finds exactly one real bracket label, that IS the whole answer; 2+ is
+  // a comparison instead (handled separately, before this function is ever
+  // called — see queryInner()'s own mentionedTenureBrackets check).
+  const singleBracket = extractMentionedYearsInJobBrackets(question);
+  if (singleBracket.length === 1) {
+    return { direction: 'exact', years: null, brackets: singleBracket };
+  }
+  return null;
+}
+
+// "years in (their/current) job" / "job tenure" — explicit vocabulary for
+// HOW LONG someone has been in their CURRENT role, a completely different
+// metric from employment rate. TOPIC_PATTERNS.rate's own bare "percentage"+
+// "employed" words matched this question first (same first-match-wins
+// collision class documented throughout this file — "Show me the percentage
+// of Computer Science graduates who are currently employed..." was the
+// identical shape, just for a different metric). Checked explicitly in the
+// 'rate' dispatch arm (queryInner(), below) before any of the generic
+// employment-rate branches, same fix shape as that earlier case.
+// "role(s)"/"position(s)" added alongside "job(s)" — "stayed in their
+// current ROLE for 1 to 2 years" is just as natural a way to ask this as
+// "...current JOB...", and the original job-only wording missed it entirely.
+// "stayed/remained/been (in)" added alongside the bare "years in" framing —
+// "how long have alumni STAYED in their current role" is a common phrasing
+// this pattern didn't cover.
+// "been WITH their COMPANY for 3 to 5 years" added — a different, equally
+// natural way to ask about tenure (describing the EMPLOYER relationship
+// rather than the job/role itself), not covered by any of the "in their
+// (current) job/role/position" phrasings above. Caught live: "How many
+// Regular/Permanent employees have been with their company for 3 to 5
+// years?" matched none of the existing alternatives, so the tenure half of
+// the question was silently dropped and it answered the unrelated overall
+// Employed/Unemployed breakdown instead.
+const YEARS_IN_JOB_CONTEXT_PATTERN = /\byears?\s+in\s+(?:their|his|her|the|current|present)?\s*(?:current\s+)?(?:jobs?|roles?|positions?)\b|\b(?:in|stayed?|remain(?:ed)?)\s+(?:their|his|her|the)\s+(?:current|present)\s+(?:jobs?|roles?|positions?)\s+for\b|\b(?:job|role|position)\s+tenure\b|\btenure\s+(?:in|at)\s+(?:their|his|her|the|current)\s+(?:jobs?|roles?|positions?)\b|\bbeen\s+with\s+(?:their|his|her|the)\s+(?:company|employer|organization)\s+for\b/i;
+
+// "...for less than 6 months compared to those with 3 to 5 years OR more
+// than 5 years of tenure" — names 2+ DISTINCT tenure brackets explicitly by
+// their own real stored label, a side-by-side comparison rather than a
+// single "X years or longer/less than Y" threshold (extractYearsInJobThreshold()
+// above only ever resolves ONE side of a question like that). Matches each
+// bracket's own literal, distinctive phrase directly against the question
+// text — deliberately NOT grouped into "the 3+ years side" vs "the under-6-
+// months side" the way the question's own "compared to" framing implies,
+// since guessing how the user meant to GROUP multiple named brackets
+// together is exactly the kind of invented structure this app's "don't
+// guess" principle exists to avoid; showing every individually-named
+// bracket's own real count side by side answers the same underlying
+// question honestly without assuming a specific grouping.
+function extractMentionedYearsInJobBrackets(question) {
+  return YEARS_IN_JOB_BRACKETS.filter((b) => {
+    const pat = new RegExp('\\b' + b.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+') + '\\b', 'i');
+    return pat.test(question);
+  });
+}
+
+// Shared "respondents" denominator shape with countYearsInJobMatches() below
+// — a bracket-vs-bracket comparison still needs the SAME "employed alumni
+// who reported a tenure bracket at all" population as the single-threshold
+// case, not stablePipeline()'s whole cohort.
+async function queryYearsInJobBracketsCompare(filters, brackets) {
+  const base = stablePipeline(filters);
+  const respondentMatch = { employmentStatus: { $regex: '^(?:yes|self.?employed)', $options: 'i' }, yearsInJob: { $nin: [null, ''] } };
+  const [totalRows, ...bracketRows] = await Promise.all([
+    Graduate.aggregate([...base, { $match: respondentMatch }, { $count: 'total' }]),
+    ...brackets.map((b) => Graduate.aggregate([...base, { $match: { ...respondentMatch, yearsInJob: b.label } }, { $count: 'total' }])),
+  ]);
+  const total = totalRows[0]?.total ?? 0;
+  if (total === 0) return null;
+  const lbl = filterLabel(filters);
+  let out = `**Job tenure comparison${lbl}:**\n\n`;
+  const chartRows = [];
+  brackets.forEach((b, i) => {
+    const count = bracketRows[i][0]?.total ?? 0;
+    out += `- **${b.label}**: ${count} (${pct(count, total)})\n`;
+    chartRows.push({ _id: b.label, count });
+  });
+  out += `\nOut of **${total}** respondents who reported their job tenure.`;
+  return withChart(out, { type: 'bars', title: 'Job Tenure Comparison', rows: chartRows });
+}
+
+// Shared by queryYearsInJobRate() (a percentage) and queryYearsInJobCount()
+// (a raw headcount, "how many..." phrasing) just below — same underlying
+// question, two different answer shapes, same denominator/numerator query.
+async function countYearsInJobMatches(filters, threshold) {
+  const base = stablePipeline(filters);
+  // Respondents = employed alumni who actually reported a tenure bracket —
+  // not stablePipeline()'s whole cohort, which would otherwise dilute the
+  // percentage against unemployed alumni who structurally have no "current
+  // job" tenure to report at all (same "respondents, not everyone"
+  // denominator queryJobRelevance()/queryEmploymentStatusRate() already use,
+  // see their own comments just below).
+  const respondentMatch = { employmentStatus: { $regex: '^(?:yes|self.?employed)', $options: 'i' }, yearsInJob: { $nin: [null, ''] } };
+  const [totalRows, matchRows] = await Promise.all([
+    Graduate.aggregate([...base, { $match: respondentMatch }, { $count: 'total' }]),
+    Graduate.aggregate([...base, { $match: { ...respondentMatch, yearsInJob: { $in: threshold.brackets.map(b => b.label) } } }, { $count: 'total' }]),
+  ]);
+  return { total: totalRows[0]?.total ?? 0, matched: matchRows[0]?.total ?? 0 };
+}
+
+function yearsInJobThresholdDesc(threshold) {
+  if (threshold.direction === 'exact') return threshold.brackets[0].label.toLowerCase();
+  const yearWord = threshold.years === 1 ? 'year' : 'years';
+  return threshold.direction === 'atLeast' ? `${threshold.years}+ ${yearWord}` : `less than ${threshold.years} ${yearWord}`;
+}
+
+async function queryYearsInJobRate(filters, threshold) {
+  const { total, matched } = await countYearsInJobMatches(filters, threshold);
+  if (total === 0) return null;
+  const lbl = filterLabel(filters);
+  const gPrefix = genderPrefix(filters);
+  const desc = yearsInJobThresholdDesc(threshold);
+  const text = `**${pct(matched, total)}** of ${gPrefix}employed graduates${lbl} have been in their current job for **${desc}** (${matched} out of ${total} respondents).`;
+  const chartRows = [
+    { _id: desc, count: matched },
+    { _id: 'Less time', count: total - matched },
+  ].filter(r => r.count > 0);
+  return withChart(text, { type: 'donut', title: 'Tenure in Current Job', rows: chartRows });
+}
+
+// "How many employed graduates have been in their current job for 2 to 3
+// years or longer?" — the exact same tenure question as queryYearsInJobRate()
+// just above, just asked as a headcount instead of a percentage. Without
+// this, "how many" phrasing fell through to 'count' topic's own dispatch,
+// which has no concept of yearsInJob at all, and silently answered the bare
+// employed-alumni total (184) instead — caught live right after the
+// "percentage" phrasing of the identical question was fixed, confirming the
+// gap was topic-specific (queryInner()'s 'rate' dispatch arm had the check,
+// 'count' did not).
+async function queryYearsInJobCount(filters, threshold) {
+  const { total, matched } = await countYearsInJobMatches(filters, threshold);
+  if (total === 0) return null;
+  const lbl = filterLabel(filters);
+  const gPrefix = genderPrefix(filters);
+  const desc = yearsInJobThresholdDesc(threshold);
+  return `There are **${matched}** ${gPrefix}employed graduates${lbl} who have been in their current job for **${desc}** (out of ${total} respondents who reported their job tenure).`;
+}
+
+// "What is the AVERAGE job tenure for BSIT - Web and Mobile Application
+// graduates?" — Graduate.yearsInJob is a bracketed RANGE string (confirmed
+// live — see YEARS_IN_JOB_BRACKETS' own comment), not a number, so there is
+// no literal numeric average to compute. Answers honestly with the MOST
+// COMMON bracket (the closest real meaning of "average"/"typical" this
+// categorical data actually supports) plus the full breakdown, rather than
+// fabricating a number or declining outright — same "closest available,
+// clearly labeled" philosophy this file uses elsewhere (e.g. the "full-time"
+// -> Regular/Permanent substitution).
+async function queryYearsInJobDistribution(filters) {
+  const base = stablePipeline(filters);
+  const respondentMatch = { employmentStatus: { $regex: '^(?:yes|self.?employed)', $options: 'i' }, yearsInJob: { $nin: [null, ''] } };
+  const rows = await Graduate.aggregate([...base, { $match: respondentMatch }, { $group: { _id: '$yearsInJob', count: { $sum: 1 } } }]);
+  if (!rows.length) return null;
+  const byLabel = new Map(rows.map((r) => [r._id, r.count]));
+  const ordered = YEARS_IN_JOB_BRACKETS.map((b) => ({ label: b.label, count: byLabel.get(b.label) || 0 }));
+  const total = ordered.reduce((s, r) => s + r.count, 0);
+  const top = [...ordered].sort((a, b) => b.count - a.count)[0];
+  const lbl = filterLabel(filters);
+  let out = `There is no single numeric "average" for job tenure — the tracer study records it as a range, not a number. The most common tenure bracket${lbl} is **${top.label}**, reported by **${top.count}** out of ${total} respondents (${pct(top.count, total)}).\n\n**Job tenure breakdown${lbl}:**\n\n`;
+  ordered.forEach((r) => { out += `- **${r.label}**: ${r.count} (${pct(r.count, total)})\n`; });
+  const chartRows = ordered.filter((r) => r.count > 0).map((r) => ({ _id: r.label, count: r.count }));
+  return withChart(out, { type: 'bars', title: 'Job Tenure Distribution', rows: chartRows });
+}
+
 async function querySimpleRate(filters, matchStage, label, chartTitle = null) {
   const base = stablePipeline(filters);
   const [totalRows, matchRows] = await Promise.all([
@@ -5949,6 +7346,55 @@ async function queryJobRelatedRate(filters, matchStage, label, chartTitle = null
     { _id: 'No', count: total - matched },
   ].filter(r => r.count > 0);
   return withChart(text, { type: 'donut', title: chartTitle, rows: chartRows });
+}
+
+// Every job-relatedness level actually mentioned, for "directly related
+// VERSUS somewhat related"-style comparisons — the single-level
+// filters.jobRelated extraction elsewhere in this file only ever keeps the
+// first/dominant one, same shape as extractAllRatingLevels() above for
+// competency ratings.
+function extractAllJobRelatedLevels(text) {
+  const found = [];
+  if (/\bdirectly\s+related\b/i.test(text)) found.push('directly');
+  if (/\bsomewhat\s+related\b/i.test(text)) found.push('somewhat');
+  if (/\b(?:not\s+related|unrelated)\b/i.test(text)) found.push('no');
+  return found;
+}
+const JOB_RELATED_LABEL = { directly: 'Directly Related', somewhat: 'Somewhat Related', no: 'Not Related' };
+function jobRelatedMatchStage(level) {
+  if (level === 'directly') return { $and: [{ jobRelated: { $regex: '^yes', $options: 'i' } }, { jobRelated: { $not: { $regex: 'somewhat', $options: 'i' } } }] };
+  if (level === 'somewhat') return { jobRelated: { $regex: 'somewhat', $options: 'i' } };
+  return { jobRelated: { $regex: '^no', $options: 'i' } };
+}
+
+// "...reported that their job is 'directly related' versus 'somewhat
+// related' to their degree" — 2+ job-relatedness levels named for
+// comparison, same shape/reasoning as queryCompetencyRatingCompare() and
+// queryYearsInJobBracketsCompare() above. Checked as an early bypass in
+// queryInner() (alongside queryCompare()'s own "compare/vs/versus" trigger)
+// rather than wired into each topic's own dispatch arm individually — this
+// question's own topic can land on 'count'/'names'/'job_relevance'
+// depending on exactly what else it names, and re-duplicating the same
+// check into every one of those arms (the way the tenure/competency
+// comparisons above had to be, since they were built before this pattern
+// was established) doesn't scale cleanly to a 4th+ comparable field.
+async function queryJobRelatedCompare(filters, levels) {
+  const base = stablePipeline({ ...filters, jobRelated: undefined });
+  const [totalRows, ...levelRows] = await Promise.all([
+    Graduate.aggregate([...base, { $match: { jobRelated: { $nin: [null, ''] } } }, { $count: 'total' }]),
+    ...levels.map((lvl) => Graduate.aggregate([...base, { $match: jobRelatedMatchStage(lvl) }, { $count: 'total' }])),
+  ]);
+  const total = totalRows[0]?.total ?? 0;
+  if (total === 0) return null;
+  const lbl = filterLabel({ ...filters, jobRelated: undefined });
+  let out = `**Job relevance comparison${lbl}:**\n\n`;
+  const chartRows = [];
+  levels.forEach((lvl, i) => {
+    const count = levelRows[i][0]?.total ?? 0;
+    out += `- **${JOB_RELATED_LABEL[lvl]}**: ${count} (${pct(count, total)})\n`;
+    chartRows.push({ _id: JOB_RELATED_LABEL[lvl], count });
+  });
+  return withChart(out, { type: 'bars', title: 'Job Relevance Comparison', rows: chartRows });
 }
 
 // Percentage of exam-takers who passed or failed (denominator = those who took the exam, not all graduates)
@@ -6110,63 +7556,279 @@ async function queryRate(filters, asUnemployment = false, wantsChart = false) {
 // preposition — safe here because this only ever splits text that already
 // matched a comparison TRIGGER word first (see the caller's own
 // /compare|vs|versus|.../ check), never arbitrary free text.
-const COMPARE_SPLIT = /\s+(?:and|at|vs\.?|versus)\s+/i;
+//
+// Split into exactly ONE left/right pair at a SINGLE delimiter occurrence,
+// never a blind multi-way .split() — a real stored specialization name is
+// literally "Web and Mobile Application" (see PROGRAM_SPECIALIZATIONS
+// above), and a global split on every "and" in the question sliced that
+// name into "Web" / "Mobile Application" fragments, silently dropping the
+// word "and" itself when the fragments were later rejoined with a plain
+// space. The re-joined "BSIT - Web Mobile Application" then no longer
+// matched the real specialization text at all, rightFilters.program came
+// back empty, and the whole comparison silently fell through to a generic,
+// unscoped "Information Technology" answer for a question that explicitly
+// named two different specializations. Caught live: "employment rate for
+// BSIT - Network Administration versus BSIT - Web and Mobile Application."
+// STRONG (vs/versus) is tried first and preferred whenever present — it's
+// never part of a real stored value in this dataset, unlike "and"/"at"
+// (WEAK), which doubles as ordinary English/Tagalog filler AND as literal
+// text inside real values; WEAK is only used as a fallback for the no-"vs"
+// phrasing ("compare X and Y").
+const STRONG_COMPARE_SPLIT = /\s+(?:vs\.?|versus)\s+/i;
+const WEAK_COMPARE_SPLIT   = /\s+(?:and|at)\s+/i;
+function splitCompareQuestion(stripped) {
+  const strong = STRONG_COMPARE_SPLIT.exec(stripped);
+  if (strong) return [stripped.slice(0, strong.index), stripped.slice(strong.index + strong[0].length)];
+  const weak = WEAK_COMPARE_SPLIT.exec(stripped);
+  if (weak) return [stripped.slice(0, weak.index), stripped.slice(weak.index + weak[0].length)];
+  return [stripped];
+}
+// Which single dimension two sides are being compared ON — program-vs-program,
+// gender-vs-gender, batch-year-vs-year ("compare batch 2022 versus batch
+// 2024"), or industry-vs-industry (headcount only — see COMPARE_METRICS'
+// own comment on why industry never drives a RATE comparison). Checked in
+// this order so existing program/gender comparisons keep resolving exactly
+// as before even if a question's split halves happen to ALSO carry a shared
+// year, and industry (the newest, narrowest addition) never steals a
+// comparison that's really about one of the other three.
+const COMPARE_DIMENSIONS = ['program', 'gender', 'yearGraduated', 'industry'];
+function compareValuesDiffer(dim, a, b) {
+  return (dim === 'gender' || dim === 'industry') ? a.toLowerCase() !== b.toLowerCase() : a !== b;
+}
+function compareDimensionLabel(dim, filters) {
+  if (dim === 'program') return filters.programLabel || filters.program;
+  if (dim === 'yearGraduated') return `Batch ${filters.yearGraduated}`;
+  if (dim === 'industry') return `${filters.industry} industry`;
+  return filters.gender;
+}
+const WANTS_HEADCOUNT_PATTERN = /\bhow\s+many\b|\bnumber\s+of\b|\bheadcount\b|\bcount\s+of\b/i;
+
+// Maps a comparison question's own metric wording to the SAME computation
+// every matching single-topic query function (queryLicensure/
+// queryFurtherStudies/queryPromotion/queryFurtherTraining/queryRate) already
+// uses for that metric. Before this existed, queryCompare() ALWAYS ran
+// computeEmploymentRate() no matter which metric the question actually
+// named — "compare the licensure PASS RATE of batch 2022 vs batch 2023"
+// silently came back as an EMPLOYMENT rate comparison instead, under
+// correct-looking batch labels but the wrong real-world numbers entirely.
+// Checked in this order (first match wins); 'employment' is the deliberate
+// last-resort default so every comparison that worked before this fix
+// (plain "employment rate of X vs Y", no metric word at all) keeps resolving
+// exactly the same way.
+const COMPARE_METRICS = [
+  {
+    key: 'licensure',
+    trigger: /\b(?:licensure|board)\b|\bpass(?:ed|ing)?\s+(?:the\s+)?(?:exam|board)\b/i,
+    label: 'Licensure exam pass rate',
+    async stats(filters) {
+      const base = stablePipeline(filters);
+      const [totalRows, passedRows] = await Promise.all([
+        Graduate.aggregate([...base, { $count: 'total' }]),
+        Graduate.aggregate([...base, { $match: { tookExam: { $regex: 'passed', $options: 'i' } } }, { $count: 'total' }]),
+      ]);
+      return { total: totalRows[0]?.total ?? 0, matched: passedRows[0]?.total ?? 0 };
+    },
+  },
+  {
+    key: 'furtherStudies',
+    trigger: /\bfurther\s+(?:studies|education)\b|\bpursu(?:e|ed|ing)\s+(?:a\s+)?(?:masters?|doctorate|phd|graduate\s+school)\b/i,
+    label: 'Further studies rate',
+    async stats(filters) {
+      const base = stablePipeline(filters);
+      const [totalRows, pursuedRows] = await Promise.all([
+        Graduate.aggregate([...base, { $count: 'total' }]),
+        Graduate.aggregate([...base, { $match: { furtherEducation: { $regex: '^yes', $options: 'i' } } }, { $count: 'total' }]),
+      ]);
+      return { total: totalRows[0]?.total ?? 0, matched: pursuedRows[0]?.total ?? 0 };
+    },
+  },
+  {
+    key: 'promotion',
+    trigger: /\bpromot(?:ed|ion)\b/i,
+    label: 'Promotion rate',
+    async stats(filters) {
+      const base = stablePipeline(filters);
+      const [totalRows, promotedRows] = await Promise.all([
+        Graduate.aggregate([...base, { $match: { hasPromotion: { $nin: [null, ''] } } }, { $count: 'total' }]),
+        Graduate.aggregate([...base, { $match: { hasPromotion: { $regex: '^yes', $options: 'i' } } }, { $count: 'total' }]),
+      ]);
+      return { total: totalRows[0]?.total ?? 0, matched: promotedRows[0]?.total ?? 0 };
+    },
+  },
+  {
+    key: 'furtherTraining',
+    trigger: /\btrain(?:ing|ed)s?\b|\bseminars?\b|\bworkshops?\b/i,
+    label: 'Further training attendance rate',
+    async stats(filters) {
+      const base = stablePipeline(filters);
+      const [totalRows, trainedRows] = await Promise.all([
+        Graduate.aggregate([...base, { $count: 'total' }]),
+        Graduate.aggregate([...base, { $match: { furtherTraining: { $regex: '^yes', $options: 'i' } } }, { $count: 'total' }]),
+      ]);
+      return { total: totalRows[0]?.total ?? 0, matched: trainedRows[0]?.total ?? 0 };
+    },
+  },
+  {
+    key: 'unemployment',
+    trigger: /\bunemploy(?:ed|ment)\b/i,
+    label: 'Unemployment rate',
+    async stats(filters) {
+      const s = await computeEmploymentRate(filters);
+      return s ? { total: s.total, matched: s.total - s.employed } : null;
+    },
+  },
+  {
+    key: 'employment',
+    trigger: /./, // always matches — the default when no other metric word is present
+    label: 'Employment rate',
+    async stats(filters) {
+      const s = await computeEmploymentRate(filters);
+      return s ? { total: s.total, matched: s.employed } : null;
+    },
+  },
+];
+
 async function queryCompare(question) {
   // "ihambing"/"ikumpara"/"paghambingin" (compare) / "pagkakaiba ng" (the
   // difference between) — same Tagalog gap as elsewhere in this file:
   // TOPIC_PATTERNS-style trigger words need a bilingual pair, not just an
   // English one.
   const stripped = question.replace(/\b(compare|difference\s+between|ihambing|ikumpara|paghambingin|pagkakaiba\s+ng)\b/i, '').trim();
-  const parts = stripped.split(COMPARE_SPLIT);
+  const parts = splitCompareQuestion(stripped);
   if (parts.length < 2) return null;
 
   const leftFilters  = extractFilters(parts[0]);
   const rightFilters = extractFilters(parts.slice(1).join(' '));
 
-  let leftLabel, rightLabel, leftDimFilters, rightDimFilters;
-  if (leftFilters.program && rightFilters.program && leftFilters.program !== rightFilters.program) {
-    leftLabel       = leftFilters.programLabel  || leftFilters.program;
-    rightLabel      = rightFilters.programLabel || rightFilters.program;
-    leftDimFilters  = { program: leftFilters.program };
-    rightDimFilters = { program: rightFilters.program };
-  } else if (leftFilters.gender && rightFilters.gender && leftFilters.gender.toLowerCase() !== rightFilters.gender.toLowerCase()) {
-    leftLabel       = leftFilters.gender;
-    rightLabel      = rightFilters.gender;
-    leftDimFilters  = { gender: leftFilters.gender };
-    rightDimFilters = { gender: rightFilters.gender };
-  } else {
-    return null;
+  const dim = COMPARE_DIMENSIONS.find(d =>
+    leftFilters[d] && rightFilters[d] && compareValuesDiffer(d, leftFilters[d], rightFilters[d]));
+  if (!dim) return null;
+
+  const leftLabel  = compareDimensionLabel(dim, leftFilters);
+  const rightLabel = compareDimensionLabel(dim, rightFilters);
+
+  // A qualifier named only ONCE in the question ("...versus batch 2024 for
+  // Web and Mobile Application majors") lands on whichever split half
+  // contains that text — e.g. the program only resolves on the RIGHT side
+  // here, never the left. Without carrying it to BOTH sides, the left side's
+  // rate silently came back unscoped (every program, not just Web and Mobile
+  // Application) while the right side was correctly scoped, comparing two
+  // different cohorts under the same two labels. Caught live: "compare the
+  // employment rates of batch 2022 versus batch 2024 for Web and Mobile
+  // Application majors" never even reached this far (no yearGraduated
+  // dimension existed yet), but the same one-sided-qualifier gap already
+  // existed for program/gender comparisons too.
+  // Broadened beyond just the other COMPARE_DIMENSIONS keys — ANY recognized
+  // scope-narrowing filter named once anywhere in the question needs to
+  // apply to BOTH sides, not just the dimension-specific ones (program/
+  // gender/year/industry). Caught live: "How many respondents who PASSED
+  // PROFESSIONAL EXAMINATIONS are currently in Regular/Permanent GOVERNMENT
+  // positions versus PRIVATE SECTOR roles?" — tookExam='passed' is stated
+  // once, outside either split half's own industry mention, and without
+  // this would only ever apply to whichever side's extractFilters() call
+  // happened to also pick it up (neither, here — it sits before "government
+  // positions" even appears).
+  const SHARED_FILTER_KEYS = [...COMPARE_DIMENSIONS, 'tookExam', 'employmentType', 'workLocation', 'negateWorkLocation', 'jobRelated', 'furtherEducation', 'employmentStatus'];
+  const sharedFilters = {};
+  for (const key of SHARED_FILTER_KEYS) {
+    if (key === dim) continue;
+    const shared = leftFilters[key] || rightFilters[key];
+    if (shared) sharedFilters[key] = shared;
+  }
+  const leftDimFilters  = { ...sharedFilters, [dim]: leftFilters[dim] };
+  const rightDimFilters = { ...sharedFilters, [dim]: rightFilters[dim] };
+
+  const requestedChartType = extractFilters(question).requestedChartType;
+
+  // Graduate.industry is only ever populated for alumni who reported being
+  // employed — an "employment RATE in industry X vs Y" would trivially read
+  // ~100% vs ~100% on both sides no matter what, so industry never drives a
+  // rate comparison; it only ever answers the headcount question a bare
+  // "compare industry X vs Y" (no "rate" word) actually means. Any OTHER
+  // dimension still honors an explicit headcount phrasing too ("compare how
+  // many BSIT vs BSCS alumni there are" — a real, different question from
+  // "compare the employment rate of BSIT vs BSCS").
+  const wantsHeadcount = dim === 'industry' || WANTS_HEADCOUNT_PATTERN.test(question);
+
+  if (wantsHeadcount) {
+    // "private sector" has no single real stored INDUSTRY value of its own
+    // to positively match (confirmed against Graduate.industry's actual
+    // distinct values — "Government and Public Administration" is real,
+    // nothing is ever literally stored as "Private") — unlike "government,"
+    // which genuinely is one real, named industry. Resolves to "has a real
+    // industry recorded AND it's not government" instead of a doomed
+    // positive match against a value that will never exist, which would
+    // otherwise confidently report "0" as if literally no alumni work in
+    // the private sector. $nin (not stablePipeline()'s own excludeIndustry
+    // path, which has no such guard) explicitly excludes null/blank
+    // industry too — someone with NO industry on file (unemployed, or
+    // simply never reported one) is not evidence of "private sector"
+    // either, same reasoning CLAUDE.md documents for every other $not/
+    // $regex-on-a-possibly-null-field case in this file.
+    const headcountPipeline = (dimFilters) => dimFilters.industry === 'private'
+      ? [...stablePipeline({ ...dimFilters, industry: undefined }), { $match: { industry: { $nin: [null, ''], $not: { $regex: 'Government', $options: 'i' } } } }]
+      : stablePipeline(dimFilters);
+    const [leftRows, rightRows] = await Promise.all([
+      Graduate.aggregate([...headcountPipeline(leftDimFilters), { $count: 'total' }]),
+      Graduate.aggregate([...headcountPipeline(rightDimFilters), { $count: 'total' }]),
+    ]);
+    const leftCount  = leftRows[0]?.total  ?? 0;
+    const rightCount = rightRows[0]?.total ?? 0;
+    if (leftCount === 0 && rightCount === 0) return null;
+    const higher = leftCount === rightCount ? null : (leftCount > rightCount ? leftLabel : rightLabel);
+
+    let out = `**Headcount comparison:**\n\n`;
+    out += `- **${leftLabel}**: ${leftCount}\n`;
+    out += `- **${rightLabel}**: ${rightCount}\n\n`;
+    out += higher ? `**${higher}** has more alumni.` : `Both have the same number of alumni.`;
+
+    const charted = withChart(out, {
+      type: requestedChartType || 'bars',
+      title: 'Headcount Comparison',
+      rows: [
+        { _id: leftLabel,  count: leftCount },
+        { _id: rightLabel, count: rightCount },
+      ],
+    });
+    const { text, chart } = typeof charted === 'string' ? { text: charted, chart: null } : charted;
+    return { text, direct: true, topic: 'comparison', filters: requestedChartType ? { requestedChartType } : {}, chart: chart || null };
   }
 
-  const [leftStats, rightStats] = await Promise.all([
-    computeEmploymentRate(leftDimFilters),
-    computeEmploymentRate(rightDimFilters),
-  ]);
+  const metric = COMPARE_METRICS.find(m => m.trigger.test(question));
+  const [leftStats, rightStats] = await Promise.all([metric.stats(leftDimFilters), metric.stats(rightDimFilters)]);
   if (!leftStats || !rightStats) return null;
 
-  const leftRate  = leftStats.total  ? leftStats.employed  / leftStats.total  : 0;
-  const rightRate = rightStats.total ? rightStats.employed / rightStats.total : 0;
-  const higher = leftRate >= rightRate ? leftLabel : rightLabel;
+  const leftRate  = leftStats.total  ? leftStats.matched / leftStats.total  : 0;
+  const rightRate = rightStats.total ? rightStats.matched / rightStats.total : 0;
+  const higher = leftRate === rightRate ? null : (leftRate > rightRate ? leftLabel : rightLabel);
 
-  let out = `**Employment rate comparison:**\n\n`;
-  out += `- **${leftLabel}**: ${pct(leftStats.employed, leftStats.total)} (${leftStats.employed}/${leftStats.total})\n`;
-  out += `- **${rightLabel}**: ${pct(rightStats.employed, rightStats.total)} (${rightStats.employed}/${rightStats.total})\n\n`;
-  out += `**${higher}** has the higher employment rate.`;
+  let out = `**${metric.label} comparison:**\n\n`;
+  out += `- **${leftLabel}**: ${pct(leftStats.matched, leftStats.total)} (${leftStats.matched}/${leftStats.total})\n`;
+  out += `- **${rightLabel}**: ${pct(rightStats.matched, rightStats.total)} (${rightStats.matched}/${rightStats.total})\n\n`;
+  out += higher ? `**${higher}** has the higher ${metric.label.toLowerCase()}.` : `Both have the same ${metric.label.toLowerCase()}.`;
 
-  // withChart() may return a plain string (if it can't build chart rows) or
-  // { text, chart } — normalize the same way the other early-return bypasses
-  // in queryInner (trend/"which batch") already do, since this result skips
-  // the generic topic-dispatch wrapper entirely.
+  // "make it a pie chart" right after a comparison answer re-merges onto the
+  // ORIGINAL question text (see ragService.js's isChartTypeOnlyContinuation())
+  // and re-enters this SAME function (the compare trigger still matches
+  // "versus" in the merged text) — but this early return skips queryInner()'s
+  // generic filters.requestedChartType override entirely (that override only
+  // ever runs on the fn()-dispatch path further down, never on a `direct:
+  // true` bypass like this one returns). Hardcoding type: 'bars' meant the
+  // request was silently ignored and the exact same bar chart came back with
+  // no indication anything had changed. Resolving it here directly, off the
+  // full original `question` text (not the split left/right halves — the
+  // chart-type phrase could land on either side depending on where "make it
+  // a pie chart" got appended).
   const charted = withChart(out, {
-    type: 'bars',
-    title: 'Employment Rate Comparison (%)',
+    type: requestedChartType || 'bars',
+    title: `${metric.label} Comparison (%)`,
     rows: [
       { _id: leftLabel,  count: Math.round(100 * leftRate) },
       { _id: rightLabel, count: Math.round(100 * rightRate) },
     ],
   });
   const { text, chart } = typeof charted === 'string' ? { text: charted, chart: null } : charted;
-  return { text, direct: true, topic: 'comparison', filters: {}, chart: chart || null };
+  return { text, direct: true, topic: 'comparison', filters: requestedChartType ? { requestedChartType } : {}, chart: chart || null };
 }
 
 // "Who works at Starlink?" / "which alumni are employed at IT Solutions" /
@@ -6274,6 +7936,22 @@ async function queryCount(filters, wantsChart = false) {
     postDedup.jobRelated = { $regex: `^${filters.jobRelated}`, $options: 'i' };
   }
   if (filters.tookExam) Object.assign(postDedup, tookExamMatch(filters.tookExam));
+  // filters.competency was previously ONLY ever used to redirect straight to
+  // queryCompetencies() (the full rating-distribution display) — never
+  // applied as an actual filter condition here, so a question combining a
+  // SPECIFIC competency rating with ANOTHER filter (job title, program,
+  // etc.) had nowhere to go: queryCompetencies() has no idea what
+  // jobTitleRegex even is, and queryCount() had no idea competency existed.
+  // Caught live: "How many graduates who rated their Critical Thinking as
+  // 'High Competent' are currently working in managerial or supervisor
+  // roles?" silently dropped the competency half entirely. Only applied
+  // when filters.competencyRating is ALSO set (a specific level was named)
+  // — a bare filters.competency with no level still means "show the full
+  // distribution," which stays queryCompetencies()'s job (see queryInner()'s
+  // own dispatch condition for the companion half of this fix).
+  if (filters.competency && filters.competencyRating) {
+    postDedup[`competencies.${filters.competency}`] = { $regex: `^${escapeRegex(filters.competencyRating)}`, $options: 'i' };
+  }
 
   const pipeline = [...stable];
   if (Object.keys(postDedup).length) pipeline.push({ $match: postDedup });
@@ -6295,11 +7973,14 @@ async function queryCount(filters, wantsChart = false) {
   const total       = rows[0]?.total ?? 0;
   const stableTotal = stableRows[0]?.total ?? 0;
 
-  // This function already builds its own industryLabel below (` in X`/
-  // ` NOT in X`) folded into `desc` — filterLabel() now also mentions
-  // filters.industry/excludeIndustry itself (see its own comment), so `lbl`
-  // here uses the industry-stripped variant to avoid saying it twice.
-  const lbl = filterLabel({ ...filters, industry: undefined, excludeIndustry: undefined });
+  // This function already builds its own industryLabel/jobTitleLabel below
+  // (folded into `desc`) — filterLabel() now also mentions
+  // filters.industry/excludeIndustry/jobTitle itself (see its own
+  // comments), so `lbl` here strips both to avoid saying either twice.
+  // Caught live: "...working locally as Front-end Developer" read "working
+  // as Front-end Developer ... (Information Technology, working as
+  // Front-end Developer, Batch 2024)" — the same phrase stated twice.
+  const lbl = filterLabel({ ...filters, industry: undefined, excludeIndustry: undefined, jobTitle: undefined });
 
   if (stableTotal === 0) {
     // A completely unrecognized/misspelled program name has nothing real to
@@ -6346,8 +8027,13 @@ async function queryCount(filters, wantsChart = false) {
   const jobTitleLabel  = filters.jobTitle ? ` working as ${filters.jobTitle}` : '';
   const workTypeLabel  = filters.employmentType ? ` with a ${filters.employmentType} position` : '';
   const companyLabel   = filters.company  ? ` at ${filters.company}` : '';
+  // 'local' read as "working local" (ungrammatical) — "locally" is the real
+  // adverb; 'abroad' already reads fine as-is ("working abroad"), same
+  // distinction queryWorkLocation() itself already makes for its own
+  // equivalent sentence.
+  const locationWord = filters.workLocation === 'local' ? 'locally' : filters.workLocation;
   const locationLabel  = filters.workLocation
-    ? (filters.negateWorkLocation ? ` NOT working ${filters.workLocation}` : ` working ${filters.workLocation}`)
+    ? (filters.negateWorkLocation ? ` NOT working ${locationWord}` : ` working ${locationWord}`)
     : '';
   const examLabel      = filters.tookExam === 'passed' ? ' who passed a board/licensure exam'
                        : filters.tookExam === 'failed' ? ' who failed a board/licensure exam'
@@ -6373,7 +8059,18 @@ async function queryCount(filters, wantsChart = false) {
   const desc = statusLabel
     ? `${genderLabel}**${statusLabel}** alumni${jobTitleLabel}${workTypeLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`
     : `${genderLabel}graduate${total !== 1 ? 's' : ''}${jobTitleLabel}${workTypeLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`;
-  let out = `There are **${total}** ${desc} in the tracer study database${lbl}.`;
+  // filters.mentionsRecordsAndResponses (see extractFilters()'s own comment)
+  // only changes the WORDING for the plain, fully-unfiltered bare-total
+  // case — `desc` already carries real content (statusLabel, industryLabel,
+  // etc.) for any FILTERED count, and this phrasing would misleadingly
+  // claim those filtered rows are "tracer survey responses" rather than,
+  // say, "employed alumni in the IT industry." The number itself needs no
+  // change either way — Graduate's own row count already answers both
+  // "records" and "responses" identically (see that comment for why).
+  const out0 = filters.mentionsRecordsAndResponses && !statusLabel && !jobTitleLabel && !workTypeLabel && !companyLabel && !industryLabel && !locationLabel && !examLabel && !jobRelLabel && !eduLabel
+    ? `There are **${total}** total alumni records in the tracer study database${lbl}, representing **${total}** tracer survey responses on file.`
+    : `There are **${total}** ${desc} in the tracer study database${lbl}.`;
+  let out = out0;
 
   // For general "related" queries, add directly/somewhat sub-breakdown.
   // Was using bare stablePipeline(filters) (program/year/gender ONLY) as the
@@ -6411,7 +8108,22 @@ async function queryCount(filters, wantsChart = false) {
   // breakdown just above already has its own two numbers better suited to a
   // chart than a generic "matches vs. rest" split would be.
   if (wantsChart && statusLabel && total > 0 && stableTotal > total) {
-    const label = statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1);
+    // Was bare statusLabel alone ("Employed") regardless of any OTHER
+    // qualifier the question actually named — jobRelLabel/industryLabel/
+    // jobTitleLabel/etc. are already woven into `desc`/`out` above (the TEXT
+    // answer correctly says "...with jobs SOMEWHAT related to their
+    // course..."), but the chart's own legend ignored all of them, always
+    // showing the same generic "Employed" slice no matter which specific
+    // qualifier was asked about. Caught live: "How many ... graduates are
+    // working in roles SOMEWHAT related to their degree?" followed by "show
+    // me the pie chart" rendered a chart labeled just "Employed vs. Rest,"
+    // identical to what a plain unqualified employment question would show —
+    // giving no indication the chart was scoped to "somewhat related" at
+    // all. Reusing the EXACT same qualifier variables `desc` already
+    // combines keeps the chart and the text consistent with each other,
+    // whichever qualifier (or combination) was actually named.
+    const chartStatusLabel = `${statusLabel}${jobTitleLabel}${workTypeLabel}${companyLabel}${industryLabel}${locationLabel}${examLabel}${jobRelLabel}${eduLabel}`;
+    const label = chartStatusLabel.charAt(0).toUpperCase() + chartStatusLabel.slice(1);
     return withChart(out, {
       type: 'donut',
       title: `${label} vs. Rest${lbl}`,
@@ -6657,6 +8369,65 @@ async function queryTracerActivity(question, inheritedAction = null) {
     });
   }
   return text;
+}
+
+// Answers "who is the most recent/latest/newest graduate added to the
+// tracer database?" (limit=1) AND "show the 3 most recent graduates
+// added..." (limit=N) — a single-PERSON (or top-N) lookup, genuinely
+// different from queryTracerActivity() just above (which only ever answers
+// a COUNT: "how many were added"). Sorted by TracerStudyResponse.createdAt,
+// not Graduate.createdAt — same reasoning queryTracerActivity() already
+// documents: Graduate rows for bulk-migrated alumni were created at
+// migration time, long before those alumni ever actually submitted
+// anything, so Graduate.createdAt can't tell "genuinely just added" apart
+// from "migrated a while ago." Previously unrecognized by any topic
+// pattern at all — a bare "who is X" satisfies TOPIC_PATTERNS.names' broad
+// "who" trigger and answered with the generic alphabetical 264-alumni
+// roster, completely ignoring the "most recent...added" superlative the
+// question actually asked. Caught live: "I was only asking the sino
+// [who] but it gave everyone." The plural N-count shape ("show the 3 most
+// recent graduates added") was caught live right after — it satisfied
+// queryNames()'s own showLimit handling instead, which lists names
+// ALPHABETICALLY within whatever batch/program filter got resolved, not
+// actually sorted by when each record was added at all.
+async function queryMostRecentlyAdded(limit = 1) {
+  let alumniScope = null;
+  const scopedCollege = getCollegeScope();
+  if (scopedCollege) {
+    const scopedUsers = await User.find({ role: 'alumni', college: scopedCollege }).select('_id').lean();
+    alumniScope = { alumni_id: { $in: scopedUsers.map(u => u._id) } };
+  }
+
+  const latestRows = await TracerStudyResponse.find(alumniScope || {})
+    .sort({ createdAt: -1 }).limit(limit).select('alumni_id createdAt').lean();
+  if (!latestRows.length) return null;
+
+  const grads = await Graduate.find({ user_id: { $in: latestRows.map(r => r.alumni_id) } })
+    .select('user_id name program yearGraduated').lean();
+  const gradByUser = new Map(grads.map(g => [String(g.user_id), g]));
+
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null;
+  const fmtDetails = (g) => [g.yearGraduated ? `Batch ${g.yearGraduated}` : null, g.program || null].filter(Boolean).join(', ');
+
+  const people = latestRows
+    .map(r => {
+      const g = gradByUser.get(String(r.alumni_id));
+      if (!g?.name) return null;
+      return { name: g.name, dateStr: fmtDate(r.createdAt), details: fmtDetails(g) };
+    })
+    .filter(Boolean);
+  if (!people.length) return null;
+
+  if (people.length === 1) {
+    const p = people[0];
+    return `**${p.name}** is the most recently added graduate in the tracer study database${p.dateStr ? `, added on ${p.dateStr}` : ''}${p.details ? ` (${p.details})` : ''}.`;
+  }
+
+  let out = `**${people.length} most recently added graduates in the tracer study database:**\n\n`;
+  people.forEach((p, i) => {
+    out += `${i + 1}. **${p.name}**${p.dateStr ? ` — added ${p.dateStr}` : ''}${p.details ? ` (${p.details})` : ''}\n`;
+  });
+  return out;
 }
 
 // Last-resort fallback for a question no hardcoded TOPIC_PATTERNS/contextual
@@ -7109,7 +8880,24 @@ async function queryInner(question, seedFilters = {}) {
     // "employed" with the English alternatives above, but none of THOSE
     // require it to immediately follow "magiging," so this specific mixed
     // phrasing still fell through to the bare current employed count.
+    // exclude: a "which/what program...predict/most likely" framing is NOT
+    // asking this system to genuinely forecast a future value — it already
+    // has a real, honest way to answer that exact shape: rank programs by
+    // their CURRENT employment rate (queryEmploymentRateByProgram(), via
+    // BY_PROGRAM_QUESTION_PATTERN below) and let ragService.js's own
+    // PREDICTION_LEAD_IN_PROMPT add a "most likely" framing sentence on top
+    // of that real, grounded ranking — never an actual extrapolated
+    // trend-line value. Caught live: "Can you predict which program will
+    // have more employed next year" combines this excludable shape with the
+    // literal future-tense wording ("next year") the test pattern below
+    // exists to catch, so it got the flat decline instead of the real
+    // ranked-by-current-data answer this system already builds for the
+    // "most likely" phrasing alone. A genuinely ungrounded forecast request
+    // with no program/course ranking framing at all ("will the employment
+    // rate be higher next year") still correctly declines — this exclusion
+    // only fires when a real per-program ranking is the actual answer shape.
     { test: /\bwill\s+(?:\w+\s+){0,3}be\s+employed\b|\bnext\s+year\b.{0,30}\bemploy|\bemploy\w*\b.{0,30}\bnext\s+year\b|\bin\s+the\s+future\b.{0,30}\bemploy|\bgoing\s+to\s+(?:be\s+)?(?:employed|find\s+(?:a\s+)?job)\b|\bfuture\s+employment\b|\bmagiging\s+(?:empleyado|trabahante|employed)\b|\bsusunod\s+na\s+taon\b.{0,30}\b(?:empleyado|trabaho|employ\w*)\b|\bemploy\w*\b.{0,30}\bsusunod\s+na\s+taon\b/i,
+      exclude: /\bwhich\s+(?:program|course|degree|specialization|track)\b.{0,40}\b(?:predict|prediction|forecast|projection|most\s+likely|least\s+likely|would\s+likely)\b|\b(?:predict|prediction|forecast|projection|most\s+likely|least\s+likely|would\s+likely)\b.{0,40}\bwhich\s+(?:program|course|degree|specialization|track)\b/i,
       hint: 'The tracer study only records employment status at the time alumni responded — it cannot predict future employment outcomes.' },
   ];
   for (const t of OUT_OF_SCOPE_TOPICS) {
@@ -7118,6 +8906,82 @@ async function queryInner(question, seedFilters = {}) {
         text: `That's not part of the Graduate Tracer Study data — I can only answer questions about tracer study records (employment status, industries, board exam results, competencies, program breakdowns, etc.). ${t.hint}`,
         direct: true, topic: 'out_of_scope', filters: {},
       };
+    }
+  }
+
+  // "Who has the best jobs?" / "who is the most successful alumnus?" / "who
+  // are the happiest alumni?" / "what's the best company to work for?" — a
+  // subjective superlative ("best"/"top"/"good(est)"/"most successful/
+  // impressive/outstanding"/"happiest") describing a JOB, a PERSON, or an
+  // EMPLOYER has no objective score anywhere in this dataset — there's no
+  // composite quality/success/happiness metric to rank by — yet
+  // TOPIC_PATTERNS.names' own broad "who (has|is|does|...)" alternative
+  // (built to catch "who HAS passed the board exam," "who HAS a masters
+  // degree," etc.) matches the SENTENCE STRUCTURE regardless, extracting
+  // zero real filters and silently handing back the entire unfiltered
+  // 269-person alphabetical roster — a real answer to a completely
+  // different, much broader question ("who are all the alumni") than the
+  // one actually asked. Checked here, before topic detection/dispatch ever
+  // gets a turn, same "ask instead of guess" shape as
+  // CLARIFY_CURRICULUM_RELEVANCE just below.
+  //
+  // One flat, data-driven array (not a single hardcoded "jobs" check) so a
+  // newly-caught subjective shape is a one-entry addition, same reasoning
+  // PROGRAM_SPECIALIZATIONS/UNTRACKED_EMPLOYMENT_CONCEPTS above already use
+  // instead of a parallel regex rewrite each time. Each entry's own
+  // `exclude` (when present) protects a DIFFERENT dimension this app
+  // already answers for real — "best PROGRAM/COURSE" resolves to a genuine
+  // employment-rate ranking (BY_PROGRAM_QUESTION_PATTERN, further below),
+  // and "top/most COMPANIES" is a genuine headcount ranking
+  // (TOPIC_PATTERNS.top_companies) — the company entry's own pattern is
+  // deliberately narrowed to "best" only (never "top"/"most") so it can
+  // never collide with that real feature in the first place.
+  const SUBJECTIVE_SUPERLATIVE_TOPICS = [
+    {
+      // "best/top/good(est)/greatest jobs", "jobs that are the best"
+      pattern: /\b(?:best|top|good(?:est)?|greatest|most\s+(?:prestigious|impressive))\s+jobs?\b|\bjobs?\s+(?:that\s+(?:are|is)\s+)?(?:the\s+)?best\b|\bsino\s+ang\s+may\s+(?:pinaka)?magandang\s+trabaho\b/i,
+      exclude: /\b(?:program|course|degree|specialization|track|college)\b.{0,40}\bbest\b|\bbest\b.{0,40}\b(?:program|course|degree|specialization|track|college)\b/i,
+      // Bulleted (not a run-on comma sentence) — bulletLineCount>=2 also
+      // makes ragService.js's isBulletedOrList skip LLM narration entirely
+      // for this answer, the same protection isListTopic/isDeterministicDecline
+      // give every other verified deterministic message, so these exact
+      // three lines are guaranteed to reach the user unparaphrased.
+      message: `"Best" job isn't something the tracer study can objectively rank — there's no single job-quality score in the data. The closest real, trackable measures are:\n\n- Whether a job is directly related to the alumnus's course of study\n- Employment type (Regular/Permanent vs. Contractual/Part-time/Project-based)\n- Self-reported salary range (only a few alumni have shared this on their own profile)\n\nWhich of these would you like to see?`,
+    },
+    {
+      // "best/happiest/most impressive alumnus/alumna/alumni/graduate(s)" —
+      // deliberately does NOT include "most successful"/bare "outstanding"/
+      // "prominent"/"notable"/"distinguished"/"renowned"/"top-performing":
+      // those are already caught by an EARLIER, more specific bail-out
+      // (queryInner()'s own `/\b(prominent|notable|outstanding|
+      // distinguished|renowned|top[- ]?performing|most successful)\b/i`
+      // check, a few lines above this whole function) that deliberately
+      // falls through to RAG instead — the tracer study DOES have a real
+      // free-text "accomplishments" field (TOPIC_PATTERNS.accomplishments)
+      // vector search can actually find substance in for those specific
+      // words, so declining outright there would throw away a genuinely
+      // answerable case. "best"/"happiest"/"most impressive" have no such
+      // substitute (no quality OR accomplishment field those words map to),
+      // so they still get a direct, honest clarify here rather than a RAG
+      // attempt likely to find nothing or improvise. "most satisfied" also
+      // included — job satisfaction isn't tracked at all (see
+      // UNTRACKED_EMPLOYMENT_CONCEPTS's own job-satisfaction entry), so a
+      // PER-PERSON satisfaction question has the same "no real data to rank
+      // by" gap, just phrased as "who" instead of "what percentage."
+      pattern: /\b(?:best|top|good(?:est)?|greatest|happ(?:y|iest)|most\s+(?:impressive|satisfied))\s+(?:alumnus|alumna|alumni|graduates?)\b|\bpinaka[\s-]?(?:magaling|mahusay|matagumpay)\s+(?:na\s+)?(?:alumni|guraduwado)\b/i,
+      message: `There's no composite "best"/"happiest" score for an individual alumnus in the tracer study — it isn't something the data can objectively rank. Real, trackable measures about a specific person include:\n\n- Employment status\n- Job title and company\n- Whether their job relates to their course\n- Promotion history (for those who've reported it)\n- Self-reported salary range (for the few who've shared it on their own profile)\n\nAsk about one of those, or name a specific alumnus to see their full profile.`,
+    },
+    {
+      // "best company to work for" / "best employer" — deliberately "best"
+      // ONLY (never "top"/"most"), so this can never collide with the real
+      // "which companies employ the most alumni" headcount ranking.
+      pattern: /\bbest\s+company\s+to\s+work\s+for\b|\bbest\s+employer\b|\bwhich\s+company\s+is\s+(?:the\s+)?best\b/i,
+      message: `"Best" employer isn't something the tracer study tracks or can rank — there's no employer-quality or satisfaction score in the data. The closest real, trackable measure is which companies employ the MOST alumni (a headcount ranking) — ask "which companies hire the most alumni?" for that instead.`,
+    },
+  ];
+  for (const t of SUBJECTIVE_SUPERLATIVE_TOPICS) {
+    if (t.pattern.test(question) && !(t.exclude && t.exclude.test(question))) {
+      return { text: t.message, direct: true, topic: 'clarify', filters: {} };
     }
   }
 
@@ -7279,43 +9143,61 @@ async function queryInner(question, seedFilters = {}) {
     // extractPersonNames() no longer requires its candidates to look like
     // real (capitalized) names — a lowercase-typed name is just as valid —
     // so an ordinary lowercase phrase that happens to match the trigger
-    // wording ("give information about the skills and companies...") can
-    // still produce 2+ "candidates" here. If literally NONE of them
-    // resolved to a real record, this was never a genuine multi-person
-    // question at all — fall through to normal topic detection below
-    // instead of confidently reporting "no record found" for phantom
-    // people. At least one real match is enough to commit to this path
-    // (the rest may still legitimately be misses, per the existing
-    // per-person "no record found" note below).
-    if (!results.some(Boolean)) return null;
+    // wording ("give information about the skills and companies...", or
+    // "...graduates WHO ARE currently employed full-time AND work locally" —
+    // "who are" plus an "and"-joined descriptive clause, not a list of
+    // people at all) can still produce 2+ "candidates" here. If literally
+    // NONE of them resolved to a real record, this was never a genuine
+    // multi-person question — fall through to normal topic detection
+    // further below instead of confidently reporting "no record found" for
+    // phantom people. This used to be a bare `if (!results.some(Boolean))
+    // return null;` — despite this very comment already saying "fall
+    // through to normal topic detection," that `return null` actually
+    // exited queryInner() ENTIRELY (the caller then treats a null result as
+    // "no deterministic answer, try RAG"), never truly reaching this
+    // function's own topic detection a few hundred lines below. Caught
+    // live: "Show me the percentage of Computer Science graduates who are
+    // currently employed full-time and work locally" — a completely
+    // answerable program + employmentType + workLocation rate question —
+    // matched "who are" and split "currently employed full-time and work
+    // locally" on "and" into two phantom name candidates; neither resolved
+    // to a real person, and the WHOLE question was abandoned to a generic
+    // RAG refusal instead of ever reaching topic detection. Wrapping the
+    // rest of this block in `if (results.some(Boolean))` (instead of an
+    // early return on the inverse) makes the actual control flow match what
+    // the comment already promised — at least one real match is still
+    // enough to commit to the multi-person path below (the rest may still
+    // legitimately be misses, per the existing per-person "no record found"
+    // note further down).
+    if (results.some(Boolean)) {
+      // Any ambiguous match among the batch — show that disambiguation
+      // verbatim (deterministic, never sent to the LLM), with a one-line
+      // note for each other name so the user isn't left wondering what
+      // happened to the rest of the batch.
+      const ambiguousIdx = results.findIndex(r => r && r.ambiguous);
+      if (ambiguousIdx !== -1) {
+        const lines = [results[ambiguousIdx].text];
+        results.forEach((r, i) => {
+          if (i === ambiguousIdx) return;
+          if (!r) lines.push(`\n*No record found for ${personNames[i]}.*`);
+          else if (!r.ambiguous) lines.push(`\n*${personNames[i]} was also found — ask about them separately for details.*`);
+        });
+        return { text: lines.join('\n'), direct: true, topic: 'person_lookup_ambiguous', filters: {} };
+      }
 
-    // Any ambiguous match among the batch — show that disambiguation
-    // verbatim (deterministic, never sent to the LLM), with a one-line note
-    // for each other name so the user isn't left wondering what happened to
-    // the rest of the batch.
-    const ambiguousIdx = results.findIndex(r => r && r.ambiguous);
-    if (ambiguousIdx !== -1) {
-      const lines = [results[ambiguousIdx].text];
-      results.forEach((r, i) => {
-        if (i === ambiguousIdx) return;
-        if (!r) lines.push(`\n*No record found for ${personNames[i]}.*`);
-        else if (!r.ambiguous) lines.push(`\n*${personNames[i]} was also found — ask about them separately for details.*`);
-      });
-      return { text: lines.join('\n'), direct: true, topic: 'person_lookup_ambiguous', filters: {} };
+      // No ambiguity — combine each found person's facts block, and note any
+      // name that had no match at all so the LLM narration (forced for
+      // 'person_lookup' in ragService.js) has an explicit "don't invent this
+      // person" signal instead of silence.
+      const combined = results
+        .map((r, i) => (r ? r.text : `_No record found for ${personNames[i]}._`))
+        .join('\n\n---\n\n');
+      // Empty filters — deriving shared follow-up suggestions across several
+      // people's potentially different industries/programs isn't well-defined;
+      // suggestFollowUps('person_lookup', {}) still yields the safe generic
+      // chips from the single-person case above.
+      return { text: combined, direct: true, topic: 'person_lookup', filters: {} };
     }
-
-    // No ambiguity — combine each found person's facts block, and note any
-    // name that had no match at all so the LLM narration (forced for
-    // 'person_lookup' in ragService.js) has an explicit "don't invent this
-    // person" signal instead of silence.
-    const combined = results
-      .map((r, i) => (r ? r.text : `_No record found for ${personNames[i]}._`))
-      .join('\n\n---\n\n');
-    // Empty filters — deriving shared follow-up suggestions across several
-    // people's potentially different industries/programs isn't well-defined;
-    // suggestFollowUps('person_lookup', {}) still yields the safe generic
-    // chips from the single-person case above.
-    return { text: combined, direct: true, topic: 'person_lookup', filters: {} };
   }
 
   // "Compare BSIT and BSCS employment rates" / "employment rate of male vs
@@ -7333,6 +9215,41 @@ async function queryInner(question, seedFilters = {}) {
   if (/\b(compare|\bvs\.?\b|\bversus\b|difference\s+between|ihambing|ikumpara|paghambingin|pagkakaiba\s+ng)\b/i.test(question)) {
     const compareResult = await queryCompare(question);
     if (compareResult) return compareResult;
+    // "...reported that their job is 'directly related' versus 'somewhat
+    // related' to their degree" — queryCompare() only knows the program/
+    // gender/year/industry/workLocation dimensions, so it correctly returns
+    // null for this one; see queryJobRelatedCompare()'s own comment for why
+    // this is checked here instead of duplicated into every topic's own
+    // dispatch arm.
+    const jobRelatedLevels = extractAllJobRelatedLevels(question);
+    if (jobRelatedLevels.length >= 2) {
+      // This whole "compare/vs" bypass runs BEFORE the shared `filters`
+      // (extractFilters(question)) is computed further below — queryCompare()
+      // itself doesn't need it (it extracts its own filters per split half),
+      // and this needs its own early, local extraction for the same reason.
+      const earlyFilters = extractFilters(question);
+      const jobRelatedCompareResult = await queryJobRelatedCompare(earlyFilters, jobRelatedLevels);
+      if (jobRelatedCompareResult) {
+        const { text, chart } = typeof jobRelatedCompareResult === 'string' ? { text: jobRelatedCompareResult, chart: null } : jobRelatedCompareResult;
+        return { text, direct: true, topic: 'comparison', filters: earlyFilters, chart: chart || null };
+      }
+    }
+  }
+
+  // "...graduates in the Customer Service and Support industry who have
+  // participated in professional development activities (e.g., workshops,
+  // seminars) OR earned awards" — an OR of two separate Yes/No fields, no
+  // "compare/vs" trigger word at all (so the block just above never gets a
+  // turn), scoped by whatever else resolves (here, industry). See
+  // WANTS_TRAINING_OR_AWARDS_PATTERN's own comment. Checked early, same
+  // reasoning as the jobRelated comparison above — this combined shape
+  // isn't tied to any one specific topic's own dispatch arm.
+  if (WANTS_TRAINING_OR_AWARDS_PATTERN.test(question)) {
+    const earlyFilters = extractFilters(question);
+    const trainingOrAwardsResult = await queryTrainingOrAwards(earlyFilters);
+    if (trainingOrAwardsResult) {
+      return { text: trainingOrAwardsResult, direct: true, topic: 'count', filters: earlyFilters };
+    }
   }
 
   // Company/employer lookups ("Who works at Sutherland?", "how many work at
@@ -7502,6 +9419,76 @@ async function queryInner(question, seedFilters = {}) {
   const ownFilters = extractFilters(question);
   const filters = { ...seedFilters, ...ownFilters };
 
+  // ownFilters.showAllPrograms ("across all/every programs/specializations/
+  // courses/tracks" — see extractFilters()'s own comment) is an explicit
+  // instruction that THIS comparison must span everything, which directly
+  // contradicts any single program/batch/status scope a PRIOR, unrelated
+  // turn left behind in seedFilters (this turn's own text never repeats
+  // that old scope, so the merge above silently kept it). Cleared here,
+  // before topic dispatch and before the mostRecentBatch resolution just
+  // below — otherwise an inherited filters.mostRecentBatch would still
+  // resolve to a real yearGraduated and re-narrow the "all" comparison right
+  // back down. Caught live: "...comparing employment rates across all
+  // specializations" right after "...from the most recent batch are still
+  // seeking employment" inherited BOTH that batch year AND employmentStatus
+  // 'No', collapsing an "across all specializations" request down to a
+  // single specialization's UNEMPLOYMENT rate for one batch — the opposite
+  // of the employment-rate comparison across every specialization actually
+  // asked for.
+  if (ownFilters.showAllPrograms) {
+    delete filters.program;
+    delete filters.programLabel;
+    delete filters.yearGraduated;
+    delete filters.yearsGraduated;
+    delete filters.yearFrom;
+    delete filters.yearTo;
+    delete filters.mostRecentBatch;
+    delete filters.employmentStatus;
+    delete filters.excludeEmploymentStatus;
+    delete filters.employmentStatuses;
+  }
+
+  // An ADMIN (no college tied to their account at all — a coordinator
+  // always has one, enforced via AsyncLocalStorage/getCollegeScope()) asking
+  // a by-program/specialization COMPARISON question with no college named
+  // anywhere (not in this question, not in an earlier turn, not "all
+  // colleges" explicitly) pools every college's programs into one ranking
+  // with no indication that's what happened — today that's silently just
+  // CCS's own programs (the only college with real tracer data on file),
+  // but as other colleges get their own tracer forms/specializations, the
+  // SAME program-breakdown chart would start conflating two colleges'
+  // unrelated programs into one misleading comparison with no way to tell.
+  // Same "ask first, resolve on the next turn" clarify queryEventOverview()/
+  // queryEventAttendees()/etc. already use for the identical college-
+  // ambiguity shape (see CLARIFY_COLLEGE_QUESTION's own definition) —
+  // reused here rather than inventing a second wording for the same ask.
+  // !filters.program — a question that already names ONE specific program
+  // isn't asking for a cross-college comparison in the first place, so it's
+  // exempted the same way a named college would be.
+  if (BY_PROGRAM_QUESTION_PATTERN.test(question) && !filters.program) {
+    const scopedCollege    = getCollegeScope();
+    const requestedCollege = extractRequestedCollege(question);
+    if (!scopedCollege && !requestedCollege && !filters.college && !ALL_COLLEGES_PATTERN.test(question)) {
+      return { text: CLARIFY_COLLEGE_QUESTION, direct: true, topic: 'clarify_college', filters: {} };
+    }
+  }
+
+  // Resolves the filters.mostRecentBatch sentinel (set by extractFilters()
+  // for "the most recent/latest/newest batch" — see its own comment there)
+  // into a concrete filters.yearGraduated, the one DB round-trip this whole
+  // function needs for that. Done here, before topic dispatch, so every
+  // downstream function sees an ordinary yearGraduated filter and needs no
+  // special-casing of its own — same scoping (LIVE_SUBMISSION_ONLY, college
+  // AsyncLocalStorage) every other Graduate query in this file already gets.
+  if (filters.mostRecentBatch && !filters.yearGraduated) {
+    const [latest] = await Graduate.aggregate([
+      ...LIVE_SUBMISSION_ONLY,
+      { $match: { yearGraduated: { $ne: null } } },
+      { $group: { _id: null, max: { $max: '$yearGraduated' } } },
+    ]);
+    if (latest) filters.yearGraduated = latest.max;
+  }
+
   // "make it a line graph" (filters.requestedChartType) carries NO topic
   // content of its own at all — unlike every other bare continuation this
   // function guesses a topic for below (show all/how many/batch 2020/...,
@@ -7517,7 +9504,37 @@ async function queryInner(question, seedFilters = {}) {
   // fallback chain retry with the PREVIOUS real question's full text
   // appended (see its isChartTypeOnlyContinuation() question-rewrite),
   // which is what actually resolves the real topic.
-  if (topic === null && filters.requestedChartType && Object.keys(filters).every(k => k === 'requestedChartType')) {
+  // filters.wantsChart (the type-less "show me a graph/chart" cousin of
+  // requestedChartType — see its own comment in extractFilters()) carries
+  // exactly the same "no topic content of its own" shape, so it gets the
+  // identical retry treatment.
+  //
+  // Checked against ownFilters (THIS turn's own text), not the merged
+  // filters — a chart request arriving right after a context-seeded filter
+  // ("Can you show me the employment rate of bsit?" -> "can you present it
+  // in a graph...") otherwise never reached this guard at all: `filters`
+  // then also carries seedFilters.program='Information Technology', which
+  // fails the old "every key is chart-related" check, falling through to
+  // the broader null-topic fallback a few lines below — that fallback saw
+  // 'program' as "real content present" and defaulted topic to 'names'
+  // (no "how many" in the bare chart-request text), returning a full BSIT
+  // alumni ROSTER instead of ever reaching the retry that resolves the real
+  // 'rate' topic. Asking for a chart is categorically incompatible with a
+  // names-list answer regardless of what else got inherited — any turn
+  // whose OWN text asked for one should always retry with the real prior
+  // question's full text, never guess 'names' out of unrelated seeded filters.
+  // Excludes a question whose own text already matches one of the dedicated
+  // "topic stays null but is actually answered by its own early bypass"
+  // shapes further below (the batch/year superlative ranking, or a
+  // trend/year-over-year question) — those bypasses run independently of
+  // detectTopic()/topic entirely, so a fully self-contained, answerable
+  // question in either shape still has topic===null here and would
+  // otherwise be wrongly bailed out as if it were a bare, content-free
+  // chart-only continuation. See BATCH_YEAR_SUPERLATIVE_PATTERN's own
+  // comment for the exact live failure this fixes.
+  const isHandledByLaterBypass = (BATCH_YEAR_SUPERLATIVE_PATTERN.test(question) && SUPERLATIVE_DIRECTION_WORD_PATTERN.test(question))
+    || TREND_PATTERN.test(question);
+  if (topic === null && (ownFilters.requestedChartType || ownFilters.wantsChart) && !isHandledByLaterBypass) {
     return null;
   }
   // showAll/showLimit are mutually exclusive "how much of a names list to
@@ -7674,7 +9691,7 @@ async function queryInner(question, seedFilters = {}) {
   // below, and now requestedChartType — same fallback, same fix shape, one
   // more key to exclude each time a new turn-carrying filter with no real
   // topic content of its own gets introduced.
-  if (topic === null && Object.keys(filters).some(k => !['programLabel', 'showAll', 'showLimit', 'rankDirection', 'showAllIndustries', 'answerShape', 'requestedChartType'].includes(k))) {
+  if (topic === null && Object.keys(filters).some(k => !['programLabel', 'showAll', 'showLimit', 'rankDirection', 'showAllIndustries', 'answerShape', 'requestedChartType', 'wantsChart'].includes(k))) {
     // filters.answerShape (extractFilters() above) wins over re-scanning
     // `question` here — it carries which SHAPE of answer (a count vs. a
     // names list) was actually established across a bare narrowing
@@ -7719,7 +9736,16 @@ async function queryInner(question, seedFilters = {}) {
   // phrase) — only the adjective "unemployed" sets that filter, so a direct
   // substring check is needed too (matches "unemployed" AND "unemployment"
   // alike), same approach already used by the equivalent by-year bypass.
-  const wantsUnemploymentByProgram = filters.employmentStatus === 'No' || /\bunemploy/i.test(question);
+  // Checked against ownFilters (THIS turn's own text), not the merged
+  // filters — an employmentStatus='No' INHERITED from an earlier, unrelated
+  // "still seeking employment" turn otherwise silently flips a later,
+  // unrelated by-program EMPLOYMENT-rate question into an UNEMPLOYMENT-rate
+  // one it never asked for. Same "ownFilters, not merged filters" guard
+  // showAllPrograms's own clearing above already needs for the identical
+  // reason. A question that explicitly asks about unemployment itself still
+  // sets this correctly either way, since THAT question's own ownFilters
+  // carries employmentStatus='No' (or matches /\bunemploy/) regardless.
+  const wantsUnemploymentByProgram = ownFilters.employmentStatus === 'No' || /\bunemploy/i.test(question);
   const programSuperlativeDirection = wantsHighestDirection(question) ? 'highest' : 'lowest';
 
   // "How many alumni work locally vs. abroad?" — a COMPOUND location
@@ -7733,6 +9759,44 @@ async function queryInner(question, seedFilters = {}) {
   // also one of the system's own suggested follow-up questions for the
   // work_location topic, so the bug was one click away from every user).
   const isCompoundLocationQuestion = !filters.workLocation && TOPIC_PATTERNS.work_location.test(question);
+
+  // "What percentage of employed graduates have been in their current job
+  // for 2 to 3 years or longer?" — checked before isCompoundLocationQuestion
+  // and every other 'rate' branch below; see YEARS_IN_JOB_CONTEXT_PATTERN's
+  // own comment for why this needs its own explicit, early check (same
+  // first-match-wins collision class as the other overrides in this file).
+  // Both the context AND a recognized threshold must be present — tenure
+  // wording alone, with no parseable "X years or longer"/"at least X"/"less
+  // than X" threshold, falls through to the normal dispatch below rather
+  // than guessing which brackets were meant.
+  const yearsInJobThreshold = YEARS_IN_JOB_CONTEXT_PATTERN.test(question) ? extractYearsInJobThreshold(question) : null;
+  // "...less than 6 months compared to those with 3 to 5 years or more than
+  // 5 years of tenure" — 2+ DISTINCT brackets named explicitly, a
+  // comparison rather than a single threshold (see
+  // extractMentionedYearsInJobBrackets()'s own comment). Checked ahead of
+  // yearsInJobThreshold at every dispatch site below — a question naming
+  // actual bracket labels is a stronger, more specific signal than a single
+  // parsed threshold, and the two are mutually exclusive in practice anyway
+  // (a "3 to 5 years" bracket mention would itself satisfy neither
+  // threshold regex above).
+  const mentionedTenureBrackets = YEARS_IN_JOB_CONTEXT_PATTERN.test(question) ? extractMentionedYearsInJobBrackets(question) : [];
+  // "What is the AVERAGE job tenure for BSIT - Web and Mobile Application
+  // graduates?" — tenure context present, but no specific threshold or
+  // bracket named at all (yearsInJobThreshold/mentionedTenureBrackets both
+  // empty) — this asks for the typical/central value instead. Graduate.
+  // yearsInJob is a bracketed RANGE, not a number, so there's no literal
+  // numeric average to compute — queryYearsInJobDistribution() answers
+  // honestly with the MOST COMMON bracket (the closest real meaning of
+  // "average" this categorical data actually supports) plus the full
+  // breakdown, rather than fabricating a number or declining outright.
+  const wantsAverageTenure = YEARS_IN_JOB_CONTEXT_PATTERN.test(question) && !yearsInJobThreshold && mentionedTenureBrackets.length < 2
+    && /\baverage\b|\btypical(?:ly)?\b|\busual(?:ly)?\b|\bmost\s+common\b/i.test(question);
+
+  // "rated Technical Skills as Excellent vs Competent" — 2+ rating LEVELS
+  // named for the same skill, a side-by-side comparison rather than the
+  // single-level filters.competencyRating extractFilters() already resolved
+  // (see extractAllRatingLevels()'s own comment).
+  const competencyRatingLevels = filters.competency ? extractAllRatingLevels(question) : [];
 
   // Explicit ask for a visualization on a single-percentage 'rate' answer
   // (queryRate()/querySimpleRate()/queryExamPassRate() below) — every one of
@@ -7768,15 +9832,45 @@ async function queryInner(question, seedFilters = {}) {
   // batch percentages instead of the real technical/communication/work-life-
   // balance/etc. ratings queryCompetencies() already has real data for.
   const isPersonalOrProfessionalGrowth = PERSONAL_GROWTH_PATTERN.test(question);
-  if (!isPersonalOrProfessionalGrowth && (/\btrend\b|\byear[\s-]over[\s-]year\b|\bover\s+time\b|\b(improv|declin|increas|decreas|grow(?:ing|th)?|worsen|drop(?:ping|ped)?)\w*\b/i.test(question) || (filters.yearFrom && !filters.yearTo))) {
+  if (!isPersonalOrProfessionalGrowth && (TREND_PATTERN.test(question) || (filters.yearFrom && !filters.yearTo))) {
     // queryByYear() may return { text, chart } now — normalize the same way
     // the generic dispatch wrapper below does, since this early-return
     // bypasses that wrapper entirely.
     const result = await queryByYear(filters);
     if (result) {
       const { text, chart } = typeof result === 'string' ? { text: result, chart: null } : result;
-      if (text) return { text, direct: true, topic: 'by_year', filters, chart: chart || null };
+      if (text) {
+        // "make it a pie chart" right after a trend/year-over-year answer —
+        // this whole block is a `direct: true` early return, which the
+        // generic dispatch wrapper's own chart-type override never reaches
+        // (see applyRequestedChartType()'s own comment).
+        applyRequestedChartType(chart, filters.requestedChartType);
+        return { text, direct: true, topic: 'by_year', filters, chart: chart || null };
+      }
     }
+  }
+
+  // "Who is the most recent/latest/newest graduate added to the tracer
+  // database?" / "Show the 3 most recent graduates added..." — a single-
+  // person (or top-N) superlative lookup by RECORD CREATION TIME, not
+  // graduation year (that's filters.mostRecentBatch, a completely different
+  // concept — see its own comment above). No TOPIC_PATTERNS entry captures
+  // this shape at all (a bare "who is X" only ever satisfies the generic
+  // 'names' pattern), so without this bypass it fell straight through to
+  // queryNames()'s default ALPHABETICAL roster (optionally batch/program-
+  // filtered via a misread "most recent" as filters.mostRecentBatch), never
+  // actually sorted by when each record was added at all — caught live
+  // twice: once for the singular "who is" phrasing, then again for "show
+  // the N most recent" right after. The optional leading digit (group 1)
+  // is what distinguishes the two — omitted entirely means "just the one."
+  // Capped at 50 so a typo'd huge number ("show the 9999999 most recent")
+  // can't force an unbounded query, same ceiling spirit as this file's
+  // other list-size caps.
+  const mostRecentAddedMatch = question.match(/\b(?:who\s+(?:is|was)\s+the|show(?:\s+me)?|list|give\s+me)\s+(?:the\s+)?(\d+)?\s*(?:most\s+recent|latest|newest)\s+(?:graduate|alumnus|alumna|alumni)s?\b/i);
+  if (mostRecentAddedMatch) {
+    const limit = mostRecentAddedMatch[1] ? Math.min(parseInt(mostRecentAddedMatch[1], 10), 50) : 1;
+    const result = await queryMostRecentlyAdded(limit);
+    if (result) return { text: result, direct: true, topic: 'names', filters: {} };
   }
 
   // "Which batch year had the most graduates?" / "Which year had the
@@ -7785,32 +9879,86 @@ async function queryInner(question, seedFilters = {}) {
   // interchangeably in this domain (both tie to yearGraduated) — the pattern
   // must match EITHER word alone, not just "year" with "batch" as an
   // optional prefix, or "which batch has..." (no "year" at all) falls
-  // through this bypass entirely. None of the TOPIC_PATTERNS entries capture
-  // this shape (by_year only matches literal "by year"/"per year" phrasing),
-  // so without this bypass these questions either fell through to RAG
-  // entirely (no "employ" keyword to trigger the default 'employment'
-  // fallback) or, worse, silently answered with queryEmployment()'s single
-  // overall Yes/No breakdown — a confident answer that completely ignores
-  // the "which batch/year" ranking that was actually asked.
-  if (/\bwhich\s+(batch|year)\b/i.test(question) && /\b(most|highest|fewest|least|lowest)\b/i.test(question)) {
+  // through this bypass entirely. "(?:graduation\s+)?" added — "Which
+  // GRADUATION year has the highest number of self-employed respondents?"
+  // has "graduation" sitting directly between "which" and "year," so the
+  // original pattern (requiring them adjacent) never matched this extremely
+  // natural phrasing AT ALL, and the whole question fell through this bypass
+  // entirely before any of the metric branches below ever got a turn —
+  // caught live. None of the TOPIC_PATTERNS entries capture this shape
+  // (by_year only matches literal "by year"/"per year" phrasing), so without
+  // this bypass these questions either fell through to RAG entirely (no
+  // "employ" keyword to trigger the default 'employment' fallback) or,
+  // worse, silently answered with queryEmployment()'s single overall Yes/No
+  // breakdown — a confident answer that completely ignores the "which
+  // batch/year" ranking that was actually asked.
+  if (BATCH_YEAR_SUPERLATIVE_PATTERN.test(question) && SUPERLATIVE_DIRECTION_WORD_PATTERN.test(question)) {
     const direction = wantsHighestDirection(question) ? 'highest' : 'lowest';
     // "Which batch has the lowest job-course relevance rate?" — mentions
     // neither "employ" nor "unemploy", so without this check it silently
     // fell through to the plain graduate-headcount ranking instead, a
     // totally different metric than the one actually asked about.
+    // /\bself[- ]?employ/i checked BEFORE the generic /\bemploy/i branch —
+    // "self-employed" contains "employ" as a literal substring, so without
+    // this it always won the generic 'employment' branch first (combining
+    // employed+self-employed together), and "which year has the highest
+    // number of SELF-EMPLOYED respondents" could never isolate self-
+    // employment as its own metric at all. Caught live.
+    // "which year has the highest NUMBER of self-employed respondents" and
+    // "which year has the highest RATE of self-employed respondents" are
+    // two genuinely different questions with two genuinely different correct
+    // answers (a raw headcount winner vs. a per-batch-normalized winner can
+    // easily be different batches, as they are here: Batch 2022 has the most
+    // self-employed in absolute terms, Batch 2021 has the highest RATE).
+    // Caught live: both phrasings were answering with the SAME (raw-count)
+    // result regardless of which was actually asked, after an earlier fix
+    // made self-employed always a raw count — that fix was only half right,
+    // since "rate"/"percentage" wording explicitly asks for the OTHER
+    // framing. Defaults to raw count when neither word is present ("which
+    // year has the MOST self-employed respondents" has no "rate"/
+    // "percentage" of its own and reads as a plain headcount request, same
+    // as queryYearWithMostGraduates()'s own bare "most graduates" case).
+    const selfEmployedAsRate = /\brate\b|\bpercent(?:age)?\b/i.test(question);
+    // "abroad versus local EMPLOYMENT" / "ratio of overseas to local
+    // workers" — checked BEFORE the generic /\bemploy/i branch below, which
+    // would otherwise always win first (both "abroad" and "local" phrasings
+    // naturally mention "employment/employed" too) and silently compute the
+    // unrelated overall employment RATE instead of the work-location ratio
+    // actually asked about. "local" alone (no "abroad"/"overseas" anywhere)
+    // means the question is specifically about the LOCAL share; any
+    // "abroad"/"overseas" mention — alone or paired with "local" the way
+    // "abroad versus local" is — defaults to ranking by the abroad share,
+    // which ranks batches in the exact same order a true abroad:local RATIO
+    // would (they're complements of each other out of the same total).
+    const wantsWorkLocationRanking = /\babroad\b|\boverseas\b|\blocal(?:ly)?\b|\bwork\s+location\b/i.test(question);
+    const workLocationRankingTarget = /\babroad\b|\boverseas\b/i.test(question) ? 'abroad' : 'local';
     const result = isJobAlignmentQuestion
-      ? await queryYearJobAlignment(filters, direction)
+      ? await queryYearJobAlignment(filters, direction, wantsRateChart)
       : /\bunemploy/i.test(question)
-      ? await queryYearRateExtreme(filters, direction, 'unemployment')
+      ? await queryYearRateExtreme(filters, direction, 'unemployment', false, wantsRateChart)
+      : /\bself[- ]?employ/i.test(question)
+      ? await queryYearRateExtreme(filters, direction, 'self-employed', selfEmployedAsRate, wantsRateChart)
+      : wantsWorkLocationRanking
+      ? await queryWorkLocationByYear(filters, workLocationRankingTarget, direction)
       : /\bemploy/i.test(question)
-      ? await queryYearRateExtreme(filters, direction, 'employment')
-      : await queryYearWithMostGraduates(filters, direction);
-    // queryYearRateExtreme()/queryYearWithMostGraduates() may return
-    // { text, chart } now — normalize the same way the generic dispatch
-    // wrapper below does, since this early-return bypasses that wrapper.
+      ? await queryYearRateExtreme(filters, direction, 'employment', false, wantsRateChart)
+      : await queryYearWithMostGraduates(filters, direction, wantsRateChart);
+    // queryYearRateExtreme()/queryYearWithMostGraduates()/
+    // queryWorkLocationByYear() may return { text, chart } now — normalize
+    // the same way the generic dispatch wrapper below does, since this
+    // early-return bypasses that wrapper.
     if (result) {
       const { text, chart } = typeof result === 'string' ? { text: result, chart: null } : result;
-      if (text) return { text, direct: true, topic: 'by_year', filters, chart: chart || null };
+      if (text) {
+        // "make it a pie chart" right after any "which batch/year has the
+        // highest/lowest X" ranking above (job alignment, unemployment,
+        // self-employment, work location, employment rate, or plain
+        // headcount) — this whole block is a `direct: true` early return,
+        // which the generic dispatch wrapper's own chart-type override
+        // never reaches (see applyRequestedChartType()'s own comment).
+        applyRequestedChartType(chart, filters.requestedChartType);
+        return { text, direct: true, topic: 'by_year', filters, chart: chart || null };
+      }
     }
   }
 
@@ -7830,6 +9978,32 @@ async function queryInner(question, seedFilters = {}) {
       !filters.industry && !filters.excludeIndustry && !filters.employmentStatus && !filters.excludeEmploymentStatus
       && !filters.workLocation && !filters.furtherEducation && !filters.employmentStatuses && !filters.jobTitle) {
     topic = 'count';
+  }
+
+  // See if this question is just a NEW phrasing of one of the ~23 BUILT-IN
+  // topics above (see builtinCapabilityCatalog.js) — embedding similarity
+  // against a fixed catalog of topic exemplars, same proven "match by
+  // meaning, decline below a calibrated confidence threshold" shape
+  // queryCustomQuestionByEmbedding() below already uses for admin-added
+  // custom questions, just covering the HARDCODED topics instead. A
+  // confident match only ever sets `topic` and falls through into the exact
+  // same dispatch map every regex-matched topic already uses below — the
+  // real answer always still comes from that deterministic function, never
+  // from the embedding match itself.
+  //
+  // Checked BEFORE the bare-industry-noun-phrase heuristic just below, not
+  // after — caught live: that heuristic requires no WH-word anywhere in the
+  // question, which a declarative/imperative rephrasing like "Compare
+  // outcomes between the different courses offered" satisfies just as
+  // easily as a genuine bare industry name like "Engineering" does. Checked
+  // after this heuristic, it swallowed the WHOLE sentence as a bogus
+  // industry-name candidate before the semantic match (which correctly
+  // identifies this as by_program) ever got a turn, searched Graduate.industry
+  // for that literal 7-word string, found nothing, and declined outright.
+  if (topic === null) {
+    const { matchBuiltinTopic } = require('./builtinCapabilityCatalog');
+    const builtinMatch = await matchBuiltinTopic(question).catch(() => null);
+    if (builtinMatch) topic = builtinMatch.topic;
   }
 
   // If the question looks like a bare noun phrase (no WH-words, no verbs — e.g.
@@ -7886,6 +10060,39 @@ async function queryInner(question, seedFilters = {}) {
   // back to the "most common" default.
   const wantsRankHighest = () => filters.rankDirection ? filters.rankDirection !== 'least' : !/\b(least|lowest|fewest)\b/i.test(question);
 
+  // "list all unemployed and their contact information" — several dispatch
+  // arms below (count/employment/gender) resolve a real status/filter but
+  // then unconditionally default to queryCount() (a bare number), with no
+  // check for whether the question actually asked for the LIST of people
+  // behind that number. TOPIC_PATTERNS.names' own "list...alumni/graduates"
+  // alternative requires one of those exact nouns nearby — "list all
+  // UNEMPLOYED and their contact information" never says "alumni" or
+  // "graduates" at all, so topic detection never even reaches 'names' and
+  // this question lands in 'employment' instead, where the unconditional
+  // queryCount() fallback silently answered "79 unemployed" instead of the
+  // actual roster + contact numbers asked for. Caught live, reported in
+  // exactly those words: "the chatbot should really analyze the question,
+  // not rely on topic detection." Checked wherever queryCount() is about to
+  // be returned as a same-information-different-shape fallback — "list
+  // all"/"show (me) all"/"give me the list"/"who are" are strong, narrow
+  // signals that the question wants the group itself, not just its size;
+  // deliberately doesn't match a bare "show me the employment rate" (no
+  // "all", no "list", no "who").
+  // "who is"/"who was" (singular) added alongside "who are" (plural) — a
+  // follow-up like "who is that?" condenses (see ragService.js's
+  // WHO_IS_DEMONSTRATIVE_PATTERN/condenseQuestion()) into a fully
+  // self-contained singular question ("Who is the BS Information Technology
+  // graduate from Batch 2023 working locally as Front-end Developer?") when
+  // the prior answer's criteria narrowed the group down to exactly one
+  // alumnus — without this, that resolved question still landed in the
+  // 'count' arm below and silently answered "There is 1 ..." a second time
+  // instead of the actual name asked for. Safe to broaden here specifically
+  // (unlike a module-wide "who" trigger) because extractPersonName() already
+  // intercepts any question naming an ACTUAL person earlier in queryInner()
+  // — by the time dispatch reaches this point, "who is X" never named a real
+  // person, so it can only be asking to identify someone by criteria.
+  const wantsNamesList = /\blist\b|\bshow\s+(?:me\s+)?all\b|\bgive\s+me\s+(?:the\s+)?(?:list|names)\b|\bwho\s+(?:is|are|was)\b/i.test(question);
+
   let fn = {
     // "who gave feedback for X?" matches TOPIC_PATTERNS.event_feedback's own
     // "feedback for/on/about" trigger too — routed to the submitters lookup
@@ -7941,9 +10148,68 @@ async function queryInner(question, seedFilters = {}) {
     // industry-wide "49" total regardless of directly/somewhat/not related.
     // queryCount() already applies both filters correctly together.
     count:           async () => {
+      // "How many employed graduates have been in their current job for 2 to
+      // 3 years or longer?" — same explicit tenure vocabulary as the 'rate'
+      // dispatch arm's own check (see YEARS_IN_JOB_CONTEXT_PATTERN's
+      // comment); checked first here too so the "how many" phrasing of the
+      // identical question gets the real tenure-scoped count instead of
+      // 'count' topic's own unrelated bare employed-alumni total.
+      if (mentionedTenureBrackets.length >= 2) {
+        const tenureCompare = await queryYearsInJobBracketsCompare(filters, mentionedTenureBrackets);
+        if (tenureCompare) return tenureCompare;
+      }
+      if (yearsInJobThreshold) {
+        const tenureCount = await queryYearsInJobCount(filters, yearsInJobThreshold);
+        if (tenureCount) return tenureCount;
+      }
+      if (wantsAverageTenure) {
+        const tenureDist = await queryYearsInJobDistribution(filters);
+        if (tenureDist) return tenureDist;
+      }
+      // "How many rated Technical Skills as Excellent vs Competent?" — same
+      // rating-vs-rating comparison the 'rate' dispatch arm handles (see
+      // queryCompetencyRatingCompare()'s own comment), just as a headcount
+      // framing. The function itself already reports both the count AND the
+      // percentage per level, so it's reused directly rather than needing a
+      // separate count-only variant.
+      if (competencyRatingLevels.length >= 2) {
+        const ratingCompare = await queryCompetencyRatingCompare(filters, competencyRatingLevels);
+        if (ratingCompare) return ratingCompare;
+      }
       if (isSectorQuestion) return querySector(filters);
+      // "list all alumni who passed the board exam" — checked before every
+      // other filter-specific branch below, not just the final fallback, so
+      // an explicit list request wins regardless of WHICH filter resolved
+      // (see wantsNamesList's own comment above).
+      if (wantsNamesList) {
+        const names = await queryNames(filters, question);
+        if (names) return names;
+      }
       if (filters.employmentStatuses) return queryEmployment(filters);
-      if (filters.workLocation || isCompoundLocationQuestion) return queryWorkLocation(filters);
+      // queryWorkLocation() only ever applies stablePipeline (program/year/
+      // gender) plus the location condition itself — it has no idea what
+      // jobTitleRegex/employmentStatus/companyRegex/industry/furtherEducation/
+      // tookExam/jobRelated even are, so a workLocation question that ALSO
+      // resolved one of those silently lost that half the moment it got
+      // routed here. Caught live: "how many BS Information Technology
+      // graduates from Batch 2024 are working locally as Front-end
+      // Developer" returned the SAME count (26) regardless of which job
+      // title was asked about — the location half worked, the job-title
+      // half was silently dropped, same "correct-looking but silently
+      // wrong number" failure class as the industry/jobRelated gaps fixed
+      // elsewhere in this dispatch. queryCount() already combines
+      // workLocation with every one of these other filters correctly (see
+      // its own locationLabel/jobTitleLabel building) — only route to
+      // queryWorkLocation() when nothing else queryCount() would need to
+      // combine it with is actually present. isCompoundLocationQuestion
+      // (bare "local vs abroad" with no specific direction) still always
+      // goes to queryWorkLocation() regardless — queryCount() has no
+      // equivalent "break down both sides" mode to fall back to.
+      const hasFilterWorkLocationCantCombine = filters.jobTitleRegex || filters.employmentStatus
+        || filters.excludeEmploymentStatus || filters.companyRegex || filters.industry
+        || filters.excludeIndustry || filters.furtherEducation || filters.tookExam || filters.jobRelated;
+      if (isCompoundLocationQuestion) return queryWorkLocation(filters);
+      if (filters.workLocation && !hasFilterWorkLocationCantCombine) return queryWorkLocation(filters);
       // Same gap as the company/jobRelated exclusions above (added earlier
       // for the same reason) — queryIndustry() also has no idea what
       // furtherEducation/tookExam/hasPromotion/employmentType even are, so
@@ -7958,15 +10224,25 @@ async function queryInner(question, seedFilters = {}) {
         && !filters.furtherEducation && !filters.tookExam && !filters.hasPromotion && !filters.employmentType) return queryIndustry(filters);
       // A bare "how many" shape ("how many alumni mentioned work-life
       // balance as a challenge?") can still resolve filters.competency (see
-      // the SPEC_ABBR competency loop above) even though queryCount() has no
-      // idea what to do with that filter — it silently ignored it and
-      // returned the whole-cohort total instead (caught live: "702
-      // graduates", completely unrelated to work-life balance). queryCount()
-      // only ever applies program/year/gender/employmentStatus/industry/etc.
-      // — competency was never one of them — so route to queryCompetencies(),
-      // which already builds the correct rating-distribution answer for
-      // exactly this filter.
-      if (filters.competency) return queryCompetencies(filters, wantsRankHighest());
+      // the SPEC_ABBR competency loop above) — when no SPECIFIC rating level
+      // was also named, this means "show the full distribution," which
+      // stays queryCompetencies()'s job (it already builds the correct
+      // rating-distribution answer for exactly this filter; caught live:
+      // "702 graduates," completely unrelated to work-life balance, was the
+      // old fallback before this redirect existed at all). But when a
+      // specific level WAS also named (filters.competencyRating — "rated
+      // Critical Thinking as High Competent"), the question wants a SCOPED
+      // COUNT for that one tier, not the whole distribution — queryCount()
+      // now applies competency+competencyRating as a real filter condition
+      // (see its own comment) and can combine it with jobTitleRegex/program/
+      // every other filter the same way any other condition already does,
+      // so this must fall through to queryCount() instead of redirecting
+      // away from it. Caught live: "How many graduates who rated their
+      // Critical Thinking as 'High Competent' are currently working in
+      // managerial or supervisor roles?" needs BOTH filters combined in one
+      // answer, which an unconditional redirect to queryCompetencies() could
+      // never do (it has no concept of jobTitleRegex at all).
+      if (filters.competency && !filters.competencyRating) return queryCompetencies(filters, wantsRankHighest());
       // Bare "how many alumni are X" where X matched no recognized filter at
       // all (e.g. "how many alumni are married") falls all the way through
       // to here — before defaulting to a technically-true-but-useless
@@ -7993,7 +10269,31 @@ async function queryInner(question, seedFilters = {}) {
       }
       return queryCount(filters, wantsRateChart);
     },
-    rate:            () => isCompoundLocationQuestion
+    rate:            () => mentionedTenureBrackets.length >= 2
+      ? queryYearsInJobBracketsCompare(filters, mentionedTenureBrackets)
+      : yearsInJobThreshold
+      ? queryYearsInJobRate(filters, yearsInJobThreshold)
+      : wantsAverageTenure
+      ? queryYearsInJobDistribution(filters)
+      : competencyRatingLevels.length >= 2
+      ? queryCompetencyRatingCompare(filters, competencyRatingLevels)
+      // filters.competency+competencyRating was previously ONLY ever applied
+      // by queryCount()/queryNames() (see queryCount()'s own comment) — a
+      // "what PERCENTAGE rated X as Y" question has identical filters but
+      // fell all the way through this entire chain to the generic overall
+      // employment rate, since no branch here knew competency existed at
+      // all. competency/competencyRating stripped from the filters object
+      // passed in (same reasoning as the industry stripping just below) —
+      // querySimpleRate()'s own `label` argument already names the skill+
+      // level, and filterLabel() would otherwise double-mention it.
+      : filters.competency && filters.competencyRating
+      ? querySimpleRate(
+          { ...filters, competency: undefined, competencyRating: undefined },
+          { [`competencies.${filters.competency}`]: { $regex: `^${escapeRegex(filters.competencyRating)}`, $options: 'i' } },
+          `rated ${COMP_LABEL[filters.competency] || filters.competency} as ${filters.competencyRating}`,
+          wantsRateChart && `${COMP_LABEL[filters.competency] || filters.competency} Rating`,
+        )
+      : isCompoundLocationQuestion
       ? queryWorkLocation(filters)
       : BY_PROGRAM_QUESTION_PATTERN.test(question)
       ? (isJobAlignmentQuestion ? queryJobAlignmentByProgram(filters)
@@ -8164,7 +10464,7 @@ async function queryInner(question, seedFilters = {}) {
       : /\bwho\b/i.test(question) ? queryNames(filters) : queryWorkLocation(filters),
     by_program:      () => queryByProgram(filters),
     by_year:         () => queryByYear(filters),
-    gender:          () => {
+    gender:          async () => {
       // "how many female are self-employed?" — gender matches the 'gender'
       // topic first and would otherwise win routing outright, silently
       // dropping the employmentStatus/industry/etc. filter that
@@ -8176,9 +10476,46 @@ async function queryInner(question, seedFilters = {}) {
         || filters.industry || filters.excludeIndustry || filters.furtherEducation || filters.tookExam
         || filters.jobRelated || filters.workLocation;
       if (filters.employmentStatuses) return queryEmployment(filters);
-      return hasOtherFilter ? queryCount(filters, wantsRateChart) : queryGender(filters);
+      if (hasOtherFilter) {
+        // "list all unemployed female alumni and their contact information"
+        // — same wantsNamesList check as the 'count'/'employment' arms (see
+        // its own comment above); this arm resolves gender + another filter
+        // together and defaults to queryCount(), the exact same "real
+        // number, wrong shape" gap for a question that named a group AND
+        // asked to see it.
+        if (wantsNamesList) {
+          const names = await queryNames(filters, question);
+          if (names) return names;
+        }
+        return queryCount(filters, wantsRateChart);
+      }
+      return queryGender(filters);
     },
     employment:      async () => {
+      // "How many Regular/Permanent employees have been with their company
+      // for 3 to 5 years?" — a question combining employmentType (and
+      // often program/workLocation) with job tenure satisfies bare
+      // EMPLOYMENT_SIGNAL ("employees"/"employed") and lands on THIS topic,
+      // not 'rate'/'count' — same explicit tenure vocabulary check as those
+      // two arms (see YEARS_IN_JOB_CONTEXT_PATTERN's own comment), just
+      // needed a third copy here since this arm has its own entirely
+      // separate dispatch chain. Checked first, before even
+      // untrackedEmploymentConceptMessage() below, so it never gets
+      // mistaken for an unrelated employment-status question.
+      if (mentionedTenureBrackets.length >= 2) {
+        const tenureCompare = await queryYearsInJobBracketsCompare(filters, mentionedTenureBrackets);
+        if (tenureCompare) return tenureCompare;
+      }
+      if (yearsInJobThreshold) {
+        const tenureAnswer = filters.answerShape === 'count'
+          ? await queryYearsInJobCount(filters, yearsInJobThreshold)
+          : await queryYearsInJobRate(filters, yearsInJobThreshold);
+        if (tenureAnswer) return tenureAnswer;
+      }
+      if (wantsAverageTenure) {
+        const tenureDist = await queryYearsInJobDistribution(filters);
+        if (tenureDist) return tenureDist;
+      }
       // Checked FIRST — job satisfaction/work-life balance/time-to-first-job
       // all satisfy bare EMPLOYMENT_SIGNAL ("job"/"work") the same way a
       // real employment-status question does, but answering any of them
@@ -8213,7 +10550,20 @@ async function queryInner(question, seedFilters = {}) {
       }
       if (isCombinedEmployedQuery) return queryRate(filters, false, wantsRateChart);
       if (filters.industry || filters.excludeIndustry) return queryIndustry(filters);
-      if (filters.employmentStatus || filters.excludeEmploymentStatus) return queryCount(filters, wantsRateChart);
+      if (filters.employmentStatus || filters.excludeEmploymentStatus) {
+        // "list all unemployed and their contact information" — see
+        // wantsNamesList's own comment above. This is the exact arm/filter
+        // combination the question was caught live on: TOPIC_PATTERNS.names
+        // never matches (no "alumni"/"graduates" word anywhere in it), so
+        // topic falls through to 'employment' via the bare EMPLOYMENT_SIGNAL
+        // fallback, and this branch used to unconditionally hand back a bare
+        // "79 unemployed" count — a real number, but not what was asked for.
+        if (wantsNamesList) {
+          const names = await queryNames(filters, question);
+          if (names) return names;
+        }
+        return queryCount(filters, wantsRateChart);
+      }
       // A bare "[attribute] of CCS alumni"-shaped question lands here once
       // every specific employment filter above has failed to match — before
       // defaulting to the generic Employed/Unemployed/Self-Employed
@@ -8347,6 +10697,40 @@ async function queryInner(question, seedFilters = {}) {
     fn = async () => (await queryUnemploymentReasons(filters, matchedUnemploymentReason(question))) ?? (await previousFn());
   }
 
+  // Same "checked via the dispatch table's own topic guess, which can be
+  // wrong" shape as the overrides above — untrackedEmploymentConceptMessage()
+  // was only ever wired into the 'employment' topic's own dispatch branch,
+  // but a question phrased with "percentage"/"rate" (e.g. "What PERCENTAGE
+  // of graduates found a job within 6 months of graduation?") resolves topic
+  // = 'rate', not 'employment', via TOPIC_PATTERNS.rate's own "what
+  // percentage" trigger — so it never reached that check at all and fell
+  // straight through to queryRate(), silently answering the bare overall
+  // employment rate (68.6%) as if it had addressed the "within 6 months"
+  // timing. Checked here instead, after dispatch, so it fires regardless of
+  // which topic the question happened to match. Only the ONE untracked
+  // concept with a genuinely useful closest-available substitute
+  // (time-to-employment -> the overall employment rate) gets the enriched
+  // "decline, then offer the closest stat" treatment — every other untracked
+  // concept (job satisfaction, salary) still falls through to the plain
+  // decline inside the 'employment' branch, unaffected. Offers rather than
+  // shows the substitute outright (no chart/number included here) — unlike
+  // queryWorkType()'s "full-time" redirect, there's no genuinely-answered
+  // PART of this question to show alongside the decline; showing the rate
+  // unprompted would just be a differently-shaped version of the exact
+  // "confidently wrong number for a different question" bug this redirect
+  // exists to avoid. "Would you like to see X instead?" is parsed back out
+  // by ragService.js's resolveClosestCategorySuggestion() on a plain "yes"
+  // reply, the same mechanism queryWorkType()'s own redirect already uses.
+  const untrackedRateMatch = matchUntrackedEmploymentConcept(question);
+  if (untrackedRateMatch?.hasRateAlternative) {
+    fn = () => {
+      const declineText = `The tracer study does not track ${untrackedRateMatch.label} as its own question. What is available:${AVAILABLE_EMPLOYMENT_MEASURES_LIST}Please ask about one of those instead.`;
+      const inlineAsk = 'Would you like to see how many graduates are employed overall instead?';
+      const chipSuggestion = 'How many graduates are employed overall?';
+      return { text: `${declineText}\n\n${inlineAsk}`, suggestions: [chipSuggestion] };
+    };
+  }
+
   // Same "a word belonging to a DIFFERENT topic's own trigger sits right in
   // this question too" collision as isUnemploymentReasonQuestion() above,
   // one more shape of it: TOPIC_PATTERNS.industry (`/\bindustr.../`) is
@@ -8382,7 +10766,7 @@ async function queryInner(question, seedFilters = {}) {
   // single-chart consumer keeps working untouched.
   const result = await fn();
   if (!result) return null;
-  const { text, chart, charts, eventTitle } = typeof result === 'string' ? { text: result, chart: null, charts: null, eventTitle: null } : result;
+  const { text, chart, charts, eventTitle, suggestions: ownSuggestions, rephraseNotice } = typeof result === 'string' ? { text: result, chart: null, charts: null, eventTitle: null, suggestions: null, rephraseNotice: null } : result;
   const resolvedCharts = charts?.length ? charts : (chart ? [chart] : null);
 
   // filters.requestedChartType ("make it a line graph" — see extractFilters()'s
@@ -8425,10 +10809,23 @@ async function queryInner(question, seedFilters = {}) {
   // resolved one specific event) rides into filters purely so
   // suggestFollowUps() can build contextual event follow-up chips — it's
   // never used as an actual query filter anywhere else.
+  //
+  // ownSuggestions — a query function's OWN tailored "you might also ask"
+  // chip(s) (e.g. queryWorkType()'s "closest real category" redirect),
+  // which ragService.js's `aggResult.suggestions || suggestFollowUps(...)`
+  // check already prefers over the generic topic-based ones whenever
+  // present — this is just what threads it from the function's own return
+  // value through to that check at all. Before this, a function returning
+  // `suggestions` alongside {text, chart} had it silently dropped right
+  // here: this destructuring only ever pulled out text/chart/charts/
+  // eventTitle, so even a function that already built the right suggestion
+  // never actually reached the chip row shown to the user.
   return text ? {
     text: text + chartUnavailableNote, direct: true, topic, filters: eventTitle ? { ...filters, eventTitle } : filters,
     chart: resolvedCharts?.[0] || null,
     charts: resolvedCharts,
+    ...(ownSuggestions ? { suggestions: ownSuggestions } : {}),
+    ...(rephraseNotice ? { rephraseNotice } : {}),
   } : null;
 }
 

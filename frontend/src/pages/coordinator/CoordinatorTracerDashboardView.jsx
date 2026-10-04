@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useOutletContext } from "react-router-dom";
 import { jsPDF } from "jspdf";
 import { Dropdown } from "../../components/common/Primitives.jsx";
-import { CHART_PALETTE, MiniDonut, DistributionBars, EmploymentChart } from "../../components/common/Charts.jsx";
+import { CHART_PALETTE, MiniDonut, DistributionBars, EmploymentChart, MiniBarChart } from "../../components/common/Charts.jsx";
 import { renderChartImage } from "../../components/common/canvasCharts.js";
 import Icon from "../../components/common/Icon.jsx";
 import { API, authHeaders } from "../../services/api.js";
@@ -15,30 +15,6 @@ const DURATION_ORDER = [
   "Less than 6 months", "6 months to 1 year", "1 to 2 years",
   "2 to 3 years", "3 to 5 years", "More than 5 years",
 ];
-
-// Vertical bar chart — best for ordered or moderate-cardinality categories.
-function MiniBarChart({ rows }) {
-  if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
-  const max = Math.max(...rows.map((r) => r.count), 1);
-  return (
-    <div className="tracer-vbar-chart">
-      {rows.map((r, i) => (
-        <div className="tracer-vbar-col" key={r.label}>
-          <div className="tracer-vbar-wrap">
-            <div
-              className="tracer-vbar"
-              style={{ height: `${Math.max((r.count / max) * 100, 8)}%`, background: CHART_PALETTE[i % CHART_PALETTE.length] }}
-              title={`${r.label}: ${r.count}`}
-            >
-              <span className="tracer-vbar-value">{r.count}</span>
-            </div>
-          </div>
-          <div className="tracer-vbar-label" title={r.label}>{r.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function TagCloud({ rows }) {
   if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
