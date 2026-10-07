@@ -284,33 +284,136 @@ export function DistributionBars({ rows, limit }) {
   );
 }
 
-// Vertical bar chart — best for ordered or moderate-cardinality categories.
-// Moved here from TracerDashboardView.jsx/CoordinatorTracerDashboardView.jsx
-// (both had byte-identical copies) so AiAssistantView.jsx's chat widget can
-// also render a genuine bar graph for chart.type === "bars" instead of
-// DistributionBars' horizontal percentage-meter look — the AC assistant had
-// no true bar-graph visual among its 3 renderers (MiniDonut/DistributionBars/
-// TrendLine) at all, so a "make it bar graph" request could only ever change
-// the DATA, never actually produce a chart shaped like a bar graph.
+// Horizontal bar chart — one solid-colored, rounded bar per row, label to
+// the left, value at the bar's end. Used for chat chart.type === "bars"
+// (AiAssistantView.jsx) — replaced the earlier vertical-column version with
+// this horizontal, per-category-colored look to match the requested
+// reference style (rounded horizontal bars of varying length/color, not a
+// vertical column chart).
+// Below this many rows, every bar is shown at once (no internal scroll) —
+// the whole point of a chart is seeing it all at a glance. Past it, the
+// list would grow taller than is reasonable inside a chat bubble, so it
+// switches to a capped, scrollable height instead (see handleCopy in
+// AiAssistantView.jsx, which already lifts this cap before rasterizing a
+// copy so the exported image is never cropped by it either way).
+const HBAR_SCROLL_THRESHOLD = 15;
+
 export function MiniBarChart({ rows }) {
   if (!rows || rows.length === 0) return <p className="tracer-empty">No responses yet.</p>;
   const max = Math.max(...rows.map((r) => r.count), 1);
+  const scrollable = rows.length > HBAR_SCROLL_THRESHOLD;
   return (
-    <div className="tracer-vbar-chart">
-      {rows.map((r, i) => (
-        <div className="tracer-vbar-col" key={r.label}>
-          <div className="tracer-vbar-wrap">
-            <div
-              className="tracer-vbar"
-              style={{ height: `${Math.max((r.count / max) * 100, 8)}%`, background: CHART_PALETTE[i % CHART_PALETTE.length] }}
-              title={`${r.label}: ${r.count}`}
-            >
-              <span className="tracer-vbar-value">{r.count}</span>
+    <div className={`tracer-hbar-chart${scrollable ? ' tracer-hbar-chart--scroll' : ''}`}>
+      {rows.map((r, i) => {
+        // A fixed pixel/percent floor applied to EVERY bar (even a genuine
+        // 0) made visibly different counts (e.g. 0 vs 6 vs 8) render at
+        // nearly the same length — caught live: a 0-count row and an
+        // 8-count row looked "pantay" (equal) because both got clamped up
+        // to the same minimum. A true 0 gets its own near-zero sliver
+        // (clearly shorter than any real count); every other bar scales
+        // proportionally to `max` with only a small floor so a tiny-but-
+        // real count (1-2) still remains visible as a bar at all. The value
+        // number is rendered OUTSIDE the bar's end (not clamped inside it)
+        // so a short bar never needs extra width just to fit its own label.
+        const widthPct = r.count === 0 ? 1.5 : Math.max((r.count / max) * 100, 3);
+        return (
+          <div className="tracer-hbar-row" key={r.label}>
+            <div className="tracer-hbar-label" title={r.label}>{r.label}</div>
+            <div className="tracer-hbar-track">
+              <div
+                className="tracer-hbar-fill"
+                style={{ width: `${widthPct}%`, background: CHART_PALETTE[i % CHART_PALETTE.length] }}
+                title={`${r.label}: ${r.count}`}
+              />
+              <span className="tracer-hbar-value">{r.count}</span>
             </div>
           </div>
-          <div className="tracer-vbar-label" title={r.label}>{r.label}</div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Grouped (clustered) vertical bar chart — one column per category, with
+// one bar per series side by side inside it. Built for a genuine
+// multi-series comparison (e.g. chart.type === "grouped-bars" from
+// computeSkillCompare in verifiedCount.js: two skills, each rated across
+// the same 5 levels) — flattening N series x M categories into one long
+// single-series bar list (the earlier shape this replaced) forces the
+// reader to mentally regroup rows back into series themselves; this
+// renders them already grouped, which is what a side-by-side comparison
+// question actually asks to see.
+// `series`: [{ name, color? }] — color defaults to CHART_PALETTE[index] if
+// omitted, same convention MiniBarChart/DistributionBars already use.
+// `rows`: [{ category, values: [n, n, ...] }] — one value per series, in
+// the same order as `series`.
+export function GroupedBarChart({ series, rows, unit = '' }) {
+  if (!rows || rows.length === 0 || !series || series.length === 0) {
+    return <p className="tracer-empty">No responses yet.</p>;
+  }
+  // A single series (this chart reused as a plain standing bar graph for a
+  // top-N ranking — see verifiedCount.js's computeVerifiedRanking) colors
+  // each bar by its own CATEGORY instead of by series: with only one
+  // series, series-based coloring made every bar identical (every program
+  // in a ranking rendered maroon-on-maroon) — caught live, "parang isang
+  // kulay lang", the system's own multi-color palette never showed up at
+  // all for this shape. A genuine multi-series comparison (2+ series, e.g.
+  // computeSkillCompare's two-skill breakdown) keeps series-based coloring
+  // — there, color has to stay consistent per-series ACROSS every category
+  // so the legend means anything (all "technical skills" bars share one
+  // color so they're visually traceable across columns).
+  const isSingleSeries = series.length === 1;
+  const seriesColors = series.map((s, i) => s.color || CHART_PALETTE[i % CHART_PALETTE.length]);
+  const max = Math.max(...rows.flatMap((r) => r.values), 1);
+  return (
+    <div className="tracer-gbar-chart">
+      {/* The legend is redundant (and actively misleading — it would show
+          ONE swatch while the bars below use several different colors) once
+          bars are colored per-category instead of per-series, so it's
+          dropped for the single-series case; each bar's own label underneath
+          it already says what it is. */}
+      {!isSingleSeries && (
+        <div className="tracer-gbar-legend">
+          {series.map((s, i) => (
+            <span className="tracer-gbar-legend-item" key={s.name}>
+              <i style={{ background: seriesColors[i] }} />
+              {s.name}
+            </span>
+          ))}
         </div>
-      ))}
+      )}
+      <div className="tracer-gbar-cols">
+        {rows.map((r, rowIndex) => (
+          <div className="tracer-gbar-col" key={r.category}>
+            <div className="tracer-gbar-bars">
+              {r.values.map((v, i) => {
+                const color = isSingleSeries ? CHART_PALETTE[rowIndex % CHART_PALETTE.length] : seriesColors[i];
+                return (
+                  <div
+                    className="tracer-gbar-wrap"
+                    key={series[i]?.name || i}
+                    title={`${series[i]?.name || ''} — ${r.category}: ${v}${unit}`}
+                  >
+                    {/* Value sits ABOVE the bar, not inside it — a short bar
+                        (a low count like "Beginner"/"Non-Acceptable" next to
+                        a much taller max) isn't tall enough to contain its
+                        own white label text, which then overflowed onto the
+                        plain page background and became invisible there.
+                        Outside placement means the label is always legible
+                        regardless of how short the bar is. */}
+                    <span className="tracer-gbar-value">{v}{unit}</span>
+                    <div
+                      className="tracer-gbar-bar"
+                      style={{ height: `${Math.max((v / max) * 100, v > 0 ? 4 : 0)}%`, background: color }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="tracer-gbar-label" title={r.category}>{r.category}</div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

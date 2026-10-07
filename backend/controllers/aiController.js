@@ -353,11 +353,37 @@ const reembed = async (req, res) => {
       const TracerStudyResponse = require('../models/TracerStudyResponse');
       const AlumniEmployment   = require('../models/AlumniEmployment');
       const User               = require('../models/User');
+      const TracerFormConfig   = require('../models/TracerFormConfig');
       const { getEmbedding }   = require('../services/embeddingService');
 
       const alumniUsers = await User.find().lean();
       const userMap = {};
       for (const u of alumniUsers) userMap[String(u._id)] = u;
+
+      // Every college maintains its OWN tracer form (see TracerFormConfig),
+      // so the set of custom/extra questions — and therefore what the
+      // chatbot even has available to answer from — differs per college.
+      // Previously this embedding text only ever covered 3 hardcoded, fixed
+      // TracerStudyResponse fields (employmentStatus/occupationTitle/
+      // industryField); anything answered via a college's own custom
+      // questions (stored in extra_answers, keyed by that college's
+      // TracerFormConfig question ids — see utils/tracerFixedKeys.js) was
+      // invisible to RAG retrieval no matter what was asked. Prefetching
+      // every college's config once (not per-document) and building a
+      // questionId -> label lookup per college lets the loop below render
+      // EVERY answered question generically, fixed or custom, without
+      // hardcoding any specific question's field name.
+      const allConfigs = await TracerFormConfig.find().lean();
+      const labelsByCollege = {};
+      for (const cfg of allConfigs) {
+        const labels = {};
+        for (const page of (cfg.config?.pages || [])) {
+          for (const q of (page.questions || [])) {
+            if (q.id && q.label) labels[q.id] = q.label;
+          }
+        }
+        labelsByCollege[cfg.college] = labels;
+      }
 
       // Scoped to tracer study data only (per explicit product decision — the
       // AC assistant answers Graduate Tracer Study questions, not portal-wide
@@ -368,7 +394,23 @@ const reembed = async (req, res) => {
         { name: 'tracer', docs: await TracerStudyResponse.find().lean(), toText: d => {
           const u = userMap[String(d.alumni_id)];
           const name = u ? `${u.firstName} ${u.lastName}` : 'Unknown Alumni';
-          return `Tracer study for ${name}${u?.course ? ' (' + u.course + ')' : ''}. Status: ${d.employmentStatus || ''}. Occupation: ${d.occupationTitle || ''}. Industry: ${d.industryField || ''}.`;
+          let text = `Tracer study for ${name}${u?.course ? ' (' + u.course + ')' : ''}. Status: ${d.employmentStatus || ''}. Occupation: ${d.occupationTitle || ''}. Industry: ${d.industryField || ''}.`;
+
+          // Append every answered custom/extra question for this alumnus's
+          // own college, generically — this is what makes a newly-added
+          // tracer question (any college, any wording) actually reachable
+          // by the chatbot the next time a re-embed runs, with no code
+          // change required per question.
+          const extra = d.extra_answers instanceof Map ? Object.fromEntries(d.extra_answers) : (d.extra_answers || {});
+          const labels = labelsByCollege[u?.college] || {};
+          for (const [qId, rawVal] of Object.entries(extra)) {
+            if (rawVal === null || rawVal === undefined || rawVal === '') continue;
+            const label = labels[qId] || qId;
+            const val = Array.isArray(rawVal) ? rawVal.join(', ') : String(rawVal);
+            text += ` ${label}: ${val}.`;
+          }
+
+          return text;
         }},
         { name: 'employment', docs: await AlumniEmployment.find().lean(), toText: d => {
           const u = userMap[String(d.alumni_id)];

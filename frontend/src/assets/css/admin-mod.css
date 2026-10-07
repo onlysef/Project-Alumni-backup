@@ -2370,69 +2370,165 @@
             color: var(--muted);
         }
 
-        .tracer-vbar-chart {
+        .tracer-hbar-chart {
+            display: grid;
+            gap: 12px;
+            padding-top: 4px;
+        }
+
+        /* Applied only past HBAR_SCROLL_THRESHOLD rows (Charts.jsx) — under
+           that, every bar renders at once with no internal scroll. */
+        .tracer-hbar-chart--scroll {
+            max-height: 320px;
+            overflow-y: auto;
+        }
+
+        .tracer-hbar-row {
+            display: grid;
+            grid-template-columns: 110px 1fr;
+            align-items: center;
+            gap: 10px;
+            animation: tracer-row-rise 360ms cubic-bezier(.2,.8,.2,1) both;
+        }
+
+        .tracer-hbar-label {
+            font-size: 12.5px;
+            line-height: 1.3;
+            color: var(--text);
+            text-align: right;
+            overflow-wrap: anywhere;
+        }
+
+        body.dark-mode .tracer-hbar-label {
+            color: #f3e7ea;
+        }
+
+        .tracer-hbar-track {
+            height: 26px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tracer-hbar-fill {
+            height: 100%;
+            min-width: 2px;
+            border-radius: 4px;
+            transform-origin: left center;
+            animation: tracer-bar-grow 760ms 120ms cubic-bezier(.2,.8,.2,1) both;
+            transition: width 300ms ease;
+        }
+
+        .tracer-hbar-value {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--maroon);
+            white-space: nowrap;
+        }
+
+        body.dark-mode .tracer-hbar-value {
+            color: #ffe294;
+        }
+
+        .tracer-gbar-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .tracer-gbar-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px;
+        }
+
+        .tracer-gbar-legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        body.dark-mode .tracer-gbar-legend-item {
+            color: #f3e7ea;
+        }
+
+        .tracer-gbar-legend-item i {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+
+        .tracer-gbar-cols {
             display: flex;
             align-items: flex-end;
-            gap: 10px;
-            height: 180px;
+            gap: 14px;
+            height: 260px;
             padding-top: 8px;
             overflow-x: auto;
         }
 
-        .tracer-vbar-col {
+        .tracer-gbar-col {
             flex: 1 0 70px;
-            max-width: 110px;
+            max-width: 260px;
             display: flex;
             flex-direction: column;
             align-items: center;
             height: 100%;
         }
 
-        .tracer-vbar-wrap {
+        .tracer-gbar-bars {
             flex: 1;
             width: 100%;
             display: flex;
             align-items: flex-end;
             justify-content: center;
+            gap: 10px;
         }
 
-        .tracer-vbar {
-            width: 60%;
-            min-width: 22px;
+        .tracer-gbar-wrap {
+            flex: 1;
+            max-width: 64px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .tracer-gbar-bar {
+            width: 100%;
+            min-width: 14px;
+            border-radius: 4px 4px 0 0;
             transform-origin: center bottom;
             animation: tracer-vbar-grow 720ms cubic-bezier(.2,.8,.2,1) both;
-            border-radius: 5px 5px 0 0;
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
             transition: height 300ms ease;
         }
 
-        .tracer-vbar-value {
-            margin-top: 4px;
-            font-size: 12px;
+        .tracer-gbar-value {
+            margin-bottom: 4px;
+            font-size: 11px;
             font-weight: 700;
-            color: #fff;
+            color: var(--maroon);
         }
 
-        .tracer-vbar-label {
+        body.dark-mode .tracer-gbar-value {
+            color: #ffe294;
+        }
+
+        .tracer-gbar-label {
             margin-top: 7px;
             max-width: 100%;
-            min-height: 34px;
             font-size: 10.5px;
             text-align: center;
             color: #67575c;
             line-height: 1.3;
-            white-space: normal;
-            overflow-wrap: anywhere;
-            display: -webkit-box;
-            -webkit-box-orient: vertical;
-            -webkit-line-clamp: 2;
-            line-clamp: 2;
-            overflow: hidden;
         }
 
-        body.dark-mode .tracer-vbar-label {
+        body.dark-mode .tracer-gbar-label {
             color: #dbc5cb;
         }
 
@@ -9848,9 +9944,10 @@ body.dark-mode .pw-submit:hover:not(:disabled) { background: #b03040; }
         .ac-ac-text p:last-child { margin-bottom: 0; }
 
         .ac-chart-block {
-            max-width: 88%;
+            max-width: 100%;
+            width: min(100%, 720px);
             /* px floor: percentages resolve differently during html-to-image capture. */
-            min-width: min(420px, 100%);
+            min-width: min(480px, 100%);
             margin-top: 10px;
             padding: 14px 16px;
             border: 1px solid var(--line);
