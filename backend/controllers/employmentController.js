@@ -5,6 +5,7 @@ const TracerFormConfig    = require('../models/TracerFormConfig');
 const TracerFormQuestion  = require('../models/TracerFormQuestion');
 const EmploymentActivity  = require('../models/EmploymentActivity');
 const User                = require('../models/User');
+const Graduate             = require('../models/Graduate');
 const XLSX                = require('xlsx');
 const { escapeRegex }     = require('../utils/escapeRegex');
 const { FIXED_KEYS }      = require('../utils/tracerFixedKeys');
@@ -715,6 +716,26 @@ const updateEmploymentRecord = async (req, res) => {
     ).populate('alumni_id', 'firstName lastName');
 
     if (!record) return res.status(404).json({ message: 'Employment record not found.' });
+
+    // The "Email" field edited here only ever wrote to AlumniEmployment.contact_email
+    // — User.email (the account's actual login/notification address) was never
+    // touched, so Notify Alumni (which reads User.email) kept sending to the
+    // old address after an admin "updated" the email on this page. Sync both
+    // on every edit that actually changes the email, mirroring the same
+    // User<->Graduate sync adminController.updateUser already does for the
+    // Accounts-page edit path.
+    if (updates.contact_email && record.alumni_id?._id) {
+      // Login lookups always lowercase the submitted email (see
+      // authController.js) but do a case-sensitive Mongo match against the
+      // stored value — storing anything but lowercase here would silently
+      // lock the alumnus out of logging in with the email the admin just set.
+      const normalizedEmail = updates.contact_email.toLowerCase();
+      await User.findByIdAndUpdate(record.alumni_id._id, { email: normalizedEmail });
+      Graduate.findOneAndUpdate(
+        { user_id: record.alumni_id._id },
+        { $set: { email: normalizedEmail }, $setOnInsert: { data: {} } },
+      ).catch(() => {});
+    }
 
     const adminName  = await resolveAdminName(req.user.id);
     const alumniName = record.alumni_id
@@ -2197,6 +2218,13 @@ const getTracerResponseDetail = async (req, res) => {
 };
 
 module.exports = {
+  // Exported for utils/verifiedCount.js's computeVerifiedSummary — the
+  // chatbot's "summary of tracer survey activity" answer reuses this EXACT
+  // same KPI computation the Admin Dashboard itself displays, instead of a
+  // second hand-written implementation that could silently drift from it
+  // (see verifiedCount.js's own top comment for the repeated "two surfaces
+  // disagree" bug class this project has hit before).
+  computeTracerAnalytics,
   getAlumniWithoutRecord,
   getBatchYears,
   createEmploymentRecord,

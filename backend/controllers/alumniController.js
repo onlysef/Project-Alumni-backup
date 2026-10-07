@@ -471,11 +471,11 @@ async function saveTracerAnswers(alumniId, college, body) {
     // alumni's own submit AND an admin/coordinator's Edit Alumni Record save —
     // hang on that call before the response could return. A sync failure or
     // slow response here must never delay or fail the actual tracer save.
-    syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates, currentUser)
+    syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates, currentUser, college)
       .catch((syncErr) => console.error('AI chatbot Graduate sync failed (non-blocking):', syncErr.message));
 }
 
-async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates, currentUser) {
+async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates, currentUser, college) {
   if (!updatedUser?.email) return;
 
   const graduatePatch = {
@@ -550,7 +550,36 @@ async function syncGraduateAndEmbedding(alumniId, updatedUser, body, userUpdates
     reasons_not_employed: graduatePatch.reasonsNotEmployed,
   }, graduatePatch.yearGraduated);
 
-  const embedding = await getEmbedding(text);
+  // Append this submission's answers to this college's own custom tracer
+  // questions — generically, by label, the same way aiController.js's
+  // reembed() does for a full re-embed. Without this, tracerRowToText()
+  // above (shared with bulk-import, which only knows the fixed schema
+  // fields) left every college's own questions invisible to RAG on a LIVE
+  // submission — only a manual admin "Re-embed" action would ever pick
+  // them up, so this would otherwise silently lag behind actual submissions
+  // indefinitely.
+  let extraText = '';
+  try {
+    const cfg = (college && await TracerFormConfig.findOne({ college }).lean())
+              || await TracerFormConfig.findOne({ college: 'CCS' }).lean();
+    const labels = {};
+    for (const page of (cfg?.config?.pages || [])) {
+      for (const q of (page.questions || [])) {
+        if (q.id && q.label) labels[q.id] = q.label;
+      }
+    }
+    for (const [key, value] of Object.entries(body)) {
+      if (FIXED_KEYS.has(key)) continue;
+      if (value === null || value === undefined || value === '') continue;
+      const label = labels[key] || key;
+      const val = Array.isArray(value) ? value.join(', ') : String(value);
+      extraText += ` ${label}: ${val}.`;
+    }
+  } catch (err) {
+    console.error('Building extra-question embedding text failed (non-blocking):', err.message);
+  }
+
+  const embedding = await getEmbedding(text + extraText);
   await EmbeddingDocument.deleteMany({ source_type: 'imported_file', 'metadata.graduate_id': String(graduateDoc._id) });
   await EmbeddingDocument.create({
     source_type: 'imported_file',

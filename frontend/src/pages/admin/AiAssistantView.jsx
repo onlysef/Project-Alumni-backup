@@ -3,7 +3,7 @@ import { toBlob } from "html-to-image";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
 import acLogo from "../../assets/images/ac-logo.png";
-import { MiniDonut, MiniBarChart, TrendLine } from "../../components/common/Charts.jsx";
+import { MiniDonut, MiniBarChart, GroupedBarChart, TrendLine } from "../../components/common/Charts.jsx";
 
 // Renders chart data attached to answers with the dashboard's chart components; copy rasterizes the whole labeled block.
 function AcChart({ chart, id, copiedChartId, onCopy }) {
@@ -16,13 +16,29 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
   // (aggregationService.js's requestedChartType), never actually produced a
   // chart shaped like a bar graph. DistributionBars stays in use elsewhere
   // (the Tracer Dashboard's own "bars"-typed blocks), just not here.
-  const Chart = chart.type === "bars" ? MiniBarChart : chart.type === "line" ? TrendLine : MiniDonut;
+  // "grouped-bars" (computeSkillCompare in verifiedCount.js) is a genuine
+  // two-series comparison — rendered with GroupedBarChart instead of
+  // flattening both series into one long single-series MiniBarChart list,
+  // which forced the reader to mentally regroup rows back into series.
+  const Chart = chart.type === "bars" ? MiniBarChart
+    : chart.type === "grouped-bars" ? GroupedBarChart
+    : chart.type === "line" ? TrendLine
+    : MiniDonut;
   // unit/max: backend-computed scale for a 'line' chart (see aggregationService.js's
   // withChart()/queryInner() requestedChartType override) — TrendLine
   // defaults to a hardcoded 0-100% axis otherwise, built for this app's one
   // percentage-trend chart. Undefined for non-line charts; TrendLine's own
   // defaults harmlessly apply (unused by DistributionBars/MiniDonut).
-  const chartExtraProps = chart.type === "line" ? { unit: chart.unit, max: chart.max } : {};
+  // "series" is grouped-bars' own required prop (see GroupedBarChart's own
+  // doc comment) — harmlessly unused by every other chart type. "unit" is
+  // passed through for a grouped-bars chart built from a RATE/percentage
+  // (e.g. computeVerifiedRanking's "top N programs by employment rate") so
+  // each bar's own value label reads "68.6%" instead of a bare "68.6" that
+  // doesn't say what the number even measures — caught live, a rate chart
+  // with no "%" anywhere on its bars read as if it were a plain headcount.
+  const chartExtraProps = chart.type === "line" ? { unit: chart.unit, max: chart.max }
+    : chart.type === "grouped-bars" ? { series: chart.series, unit: chart.unit }
+    : {};
 
   async function handleCopy() {
     if (!blockRef.current) return;
@@ -35,14 +51,34 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
       // Explicit background; toBlob() is transparent by default.
       const isDark = document.body.classList.contains("dark-mode");
 
+      // toBlob() rasterizes the node exactly as laid out — any scrollable
+      // descendant (e.g. MiniBarChart's .tracer-hbar-chart, which caps
+      // itself at max-height:320px with overflow-y:auto for a long
+      // breakdown like an 8-row cross-tab) only has its VISIBLE scrolled
+      // slice captured, cropping out whatever was scrolled past. Caught
+      // live: a copied "Employment status by gender" chart with 8 rows came
+      // out cut off mid-list. Temporarily lift max-height/overflow on every
+      // such descendant to its natural scrollHeight right before capture,
+      // then restore the original inline styles afterward — the user never
+      // sees the expanded state, it only exists for the instant toBlob()
+      // reads the DOM.
+      const scrollers = Array.from(node.querySelectorAll(".tracer-hbar-chart, .tracer-vbar-chart, .tracer-gbar-cols"));
+      const restore = scrollers.map((el) => ({ el, maxHeight: el.style.maxHeight, overflowY: el.style.overflowY }));
+      scrollers.forEach((el) => { el.style.maxHeight = "none"; el.style.overflowY = "visible"; });
+
       // Don't pin width/height before capture; it made the clone taller than the frame and clipped it.
-      const blob = await toBlob(node, {
-        backgroundColor: isDark ? "#241116" : "#fdf8f8",
-        pixelRatio: 2,
-        // The copy button itself shouldn't appear baked into the shared
-        // image — it's a UI control for THIS page, not part of the chart.
-        filter: (n) => !n.classList?.contains("ac-chart-copy-btn"),
-      });
+      let blob;
+      try {
+        blob = await toBlob(node, {
+          backgroundColor: isDark ? "#241116" : "#fdf8f8",
+          pixelRatio: 2,
+          // The copy button itself shouldn't appear baked into the shared
+          // image — it's a UI control for THIS page, not part of the chart.
+          filter: (n) => !n.classList?.contains("ac-chart-copy-btn"),
+        });
+      } finally {
+        restore.forEach(({ el, maxHeight, overflowY }) => { el.style.maxHeight = maxHeight; el.style.overflowY = overflowY; });
+      }
       if (!blob) return;
       await navigator.clipboard.write([new window.ClipboardItem({ [blob.type]: blob })]);
       onCopy(id);
@@ -168,6 +204,16 @@ function beginsStructuredBlock(lines, index) {
   if (/^#{1,4}\s+/.test(line)) return true;
   if (/^[-*+•]\s+/.test(line) || /^\d+[.)]\s+/.test(line)) return true;
   if (/^>\s?/.test(line) || /^-{3,}$/.test(line)) return true;
+  // A {{chart:N}} anchor (see parseAssistantBlocks' own chartAnchor check)
+  // wasn't recognized here — when one directly followed a plain paragraph
+  // line (not a heading/list, which happened to hand control back to the
+  // main parse loop on their own), the paragraph-continuation loop below
+  // swallowed it as literal trailing text instead of stopping to let it be
+  // parsed as its own chart block. Caught live: a chart anchor placed right
+  // after a sentence rendered as visible "{{chart:0}}" text AND the chart
+  // itself got pushed to the unused-charts fallback at the very end of the
+  // message instead of appearing inline where it was meant to.
+  if (/^\{\{chart:\d+\}\}$/.test(line)) return true;
   return line.includes("|") && next.includes("|");
 }
 
