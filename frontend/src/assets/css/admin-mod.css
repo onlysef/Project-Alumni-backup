@@ -5438,6 +5438,140 @@
             color: #31000a;
         }
 
+        /* ── ConfirmDialog: a small, centered "alert"-style modal — deliberately
+           its own classes (not .modal-head/.modal-actions) so this redesign
+           can't drift the many other Modal consumers that still use those. */
+        .confirm-dialog {
+            position: relative;
+            width: min(400px, 100%);
+            padding: 36px 28px 24px;
+            text-align: center;
+            border-radius: 14px;
+        }
+
+        .confirm-dialog-close {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 30px;
+            height: 30px;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: #a98a90;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.18s ease, color 0.18s ease;
+        }
+
+        .confirm-dialog-close:hover {
+            background: #f5eef0;
+            color: var(--maroon);
+        }
+
+        .confirm-dialog-icon {
+            width: 54px;
+            height: 54px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fdeaea;
+            color: #c53030;
+        }
+
+        .confirm-dialog-icon:not(.is-danger) {
+            background: #f3eaec;
+            color: var(--maroon);
+        }
+
+        .confirm-dialog-body h3 {
+            margin: 0 0 10px;
+            font-size: 17px;
+            font-weight: 900;
+            color: #2d2024;
+        }
+
+        .confirm-dialog-body p {
+            margin: 0;
+            padding: 0 4px;
+            font-size: 13.5px;
+            line-height: 1.6;
+            color: #6b5a5f;
+        }
+
+        .confirm-dialog-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 24px;
+        }
+
+        .confirm-dialog-cancel,
+        .confirm-dialog-confirm {
+            flex: 1 1 0;
+            min-height: 40px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.18s ease;
+        }
+
+        .confirm-dialog-cancel {
+            border: 1px solid #dcc8cd;
+            background: #fff;
+            color: #6b5a5f;
+        }
+
+        .confirm-dialog-cancel:hover {
+            background: #f5f1f2;
+        }
+
+        .confirm-dialog-confirm {
+            border: 1px solid var(--maroon);
+            background: var(--maroon);
+            color: #fff;
+        }
+
+        .confirm-dialog-confirm:hover {
+            background: #7a0420;
+            border-color: #7a0420;
+            transform: translateY(-1px);
+        }
+
+        body.dark-mode .confirm-dialog {
+            background: #2d2024;
+        }
+
+        body.dark-mode .confirm-dialog-body h3 {
+            color: #f8eef0;
+        }
+
+        body.dark-mode .confirm-dialog-body p {
+            color: #cbb8bd;
+        }
+
+        body.dark-mode .confirm-dialog-icon:not(.is-danger) {
+            background: #3a2a2f;
+            color: #fac853;
+        }
+
+        body.dark-mode .confirm-dialog-cancel {
+            background: #352830;
+            border-color: #4a3a40;
+            color: #e8d8dd;
+        }
+
+        body.dark-mode .confirm-dialog-cancel:hover {
+            background: #42323a;
+        }
+
         .topbar-modal {
             width: min(520px, 100%);
         }

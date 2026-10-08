@@ -729,7 +729,7 @@ export default function CoordinatorEmploymentView() {
               <tr>
                 <th>Name</th>
                 <th>Course</th>
-                <th>Position</th>
+                <th>Batch</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -746,7 +746,7 @@ export default function CoordinatorEmploymentView() {
                   <tr key={row._id}>
                     <td data-label="Name">{display(row.name)}</td>
                     <td data-label="Course">{display(row.course)}</td>
-                    <td data-label="Position">{display(row.job_title)}</td>
+                    <td data-label="Batch">{display(row.graduation_year)}</td>
                     <td data-label="Status"><CoordinatorStatusBadge status={row.employment_status} /></td>
                     <td data-label="Actions">
                       <div className="desktop-row-actions">

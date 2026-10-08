@@ -68,7 +68,7 @@ export default function AlumniContacts() {
       });
       const all = data.contacts ?? [];
       downloadCsv("alumni-contacts.csv", [
-        ["Name", "Position", "Graduation Year", "Course", "Email", "Phone"],
+        ["Name", "Position", "Batch Year", "Course", "Email", "Phone"],
         ...all.map((c) => [c.name, c.title, c.year, c.course, c.email, c.phone]),
       ]);
       showToast?.("Contacts exported.");
@@ -150,7 +150,7 @@ export default function AlumniContacts() {
               <tr>
                 <th>Name</th>
                 <th>Position</th>
-                <th>Graduation Year</th>
+                <th>Batch Year</th>
                 <th>Course</th>
                 <th>Email</th>
                 <th>Phone</th>
@@ -184,7 +184,7 @@ export default function AlumniContacts() {
                     <td data-label="Position" className="coord-contact-position">
                       <span title={c.title || undefined}>{c.title || "—"}</span>
                     </td>
-                    <td data-label="Graduation Year">{c.year || "—"}</td>
+                    <td data-label="Batch Year">{c.year || "—"}</td>
                     <td data-label="Course"><CourseBadge course={c.course} /></td>
                     <td data-label="Email">{c.email}</td>
                     <td data-label="Phone">{c.phone || "—"}</td>
@@ -235,7 +235,7 @@ export default function AlumniContacts() {
                 </div>
                 <dl className="coord-profile-details">
                   <div><dt>Course</dt><dd><CourseBadge course={selectedContact.course} /></dd></div>
-                  <div><dt>Graduation Year</dt><dd>{selectedContact.year || "—"}</dd></div>
+                  <div><dt>Batch Year</dt><dd>{selectedContact.year || "—"}</dd></div>
                   <div><dt>Email</dt><dd>{selectedContact.email || "—"}</dd></div>
                   <div><dt>Phone</dt><dd>{selectedContact.phone || "—"}</dd></div>
                 </dl>

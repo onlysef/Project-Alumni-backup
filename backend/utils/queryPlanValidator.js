@@ -15,7 +15,7 @@
 // two fields (course/college, yearsInJob) whose logic is genuinely too
 // irregular to generalize and stay as named custom resolvers there.
 const {
-  FIELD_REGISTRY, FIELD_REGISTRY_BY_KEY, TYPE_RESOLVERS, COMPARISON_PATTERN, CROSSTAB_PATTERN, findAllSkillMatches, findUnmatchedSkillMentions,
+  FIELD_REGISTRY, FIELD_REGISTRY_BY_KEY, TYPE_RESOLVERS, COMPARISON_PATTERN, BARE_STATUS_BREAKDOWN_PATTERN, CROSSTAB_PATTERN, findAllSkillMatches, findUnmatchedSkillMentions,
   detectUnsupportedConditions,
 } = require('./fieldRegistry');
 const { COURSE_TO_COLLEGE } = require('./collegesCourses');
@@ -56,6 +56,30 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
   let unresolvedField = null;
   let ambiguousField = null;
   const extraUnsupported = [];
+
+  // professionalCertifications / pursuedTrainings / professionalDevelopmentActivities
+  // are near-synonymous in casual phrasing ("certifications", "further
+  // trainings", "professional development") and the extraction LLM was
+  // observed live conflating them on PLAIN (non-comparison) questions too —
+  // "How many alumni pursued professional certifications?" and "How many
+  // alumni pursued further trainings?" both extracted
+  // professionalDevelopmentActivities=true instead of their own specific
+  // field, silently answering a different, broader question than asked.
+  // Unlike the backstop block below (gated to comparison questions only),
+  // this runs for EVERY question and explicitly WINS over whatever the LLM
+  // set for the generic field whenever the more specific word is actually
+  // present — specific beats generic, not first-extracted-wins. Skips
+  // pursuedTrainings when a SPECIFIC training name was also extracted
+  // (trainingType), since that's a different, more specific question
+  // entirely (verbatim training name, not a plain yes/no).
+  if (/\bcertifications?\b/i.test(question || '')) {
+    f.professionalCertifications = true;
+    f.professionalDevelopmentActivities = null;
+  }
+  if (/\btrainings?\b/i.test(question || '') && !f.trainingType) {
+    f.pursuedTrainings = true;
+    if (!/\bcertifications?\b/i.test(question || '')) f.professionalDevelopmentActivities = null;
+  }
 
   // Deterministic regex fallback for any field whose registry entry
   // declares `backstop` — only applied when the LLM extraction left that
@@ -225,14 +249,53 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
     }
   }
 
+  // See BARE_STATUS_BREAKDOWN_PATTERN's own comment in fieldRegistry.js —
+  // fires ONLY when nothing else in the question resolved to a real filter
+  // (parts still empty, no catalog-chain failure) so it can never override
+  // an actual filtered/per-person question, just the truly bare case.
+  if (!comparisonField && parts.length === 0 && !unresolvedField && !ambiguousField && BARE_STATUS_BREAKDOWN_PATTERN.test(question || '')) {
+    comparisonField = 'employmentStatus';
+  }
+
   // statusMatch is exposed as its own labeled field (not just folded into
   // tracerFilters) because computeVerifiedPercentage specifically checks
   // `if (!statusMatch) return null` — a percentage question with no
   // resolvable employment status has no valid numerator at all.
   const employmentStatusEntry = FIELD_REGISTRY_BY_KEY.employmentStatus;
   const statusMatch = (f.employmentStatus && employmentStatusEntry.values[f.employmentStatus])
-    ? { label: f.employmentStatus, dbPattern: employmentStatusEntry.values[f.employmentStatus] }
+    ? { label: f.employmentStatus, dbPattern: employmentStatusEntry.values[f.employmentStatus], dbField: 'employmentStatus' }
     : null;
+  // percentageMatch's own `label` is used verbatim in the final description
+  // text ("metric: percentage matching <label>") — employment status keeps
+  // its original "employment status \"Employed\"" phrasing (unchanged from
+  // before this was generalized) rather than the generic fields' own
+  // "<field label> \"<value>\"" shape, since that's what existing callers/
+  // narration prompts were already tuned against.
+  const percentageStatusLabel = statusMatch ? `employment status "${statusMatch.label}"` : null;
+
+  // Generalizes statusMatch above beyond employmentStatus specifically — a
+  // percentage question can ask for the share matching ANY comparable
+  // field's resolved value ("what percentage of jobs are related to their
+  // degree?", "what percentage pursued further education?"), not only
+  // employed/unemployed. Used by computeVerifiedPercentage ONLY as a
+  // fallback when no employmentStatus was named at all (statusMatch null)
+  // — employmentStatus stays the preferred/default numerator when both are
+  // somehow present. Reads back out of the ALREADY-resolved `tracerFilters`
+  // (not raw `f`) so it only ever matches a field that genuinely resolved
+  // to something real — never a stray unresolved/ambiguous raw value.
+  let percentageMatch = statusMatch ? { ...statusMatch, label: percentageStatusLabel } : null;
+  if (!percentageMatch) {
+    for (const entry of FIELD_REGISTRY) {
+      if (entry.key === 'employmentStatus') continue;
+      const isComparable = entry.values || entry.type === 'boolean-yesno';
+      if (!isComparable || !entry.dbField || !(entry.dbField in tracerFilters)) continue;
+      const label = entry.type === 'boolean-yesno'
+        ? (entry.partLabel || entry.label || entry.key)
+        : `${entry.label} "${f[entry.key]}"`;
+      percentageMatch = { label, dbField: entry.dbField };
+      break;
+    }
+  }
 
   // Deterministic backstop merged in alongside the LLM's own self-reported
   // unsupportedConditions — see fieldRegistry.js's UNSUPPORTED_CONDITION_PATTERNS
@@ -245,7 +308,7 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
   const llmUnsupported = Array.isArray(rawPlan.unsupportedConditions) ? rawPlan.unsupportedConditions : [];
   const unsupportedConditions = [...new Set([...llmUnsupported, ...extraUnsupported, ...backstopUnsupported])];
 
-  return { userFilters, tracerFilters, parts, statusMatch, unresolvedField, unresolvedScope, unsupportedConditions, ambiguousField, forbiddenScope, comparisonField, crosstabFields, skillCompareFields, unmatchedSkillNames };
+  return { userFilters, tracerFilters, parts, statusMatch, percentageMatch, unresolvedField, unresolvedScope, unsupportedConditions, ambiguousField, forbiddenScope, comparisonField, crosstabFields, skillCompareFields, unmatchedSkillNames };
 }
 
 module.exports = { validateQueryPlan };

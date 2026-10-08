@@ -966,8 +966,8 @@ export default function EmploymentView() {
                 <th>Name</th>
                 <th>College</th>
                 <th>Course</th>
+                <th>Batch</th>
                 <th>Status</th>
-                <th>Last Updated</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -983,8 +983,8 @@ export default function EmploymentView() {
                   <td data-label="Name">{r.name}</td>
                   <td data-label="College">{r.college || "—"}</td>
                   <td data-label="Course">{r.course || "—"}</td>
+                  <td data-label="Batch">{r.graduation_year || "—"}</td>
                   <td data-label="Status"><StatusBadge status={r.employment_status} /></td>
-                  <td data-label="Last Updated">{fmtDate(r.last_updated)}</td>
                   <td data-label="Actions">
                     <div className="desktop-row-actions">
                       <button

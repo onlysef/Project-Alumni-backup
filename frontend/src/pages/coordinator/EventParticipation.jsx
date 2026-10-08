@@ -2,6 +2,7 @@
 import ReactDOM from "react-dom";
 import { useOutletContext, useLocation } from "react-router-dom";
 import Icon from "../../components/common/Icon.jsx";
+import { ConfirmDialog } from "../../components/common/Primitives.jsx";
 
 import { API, authHeaders, apiFetch } from "../../services/api.js";
 const authGet = (path) => apiFetch(path);
@@ -57,6 +58,9 @@ export default function EventParticipation() {
   // ── Edit attendance record ───────────────────────────────────
   const [editRecord, setEditRecord] = useState(null);
   const [editSaving, setEditSaving] = useState(false);
+
+  // ── Confirm dialog (End Event / Delete record) ────────────────
+  const [confirm, setConfirm] = useState({ open: false, message: "", danger: false, confirmLabel: "Confirm", onConfirm: null });
 
   // ── Load events on mount ─────────────────────────────────────
   useEffect(() => {
@@ -188,6 +192,30 @@ export default function EventParticipation() {
     }
   }
 
+  const [endingEvent, setEndingEvent] = useState(false);
+  function handleEndEvent() {
+    if (!selectedEvent) return;
+    setConfirm({
+      open: true,
+      danger: true,
+      confirmLabel: "End Event",
+      message: `End attendance for "${selectedEvent.title}" now? Alumni will no longer be able to be recorded for this event. This cannot be undone.`,
+      onConfirm: async () => {
+        setConfirm(c => ({ ...c, open: false }));
+        setEndingEvent(true);
+        try {
+          const data = await apiFetch(`/coordinator/attendance/${selectedEventId}/end`, { method: "PATCH" });
+          setEvents(evts => evts.map(ev => String(ev._id) === selectedEventId ? { ...ev, ended_at: data.event?.ended_at } : ev));
+          showToast?.("Attendance closed for this event.");
+        } catch (err) {
+          showToast?.(err.message || "Failed to end event.");
+        } finally {
+          setEndingEvent(false);
+        }
+      },
+    });
+  }
+
   function handleTableSearch(e) {
     const val = e.target.value;
     setTableSearch(val);
@@ -228,18 +256,26 @@ export default function EventParticipation() {
     }
   }
 
-  async function deleteAttendanceRecord(record) {
-    if (!window.confirm(`Remove the attendance record for ${record.name}?`)) return;
-    try {
-      const data = await apiFetch(`/coordinator/attendance/${record._id}`, { method: "DELETE" });
-      showToast?.(data.feedbackRemoved
-        ? "Attendance record deleted. Their submitted feedback was removed as well."
-        : "Attendance record deleted.");
-      loadStats(selectedEventId);
-      loadRecords(selectedEventId, page, appliedSearch);
-    } catch (err) {
-      showToast?.(err.message || "Failed to delete attendance record.");
-    }
+  function deleteAttendanceRecord(record) {
+    setConfirm({
+      open: true,
+      danger: true,
+      confirmLabel: "Delete",
+      message: `Remove the attendance record for ${record.name}?`,
+      onConfirm: async () => {
+        setConfirm(c => ({ ...c, open: false }));
+        try {
+          const data = await apiFetch(`/coordinator/attendance/${record._id}`, { method: "DELETE" });
+          showToast?.(data.feedbackRemoved
+            ? "Attendance record deleted. Their submitted feedback was removed as well."
+            : "Attendance record deleted.");
+          loadStats(selectedEventId);
+          loadRecords(selectedEventId, page, appliedSearch);
+        } catch (err) {
+          showToast?.(err.message || "Failed to delete attendance record.");
+        }
+      },
+    });
   }
 
   async function handleViewFeedback() {
@@ -281,6 +317,10 @@ export default function EventParticipation() {
   // Attendance window status
   const attendanceStatus = (() => {
     if (!selectedEvent) return "no_event";
+    // A coordinator-triggered manual end (endEvent) always wins, regardless
+    // of where real time sits relative to the event's own scheduled window —
+    // see Event.js's ended_at comment.
+    if (selectedEvent.ended_at) return "ended";
     const now   = new Date();
     const start = new Date(selectedEvent.event_datetime);
     if (now < start) return "not_started";
@@ -395,13 +435,25 @@ export default function EventParticipation() {
             </label>
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={submitting || attendanceStatus !== "open"}
-          >
-            <Icon name="icon-save" /> {submitting ? "Recording…" : "Record"}
-          </button>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || attendanceStatus !== "open"}
+            >
+              <Icon name="icon-save" /> {submitting ? "Recording…" : "Record"}
+            </button>
+            {attendanceStatus === "open" && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleEndEvent}
+                disabled={endingEvent}
+              >
+                {endingEvent ? "Ending…" : "End Event"}
+              </button>
+            )}
+          </div>
         </form>
 
         {/* ── RIGHT: stats ── */}
@@ -663,6 +715,15 @@ export default function EventParticipation() {
         </div>,
         document.body
       )}
+
+      <ConfirmDialog
+        open={confirm.open}
+        message={confirm.message}
+        confirmLabel={confirm.confirmLabel}
+        danger={confirm.danger}
+        onConfirm={confirm.onConfirm}
+        onCancel={() => setConfirm(c => ({ ...c, open: false }))}
+      />
     </section>
   );
 }

@@ -29,12 +29,14 @@
 // describe the overall QUESTION shape, not any one field, so there's
 // nothing in the registry to generate them from) — see fieldRegistry.js's
 // own top comment for the full rationale.
-const { HfInference } = require('@huggingface/inference');
+const { chatCompletion } = require('./llmClient');
 const { COLLEGE_CODES, ALL_COURSES } = require('../utils/collegesCourses');
 const { FIELD_REGISTRY } = require('../utils/fieldRegistry');
 const logger = require('../utils/logger');
 
-const hf = new HfInference(process.env.HF_API_KEY);
+// Routed through services/llmClient.js (EITHER Hugging Face OR a local
+// Ollama instance, per LLM_PROVIDER — see that file's own top comment).
+// CHAT_MODEL below is only meaningful on the HF path.
 // Deliberately a SEPARATE env var from ragService.js's own HF_CHAT_MODEL
 // (narration) — extraction is a structured JSON task, not open-ended
 // reasoning, so it doesn't need the same model narration was upgraded to
@@ -87,7 +89,7 @@ ${FILTERS_SCHEMA_BLOCK}
   "unsupportedConditions": [string]
 }
 
-RULE 1 — INTENT: "intent" is "count" for "how many"/"ilan"/"total number of" questions; "percentage" for "percentage"/"percent"/"rate"/"%" questions; "ranking" for "highest"/"lowest"/"most"/"least"/"top" questions; "names" ONLY when the question is specifically asking to see a list of PEOPLE/ALUMNI — "who are they", "list them", "show their names", "sino sila" — the thing being asked for must be people's names themselves; "summary" for a broad "give me a summary/overview/activity/tracer survey activity/how's the survey going" request with no single specific metric — this includes phrasing like "show me tracer survey activity" or "show me the activity report", which name NO specific person and are NOT a "names" request even though they start with "show me" (the word "show" alone never decides intent — what follows it does: "show me THEIR NAMES"/"show me WHO" is names, "show me THE ACTIVITY"/"show me A SUMMARY" is summary); "none" if the question is not asking for alumni tracer data at all.
+RULE 1 — INTENT: "intent" is "count" for "how many"/"ilan"/"total number of" questions; "percentage" for "percentage"/"percent"/"rate"/"%" questions; "ranking" for "highest"/"lowest"/"most"/"least"/"top" questions; "names" ONLY when the question is specifically asking to see a list of PEOPLE/ALUMNI — "who are they", "list them", "show their names", "sino sila" — the thing being asked for must be people's names themselves; "summary" for a broad "give me a summary/overview/activity/tracer survey activity/how's the survey going" request with no single specific metric — this includes phrasing like "show me tracer survey activity" or "show me the activity report", which name NO specific person and are NOT a "names" request even though they start with "show me" (the word "show" alone never decides intent — what follows it does: "show me THEIR NAMES"/"show me WHO" is names, "show me THE ACTIVITY"/"show me A SUMMARY" is summary); "none" if the question is not asking for alumni tracer data at all. The bare WORD "who" appearing anywhere in a question does NOT by itself mean intent "names" — "who" is frequently just a relative pronoun inside a descriptive clause, e.g. "BSIT alumni WHO are 24 years old" (describing WHICH alumni to count/measure, same grammatical role as "that"/"which") or "the employment rate for alumni WHO live in Quezon City" — neither asks to see a list of people's names at all; the first is "count", the second is "percentage". Only classify "names" when the question's own MAIN VERB/REQUEST is asking to SEE/LIST/NAME the people themselves — check what the sentence is actually asking FOR, not merely whether the word "who" appears in it anywhere.
 
 FIELD-SPECIFIC RULES (one bullet per "filters" entry above):
 ${FIELD_RULES_BLOCK}
@@ -126,6 +128,10 @@ Q: "give me the employment summary of Call of Duty"
 Q: "What is the employment rate for BSBA alumni who live in Quezon City?"
 {"intent":"percentage","filters":{"course":"BSBA","college":null,"employmentStatus":"Employed","jobTitle":null,"industryField":null,"companyName":null,"workLocation":null,"furtherEducation":null,"professionalDevelopmentActivities":null,"awardsOrRecognition":null,"customQuestion":null},"rankingField":null,"rankingDirection":null,"summaryTopics":[],"unsupportedConditions":["Quezon City"]}
 (Note: "Quezon City" is a specific city, not the same thing as "locally" — it goes in unsupportedConditions verbatim, and "workLocation" stays null, NOT "Local". "BSBA" is still copied into "course" verbatim exactly as named, even though it will turn out not to be a real course code on its own (the real ones are "BSBA-FM"/"BSBA-MM"/"BSBA-BE") — that check happens downstream, not here.)
+
+Q: "How many male BSIT alumni earning over 25k who are exactly 24 years old are employed?"
+{"intent":"count","filters":{"course":"BSIT","college":null,"employmentStatus":"Employed","jobTitle":null,"industryField":null,"companyName":null,"workLocation":null,"gender":"Male","furtherEducation":null,"professionalDevelopmentActivities":null,"awardsOrRecognition":null,"customQuestion":null},"rankingField":null,"rankingDirection":null,"summaryTopics":[],"unsupportedConditions":["salary over 25k","an exact age of 24"]}
+(Note: "who are exactly 24 years old" contains the word "who", but it is NOT a names request — it is a relative clause narrowing WHICH alumni to count, same as "earning over 25k" right before it. Intent stays "count" ("how many ... are employed"). Neither salary nor age has a matching filter field, so both go into unsupportedConditions verbatim; every filter that DID resolve — course, gender, employmentStatus — is still extracted normally.)
 
 Q: "How many BSIT alumni are employed as Software Engineer and work locally?"
 {"intent":"count","filters":{"course":"BSIT","college":null,"employmentStatus":"Employed","jobTitle":"Software Engineer","industryField":null,"companyName":null,"workLocation":"Local","furtherEducation":null,"professionalDevelopmentActivities":null,"awardsOrRecognition":null,"customQuestion":null},"rankingField":null,"rankingDirection":null,"summaryTopics":[],"unsupportedConditions":[]}
@@ -229,7 +235,7 @@ async function extractQueryPlan(question) {
   const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const completion = await hf.chatCompletion({
+      const completion = await chatCompletion({
         model: CHAT_MODEL,
         provider: process.env.HF_PROVIDER || undefined,
         messages: [

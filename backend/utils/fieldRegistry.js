@@ -61,6 +61,23 @@ const PLACEHOLDER_VALUE_PATTERN = /^(n\/?a|none|na|n\.a\.?|-|\.|tbd|not applicab
 // runs of the identical question).
 const COMPARISON_PATTERN = /\b(vs\.?|versus|compare[sd]?\s+(?:to|with))\b/i;
 
+// A bare, impersonal "what's the current employment status (of alumni)?" —
+// one of the chatbot's own default quick-prompt chips — names no "vs"/
+// "compare" wording so it never matched COMPARISON_PATTERN above, and has no
+// other field vocabulary to extract either, so it fell all the way through
+// with intent "none" and zero filters straight to unverified LLM/RAG
+// narration, which fabricated specific headcounts out of thin air (caught
+// live: "8 alumni, 4 employed, 4 unemployed" narrated for a college whose
+// real total was 262). This is the SAME full employmentStatus breakdown
+// "employed vs unemployed" already produces deterministically — just
+// phrased as a direct question instead of a comparison. Deliberately narrow
+// (requires "current", requires "what('s| is) the") so it can never fire
+// for a specific-person question ("What is Juan's employment status?" has
+// no "the current" in it) — see queryPlanValidator.js's own gating
+// (parts.length === 0, no other field resolved) for the second layer of
+// protection against overriding a real, filtered question.
+const BARE_STATUS_BREAKDOWN_PATTERN = /\bwhat(?:'s|\s+is)\s+the\s+current\s+employment\s+status\b/i;
+
 // A "X breakdown by Y"/"X per Y" question asks for a 2D cross-tab (every
 // value of X crossed with every value of Y), not a single field's
 // breakdown — e.g. "employment status by gender". Deliberately narrow
@@ -90,6 +107,15 @@ const CROSSTAB_PATTERN = /\b(by|per)\b/i;
 const UNSUPPORTED_CONDITION_PATTERNS = [
   { pattern: /\bsalary|income|\bwage\b|\bpay\b(?!ing)/i, label: 'salary or income' },
   { pattern: /\b(class\s*rank|batch\s*rank|top\s+\d+\s+(?:of|in)\s+(?:their|his|her|the)\s*batch|honor\s*roll|latin\s*honors?|valedictorian|salutatorian|cum\s*laude|magna\s*cum\s*laude|summa\s*cum\s*laude|\bGPA\b|grade\s*point\s*average)\b/i, label: 'class rank, honors, or GPA' },
+  // The real tracked employmentType vocabulary is "Regular/Permanent",
+  // "Contractual", "Probationary", "Self-Employed", "Job Order",
+  // "Project-based", "Casual" (confirmed live via distinct() on the real
+  // collection) — "full-time"/"part-time" simply isn't a value this schema
+  // stores anywhere. Caught live: without this backstop, the LLM
+  // non-deterministically either disclosed the mismatch itself or silently
+  // answered using employmentStatus (Employed/Unemployed) instead, which
+  // looks like a real answer to "full-time vs part-time" but isn't.
+  { pattern: /\b(full[\s-]?time|part[\s-]?time)\b/i, label: 'full-time/part-time employment type (not tracked — only Regular/Permanent, Contractual, Probationary, Self-Employed, Job Order, Project-based, Casual are)' },
 ];
 
 function detectUnsupportedConditions(question) {
@@ -964,6 +990,7 @@ module.exports = {
   fuzzyLabelMatch,
   PLACEHOLDER_VALUE_PATTERN,
   COMPARISON_PATTERN,
+  BARE_STATUS_BREAKDOWN_PATTERN,
   CROSSTAB_PATTERN,
   UNSUPPORTED_CONDITION_PATTERNS,
   detectUnsupportedConditions,

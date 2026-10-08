@@ -80,12 +80,16 @@ const recordAttendance = async (req, res) => {
     if (!alumni_id) return res.status(400).json({ message: 'Alumni is required.' });
 
     // Time-window validation + college enforcement
-    const eventDoc = await Event.findById(event_id, 'title event_datetime end_datetime college created_by').lean();
+    const eventDoc = await Event.findById(event_id, 'title event_datetime end_datetime ended_at college created_by').lean();
     if (!eventDoc) return res.status(404).json({ message: 'Event not found.' });
 
     // Coordinator can only record attendance for their college's events
     if (req.user.college && eventDoc.college && eventDoc.college !== req.user.college) {
       return res.status(403).json({ message: 'Access denied. This event belongs to another college.' });
+    }
+
+    if (eventDoc.ended_at) {
+      return res.status(400).json({ message: 'Attendance is already closed. This event has ended.' });
     }
 
     const now   = new Date();
@@ -340,6 +344,33 @@ const getEventDetails = async (req, res) => {
   }
 };
 
+// PATCH /coordinator/attendance/:eventId/end — coordinator manually closes
+// attendance before the event's own scheduled end_datetime (e.g. the event
+// wrapped up early in person). One-way: no "reopen", mirroring how
+// end_datetime passing is also irreversible once real time has moved on.
+const endEvent = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const event = await assertEventInScope(req, res, eventId, 'title ended_at');
+    if (!event) return;
+
+    if (event.ended_at) {
+      return res.status(400).json({ message: 'Attendance for this event is already closed.' });
+    }
+
+    const updated = await Event.findByIdAndUpdate(eventId, { ended_at: new Date() }, { new: true }).lean();
+
+    resolveAdminName(req.user.id).then(staffName => {
+      logActivity(req.user.id, staffName, 'ended attendance', event.title || '');
+    });
+
+    res.json({ message: 'Attendance closed for this event.', event: updated });
+  } catch (err) {
+    console.error('endEvent error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
 // GET /coordinator/attendance/:eventId/export?format=csv|xlsx
 const exportAttendance = async (req, res) => {
   try {
@@ -410,4 +441,5 @@ module.exports = {
   getAttendanceStats,
   getEventDetails,
   exportAttendance,
+  endEvent,
 };

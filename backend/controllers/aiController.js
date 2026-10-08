@@ -11,6 +11,7 @@ const logger               = require('../utils/logger');
 const answerCache          = require('../services/answerCache');
 const { stripInjectionPhrases } = require('../utils/injectionFilter');
 const AiFlag                = require('../models/AiFlag');
+const { listCapabilityTopics } = require('../services/tracerQuestionCatalogService');
 
 // Same limit the frontend chat composer's <textarea maxLength> enforces —
 // kept here too since this endpoint is reachable directly, not just through
@@ -529,4 +530,26 @@ const reviewFlag = async (req, res) => {
   }
 };
 
-module.exports = { chat, reembed, ingestFile, ingestStatus, listSources, deleteSource, getFlags, reviewFlag };
+// ─── GET /api/ai/quick-prompts ────────────────────────────────────────────────
+// The frontend's own QUICK_PROMPTS pool (AiAssistantView.jsx) is a fixed,
+// hand-written list — it has no way to know about a custom question a
+// college coordinator just added to their own tracer form. This endpoint
+// returns those LIVE custom-question labels (scoped to the asking
+// coordinator's own college, or every college's for an admin) so the
+// frontend can merge them into its chip pool — the chips grow automatically
+// the moment any college adds a new tracer-form question, with no frontend
+// deploy needed. Same `listCapabilityTopics` source of truth already used by
+// ragService.js's "what can you do?" capability list, so the two surfaces
+// never disagree about what's actually in the system.
+const getQuickPrompts = async (req, res) => {
+  try {
+    const college = req.user?.role === 'coordinator' ? req.user.college : null;
+    const prompts = await listCapabilityTopics(college);
+    res.json({ prompts });
+  } catch (err) {
+    console.error('aiController.getQuickPrompts error:', err);
+    res.status(500).json({ message: 'Server error.' });
+  }
+};
+
+module.exports = { chat, reembed, ingestFile, ingestStatus, listSources, deleteSource, getFlags, reviewFlag, getQuickPrompts };

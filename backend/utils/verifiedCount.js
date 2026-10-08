@@ -66,7 +66,12 @@ const {
 // broader "is this a names question at all" hard-gate check — only the
 // reuse-triggering pattern needed tightening.
 const NAMES_QUESTION_PATTERN = /\b(who are (they|those|these)|who is (he|she|that|this)|list (them|their names)|name them|show (me )?(their )?names|can you (list|name) them|sino (sila|yung))\b/i;
-const MAX_NAMES_LISTED = 20;
+// Default cap for a plain names question with no explicit "show N"/"show
+// all" wording of its own — the user asked this be lowered from 20 to 10 so
+// a long matching list doesn't flood the chat by default; "would you like
+// to see all of them, or a specific number?" (ragService.js, gated on
+// `truncated` below) still offers the rest instead of silently cutting them.
+const MAX_NAMES_LISTED = 10;
 // A reply to the chatbot's OWN "would you like to see all of them, or a
 // specific number?" offer (see chatbotGuardrails.js rule 25) — e.g. "yes, I
 // want to see them all", "show more", "the rest". This carries no filter
@@ -380,6 +385,89 @@ function booleanComparisonValues(entry) {
   return { Yes: entry.trueMatch, No: { $not: entry.trueMatch, $nin: [null, ''] } };
 }
 
+// "What are the reasons for unemployment?" (and similar bare, not-naming-
+// one-specific-reason phrasings) asks for a BREAKDOWN of reasonsNotEmployed
+// — a multi-select array field (one alumnus can cite several reasons at
+// once). Per CLAUDE.md's own documented lesson (section 4): an LLM asked to
+// narrate raw multi-select chunks directly risks inventing causal
+// relationships between co-occurring values ("these other reasons the SAME
+// people also picked" misread as "reasons FOR the one reason asked about").
+// This bypasses narration entirely with a real $unwind+$group aggregation,
+// same "deterministic query function, never LLM-narrated raw chunks"
+// principle as every other well-defined, enumerable shape in this file.
+// Deliberately matched on the raw question text (not plan.intent) — a bare
+// "what are the reasons" question has no single filter value to extract, so
+// the LLM intent classifier has nothing to reliably key off of.
+const UNEMPLOYMENT_REASONS_PATTERN = /\b(reasons?|why)\b(?:(?!\?).){0,40}\b(unemploy|not\s+(?:currently\s+)?employ|jobless|without\s+(?:a\s+)?job)/i;
+
+async function computeUnemploymentReasons(plan, question) {
+  if (!UNEMPLOYMENT_REASONS_PATTERN.test(question || '')) return null;
+  // Deliberately NOT gated on plan.tracerFilters.reasonsNotEmployed (an
+  // earlier version of this check was) — caught live: the extraction LLM
+  // non-deterministically hallucinated a specific reason value
+  // ("Lack of work experience") for this exact bare "what are the reasons
+  // for unemployment?" question on some runs and not others, with nothing
+  // in the question actually naming one — trusting that unreliable
+  // extraction caused this whole deterministic breakdown to randomly not
+  // fire. UNEMPLOYMENT_REASONS_PATTERN above already requires the bare
+  // "reason(s)/why ... unemploy" shape; a question naming one specific
+  // reason (e.g. "how many cited lack of work experience as their
+  // reason?") doesn't match it in the first place and is handled by the
+  // normal catalog-match count path instead — see fieldRegistry.js's
+  // reasonNotEmployed entry.
+  const { userFilters, tracerFilters, forbiddenScope } = plan;
+  if (forbiddenScope) return forbiddenScopeClarify(forbiddenScope);
+
+  const matchStage = { ...tracerFilters, reasonsNotEmployed: { $exists: true, $ne: [] } };
+  const userKeys = Object.keys(userFilters);
+  const pipeline = [];
+  if (userKeys.length) {
+    pipeline.push({ $lookup: { from: 'users', localField: 'alumni_id', foreignField: '_id', as: 'user' } });
+    pipeline.push({ $unwind: '$user' });
+    for (const key of userKeys) matchStage[`user.${key}`] = userFilters[key];
+  }
+  pipeline.push({ $match: matchStage });
+  const [reasonRows, respondentCount] = await Promise.all([
+    TracerStudyResponse.aggregate([
+      ...pipeline,
+      { $unwind: '$reasonsNotEmployed' },
+      { $group: { _id: '$reasonsNotEmployed', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]),
+    TracerStudyResponse.aggregate([...pipeline, { $count: 'n' }]).then((r) => r[0]?.n || 0),
+  ]);
+
+  if (reasonRows.length === 0) {
+    return { type: 'unsupported', description: 'There are no recorded reasons for unemployment in the tracer survey responses yet.' };
+  }
+
+  // Fold the catalog's own literal "Other" value plus any one-off reason
+  // (count <= 1 — mostly free-text noise like a specific date-stamped
+  // remark, e.g. "I left my last company recently. (September 27, 2024)")
+  // into a single "Others" bucket, so the list reads as a clean set of real
+  // categories instead of a long tail of one-person stray entries — caught
+  // live: those stray entries made an already-long pipe-separated line even
+  // harder to read without adding any real signal.
+  const OTHERS_LABEL = 'Other';
+  const realReasons = [];
+  let othersCount = 0;
+  for (const row of reasonRows) {
+    if (row._id === OTHERS_LABEL || row.count <= 1) othersCount += row.count;
+    else realReasons.push(row);
+  }
+  const displayRows = [...realReasons, ...(othersCount > 0 ? [{ _id: OTHERS_LABEL, count: othersCount }] : [])];
+
+  // One reason per line instead of a single pipe-separated paragraph — a
+  // 13-item "Label: N | Label: N | ..." line was reported as hard to read.
+  const rowsText = displayRows.map((r) => `- ${r._id}: ${r.count}`).join('\n');
+  const charts = [{ type: 'bars', title: 'Reasons for Unemployment', rows: displayRows.map((r) => ({ label: r._id, count: r.count })) }];
+  return {
+    type: 'unsupported',
+    description: `Based on ${respondentCount} unemployed alumni who reported at least one reason (a respondent may cite more than one, so these don't sum to ${respondentCount}), the reasons cited were:\n${rowsText}`,
+    charts,
+  };
+}
+
 async function computeComparison(plan, question) {
   if (!plan.comparisonField) return null;
   const entry = FIELD_REGISTRY_BY_KEY[plan.comparisonField];
@@ -624,7 +712,16 @@ async function computeVerifiedCount(question, providedPlan, scopeCollege) {
   const unsupportedNote = unsupportedConditionsNote(unsupportedConditions);
 
   if (parts.length === 0) {
-    if (unsupportedConditions.length > 0) return null;
+    // Nothing else in the question resolved to a real filter, but there IS
+    // something true to say — the exact reason this can't be answered as
+    // asked — so state that plainly instead of silently falling through to
+    // null (which risks the caller treating this as "no verified data at
+    // all" and handing the question to unverified LLM/RAG narration
+    // instead). Same "always disclose, never silently refuse" principle as
+    // the unresolvedField/unresolvedScope branches just above.
+    if (unsupportedConditions.length > 0) {
+      return { type: 'unsupported', description: `This cannot be answered as asked.${unsupportedNote}` };
+    }
     if (!TOTAL_POPULATION_PATTERN.test(question)) return null;
     const total = await User.countDocuments({ role: 'alumni' });
     return { type: 'count', count: total, description: `metric: total alumni accounts in system | value: ${total} | filters: none` };
@@ -649,10 +746,10 @@ async function computeVerifiedPercentage(question, providedPlan, scopeCollege) {
   const plan = await getPlan(question, providedPlan, scopeCollege);
   if (plan.intent !== 'percentage') return null;
 
-  const { userFilters, tracerFilters, parts, statusMatch, unresolvedField, unresolvedScope, unsupportedConditions, ambiguousField, forbiddenScope } = plan;
+  const { userFilters, tracerFilters, parts, percentageMatch, unresolvedField, unresolvedScope, unsupportedConditions, ambiguousField, forbiddenScope } = plan;
   if (forbiddenScope) return forbiddenScopeClarify(forbiddenScope);
   if (ambiguousField) return ambiguousFieldClarify(ambiguousField);
-  if (!statusMatch) return null;
+  if (!percentageMatch) return null;
   // Same "don't silently drop a named-but-unmatched job title/scope" guard
   // as computeVerifiedCount — a percentage scoped to a nonexistent job
   // title/industry/company or college/course would otherwise silently
@@ -666,7 +763,7 @@ async function computeVerifiedPercentage(question, providedPlan, scopeCollege) {
   const unsupportedNote = unsupportedConditionsNote(unsupportedConditions);
 
   const denominatorFilters = { ...tracerFilters };
-  delete denominatorFilters.employmentStatus;
+  delete denominatorFilters[percentageMatch.dbField];
 
   const [numerator, denominator] = await Promise.all([
     countWithFilters(userFilters, tracerFilters),
@@ -712,7 +809,7 @@ async function computeVerifiedPercentage(question, providedPlan, scopeCollege) {
     numerator,
     denominator,
     percentage,
-    description: `metric: percentage with employment status "${statusMatch.label}" | value: ${percentage}% | numerator: ${numerator} | denominator: ${denominator} | population: ${scope}${extraText}${unsupportedNote}`,
+    description: `metric: percentage matching ${percentageMatch.label} | value: ${percentage}% | numerator: ${numerator} | denominator: ${denominator} | population: ${scope}${extraText}${unsupportedNote}`,
   };
 }
 
@@ -1285,6 +1382,32 @@ async function computeVerifiedNames(question, previousUserQuestion, providedPlan
       plan = await getPlan(previousUserQuestion, undefined, scopeCollege);
       scopeSource = previousUserQuestion;
     }
+    // This function's own entry gate (isNamesQuestion, at the top) is
+    // DELIBERATELY broad — it includes a bare `/\bwho\b/i`/`/\bsino\b/i`
+    // match so genuine names questions phrased without the narrower
+    // NAMES_QUESTION_PATTERN wording still reach here. But that same
+    // broadness means a question where "who" is just a relative pronoun
+    // ("BSIT alumni WHO are exactly 24 years old", not an actual names
+    // request) also reaches here — and this function has no OTHER check
+    // stopping it from happily listing names anyway once real filters
+    // happen to resolve. Caught live: "How many male BSIT alumni earning
+    // over 25k who are exactly 24 years old are employed?" correctly
+    // extracted intent "count" (gender+course+employmentStatus all
+    // resolved), but still got answered as a 3-name list instead of the
+    // real count, because this function never once checked what the
+    // ACTUAL resolved intent was. Only applies to THIS branch (the
+    // question's own fresh extraction, not a continuation/anaphoric reuse
+    // of a previous turn's plan above) — a genuine "who are they?" follow-
+    // up legitimately reuses a PREVIOUS plan whose own intent was never
+    // "names" either (it was "count", from the original count question),
+    // so gating on plan.intent there would incorrectly break that case. The
+    // narrow NAMES_QUESTION_PATTERN ("who are THEY", "list them", "sino
+    // SILA", ...) is excluded from this check since THAT'S the actual,
+    // unambiguous names signal — only a bare, generic "who"/"sino" match
+    // with a non-"names" resolved intent gets deferred here.
+    if (plan.intent && plan.intent !== 'names' && !NAMES_QUESTION_PATTERN.test(question)) {
+      return null;
+    }
   }
   const { userFilters, tracerFilters, parts, unresolvedField, unresolvedScope, unsupportedConditions, ambiguousField, forbiddenScope } = plan;
   if (forbiddenScope) return forbiddenScopeClarify(forbiddenScope);
@@ -1634,6 +1757,8 @@ async function computeVerifiedStat(question, providedPlan, scopeCollege) {
   if (comparison) return comparison;
   const crosstab = await computeVerifiedCrossTab(plan, question);
   if (crosstab) return crosstab;
+  const unemploymentReasons = await computeUnemploymentReasons(plan, question);
+  if (unemploymentReasons) return unemploymentReasons;
   switch (plan.intent) {
     case 'count': return computeVerifiedCount(question, plan);
     case 'percentage': return computeVerifiedPercentage(question, plan);

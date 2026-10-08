@@ -7,6 +7,12 @@ const eventSchema = new mongoose.Schema({
   location:       { type: String, default: '' },
   event_datetime: { type: Date, required: true },
   end_datetime:   { type: Date, default: null },
+  // Set when a coordinator manually ends attendance early (see
+  // attendanceController.js's endEvent) — distinct from end_datetime, which
+  // is the event's PLANNED end time. Attendance is closed once EITHER the
+  // planned end_datetime has passed OR ended_at is set, whichever comes
+  // first; null means attendance hasn't been manually ended.
+  ended_at:       { type: Date, default: null },
   visibility:     {
     type: String,
     enum: ['Public', 'Private', 'CCS Alumni', 'All Alumni', 'CPAG', 'CCS', 'COS', 'CIT', 'COE', 'CBA', 'COED', 'CASS', 'CCJE', 'CAFA'],
