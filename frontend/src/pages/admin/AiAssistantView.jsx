@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { toBlob } from "html-to-image";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { API } from "../../services/api.js";
@@ -104,11 +104,47 @@ function AcChart({ chart, id, copiedChartId, onCopy }) {
   );
 }
 
-const QUICK_PROMPTS = [
+// The original, fixed set shown on the empty-state screen (before the first
+// message) — always these 3, same order, not randomized. The LARGER pool
+// below is only for the "you might also ask" fallback suggestions shown
+// after an answer, so a fresh chat's first impression stays predictable.
+const DEFAULT_QUICK_PROMPTS = [
   "How many alumni records are there?",
   "Show me tracer survey activity.",
   "What's the current employment status?",
 ];
+
+// Larger pool — pickRandomPrompts() below draws a fresh 3 each time this is
+// used as a fallback, so repeatedly asking something the backend has no
+// context-aware suggestions for (an off-topic decline, etc.) doesn't show
+// the exact same 3 chips every single time.
+const QUICK_PROMPTS = [
+  ...DEFAULT_QUICK_PROMPTS,
+  "How many BSIT graduates are employed?",
+  "What percentage passed the LET?",
+  "What is the gender breakdown of alumni?",
+  "How do alumni rate their technical skills?",
+  "Which program has the highest employment rate?",
+  "How many are employed vs unemployed?",
+  "How many alumni pursued further education?",
+  "What industries do alumni work in?",
+  "Compare BSIT and BSCS employment rates.",
+  "What are the reasons for unemployment among alumni?",
+  "How many alumni were promoted in their job?",
+  "How many alumni pursued professional certifications?",
+  "What percentage of jobs are related to their degree?",
+  "How many alumni have 5 or more years in their job?",
+  "How many alumni received awards or recognition?",
+];
+
+function pickRandomPrompts(pool, count) {
+  const copy = [...pool];
+  const picked = [];
+  while (picked.length < count && copy.length) {
+    picked.push(copy.splice(Math.floor(Math.random() * copy.length), 1)[0]);
+  }
+  return picked;
+}
 
 // Mirrors the backend's MAX_QUESTION_LENGTH (aiController.js).
 const MAX_MESSAGE_LENGTH = 500;
@@ -487,6 +523,45 @@ export default function AiAssistantView() {
   const [copiedId, setCopiedId] = useState(null);
   const [copiedChartId, setCopiedChartId] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+  // Grows once dynamicPromptPool loads below — college-added tracer-form
+  // questions (GET /ai/quick-prompts) merge in automatically, so the
+  // fallback "you might also ask" pool reflects what's actually in the
+  // system instead of staying frozen at whatever was hand-written here at
+  // build time. The empty-state row (quickPrompts below) deliberately does
+  // NOT randomize the original 3 defaults — only appends to them.
+  const [dynamicPromptPool, setDynamicPromptPool] = useState([]);
+  const promptPool = useMemo(
+    () => [...QUICK_PROMPTS, ...dynamicPromptPool.filter((p) => !QUICK_PROMPTS.includes(p))],
+    [dynamicPromptPool]
+  );
+  // The empty-state chip row: always the same 3 defaults, in the same
+  // order, plus any college-added question appended after them — never
+  // randomized, so a fresh chat's first impression stays predictable.
+  const quickPrompts = useMemo(
+    () => [...DEFAULT_QUICK_PROMPTS, ...dynamicPromptPool.filter((p) => !DEFAULT_QUICK_PROMPTS.includes(p)).slice(0, 1)],
+    [dynamicPromptPool]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = localStorage.getItem("auth_token");
+        const res = await fetch(`${API}/ai/quick-prompts`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data.prompts) && data.prompts.length) {
+          setDynamicPromptPool(data.prompts);
+        }
+      } catch {
+        // Non-critical enrichment — the static QUICK_PROMPTS pool already
+        // covers the empty-state chips and fallback suggestions, so a
+        // failed fetch here just means no college-added questions show up
+        // yet, not a broken chat.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -662,11 +737,21 @@ export default function AiAssistantView() {
             const payload = JSON.parse(line.slice(6));
             if (payload.reset) {
               // The server restarted the answer (e.g. after a rate limit); clear the partial text.
+              // Back to the "thinking" indicator instead of a bare empty
+              // bubble with no explanation while the server retries.
+              setThinking(true);
               fullAnswer = "";
               setMessages((m) =>
                 m.map((msg) => (msg.id === streamingId ? { ...msg, text: "" } : msg))
               );
             } else if (payload.token) {
+              // The streaming message bubble (its own avatar) starts
+              // rendering the moment real text exists — leaving `thinking`
+              // true past this point showed BOTH that bubble and a second
+              // "ATREIA is thinking" avatar row stacked underneath it until
+              // the whole response finished, instead of one handing off to
+              // the other.
+              setThinking(false);
               fullAnswer += payload.token;
               setMessages((m) =>
                 m.map((msg) =>
@@ -737,7 +822,7 @@ export default function AiAssistantView() {
       setMessages((prev) => {
         const lastAc = [...prev].reverse().find((m) => m.role === "ac");
         if (lastAc?.text && !hadError) {
-          const base = serverSuggestions?.length ? serverSuggestions : QUICK_PROMPTS;
+          const base = serverSuggestions?.length ? serverSuggestions : pickRandomPrompts(promptPool, promptPool.length);
           const filtered = base
             .filter((s) => s.toLowerCase() !== fullAnswer.toLowerCase() && s.toLowerCase() !== question.toLowerCase())
             .slice(0, 3);
@@ -1090,7 +1175,7 @@ export default function AiAssistantView() {
             </form>
 
             <div className="ac-quick-row">
-              {QUICK_PROMPTS.map((q) => (
+              {quickPrompts.map((q) => (
                 <button
                   key={q}
                   type="button"
@@ -1106,6 +1191,13 @@ export default function AiAssistantView() {
           <>
             <div className="ac-thread" ref={scrollRef}>
               {messages.map((m) =>
+                // An empty-text AC placeholder is pushed the instant a
+                // question is sent (see streamAnswer's setMessages call) so
+                // its id is ready for the first streamed token to land on —
+                // but while it's still empty AND thinking is true, the
+                // "ATREIA is thinking" row below already fills that same
+                // visual slot. Rendering both at once was the two-avatar bug.
+                m.role === "ac" && !m.text && thinking ? null :
                 m.role === "user" ? (
                   <div key={m.id} className="ac-row ac-row-user">
                     {editingId === m.id ? (

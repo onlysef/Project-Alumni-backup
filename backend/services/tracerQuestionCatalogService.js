@@ -112,4 +112,27 @@ async function matchCustomQuestionAcrossColleges(questionText) {
   return [...bestPerCollege.values()].sort((a, b) => b.similarity - a.similarity);
 }
 
-module.exports = { rebuildCatalogForCollege, matchCustomQuestion, matchCustomQuestionAcrossColleges, MATCH_THRESHOLD };
+// Distinct custom-question labels currently in the catalog — used by
+// ragService.js to build the "what can you do?" capability list dynamically
+// from whatever colleges have actually added to their tracer forms, instead
+// of a hardcoded list that drifts out of date as colleges add new questions.
+// Scoped to one college for a coordinator, or the whole catalog for an
+// admin (scopeCollege null). Order matches insertion order from
+// rebuildCatalogForCollege (effectively each college's own form page
+// order) — not alphabetized, so earlier-defined questions surface first,
+// which tends to match each form's own sense of what matters most.
+async function listCapabilityTopics(scopeCollege) {
+  const filter = scopeCollege ? { college: scopeCollege } : {};
+  const docs = await TracerQuestionEmbedding.find(filter).select('label').lean();
+  const seen = new Set();
+  const labels = [];
+  for (const doc of docs) {
+    if (doc.label && !seen.has(doc.label)) {
+      seen.add(doc.label);
+      labels.push(doc.label);
+    }
+  }
+  return labels;
+}
+
+module.exports = { rebuildCatalogForCollege, matchCustomQuestion, matchCustomQuestionAcrossColleges, listCapabilityTopics, MATCH_THRESHOLD };

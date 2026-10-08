@@ -333,17 +333,6 @@ export default function EventManagement() {
                   />
                 </label>
                 <label className="coord-labeled-field">
-                  <span>End Date &amp; Time</span>
-                  <input
-                    type="datetime-local"
-                    className="coord-datetime-input"
-                    value={form.end_datetime}
-                    onChange={e => setForm(p => ({ ...p, end_datetime: e.target.value }))}
-                  />
-                </label>
-              </div>
-              <div className="coord-form-row">
-                <label className="coord-labeled-field">
                   <span>Colleges</span>
                   <select
                     value={form.visibility}

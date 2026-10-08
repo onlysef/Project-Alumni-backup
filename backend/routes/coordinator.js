@@ -15,7 +15,7 @@ const {
 } = require('../controllers/eventController');
 const {
   getAttendanceEvents, searchAlumni, recordAttendance, updateAttendance, deleteAttendance,
-  getAttendanceRecords, getAttendanceStats, getEventDetails, exportAttendance,
+  getAttendanceRecords, getAttendanceStats, getEventDetails, exportAttendance, endEvent,
 } = require('../controllers/attendanceController');
 const { getEventFeedbackSummary } = require('../controllers/feedbackController');
 const { getTracerFormConfig, updateTracerFormConfig, importGoogleFormConfig } = require('../controllers/tracerFormConfigController');
@@ -479,6 +479,7 @@ router.get('/attendance/:eventId/stats',           getAttendanceStats);
 router.get('/attendance/:eventId/details',         getEventDetails);
 router.get('/attendance/:eventId/export',          exportAttendance);
 router.get('/attendance/:eventId/feedback',         getEventFeedbackSummary);
+router.patch('/attendance/:eventId/end',           endEvent);
 
 // Events
 router.get('/events',                    getEvents);

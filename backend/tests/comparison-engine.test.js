@@ -155,3 +155,53 @@ test('comparison engine always attaches a chart (a "vs" question is inherently a
   assert.ok(withChart.charts.length > 0, 'expected a chart when one was explicitly requested');
   assert.equal(withChart.charts[0].type, 'bars');
 });
+
+test('percentage generalizes beyond employmentStatus: jobRelatedToDegree can be the numerator too', async () => {
+  const r = await computeVerifiedStat('What percentage of jobs are related to their degree?', undefined, null);
+  assert.ok(r, 'expected a verified result, got null — percentage must not be hardcoded to employmentStatus only');
+  assert.equal(r.type, 'percentage');
+  assert.match(r.description, /job relation to degree "Related"/);
+});
+
+test('professionalCertifications and pursuedTrainings resolve to DIFFERENT fields, not both collapsing to professionalDevelopmentActivities', async () => {
+  const certs = await computeVerifiedStat('How many alumni pursued professional certifications?', undefined, null);
+  const trainings = await computeVerifiedStat('How many alumni pursued further trainings?', undefined, null);
+  assert.ok(certs && trainings);
+  assert.match(certs.description, /has professional certifications/);
+  assert.match(trainings.description, /pursued trainings/);
+  assert.notEqual(certs.count, undefined);
+  assert.notEqual(trainings.count, undefined);
+  // Regression guard for the bug this session: both used to silently
+  // extract the SAME generic field and return the identical count.
+  assert.notEqual(certs.count, trainings.count, 'certifications and trainings are tracked by separate fields with different real counts — identical counts means the conflation bug is back');
+});
+
+test('reasons for unemployment: a bare breakdown request is answered by a deterministic multi-select aggregation, never narrated by the LLM', async () => {
+  const r = await computeVerifiedStat('What are the reasons for unemployment among alumni?', undefined, null);
+  assert.ok(r, 'expected a verified result, got null — this must not fall through to unverified LLM/RAG narration');
+  assert.equal(r.type, 'unsupported', 'deterministic bypass type, same as other hard-coded-text results that skip LLM narration');
+  assert.match(r.description, /Waiting for the right job opportunity: \d+/);
+  assert.match(r.description, /Lack of work experience: \d+/);
+  assert.ok(r.charts?.length > 0, 'expected a breakdown chart');
+});
+
+test('reasons for unemployment: a specific NAMED reason still uses the existing catalog-match count path, not the breakdown', async () => {
+  const r = await computeVerifiedStat('How many cited lack of work experience as their reason?', undefined, null);
+  assert.ok(r);
+  assert.equal(r.type, 'count');
+  assert.match(r.description, /reason for not being employed "Lack of work experience"/);
+});
+
+test('promotions and awards: plain boolean-field count questions resolve correctly', async () => {
+  const promoted = await computeVerifiedStat('How many alumni were promoted in their job?', undefined, null);
+  const awards = await computeVerifiedStat('How many alumni received awards or recognition?', undefined, null);
+  assert.ok(promoted && awards);
+  assert.match(promoted.description, /was promoted in their job/);
+  assert.match(awards.description, /reported an award or recognition/);
+});
+
+test('full-time/part-time employment type is deterministically flagged as unsupported vocabulary, not silently answered with the wrong field', async () => {
+  const r = await computeVerifiedStat('How many are full-time vs part-time employees?', undefined, null);
+  assert.ok(r);
+  assert.match(r.description, /not tracked/i, 'the real tracked vocabulary is Regular\\/Permanent, Contractual, etc. — full-time\\/part-time must be disclosed as unsupported, not silently mapped to employmentStatus');
+});

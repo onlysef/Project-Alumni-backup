@@ -12,11 +12,13 @@ const {
   deleteSource,
   getFlags,
   reviewFlag,
+  getQuickPrompts,
 } = require('../controllers/aiController');
 
 router.use(protect, authorize('admin', 'coordinator'));
 
 router.post('/chat',                   aiChatLimiter, sanitizePrompt, chat);
+router.get( '/quick-prompts',          getQuickPrompts);
 // /reembed and /ingest each trigger a loop of individual, metered HF
 // embedding calls (a whole file's worth, or for reembed the entire corpus) —
 // unlike /chat above, neither had any rate limit at all until now.

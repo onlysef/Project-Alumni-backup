@@ -15,15 +15,21 @@
 // a second LLM pass asking a small model to "plan" before answering is not
 // reliable enough to trust, so the constraints are enforced directly on the
 // one real answer it produces (see SYSTEM_PROMPT rule 2/3/7 below).
-const { HfInference } = require('@huggingface/inference');
+const { chatCompletionStream } = require('./llmClient');
 const { retrieveContext } = require('./retrievalService');
 const { SYSTEM_PROMPT, FALLBACK_RESPONSE } = require('./chatbotGuardrails');
 const { computeVerifiedStat, computeVerifiedNames, getPlan, isNamesQuestion, isAnaphoricNamesFollowUp, isNamesContinuationOnly, detectUnsupportedConditions } = require('../utils/verifiedCount');
 const { COLLEGE_CODES, ALL_COURSES } = require('../utils/collegesCourses');
+const { listCapabilityTopics } = require('./tracerQuestionCatalogService');
 const AiFlag = require('../models/AiFlag');
 const logger = require('../utils/logger');
 
-const hf = new HfInference(process.env.HF_API_KEY);
+// Routed through services/llmClient.js, which sends this to EITHER Hugging
+// Face or a local Ollama instance depending on LLM_PROVIDER — this
+// module-level CHAT_MODEL string is only ever meaningful on the HF path
+// (Ollama substitutes its own OLLAMA_MODEL env var regardless of what's
+// passed here, since an HF model name means nothing to a local Ollama
+// instance).
 const CHAT_MODEL = process.env.HF_CHAT_MODEL || 'meta-llama/Llama-3.1-8B-Instruct';
 
 // Below this cosine-similarity score, retrieved chunks are considered too
@@ -67,6 +73,80 @@ let narrationCallCount = 0;
 // the LLM answers it naturally like any other low-stakes reply.
 const GREETING_PATTERN = /^\s*(hi+|hello+|hey+|yo|kumusta|kamusta|good\s?(morning|afternoon|evening))\b[\s.,!?]*$/i;
 const SELF_IDENTITY_PATTERN = /\b(who are you|what are you|sino ka|sino po kayo|ano ka|what('?s| is) your name|ano (ang|yung) pangalan mo|anong pangalan mo)\b/i;
+// "what can you do?" / "can you help me?" — a question ABOUT the assistant's
+// own capabilities, not a data question, so it has no ALUMNI_DOMAIN_WORDS to
+// match and used to fall into the hard off-topic decline below (same bug
+// class as GREETING_PATTERN/SELF_IDENTITY_PATTERN's own carve-out). Answered
+// with a hardcoded capability list rather than handed to the LLM — this
+// project's own standing rule (CLAUDE.md: prefer a deterministic check over
+// prompt-patching) applies here too: an inaccurate self-description of what
+// the assistant can/cannot do is its own kind of hallucination risk, same as
+// a wrong number.
+const CAPABILITY_PATTERN = /\b(what can you do|what do you do|what can you help( me)? with|how can you help|how could you help|can you help( me)?|could you help( me)?|paano ka makakatulong|paano mo ako matutulungan|ano (ang kaya mong gawin|kaya mong gawin|kaya mo)|anong (kaya mo|maitutulong mo))\b/i;
+// These 5 topics are backed by FIELD_REGISTRY entries every college shares
+// (see utils/fieldRegistry.js) — always true regardless of any college's
+// own custom tracer-form additions, so they're the fixed floor of the list.
+// Capped at 7 bullets TOTAL per product requirement: the remaining slots go
+// to whatever custom questions colleges have actually added to their own
+// tracer forms (listCapabilityTopics), so the list reflects real, current
+// system content instead of staying hardcoded and drifting stale as
+// colleges edit their forms.
+const CAPABILITIES_BASE_TOPICS = [
+  'Employment status, job titles, industries, and companies of alumni',
+  'Academic programs, colleges, and specializations',
+  'Gender and other demographic breakdowns',
+  'Self-rated competencies and skills',
+  'Professional licensure exam results',
+];
+const CAPABILITIES_MAX_BULLETS = 7;
+// A pool spanning every base topic above, so two random picks per call stay
+// representative of the whole list rather than drifting toward one topic.
+// Varied on purpose — a user asking "what can you do?" twice in a row
+// getting the identical two examples both times reads as a canned, static
+// answer even though the bullet list itself is already dynamic.
+const CAPABILITIES_EXAMPLE_POOL = [
+  'How many BSIT graduates are employed?',
+  'What percentage passed the LET?',
+  'What is the gender breakdown of CBA alumni?',
+  'How do alumni rate their technical skills?',
+  'Which program has the highest employment rate?',
+  'How many are employed vs unemployed?',
+  'How many alumni pursued further education?',
+  'What industries do BSBA graduates work in?',
+  'What are the reasons for unemployment among alumni?',
+  'How many alumni were promoted in their job?',
+  'How many alumni pursued professional certifications?',
+  'What percentage of jobs are related to their degree?',
+  'How many alumni have 5 or more years in their job?',
+  'How many alumni received awards or recognition?',
+];
+
+function pickRandomExamples(count) {
+  const pool = [...CAPABILITIES_EXAMPLE_POOL];
+  const picked = [];
+  while (picked.length < count && pool.length) {
+    picked.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  }
+  return picked;
+}
+
+async function buildCapabilitiesMessage(scopeCollege) {
+  const remaining = CAPABILITIES_MAX_BULLETS - CAPABILITIES_BASE_TOPICS.length;
+  let dynamicTopics = [];
+  if (remaining > 0) {
+    try {
+      dynamicTopics = (await listCapabilityTopics(scopeCollege)).slice(0, remaining);
+    } catch (err) {
+      // A catalog lookup failure must not take down the whole capability
+      // answer — fall back to just the base topics, same "degrade, don't
+      // crash" discipline as every other optional-enrichment path here.
+      logger.error('capabilities_dynamic_topics_failed', { error: err });
+    }
+  }
+  const bullets = [...CAPABILITIES_BASE_TOPICS, ...dynamicTopics].map((t) => `- ${t}`).join('\n');
+  const examples = pickRandomExamples(2).map((q) => `"${q}"`).join(' or ');
+  return `This assistant can help with questions about alumni tracer survey data, including:\n${bullets}\n\nFor example, ask ${examples} to get started.`;
+}
 
 // Masks common Tagalog/English profanity in the text sent to the narration
 // LLM only — chatbotGuardrails.js rule 33 tells the MODEL how to behave
@@ -88,17 +168,17 @@ function maskProfanity(text) {
   return text.replace(PROFANITY_PATTERN, (m) => '*'.repeat(m.length));
 }
 
-async function streamHF(messages, onToken, retries = 3, maxTokens = 512, onReset = null) {
+async function streamHF(messages, onToken, retries = 3, maxTokens = 512, onReset = null, temperature = 0) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     let sentAny = false;
     try {
       let fullAnswer = '';
-      const stream = hf.chatCompletionStream({
+      const stream = chatCompletionStream({
         model: CHAT_MODEL,
         provider: process.env.HF_PROVIDER || undefined,
         messages,
         max_tokens: maxTokens,
-        temperature: 0,
+        temperature,
       });
       for await (const chunk of stream) {
         const token = chunk.choices[0]?.delta?.content || '';
@@ -626,9 +706,27 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // ANY verified answer existed. A names-shaped question with no real
   // names to list should only hard-refuse when there is truly nothing
   // else to say either.
+  //
+  // Also requires the EXTRACTOR'S OWN resolved intent to actually be
+  // "names" — caught live: "How many male BSIT alumni earning over 25k who
+  // are exactly 24 years old are employed?" ALSO tripped the bare-"who"
+  // regex (same false trigger as the Quezon City case above), but this time
+  // the plan-extraction LLM ADDITIONALLY misclassified intent as "names"
+  // itself (see queryPlanExtractor.js's own RULE 1 — now explicitly
+  // corrected for this exact shape), so computeVerifiedCount's own
+  // `if (plan.intent !== 'count') return null` legitimately returned null
+  // — not because the count failed, but because the wrong intent was ever
+  // asked for in the first place. The `!statResult` check alone can't catch
+  // a case where the ROOT misclassification poisons statResult too, so this
+  // gate is additionally gated on the actual resolved plan.intent being
+  // "names" — a non-"names" intent (even one that happened to produce no
+  // result) means this was never genuinely a names question to begin with,
+  // and belongs to the normal downstream handling (unsupported-conditions
+  // disclosure, RAG/LLM fallback, etc.), not this names-specific refusal.
+  const sharedPlan = await sharedPlanPromise;
   const isAlumniDomain = ALUMNI_DOMAIN_PATTERN.test(trimmed)
     || (previousUserTurn && isAnaphoricNamesFollowUp(trimmed) && ALUMNI_DOMAIN_PATTERN.test(previousUserTurn));
-  if (isNamesQuestion(trimmed) && !namesResult && !statResult && isAlumniDomain) {
+  if (isNamesQuestion(trimmed) && !namesResult && !statResult && isAlumniDomain && sharedPlan?.intent === 'names') {
     const clarify = 'I do not have a clear, verified scope to list names for. Could you specify or repeat the program, employment status, or job title you are asking about?';
     if (onToken) onToken(clarify);
     return { sources: [], type: 'unanswered', lowConfidence: true };
@@ -689,6 +787,12 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // talk, not a data question, and nothing about it risks a wrong number or
   // fabricated fact, so it's safe to let the LLM answer naturally instead
   // of hard-declining it like a genuine off-topic question.
+  if (!verifiedStat && CAPABILITY_PATTERN.test(trimmed) && !ALUMNI_DOMAIN_PATTERN.test(trimmed)) {
+    const capabilitiesMessage = await buildCapabilitiesMessage(scopeCollege);
+    if (onToken) onToken(capabilitiesMessage);
+    return { sources: [], type: 'capabilities' };
+  }
+
   if (!verifiedStat && !ALUMNI_DOMAIN_PATTERN.test(trimmed) && !GREETING_PATTERN.test(trimmed) && !SELF_IDENTITY_PATTERN.test(trimmed)) {
     // A SEPARATE, narrow LLM call used to compose a short "subject" phrase
     // here ("the taste of an egg") instead of quoting the question verbatim
@@ -773,7 +877,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // 'clarify'/'forbidden' above.
   if (verifiedStat?.type === 'unsupported') {
     if (onToken) onToken(verifiedStat.description);
-    return { sources: [], type: 'unsupported', verifiedStat };
+    return { sources: [], type: 'unsupported', verifiedStat, charts: verifiedStat.charts?.length ? verifiedStat.charts : undefined };
   }
 
   // Every answer — including pure numeric ones — is narrated by the LLM,
@@ -902,9 +1006,18 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // must-be-correct) answer the full text is checked FIRST — see
   // detectHallucinatedScope below — and only sent if it passes.
   const bufferNarration = !!verifiedStat;
+  // Every OTHER narration stays at temperature 0 for reproducibility — a
+  // factual answer must not vary question to question. But a bare greeting
+  // or "who are you" has no data to get wrong (see GREETING_PATTERN/
+  // SELF_IDENTITY_PATTERN's own comment above), so it's safe to let phrasing
+  // vary — temperature 0 made it answer with the EXACT same sentence, word
+  // for word, every single time, which read as a canned/hardcoded response
+  // even though it was genuinely LLM-generated.
+  const isSmallTalk = !verifiedStat && (GREETING_PATTERN.test(trimmed) || SELF_IDENTITY_PATTERN.test(trimmed));
+  const narrationTemperature = isSmallTalk ? 0.8 : 0;
   let answer;
   try {
-    answer = (await streamHF(messages, bufferNarration ? null : onToken, 3, 600, onReset)).trim();
+    answer = (await streamHF(messages, bufferNarration ? null : onToken, 3, 600, onReset, narrationTemperature)).trim();
   } catch (err) {
     logger.error('chat_llm_failed', { question: trimmed, error: err });
     if (onToken) onToken(FALLBACK_RESPONSE);
