@@ -43,6 +43,32 @@ function exactMatch(value, catalog) {
   return catalog.find((c) => c.toLowerCase() === valueLower) || null;
 }
 
+// Catalog-match fields (jobTitle, industryField, companyName, employmentType,
+// trainingType, ...) have no fixed `values` enum, unlike enum-synonym/
+// boolean-yesno fields — so they never qualified for the "vs" comparison
+// backstop loop in queryPlanValidator.js, which only recognizes a field as
+// comparable when it has a static `values` map to iterate over. Caught
+// live: "How many are Regular/Permanent vs Contractual employees?" only
+// ever answered for ONE side (whichever the LLM happened to extract into
+// the plain employmentType filter) — "Contractual" was silently dropped
+// entirely, with no indication a comparison was even attempted. A direct
+// "X vs Y" naming two REAL catalog values doesn't need a static enum
+// though — it just needs to find which of the field's own LIVE catalog
+// values (cache[entry.catalogKey], the same DISTINCT list resolveCatalogMatch
+// already checks against) are literally named in the question text. Two or
+// more matches means this question is genuinely comparing those named
+// catalog values against each other; fewer than two means it's just a
+// normal single-value catalog-match question, not a comparison.
+function findCatalogComparisonValues(entry, question, cache) {
+  if (!entry || entry.type !== 'catalog-match' || !question) return null;
+  const catalog = (cache && cache[entry.catalogKey]) || [];
+  const found = catalog.filter((value) => {
+    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(question);
+  });
+  return found.length >= 2 ? found : null;
+}
+
 // Respondents sometimes type a placeholder instead of leaving a free-text
 // field blank ("N/A" confirmed live in occupationTitle/companyName/etc.) —
 // a literal "N/A" is not null/empty-string so a plain $nin:[null,''] lets
@@ -59,7 +85,17 @@ const PLACEHOLDER_VALUE_PATTERN = /^(n\/?a|none|na|n\.a\.?|-|\.|tbd|not applicab
 // verifiedCount.js's computeComparison for why this can't rely on the LLM's
 // own intent classification (count vs percentage observed to flip between
 // runs of the identical question).
-const COMPARISON_PATTERN = /\b(vs\.?|versus|compare[sd]?\s+(?:to|with))\b/i;
+// "compare(d)?" alone (not just followed by "to"/"with") also counts —
+// caught live: "Compare 2022, 2023, and 2024 batch sizes" never matched
+// this pattern at all, since it names a LIST right after "compare" instead
+// of "compare X to/with Y". Safe to broaden: every comparison-field
+// detector downstream still requires finding 2+ REAL matching values
+// before actually treating the question as a comparison (findCatalogComparisonValues,
+// findYearComparisonValues, etc.) — a bare "compare" that turns out to
+// name nothing comparable just falls through to normal handling, same as
+// today, so this can't introduce a false-positive comparison answer, only
+// enable ones that were previously silently ignored.
+const COMPARISON_PATTERN = /\b(vs\.?|versus|compare[sd]?)\b/i;
 
 // A bare, impersonal "what's the current employment status (of alumni)?" —
 // one of the chatbot's own default quick-prompt chips — names no "vs"/
@@ -86,6 +122,15 @@ const BARE_STATUS_BREAKDOWN_PATTERN = /\bwhat(?:'s|\s+is)\s+the\s+current\s+empl
 // unrelated question that happens to contain the common word "by"/"per"
 // doesn't get misread as a cross-tab request.
 const CROSSTAB_PATTERN = /\b(by|per)\b/i;
+
+// Correlation-style question ("do alumni with Excellent technical skills
+// get employed more?", "does gender affect employment?", "is there a
+// correlation between further education and employment?") — answered as a
+// genuine insight (employment RATE within each group of the other named
+// field), not a raw correlation coefficient/p-value — see
+// computeVerifiedCorrelation's own top comment in verifiedCount.js for why
+// that scope was deliberately chosen over real statistical correlation.
+const CORRELATION_PATTERN = /\b(correlat\w*|more likely|less likely|affects?|impact\w*|influenc\w*|associated with|get employed more|employed more often)\b/i;
 
 // Conditions this schema genuinely cannot filter on at all, no matter how
 // the LLM extraction resolves everything else — a deterministic backstop,
@@ -558,6 +603,31 @@ function resolveCustomQuestion(entry, filters, cache) {
   };
 }
 
+// customQuestion comparison ("how many chose X vs Y for [some admin-added
+// question]?") — the last remaining field with no "vs" support at all.
+// Genuinely different shape from every other comparison above: there's no
+// global catalog of real values to check (a catalog-match field's
+// cache[catalogKey] is one shared DISTINCT list across the whole schema) —
+// each custom question has its OWN small set of options, scoped to
+// whichever college(s) actually defined it, discovered the same way
+// resolveCustomQuestion's own fuzzyLabelMatch already works. Requires the
+// LLM to have still named WHICH question is being asked about (cqFilter.label
+// — e.g. "for the preferred work arrangement question") even on a
+// comparison; only the two (or more) OPTION values being compared need to
+// be found literally in the question text, not re-guessed from scratch.
+function findCustomQuestionComparisonValues(cqFilter, question, cache) {
+  if (!cqFilter || !cqFilter.label || !question) return null;
+  const entries = fuzzyLabelMatch(cqFilter.label, cache.customQuestions);
+  if (!entries.length) return null;
+  const allOptions = [...new Set(entries.flatMap((e) => e.options))];
+  const found = allOptions.filter((opt) => {
+    const escaped = opt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(question);
+  });
+  if (found.length < 2) return null;
+  return { entries, values: found };
+}
+
 // specialization ranking — see RANKING entries below for how this plugs
 // into computeVerifiedRanking. Only BSIT has a separate User.track field
 // for its specializations (TSM/WMA/NA) — every OTHER multi-major program
@@ -687,6 +757,46 @@ function resolveGraduationYear(entry, filters) {
   return { userFiltersPatch: { graduationYear: year }, part: `batch ${year}` };
 }
 
+// Year-over-year comparison ("2024 vs 2025 employment rate") — distinct
+// from computeVerifiedRanking's existing graduationYear TREND shape (a full
+// chronological sweep across every batch year that has data), this is a
+// direct two-or-more SPECIFIC named years compared against each other, the
+// same "vs" shape every other comparable field already supports. Scans for
+// every plausible 4-digit year literally in the question (same sanity range
+// resolveGraduationYear itself already enforces — 1950 through next year),
+// deduplicated — "2024" mentioned twice only counts once.
+const YEAR_PATTERN = /\b(19[5-9]\d|20\d{2})\b/g;
+function findYearComparisonValues(question) {
+  if (!question) return null;
+  const maxYear = new Date().getFullYear() + 1;
+  const found = [...new Set(
+    [...question.matchAll(YEAR_PATTERN)]
+      .map((m) => Number(m[1]))
+      .filter((y) => y >= 1950 && y <= maxYear),
+  )];
+  return found.length >= 2 ? found : null;
+}
+
+// Deterministic backstop for resolveGraduationYear (not a `backstop`-style
+// registry entry since graduationYear is a `type: 'custom'` resolver) —
+// caught live: "Why are 2024 graduates unemployed?" non-deterministically
+// extracted graduationYear as null on some runs despite the year being
+// named explicitly, silently answering the UNSCOPED system-wide total
+// instead of just batch 2024's. Only returns a value when EXACTLY ONE
+// plausible year is mentioned — 2+ years is the comparison shape
+// (findYearComparisonValues above), not a single-year scope, so this
+// deliberately stays out of that case's way.
+function findSingleYearMention(question) {
+  if (!question) return null;
+  const maxYear = new Date().getFullYear() + 1;
+  const found = [...new Set(
+    [...question.matchAll(YEAR_PATTERN)]
+      .map((m) => Number(m[1]))
+      .filter((y) => y >= 1950 && y <= maxYear),
+  )];
+  return found.length === 1 ? found[0] : null;
+}
+
 // Builds the same shape RANKING_FIELD_MAP used to be hand-maintained as in
 // verifiedCount.js — "course" is always present (it's not a catalog-match
 // registry entry; the registry's "course" key is the bespoke filter/scope
@@ -758,8 +868,17 @@ const FIELD_REGISTRY = [
     // needs ANY truthy employmentStatus value to trigger (it then computes
     // all three states regardless of which one was initially set), so which
     // side the backstop picks doesn't matter for a comparison question.
+    // "unemployment" (the NOUN form — "unemployment rate") was missing
+    // entirely until caught live: "Compare TSM and WMA graduates'
+    // unemployment rate" matched none of these alternatives ("unemployed"
+    // only covers the ADJECTIVE form, "employment rate" doesn't match
+    // "unemployment rate" since "un" breaks the literal "employment rate"
+    // substring), so employmentStatus never got set at all — the
+    // comparison silently fell back to raw TOTAL headcounts per
+    // specialization instead of unemployment-filtered ones, with nothing
+    // indicating the "unemployment" part of the question was ever dropped.
     backstop: {
-      pattern: /\b(unemployed|not employed|jobless|self[- ]?employed|employed|employment rate)\b/i,
+      pattern: /\b(unemployed|unemployment(?:\s+rate)?|not employed|jobless|self[- ]?employed|employed|employment rate)\b/i,
       resolve: (m) => {
         const t = m[1].toLowerCase();
         if (/^self/.test(t)) return 'Self-Employed';
@@ -977,6 +1096,20 @@ const FIELD_REGISTRY = [
     jsonHint: '{"label": string, "value": string or null} or null',
     description: '"customQuestion" is for a tracer-form question that doesn\'t match any of the fields above — set "label" to the exact topic phrase asked about, "value" to a specific answer value if one was named, else null. Only use this when nothing above already covers it.',
   },
+  // personName has no `resolve` of its own — a specific-person lookup is a
+  // fundamentally different query shape (find ONE real alumni account by
+  // name, not filter a population), handled entirely by
+  // computeVerifiedPersonLookup in verifiedCount.js, which reads
+  // plan.personName directly rather than going through the generic
+  // per-field resolver loop like every other field here does. Still
+  // registered (not just a bespoke extractor-prompt addition) so the schema
+  // block/field-rules block below stay single-source-of-truth generated,
+  // same as every other field.
+  {
+    key: 'personName', type: 'custom', resolve: () => null,
+    jsonHint: 'string or null',
+    description: '"personName" is set ONLY when the question asks about ONE SPECIFIC NAMED alumnus by their actual name (e.g. "What is Juan Dela Cruz\'s employment status?", "Tell me about Maria Santos", "Where does Pedro Reyes work?") — copy the name VERBATIM as written, do not correct spelling or guess a full name from a partial one. This is NEVER set for a question asking about a GROUP of alumni (e.g. "who are the employed BSIT alumni" — that is the "names" intent, not this field) — personName is exclusively for a single, specifically-named individual. When set, every other filter field should stay null; the person\'s own record answers the question, not a filtered count.',
+  },
 ];
 
 const FIELD_REGISTRY_BY_KEY = Object.fromEntries(FIELD_REGISTRY.map((e) => [e.key, e]));
@@ -986,12 +1119,19 @@ module.exports = {
   FIELD_REGISTRY_BY_KEY,
   TYPE_RESOLVERS,
   exactMatch,
+  findCatalogComparisonValues,
+  findCustomQuestionComparisonValues,
+  findYearComparisonValues,
+  findSingleYearMention,
   dropPlaceholders,
   fuzzyLabelMatch,
   PLACEHOLDER_VALUE_PATTERN,
   COMPARISON_PATTERN,
   BARE_STATUS_BREAKDOWN_PATTERN,
   CROSSTAB_PATTERN,
+  CORRELATION_PATTERN,
+  SKILL_NAME_BACKSTOP_PATTERN,
+  resolveSkillNameFromText,
   UNSUPPORTED_CONDITION_PATTERNS,
   detectUnsupportedConditions,
   PROGRAM_MAJOR_GROUPS,
@@ -1002,4 +1142,5 @@ module.exports = {
   SKILL_FIELD_LABELS,
   findAllSkillMatches,
   findUnmatchedSkillMentions,
+  SPECIALIZATION_VALUES,
 };

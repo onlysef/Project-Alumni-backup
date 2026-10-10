@@ -639,5 +639,100 @@
     "compareScope": null,
     "summaryTopics": [],
     "unsupportedConditions": []
+  },
+  "How many employed alumni, 2024 vs 2025?": {
+    "intent": "ranking",
+    "filters": {
+      "course": null,
+      "college": null,
+      "employmentStatus": "Employed",
+      "jobTitle": null,
+      "industryField": null,
+      "companyName": null,
+      "workLocation": null,
+      "furtherEducation": null,
+      "professionalDevelopmentActivities": null,
+      "awardsOrRecognition": null,
+      "customQuestion": null
+    },
+    "rankingField": null,
+    "rankingDirection": null,
+    "rankingScope": null,
+    "rankingMode": null,
+    "compareScope": [
+      "2024",
+      "2025"
+    ],
+    "summaryTopics": [],
+    "unsupportedConditions": []
+  },
+  "How many alumni pursued professional certifications vs further trainings?": {
+    "intent": "count",
+    "filters": {
+      "course": null,
+      "college": null,
+      "employmentStatus": null,
+      "jobTitle": null,
+      "industryField": null,
+      "companyName": null,
+      "workLocation": null,
+      "furtherEducation": null,
+      "professionalDevelopmentActivities": null,
+      "awardsOrRecognition": null,
+      "customQuestion": {
+        "label": "professional certifications vs further trainings",
+        "value": null
+      },
+      "personName": null
+    },
+    "rankingField": null,
+    "rankingDirection": null,
+    "rankingScope": null,
+    "rankingMode": null,
+    "compareScope": null,
+    "summaryTopics": [],
+    "unsupportedConditions": []
+  },
+  "Why are 2024 graduates unemployed?": {
+    "intent": "none",
+    "filters": {
+      "course": null,
+      "college": null,
+      "employmentStatus": null,
+      "jobTitle": null,
+      "industryField": null,
+      "companyName": null,
+      "employmentType": null,
+      "furtherEducationType": null,
+      "trainingType": null,
+      "reasonNotEmployed": null,
+      "workLocation": null,
+      "gender": null,
+      "furtherEducation": null,
+      "professionalDevelopmentActivities": null,
+      "awardsOrRecognition": null,
+      "jobRelatedToDegree": null,
+      "professionalExamResult": null,
+      "professionalExamName": null,
+      "graduationYear": 2024,
+      "promotedInJob": null,
+      "professionalCertifications": null,
+      "pursuedTrainings": null,
+      "skillRating": null,
+      "yearsInJob": null,
+      "yearsInJobMoreThan": null,
+      "specialization": null,
+      "customQuestion": null,
+      "personName": null
+    },
+    "rankingField": null,
+    "rankingDirection": null,
+    "rankingScope": null,
+    "rankingMode": null,
+    "compareScope": null,
+    "summaryTopics": [],
+    "unsupportedConditions": [
+      "reason for unemployment"
+    ]
   }
 }

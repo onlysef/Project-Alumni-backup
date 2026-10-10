@@ -483,7 +483,14 @@ async function computeComparison(plan, question) {
   // the validator loop) left the actual dbField as a live key in
   // `tracerFilters`, which is read back out here instead.
   let dbField = entry.dbField;
-  let fieldLabel = entry.label;
+  // Several boolean-yesno entries (professionalCertifications,
+  // pursuedTrainings, professionalDevelopmentActivities, ...) only define
+  // `partLabel` (used in plain count filter text), not `label` — crashed
+  // live ("How many alumni pursued professional certifications vs further
+  // trainings?" → `fieldLabel[0].toUpperCase()` on undefined) the first
+  // time one of them got selected as comparisonField, since every OTHER
+  // comparable field in the registry happens to define `label` too.
+  let fieldLabel = entry.label || entry.partLabel || entry.key;
   let values = entry.values || (entry.type === 'boolean-yesno' ? booleanComparisonValues(entry) : null);
   if (entry.key === 'skillRating') {
     const dynamicKey = Object.keys(tracerFilters).find((k) => k.startsWith('personalGrowthRatings.'));
@@ -492,12 +499,73 @@ async function computeComparison(plan, question) {
     fieldLabel = `${dynamicKey.slice('personalGrowthRatings.'.length).replace(/([A-Z])/g, ' $1').trim().toLowerCase()} rating`;
     values = Object.fromEntries(SKILL_RATING_VALUES.map((v) => [v, v]));
   }
+  // Catalog-match fields (jobTitle, industryField, companyName,
+  // employmentType, trainingType, ...) have no fixed enum `values` map —
+  // queryPlanValidator.js's findCatalogComparisonValues instead found which
+  // of the field's own LIVE catalog values are literally named in the
+  // question ("Regular/Permanent vs Contractual"), carried here as
+  // plan.catalogComparisonValues. Unlike every other branch above, each
+  // "value" here IS the real stored string already (an exact DB value, not
+  // a regex pattern) — the DB field stores this exact literal text, so an
+  // exact-match $eq (via the plain tracerFilters merge countWithFilters
+  // already does) is correct, no regex needed.
+  if (entry.type === 'catalog-match' && plan.catalogComparisonValues) {
+    values = Object.fromEntries(plan.catalogComparisonValues.map((v) => [v, v]));
+  }
+  // specialization (TSM/WMA/NA) — another bespoke exception, same spirit as
+  // skillRating above: its real field is User.track, not a plain tracer
+  // field, so dbField has to be matched against userFilters (via
+  // countWithFilters' own $lookup join) instead of tracerFilters like every
+  // generic branch above does. queryPlanValidator.js's own specialization-
+  // comparison block supplies the matched TSM/WMA/NA values the same way it
+  // supplies plan.catalogComparisonValues for real catalog-match fields.
+  // graduationYear (year-over-year, "2024 vs 2025") is the same onUser
+  // shape (User.graduationYear, not a tracer field) but — unlike
+  // specialization — doesn't imply any extra forced filter (TSM/WMA/NA only
+  // ever exist within BSIT; any batch year can belong to any program), so
+  // `extraUserFilters` stays per-entry rather than hardcoded.
+  const onUser = entry.key === 'specialization' || entry.key === 'graduationYear';
+  const extraUserFilters = entry.key === 'specialization' ? { course: 'BSIT' } : {};
+  if (onUser && plan.catalogComparisonValues) {
+    dbField = entry.key === 'specialization' ? 'track' : 'graduationYear';
+    fieldLabel = entry.key === 'specialization' ? 'specialization' : 'batch year';
+    values = Object.fromEntries(plan.catalogComparisonValues.map((v) => [String(v), v]));
+  }
+  // customQuestion (an admin-defined tracer-form question, any college) —
+  // the LAST bespoke exception. There's no single dbField at all here
+  // (unlike skillRating's dynamic-but-still-singular personalGrowthRatings.X
+  // path) — a matching answer could live under extra_answers.<id> for
+  // potentially MULTIPLE question ids at once (the same worded question
+  // defined separately by more than one college), so it has to be queried
+  // as an $or across every matched id, the exact same shape
+  // resolveCustomQuestion itself already builds for a single-value filter —
+  // just repeated once per compared option instead of once overall.
+  const isCustomQuestionComparison = entry.key === 'customQuestion' && plan.catalogComparisonValues && plan.customQuestionComparisonIds;
+  if (isCustomQuestionComparison) {
+    fieldLabel = plan.customQuestionComparisonLabel || 'custom question';
+    values = Object.fromEntries(plan.catalogComparisonValues.map((v) => [v, v]));
+  }
   if (!values) return null;
 
-  const { [dbField]: _current, ...restFilters } = tracerFilters;
+  // `$or` is also stripped here (alongside dbField) — resolveCustomQuestion's
+  // own normal (non-comparison) resolver, which still runs earlier in
+  // queryPlanValidator.js's per-field loop regardless of comparisonField,
+  // may have already left a SINGLE-value $or clause sitting in tracerFilters;
+  // the customQuestion comparison branch below builds its own per-label $or
+  // instead, so that stray one must not also survive into restFilters.
+  const { [dbField]: _current, $or: _strayOr, ...restFilters } = tracerFilters;
+  const { [dbField]: _currentUser, ...restUserFilters } = userFilters;
   const labels = Object.keys(values);
   const counts = await Promise.all(
-    labels.map((label) => countWithFilters(userFilters, { ...restFilters, [dbField]: values[label] })),
+    labels.map((label) => {
+      if (isCustomQuestionComparison) {
+        const orClause = plan.customQuestionComparisonIds.map((id) => ({ [`extra_answers.${id}`]: values[label] }));
+        return countWithFilters(userFilters, { ...restFilters, $or: orClause });
+      }
+      return onUser
+        ? countWithFilters({ ...restUserFilters, ...extraUserFilters, [dbField]: values[label] }, tracerFilters)
+        : countWithFilters(userFilters, { ...restFilters, [dbField]: values[label] });
+    }),
   );
   let breakdown = labels.map((label, i) => ({ label, count: counts[i] }));
 
@@ -511,7 +579,20 @@ async function computeComparison(plan, question) {
     }
   }
 
-  const scopeText = parts.filter((p) => !p.startsWith(fieldLabel)).join(', ');
+  // `.includes`, not `.startsWith` — most fields' own `part` text leads with
+  // the label ("employment status \"Employed\""), but specialization's
+  // (resolveSpecializationFilter, fieldRegistry.js) puts the value FIRST
+  // ("TSM specialization"), which `.startsWith(fieldLabel)` would never
+  // match, letting it leak into scopeText as a redundant, confusing
+  // "scope: TSM specialization" alongside the comparison's own TSM/WMA rows.
+  // graduationYear's own part text ("batch 2024", resolveGraduationYear)
+  // doesn't contain fieldLabel ("batch year") as a substring either way, so
+  // it needs its own exclusion check (startsWith "batch ") rather than
+  // reusing fieldLabel directly.
+  const scopeText = parts
+    .filter((p) => !p.includes(fieldLabel))
+    .filter((p) => !(entry.key === 'graduationYear' && p.startsWith('batch ')))
+    .join(', ');
   const descText = breakdown.map((b) => `${b.label}${noteSuffix[b.label] || ''}: ${b.count}`).join(' | ');
   // Same {type, title, rows} shape every other verified chart uses (see
   // computeVerifiedRanking's own comment). Unlike a single-value count/
@@ -526,6 +607,46 @@ async function computeComparison(plan, question) {
     type: 'count',
     count: breakdown[0]?.count ?? 0,
     description: `metric: ${fieldLabel} comparison${scopeText ? ` | scope: ${scopeText}` : ''} | ${descText}`,
+    charts,
+  };
+}
+
+// "How many pursued professional certifications vs further trainings?" —
+// unlike computeComparison above (two VALUES of the SAME field), this
+// compares two DIFFERENT boolean fields' own Yes-counts side by side. See
+// queryPlanValidator.js's crossBooleanFields comment for the live bug this
+// fixes (a crash, then a wrong "one field used as a filter on the other"
+// answer). Each field's Yes-count is computed independently — a respondent
+// can be Yes on both, so these are NOT mutually exclusive buckets of one
+// population the way computeComparison's single-field breakdown is.
+async function computeCrossBooleanComparison(plan) {
+  if (!plan.crossBooleanFields) return null;
+  const { userFilters, tracerFilters, forbiddenScope } = plan;
+  if (forbiddenScope) return forbiddenScopeClarify(forbiddenScope);
+
+  const entries = plan.crossBooleanFields.map((key) => FIELD_REGISTRY_BY_KEY[key]);
+  // Strips EVERY crossBooleanFields dbField out of the shared filter base,
+  // not just the one currently being counted — otherwise each field's own
+  // count was unintentionally ALSO filtered by the other field still being
+  // true in tracerFilters (both were force-set together by
+  // queryPlanValidator.js's certifications/trainings mutual-exclusivity
+  // block), silently computing the INTERSECTION of both fields for each
+  // side instead of each field's own independent total. Caught live: both
+  // sides came back as the identical count (11) — the actual overlap, not
+  // each field's real total (certifications: 30, trainings: 41).
+  const restFilters = { ...tracerFilters };
+  for (const entry of entries) delete restFilters[entry.dbField];
+  const rows = await Promise.all(entries.map(async (entry) => {
+    const count = await countWithFilters(userFilters, { ...restFilters, [entry.dbField]: entry.trueMatch });
+    return { label: entry.partLabel || entry.label || entry.key, count };
+  }));
+
+  const descText = rows.map((r) => `${r.label}: ${r.count}`).join(' | ');
+  const charts = [{ type: 'bars', title: 'Comparison', rows: rows.map((r) => ({ label: r.label, count: r.count })) }];
+  return {
+    type: 'count',
+    count: rows[0]?.count ?? 0,
+    description: `metric: comparison | ${descText}`,
     charts,
   };
 }
@@ -546,49 +667,152 @@ function comparableFieldValues(entry, tracerFilters) {
   return values ? { dbField: entry.dbField, label: entry.label, values } : null;
 }
 
+// Generalized to N dimensions (queryPlanValidator.js no longer caps
+// crosstabFields at 2 — "employment status by gender by college" names
+// three fields at once, the same "by"/"per" shape as a 2D cross-tab, just
+// with one more axis). Computes the full Cartesian product across every
+// matched field's own value set — for the common 2-field case this
+// produces the EXACT same output shape as before (verified: the 2-field
+// branch below is byte-for-byte what the old hardcoded version built), a
+// 3rd+ field just adds another nested dimension to the same cells array.
 async function computeVerifiedCrossTab(plan, question) {
   if (!plan.crosstabFields || plan.crosstabFields.length < 2) return null;
-  const entryA = FIELD_REGISTRY_BY_KEY[plan.crosstabFields[0]];
-  const entryB = FIELD_REGISTRY_BY_KEY[plan.crosstabFields[1]];
-  if (!entryA || !entryB) return null;
+  const entries = plan.crosstabFields.map((key) => FIELD_REGISTRY_BY_KEY[key]);
+  if (entries.some((e) => !e)) return null;
 
   const { userFilters, tracerFilters, parts, forbiddenScope } = plan;
   if (forbiddenScope) return forbiddenScopeClarify(forbiddenScope);
 
-  const fieldA = comparableFieldValues(entryA, tracerFilters);
-  const fieldB = comparableFieldValues(entryB, tracerFilters);
-  if (!fieldA || !fieldB) return null;
+  const fields = entries.map((entry) => comparableFieldValues(entry, tracerFilters));
+  if (fields.some((f) => !f)) return null;
 
-  const { [fieldA.dbField]: _a, [fieldB.dbField]: _b, ...restFilters } = tracerFilters;
-  const labelsA = Object.keys(fieldA.values);
-  const labelsB = Object.keys(fieldB.values);
+  const restFilters = { ...tracerFilters };
+  for (const f of fields) delete restFilters[f.dbField];
 
-  const cells = await Promise.all(
-    labelsA.flatMap((la) => labelsB.map((lb) => countWithFilters(
-      userFilters,
-      { ...restFilters, [fieldA.dbField]: fieldA.values[la], [fieldB.dbField]: fieldB.values[lb] },
-    ).then((count) => ({ a: la, b: lb, count })))),
-  );
+  // Cartesian product of every field's own label set, e.g. for 3 fields
+  // with {Male,Female}/{Employed,Unemployed}/{CCS,CBA} this builds all 8
+  // combinations — same shape the old 2D version built via flatMap, just
+  // generalized to fold over however many fields were matched.
+  let combos = [[]];
+  for (const f of fields) {
+    const labels = Object.keys(f.values);
+    combos = combos.flatMap((combo) => labels.map((l) => [...combo, l]));
+  }
 
-  const scopeText = parts.filter((p) => !p.startsWith(fieldA.label) && !p.startsWith(fieldB.label)).join(', ');
-  const rowsText = labelsA
-    .map((la) => `${la} (${cells.filter((c) => c.a === la).map((c) => `${c.b}: ${c.count}`).join(', ')})`)
-    .join(' | ');
+  const cells = await Promise.all(combos.map((combo) => {
+    const matchPatch = {};
+    fields.forEach((f, i) => { matchPatch[f.dbField] = f.values[combo[i]]; });
+    return countWithFilters(userFilters, { ...restFilters, ...matchPatch }).then((count) => ({ combo, count }));
+  }));
 
-  // A 2D cross-tab has no single-axis bar-chart shape to fall back on, so
-  // each cell is flattened into its own labeled bar ("Male - Employed").
-  // Always attached, not gated behind CHART_REQUEST_PATTERN — same
-  // reasoning as computeComparison's own chart above: a "breakdown"/cross-
-  // tab question is inherently asking to see values compared side by side,
-  // so the visualization isn't something that needs to be separately
-  // requested. Still built from the SAME `cells` already computed above,
-  // never a second query.
-  const charts = [{ type: 'bars', title: `${fieldA.label[0].toUpperCase()}${fieldA.label.slice(1)} by ${fieldB.label}${scopeText ? ` — ${scopeText}` : ''}`, rows: cells.map((c) => ({ label: `${c.a} - ${c.b}`, count: c.count })) }];
+  const scopeText = parts.filter((p) => !fields.some((f) => p.startsWith(f.label))).join(', ');
+  const titleFields = fields.map((f) => f.label).join(' by ');
+
+  // 2-field rows stay grouped by the first field's own value ("Male (Employed:
+  // N, Unemployed: N)"), the exact same readable shape as before — a 3+
+  // field cross-tab has no single natural grouping axis to nest under, so
+  // it flattens every combo into its own "A - B - C: N" line instead.
+  const rowsText = fields.length === 2
+    ? Object.keys(fields[0].values)
+        .map((la) => `${la} (${cells.filter((c) => c.combo[0] === la).map((c) => `${c.combo[1]}: ${c.count}`).join(', ')})`)
+        .join(' | ')
+    : cells.map((c) => `${c.combo.join(' - ')}: ${c.count}`).join(' | ');
+
+  // A cross-tab has no single-axis bar-chart shape to fall back on, so
+  // each cell is flattened into its own labeled bar ("Male - Employed", or
+  // "Male - Employed - CCS" for 3 fields). Always attached, not gated
+  // behind CHART_REQUEST_PATTERN — same reasoning as computeComparison's
+  // own chart above: a "breakdown"/cross-tab question is inherently asking
+  // to see values compared side by side, so the visualization isn't
+  // something that needs to be separately requested. Still built from the
+  // SAME `cells` already computed above, never a second query.
+  const charts = [{ type: 'bars', title: `${titleFields[0].toUpperCase()}${titleFields.slice(1)}${scopeText ? ` — ${scopeText}` : ''}`, rows: cells.map((c) => ({ label: c.combo.join(' - '), count: c.count })) }];
 
   return {
     type: 'count',
     count: cells[0]?.count ?? 0,
-    description: `metric: ${fieldA.label} by ${fieldB.label} cross-tab${scopeText ? ` | scope: ${scopeText}` : ''} | ${rowsText}`,
+    description: `metric: ${titleFields} cross-tab${scopeText ? ` | scope: ${scopeText}` : ''} | ${rowsText}`,
+    charts,
+  };
+}
+
+// "Do alumni with Excellent technical skills get employed more?", "Does
+// gender affect employment?" — answered as a genuine, practical insight
+// (the employment RATE within each group of the named field — "Excellent:
+// 85% employed, Beginner: 60% employed"), deliberately NOT a real
+// statistical correlation coefficient (Pearson's r, chi-square, p-value).
+// A real coefficient risks being read as more statistically rigorous than
+// this schema's sample sizes/categorical shape can actually support, and
+// would need genuine statistical framing (confidence intervals,
+// significance testing) this chatbot has no safe, deterministic way to
+// narrate — this project's own standing rule is to prefer a plain,
+// honestly-labeled deterministic figure over an LLM-narrated statistical
+// claim that could be misread as more certain than it is. A rate-per-group
+// breakdown answers the practical question just as well without that risk.
+async function computeVerifiedCorrelation(plan, question) {
+  if (!plan.correlationField) return null;
+  const entry = FIELD_REGISTRY_BY_KEY[plan.correlationField];
+  if (!entry) return null;
+
+  const { userFilters, tracerFilters, parts, forbiddenScope } = plan;
+  if (forbiddenScope) return forbiddenScopeClarify(forbiddenScope);
+
+  const groupField = comparableFieldValues(entry, tracerFilters);
+  if (!groupField) return null;
+
+  // "Employed" is always the fixed outcome here — queried directly via the
+  // registry's own regex rather than relying on tracerFilters.employmentStatus
+  // having been resolved by the normal per-field loop (it usually hasn't:
+  // employmentStatus's own `backstop` only fires for comparison questions,
+  // not correlation ones, and a correlation question doesn't require the
+  // word "employed" to literally appear in extractable-filter form).
+  const employedRegex = FIELD_REGISTRY_BY_KEY.employmentStatus.values.Employed;
+  const { [groupField.dbField]: _current, employmentStatus: _es, ...restFilters } = tracerFilters;
+  const labels = Object.keys(groupField.values);
+
+  const rows = await Promise.all(labels.map(async (label) => {
+    const groupFilter = { ...restFilters, [groupField.dbField]: groupField.values[label] };
+    const [total, employed] = await Promise.all([
+      countWithFilters(userFilters, groupFilter),
+      countWithFilters(userFilters, { ...groupFilter, employmentStatus: employedRegex }),
+    ]);
+    return { label, total, employed, rate: total > 0 ? Math.round((employed / total) * 1000) / 10 : null };
+  }));
+
+  // A group with zero respondents at all has no real rate to report —
+  // dropped rather than shown as a misleading "0%" (0 of 0 is not the same
+  // claim as 0 of 50).
+  const validRows = rows.filter((r) => r.total > 0);
+  if (validRows.length === 0) return null;
+
+  // skillRating's own `part` text ("technical skills rated \"Excellent\"",
+  // resolveSkillRating) doesn't start with groupField.label ("technical
+  // skills rating" — the "rated"/"rating" word differs), so it needs its
+  // own exclusion check (matching the skill name itself) rather than
+  // reusing the generic startsWith(label) filter other fields use — same
+  // class of mismatch already fixed for specialization/graduationYear above.
+  const skillNameBase = entry.key === 'skillRating' ? groupField.label.replace(/ rating$/, '') : null;
+  const scopeText = parts
+    .filter((p) => !p.startsWith(groupField.label))
+    .filter((p) => !(skillNameBase && p.includes(skillNameBase)))
+    .join(', ');
+  const descText = validRows.map((r) => `${r.label}: ${r.rate}% employed (${r.employed} of ${r.total})`).join(' | ');
+
+  // GroupedBarChart (single series) — same standing-bar-graph shape already
+  // used for a top-N ranking and a direct two-way comparison, with the same
+  // `%` unit labeling as computeVerifiedRanking's own rate charts.
+  const charts = [{
+    type: 'grouped-bars',
+    title: `Employment Rate by ${groupField.label[0].toUpperCase()}${groupField.label.slice(1)}${scopeText ? ` — ${scopeText}` : ''}`,
+    unit: '%',
+    series: [{ name: 'employment rate' }],
+    rows: validRows.map((r) => ({ category: r.label, values: [r.rate] })),
+  }];
+
+  return {
+    type: 'count',
+    count: validRows[0]?.employed ?? 0,
+    description: `metric: employment rate by ${groupField.label}${scopeText ? ` | scope: ${scopeText}` : ''} | ${descText}`,
     charts,
   };
 }
@@ -1727,8 +1951,86 @@ async function computeVerifiedSummary(question, providedPlan, scopeCollege) {
  * one shared `providedPlan` from ragService.js (which extracts it once up
  * front) cuts this specific case down to a single extraction call.
  */
+// "What is Juan Dela Cruz's employment status?" — a lookup of ONE specific
+// real alumnus by name, a fundamentally different query shape from every
+// other function in this file (those all filter/aggregate a POPULATION;
+// this finds one real account). Not a generic field resolver — reads
+// plan.personName directly (see fieldRegistry.js's own comment on why).
+//
+// 2+ name matches are NEVER narrowed to "just pick one" — returned as a
+// 'clarify' type (same reliability reasoning as ambiguousFieldClarify
+// elsewhere: streamed directly by ragService.js, bypassing LLM narration,
+// so there is no risk of the model confidently picking/inventing the wrong
+// person's data). Coordinator scoping reuses the exact same mechanism
+// every other lookup in this file already relies on — restricting the
+// CANDIDATE POOL itself to the coordinator's own college, not a separate
+// forbidden-scope check — so a coordinator asking about a real person from
+// a DIFFERENT college gets an honest "no alumni record found" (same
+// behavior already verified live for a cross-college custom-question
+// lookup), never another college's real data.
+async function computeVerifiedPersonLookup(plan, scopeCollege) {
+  if (!plan.personName) return null;
+
+  const words = plan.personName.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+  const nameRegexes = words.map((w) => new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+
+  const userMatch = { role: 'alumni' };
+  if (scopeCollege) userMatch.college = scopeCollege;
+  const candidates = await User.find(userMatch).select('firstName lastName middleInitial course college graduationYear').lean();
+  const matches = candidates.filter((u) => {
+    const fullName = `${u.firstName || ''} ${u.middleInitial || ''} ${u.lastName || ''}`.replace(/\s+/g, ' ').trim();
+    return nameRegexes.every((re) => re.test(fullName));
+  });
+
+  if (matches.length === 0) {
+    return { type: 'count', count: 0, description: `metric: alumni profile lookup | no alumni record found matching the name "${plan.personName}" | value: 0` };
+  }
+
+  if (matches.length > 1) {
+    const list = matches
+      .map((u) => `${u.firstName} ${u.lastName} (${u.course || u.college || 'unknown program'}, batch ${u.graduationYear || 'unknown'})`)
+      .join('; ');
+    return {
+      type: 'clarify',
+      description: `Multiple alumni match "${plan.personName}": ${list}. Could you specify which one (program and/or batch year)?`,
+    };
+  }
+
+  const person = matches[0];
+  const tracerResp = await TracerStudyResponse.findOne({ alumni_id: person._id }).lean();
+  if (!tracerResp) {
+    return { type: 'count', count: 0, description: `metric: alumni profile lookup | ${person.firstName} ${person.lastName} has no tracer survey response on file | value: 0` };
+  }
+
+  // A compact profile line, not the full raw document — same "only the
+  // fields that matter to a tracer-study question" discipline every other
+  // description in this file already follows, never the entire DB record.
+  const profileParts = [
+    `name: ${person.firstName} ${person.lastName}`,
+    `program: ${person.course || 'unknown'}`,
+    `batch: ${person.graduationYear || 'unknown'}`,
+    `employment status: ${tracerResp.employmentStatus || 'unknown'}`,
+    tracerResp.occupationTitle ? `job title: ${tracerResp.occupationTitle}` : null,
+    tracerResp.companyName ? `company: ${tracerResp.companyName}` : null,
+    tracerResp.industryField ? `industry: ${tracerResp.industryField}` : null,
+    tracerResp.placeOfWork ? `work location: ${tracerResp.placeOfWork}` : null,
+    tracerResp.presentEmploymentType ? `employment type: ${tracerResp.presentEmploymentType}` : null,
+  ].filter(Boolean).join(' | ');
+
+  return { type: 'count', count: 1, description: `metric: alumni profile lookup | ${profileParts}` };
+}
+
 async function computeVerifiedStat(question, providedPlan, scopeCollege) {
   const plan = await getPlan(question, providedPlan, scopeCollege);
+  // Checked ahead of EVERYTHING else, including compareScope — a question
+  // naming one specific real person is unambiguous about what it wants
+  // regardless of whatever intent/comparison/crosstab shape the rest of the
+  // text might also superficially resemble.
+  if (plan.personName) {
+    const personResult = await computeVerifiedPersonLookup(plan, scopeCollege);
+    if (personResult) return personResult;
+  }
   // Checked ahead of the intent switch — see computeComparison's own
   // comment on why a "vs"/"compared to" question can't rely on the LLM's
   // intent classification (count vs percentage) landing consistently.
@@ -1753,10 +2055,14 @@ async function computeVerifiedStat(question, providedPlan, scopeCollege) {
   }
   const skillCompare = await computeSkillCompare(plan, question);
   if (skillCompare) return skillCompare;
+  const crossBoolean = await computeCrossBooleanComparison(plan);
+  if (crossBoolean) return crossBoolean;
   const comparison = await computeComparison(plan, question);
   if (comparison) return comparison;
   const crosstab = await computeVerifiedCrossTab(plan, question);
   if (crosstab) return crosstab;
+  const correlation = await computeVerifiedCorrelation(plan, question);
+  if (correlation) return correlation;
   const unemploymentReasons = await computeUnemploymentReasons(plan, question);
   if (unemploymentReasons) return unemploymentReasons;
   switch (plan.intent) {

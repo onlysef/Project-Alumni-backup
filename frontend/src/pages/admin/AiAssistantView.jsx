@@ -1043,6 +1043,64 @@ export default function AiAssistantView() {
     URL.revokeObjectURL(url);
   }
 
+  // Excel export — reuses the exact same workbook/chart-image-embedding
+  // pattern TracerDashboardView.jsx's downloadChartExcel already uses for
+  // its own per-chart exports (ExcelJS dynamically imported so it only
+  // loads on export, renderChartImage from canvasCharts.js rasterizes each
+  // chart to a PNG since embedding a live DOM screenshot renders donuts/
+  // grouped-bars blank — same reason that file's own top comment gives).
+  // One sheet per AC answer that has a real question/answer pair, not one
+  // sheet per raw message — a user turn has no chart/data of its own to
+  // export, so it's folded into the SAME sheet as its own answer instead of
+  // getting an empty sheet to itself.
+  async function exportChatExcel() {
+    const { renderChartImage } = await import("../../components/common/canvasCharts.js");
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+
+    const pairs = [];
+    let pendingQuestion = null;
+    for (const m of messages) {
+      if (m.role === "user") { pendingQuestion = m; continue; }
+      if (m.role === "ac" && m.text?.trim()) { pairs.push({ question: pendingQuestion, answer: m }); pendingQuestion = null; }
+    }
+    if (pairs.length === 0) return;
+
+    pairs.forEach((pair, idx) => {
+      // Excel sheet names: max 31 chars, no []:*?/\\.
+      const rawName = pair.question?.text?.trim() || `Answer ${idx + 1}`;
+      const sheetName = `${idx + 1}. ${rawName}`.replace(/[[\]:*?/\\]/g, "").slice(0, 31) || `Answer ${idx + 1}`;
+      const sheet = workbook.addWorksheet(sheetName);
+
+      sheet.addRow([pair.question?.text || `Question ${idx + 1}`]).font = { bold: true, size: 13 };
+      sheet.addRow([]);
+      const answerText = stripChartAnchors(pair.answer.text || "");
+      answerText.split("\n").forEach((line) => sheet.addRow([line]));
+      sheet.getColumn(1).width = 90;
+
+      const charts = pair.answer.charts || (pair.answer.chart ? [pair.answer.chart] : []);
+      let imageRow = sheet.rowCount + 2;
+      for (const chart of charts) {
+        if (!chart?.rows?.length) continue;
+        const img = renderChartImage(chart.type, { rows: chart.rows, series: chart.series, unit: chart.unit });
+        if (!img) continue;
+        if (chart.title) sheet.getCell(`A${imageRow}`).value = chart.title;
+        const imageId = workbook.addImage({ base64: img.dataUrl.split(",")[1], extension: "png" });
+        sheet.addImage(imageId, { tl: { col: 0, row: imageRow }, ext: { width: img.width, height: img.height } });
+        imageRow += Math.ceil(img.height / 20) + 2;
+      }
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ATREIA-Chat-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function historyDate(iso) {
     try {
       return new Date(iso).toLocaleString([], {
@@ -1062,13 +1120,26 @@ export default function AiAssistantView() {
                 type="button"
                 className="ac-clear-btn"
                 onClick={exportChat}
-                title="Export chat"
-                aria-label="Export chat"
+                title="Export chat as text"
+                aria-label="Export chat as text"
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
                   <path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
                 Export
+              </button>
+              <button
+                type="button"
+                className="ac-clear-btn"
+                onClick={exportChatExcel}
+                title="Export chat as Excel (with charts)"
+                aria-label="Export chat as Excel"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+                  <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M8 9h8M8 13h8M8 17h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                Excel
               </button>
               <button
                 type="button"

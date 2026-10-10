@@ -205,3 +205,41 @@ test('full-time/part-time employment type is deterministically flagged as unsupp
   assert.ok(r);
   assert.match(r.description, /not tracked/i, 'the real tracked vocabulary is Regular\\/Permanent, Contractual, etc. — full-time\\/part-time must be disclosed as unsupported, not silently mapped to employmentStatus');
 });
+
+test('year-vs-year comparison: two explicit named years win over a loosely-matched "employed" word, not the generic employmentStatus engine', async () => {
+  const r = await computeVerifiedStat('How many employed alumni, 2024 vs 2025?', undefined, null);
+  assert.ok(r);
+  assert.match(r.description, /batch year comparison/);
+  assert.match(r.description, /2024: \d+/);
+  assert.match(r.description, /2025: \d+/);
+  // Regression guard: this used to be hijacked by employmentStatus's own
+  // backstop (which matches the bare word "employed" anywhere), answering
+  // an unscoped-by-year Employed vs Unemployed breakdown instead.
+  assert.doesNotMatch(r.description, /^metric: employment status comparison/, 'must not fall back to the generic employmentStatus comparison engine');
+});
+
+test('cross-field boolean comparison: certifications vs trainings reports each field\'s own independent count, not a crash or an intersection', async () => {
+  const r = await computeVerifiedStat('How many alumni pursued professional certifications vs further trainings?', undefined, null);
+  assert.ok(r, 'must not crash or return null');
+  assert.match(r.description, /has professional certifications: \d+/);
+  assert.match(r.description, /pursued trainings: \d+/);
+  const certsMatch = r.description.match(/has professional certifications: (\d+)/);
+  const trainingsMatch = r.description.match(/pursued trainings: (\d+)/);
+  // Regression guard: both used to come back as the SAME number (the
+  // intersection of both fields being true) instead of each field's own
+  // independent total, because the other field's filter wasn't stripped
+  // out of the shared filter base before counting each side.
+  assert.notEqual(certsMatch[1], trainingsMatch[1], 'each field has a different real total — identical counts means the intersection bug is back');
+});
+
+test('graduationYear backstop: a single named year is applied even when the LLM extraction drops it', async () => {
+  const r = await computeVerifiedStat('Why are 2024 graduates unemployed?', undefined, null);
+  assert.ok(r);
+  // The unscoped (system-wide) total is a different, larger number — this
+  // asserts the batch-2024-scoped total specifically, confirming
+  // graduationYear actually narrowed the query instead of silently
+  // answering for everyone.
+  assert.match(r.description, /Based on \d+ unemployed alumni/);
+  const total = Number(r.description.match(/Based on (\d+) unemployed/)[1]);
+  assert.ok(total < 87, `expected a batch-2024-scoped total (smaller than the system-wide 87), got ${total} — graduationYear filter was likely dropped`);
+});
