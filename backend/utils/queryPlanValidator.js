@@ -16,7 +16,8 @@
 // irregular to generalize and stay as named custom resolvers there.
 const {
   FIELD_REGISTRY, FIELD_REGISTRY_BY_KEY, TYPE_RESOLVERS, COMPARISON_PATTERN, BARE_STATUS_BREAKDOWN_PATTERN, CROSSTAB_PATTERN, findAllSkillMatches, findUnmatchedSkillMentions,
-  detectUnsupportedConditions,
+  detectUnsupportedConditions, findCatalogComparisonValues, SPECIALIZATION_VALUES, findCustomQuestionComparisonValues, findYearComparisonValues, findSingleYearMention,
+  CORRELATION_PATTERN, SKILL_NAME_BACKSTOP_PATTERN, resolveSkillNameFromText,
 } = require('./fieldRegistry');
 const { COURSE_TO_COLLEGE } = require('./collegesCourses');
 
@@ -81,6 +82,20 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
     if (!/\bcertifications?\b/i.test(question || '')) f.professionalDevelopmentActivities = null;
   }
 
+  // graduationYear backstop — caught live: "Why are 2024 graduates
+  // unemployed?" non-deterministically extracted graduationYear as null on
+  // some runs despite the year being named explicitly, silently answering
+  // the UNSCOPED system-wide total instead of just batch 2024's. Only
+  // fills in when the LLM left it null AND exactly one plausible year is
+  // mentioned (findSingleYearMention's own comment) — never overrides a
+  // real extraction, and stays out of the way of a genuine 2+-year
+  // comparison question (findYearComparisonValues, checked separately
+  // below).
+  if (!f.graduationYear) {
+    const singleYear = findSingleYearMention(question);
+    if (singleYear) f.graduationYear = singleYear;
+  }
+
   // Deterministic regex fallback for any field whose registry entry
   // declares `backstop` — only applied when the LLM extraction left that
   // field null/falsy, never overrides a real extraction. Caught live: "How
@@ -106,16 +121,94 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
   // regex to match ties the field selection to what the question actually
   // SAYS, immune to whatever else the LLM happened to also (mis)extract.
   let comparisonField = null;
+  let catalogComparisonValues = null;
   const isComparisonQuestion = Boolean(question) && COMPARISON_PATTERN.test(question);
-  // Gated to comparison questions only — the entire reason any of these
-  // backstops exist is the LLM's specifically observed "X vs Y" extraction
-  // instability (see each backstop's own comment). Applying them
+
+  // Year-over-year comparison ("How many employed alumni, 2024 vs 2025?") —
+  // checked FIRST, ahead of the generic enum/boolean backstop loop below.
+  // Caught live: that question contains the word "employed", which matches
+  // employmentStatus's own backstop pattern (`/\b(...|employed|...)\b/i`)
+  // ANYWHERE in the text, not just when employment status is actually the
+  // thing being compared — the backstop loop used to run first and always
+  // won, answering with an unscoped-by-year Employed vs Unemployed
+  // breakdown for only ONE of the two named years, with zero connection to
+  // "2025" at all. Two explicit 4-digit years named is a far more specific,
+  // unambiguous signal of what's actually being compared than a loose
+  // single-word match, so it must be tried first and claim comparisonField
+  // before the generic loop gets a chance to grab it for the wrong field.
+  // See findYearComparisonValues's own comment in fieldRegistry.js.
+  if (isComparisonQuestion) {
+    const matchedYears = findYearComparisonValues(question);
+    if (matchedYears) {
+      comparisonField = 'graduationYear';
+      catalogComparisonValues = matchedYears;
+    }
+  }
+
+  // specialization (TSM/WMA/NA) — same precedence reasoning as the
+  // year-comparison check just above, moved here for the identical reason:
+  // caught live, "Compare TSM and WMA graduates' employment rate" names two
+  // real specializations explicitly, but "employment rate" ALSO matches
+  // employmentStatus's own backstop pattern — when this check ran AFTER the
+  // generic enum/boolean backstop loop below, employmentStatus always won
+  // the race and WMA was silently dropped entirely (TSM became a plain
+  // scope filter on an Employed-vs-Unemployed breakdown, with zero
+  // connection to WMA at all — the exact same failure shape the
+  // year-comparison fix above was built for). Two real specialization
+  // codes named explicitly is a far more specific, unambiguous signal than
+  // a loose single-word backstop match, so — same as years — it must be
+  // tried first. See computeComparison's own bespoke specialization branch
+  // in verifiedCount.js for why this field can't just reuse the generic
+  // catalog-match path (it lives on User.track, not a tracer field, and
+  // isn't a live DB catalog list like jobTitle/industryField are).
+  if (isComparisonQuestion && !comparisonField) {
+    const matchedSpecs = SPECIALIZATION_VALUES.filter((v) => new RegExp(`\\b${v}\\b`, 'i').test(question));
+    if (matchedSpecs.length >= 2) {
+      comparisonField = 'specialization';
+      catalogComparisonValues = matchedSpecs;
+      // Seeds f.specialization (if the LLM didn't already set one — same
+      // instability every other "vs" backstop exists for) so the normal
+      // per-field resolver loop further down still runs
+      // resolveSpecializationFilter, which sets userFilters.course = 'BSIT'
+      // as a side effect — without this, the coordinator college-scope
+      // check would never see BSIT/CCS as the effective college for a
+      // specialization comparison whose own filters.specialization came
+      // back null, letting a coordinator from a DIFFERENT college query
+      // CCS-only track data.
+      if (!f.specialization) f.specialization = matchedSpecs[0];
+    }
+  }
+
+  // Cross-field boolean comparison ("certifications vs further trainings")
+  // — unlike every comparison above (which compares two VALUES of the SAME
+  // field), this names two DIFFERENT boolean fields at once. Caught live:
+  // "How many alumni pursued professional certifications vs further
+  // trainings?" crashed (computeComparison assumed a single field's own
+  // Yes/No split, and professionalCertifications/pursuedTrainings don't
+  // even define a `label` the crash path needed) — and once that crash was
+  // fixed, the generic single-field backstop loop below still picked only
+  // ONE of the two fields and silently used the OTHER as an unrelated
+  // scope filter ("certifications among those who also did trainings"),
+  // answering a completely different question than "how many did each".
+  // crossBooleanFields carries BOTH field keys through so
+  // computeCrossBooleanComparison (verifiedCount.js) can report each
+  // field's own Yes-count side by side instead.
+  let crossBooleanFields = null;
+  if (isComparisonQuestion && /\bcertifications?\b/i.test(question) && /\btrainings?\b/i.test(question)) {
+    crossBooleanFields = ['professionalCertifications', 'pursuedTrainings'];
+  }
+
+  // Gated to comparison questions only (and only when the year-comparison/
+  // specialization/cross-boolean checks above didn't already claim the
+  // field) — the entire reason any of
+  // these backstops exist is the LLM's specifically observed "X vs Y"
+  // extraction instability (see each backstop's own comment). Applying them
   // unconditionally would risk a plain, non-comparison question that merely
   // mentions a field's vocabulary in passing (e.g. "What CCNA trainings did
   // alumni pursue?" incidentally containing "training") getting an unasked-
   // for extra filter forced on — outside the comparison case, the normal
   // LLM-extraction-plus-validation chain already works and needs no net.
-  if (isComparisonQuestion) {
+  if (isComparisonQuestion && !comparisonField && !crossBooleanFields) {
     for (const entry of FIELD_REGISTRY) {
       if (!entry.backstop) continue;
       const backstopMatch = question.match(entry.backstop.pattern);
@@ -123,6 +216,45 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
       if (!f[entry.key]) f[entry.key] = entry.backstop.resolve(backstopMatch);
       const isComparable = entry.values || entry.type === 'boolean-yesno' || entry.key === 'skillRating';
       if (isComparable && !comparisonField) comparisonField = entry.key;
+    }
+  }
+
+  // Catalog-match fields (jobTitle, industryField, companyName,
+  // employmentType, trainingType, ...) have no fixed `values` enum, so the
+  // backstop loop above can never recognize them as comparable — see
+  // findCatalogComparisonValues's own comment in fieldRegistry.js. Only
+  // attempted when nothing above already resolved a comparisonField, so
+  // the year-comparison/enum/boolean checks above always win when both are
+  // somehow plausible for the same question.
+  if (isComparisonQuestion && !comparisonField) {
+    for (const entry of FIELD_REGISTRY) {
+      if (entry.type !== 'catalog-match') continue;
+      const matched = findCatalogComparisonValues(entry, question, cache);
+      if (matched) {
+        comparisonField = entry.key;
+        catalogComparisonValues = matched;
+        break;
+      }
+    }
+  }
+
+  // customQuestion comparison ("how many chose X vs Y for [some admin-
+  // added question]?") — the last field with no "vs" support at all. Unlike
+  // every comparison above, this needs the LLM to have still named WHICH
+  // question is being asked about (f.customQuestion.label) — there's no
+  // global/fixed set of possible values to scan blind the way catalog-match
+  // or specialization can, each custom question has its own small,
+  // independently-defined option set. See findCustomQuestionComparisonValues's
+  // own comment in fieldRegistry.js.
+  let customQuestionComparisonIds = null;
+  let customQuestionComparisonLabel = null;
+  if (isComparisonQuestion && !comparisonField && f.customQuestion?.label) {
+    const customMatch = findCustomQuestionComparisonValues(f.customQuestion, question, cache);
+    if (customMatch) {
+      comparisonField = 'customQuestion';
+      catalogComparisonValues = customMatch.values;
+      customQuestionComparisonIds = customMatch.entries.map((e) => e.id);
+      customQuestionComparisonLabel = customMatch.entries[0].label;
     }
   }
 
@@ -161,15 +293,22 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
     }
   }
 
-  // Cross-tab support ("employment status by gender") — unlike
-  // comparisonField above, this can't reuse `entry.backstop` (built to
-  // recognize a named VALUE — "male", "employed" — not a bare FIELD NAME).
-  // "employment status by gender" names neither value; it names the two
-  // FIELDS themselves, so detection instead matches each comparable field's
-  // own `entry.label` (e.g. "gender", "employment status", "work location")
-  // appearing literally in the question text. Mutually exclusive with
-  // comparisonField: a "vs" question is a single-field full breakdown, a
-  // "by"/"per" question is a two-field cross-tab — never both at once.
+  // Cross-tab support ("employment status by gender", or 3+ dimensions —
+  // "employment status by gender by college") — unlike comparisonField
+  // above, this can't reuse `entry.backstop` (built to recognize a named
+  // VALUE — "male", "employed" — not a bare FIELD NAME). "employment status
+  // by gender" names neither value; it names the FIELDS themselves, so
+  // detection instead matches each comparable field's own `entry.label`
+  // (e.g. "gender", "employment status", "work location") appearing
+  // literally in the question text. Mutually exclusive with comparisonField:
+  // a "vs" question is a single-field full breakdown, a "by"/"per" question
+  // is a cross-tab — never both at once. Capped at 4 fields (not
+  // unbounded) — purely a sanity ceiling against a pathological question
+  // that happens to mention many comparable field labels at once; the
+  // Cartesian product computeVerifiedCrossTab builds grows multiplicatively
+  // with each added dimension (3 fields of ~3 values each is already 27
+  // queries), and a real question asking to cross-tab 5+ dimensions at once
+  // would produce a chart far too dense to read anyway.
   const isCrosstabQuestion = !isComparisonQuestion && Boolean(question) && CROSSTAB_PATTERN.test(question);
   const matchedComparableFields = [];
   if (isCrosstabQuestion) {
@@ -182,7 +321,46 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
       }
     }
   }
-  const crosstabFields = matchedComparableFields.length >= 2 ? matchedComparableFields.slice(0, 2) : null;
+  const crosstabFields = matchedComparableFields.length >= 2 ? matchedComparableFields.slice(0, 4) : null;
+
+  // Correlation-style question ("do alumni with Excellent technical skills
+  // get employed more?", "does gender affect employment?") — answered as an
+  // employment RATE within each group of the OTHER named field (see
+  // computeVerifiedCorrelation's own top comment in verifiedCount.js for
+  // why this scope, not a real statistics correlation coefficient).
+  // "employment"/"employed" itself is always the OUTCOME side, never the
+  // grouping field — a question correlating employment with itself makes
+  // no sense, so the employmentStatus label is explicitly excluded from
+  // the grouping-field search below. Mutually exclusive with crosstabFields/
+  // comparisonField (checked in that order — whichever already resolved
+  // wins; this is only attempted when nothing else claimed the question).
+  let correlationField = null;
+  const isCorrelationQuestion = !isComparisonQuestion && !crosstabFields && Boolean(question) && CORRELATION_PATTERN.test(question);
+  if (isCorrelationQuestion) {
+    for (const entry of FIELD_REGISTRY) {
+      if (entry.key === 'employmentStatus') continue;
+      const isComparable = entry.values || entry.type === 'boolean-yesno';
+      if (!isComparable || !entry.label) continue;
+      const labelPattern = new RegExp(`\\b${entry.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (labelPattern.test(question)) { correlationField = entry.key; break; }
+    }
+    // skillRating is a special case (same as comparisonField's own skill
+    // handling above) — its real field is dynamic
+    // (personalGrowthRatings.<whichever skill was named>), not a label this
+    // loop's generic match can find, so it needs the same
+    // SKILL_NAME_BACKSTOP_PATTERN detection used elsewhere. Seeds
+    // f.skillRating (if not already set) so the normal resolver loop below
+    // still runs resolveSkillRating and leaves the dynamic dbField key
+    // sitting in tracerFilters for computeVerifiedCorrelation to read back,
+    // the same mechanism computeComparison's own skillRating branch relies on.
+    if (!correlationField) {
+      const skillMatch = question.match(SKILL_NAME_BACKSTOP_PATTERN);
+      if (skillMatch) {
+        correlationField = 'skillRating';
+        if (!f.skillRating) f.skillRating = { skill: resolveSkillNameFromText(skillMatch[1]), rating: null };
+      }
+    }
+  }
 
   // catalog-match fields form a CHAIN (jobTitle -> industryField ->
   // companyName -> ...): once one of them fails to resolve (unresolvedField)
@@ -308,7 +486,14 @@ function validateQueryPlan(rawPlan, cache, question, scopeCollege) {
   const llmUnsupported = Array.isArray(rawPlan.unsupportedConditions) ? rawPlan.unsupportedConditions : [];
   const unsupportedConditions = [...new Set([...llmUnsupported, ...extraUnsupported, ...backstopUnsupported])];
 
-  return { userFilters, tracerFilters, parts, statusMatch, percentageMatch, unresolvedField, unresolvedScope, unsupportedConditions, ambiguousField, forbiddenScope, comparisonField, crosstabFields, skillCompareFields, unmatchedSkillNames };
+  // personName has no generic resolver (see fieldRegistry.js's own comment
+  // on why — a specific-person lookup is handled entirely by
+  // computeVerifiedPersonLookup, not the per-field filter-resolution loop
+  // above), so it's read directly off the raw extracted filters here rather
+  // than coming from a patch like every other field.
+  const personName = typeof f.personName === 'string' && f.personName.trim() ? f.personName.trim() : null;
+
+  return { userFilters, tracerFilters, parts, statusMatch, percentageMatch, unresolvedField, unresolvedScope, unsupportedConditions, ambiguousField, forbiddenScope, comparisonField, catalogComparisonValues, customQuestionComparisonIds, customQuestionComparisonLabel, crosstabFields, skillCompareFields, unmatchedSkillNames, correlationField, personName, crossBooleanFields };
 }
 
 module.exports = { validateQueryPlan };

@@ -133,6 +133,14 @@ Q: "How many male BSIT alumni earning over 25k who are exactly 24 years old are 
 {"intent":"count","filters":{"course":"BSIT","college":null,"employmentStatus":"Employed","jobTitle":null,"industryField":null,"companyName":null,"workLocation":null,"gender":"Male","furtherEducation":null,"professionalDevelopmentActivities":null,"awardsOrRecognition":null,"customQuestion":null},"rankingField":null,"rankingDirection":null,"summaryTopics":[],"unsupportedConditions":["salary over 25k","an exact age of 24"]}
 (Note: "who are exactly 24 years old" contains the word "who", but it is NOT a names request — it is a relative clause narrowing WHICH alumni to count, same as "earning over 25k" right before it. Intent stays "count" ("how many ... are employed"). Neither salary nor age has a matching filter field, so both go into unsupportedConditions verbatim; every filter that DID resolve — course, gender, employmentStatus — is still extracted normally.)
 
+Q: "What is Juan Dela Cruz's employment status?"
+{"intent":"count","filters":{"course":null,"college":null,"employmentStatus":null,"jobTitle":null,"industryField":null,"companyName":null,"workLocation":null,"furtherEducation":null,"professionalDevelopmentActivities":null,"awardsOrRecognition":null,"customQuestion":null,"personName":"Juan Dela Cruz"},"rankingField":null,"rankingDirection":null,"summaryTopics":[],"unsupportedConditions":[]}
+(Note: a SPECIFIC named individual, not a filtered group — "personName" is set to the name verbatim and every other filter stays null, since the question isn't scoping a population at all, it's asking about one real person's own record. "intent" is left as a harmless default ("count") since the downstream system routes a set "personName" to its own dedicated lookup regardless of whatever intent was guessed here.)
+
+Q: "Who are the employed BSIT alumni?"
+{"intent":"names","filters":{"course":"BSIT","college":null,"employmentStatus":"Employed","jobTitle":null,"industryField":null,"companyName":null,"workLocation":null,"furtherEducation":null,"professionalDevelopmentActivities":null,"awardsOrRecognition":null,"customQuestion":null,"personName":null},"rankingField":null,"rankingDirection":null,"summaryTopics":[],"unsupportedConditions":[]}
+(Note: contrast with the previous example — this asks about a GROUP of alumni matching criteria, not one specific named person, so "personName" stays null and this is the normal "names" intent instead.)
+
 Q: "How many BSIT alumni are employed as Software Engineer and work locally?"
 {"intent":"count","filters":{"course":"BSIT","college":null,"employmentStatus":"Employed","jobTitle":"Software Engineer","industryField":null,"companyName":null,"workLocation":"Local","furtherEducation":null,"professionalDevelopmentActivities":null,"awardsOrRecognition":null,"customQuestion":null},"rankingField":null,"rankingDirection":null,"summaryTopics":[],"unsupportedConditions":[]}
 
@@ -212,7 +220,27 @@ Known official college codes (for your reference only — still copy the questio
 function stripFences(text) {
   const trimmed = text.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-  return fenced ? fenced[1].trim() : trimmed;
+  if (fenced) return fenced[1].trim();
+  // Despite PLAN_SYSTEM_PROMPT's own explicit "no preamble" instruction,
+  // the model intermittently prefixes its JSON with prose anyway — "Here is
+  // the JSON object describing what data it is asking for:\n\n{...}" —
+  // caught live, repeatedly, across many questions today. This used to
+  // discard the ENTIRE response as a parse failure even though a perfectly
+  // valid JSON object sits right there after the preamble — falling
+  // through to the unverified RAG/LLM narration path instead of the real,
+  // deterministic answer, which then produced inconsistent/unverified
+  // numbers for an identical question asked twice in a row (caught live:
+  // "Certifications vs trainings" answered 30/41 — correct, verified — when
+  // extraction succeeded, and a different, UNVERIFIED 15/26 when it didn't).
+  // Salvages just the JSON object itself (first "{" through its matching
+  // last "}") when real prose sits before/after it, rather than giving up
+  // on a response that's otherwise perfectly parseable.
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace > 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
+  return trimmed;
 }
 
 /**

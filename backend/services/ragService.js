@@ -15,7 +15,7 @@
 // a second LLM pass asking a small model to "plan" before answering is not
 // reliable enough to trust, so the constraints are enforced directly on the
 // one real answer it produces (see SYSTEM_PROMPT rule 2/3/7 below).
-const { chatCompletionStream } = require('./llmClient');
+const { chatCompletion, chatCompletionStream } = require('./llmClient');
 const { retrieveContext } = require('./retrievalService');
 const { SYSTEM_PROMPT, FALLBACK_RESPONSE } = require('./chatbotGuardrails');
 const { computeVerifiedStat, computeVerifiedNames, getPlan, isNamesQuestion, isAnaphoricNamesFollowUp, isNamesContinuationOnly, detectUnsupportedConditions } = require('../utils/verifiedCount');
@@ -46,7 +46,17 @@ const TOP_K = 8;
 // even without using a word like "alumni" or "program" at all — otherwise
 // this check would itself start wrongly flagging legitimate questions as
 // off-topic.
-const ALUMNI_DOMAIN_WORDS = /\b(alumni|alumnus|alumna|graduate|tracer|(?:un)?employ\w*|program|course|college|respondent|survey|batch|job|work|industr\w*|company|position|occupation|skill|training|seminar|exam|licensure|promotion|salary|income|further studies|further education)\b/i;
+// "training" used bare word boundaries (\btraining\b), which never matches
+// the PLURAL "trainings" at all (the boundary check fails between "g" and
+// "s", both word characters) — and "certification"/"certifications" wasn't
+// listed here anywhere. Caught live: "Certifications vs trainings" matched
+// NEITHER (plural training + missing certification word entirely),
+// deterministically off-topic-declined a perfectly legitimate, answerable
+// comparison question before it ever reached the real comparison logic.
+// `\w*` suffixes added where a plural/other inflection was the actual gap
+// (training->trainings, certification->certifications), not a blanket
+// rewrite of every word in this list.
+const ALUMNI_DOMAIN_WORDS = /\b(alumni|alumnus|alumna|graduate|tracer|(?:un)?employ\w*|program|course|college|respondent|survey|batch|job|work|industr\w*|company|position|occupation|skill|training\w*|certification\w*|seminar|exam|licensure|promotion|salary|income|further studies|further education)\b/i;
 const ALUMNI_DOMAIN_CODE_PATTERN = new RegExp(`\\b(${[...COLLEGE_CODES, ...ALL_COURSES].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'i');
 const ALUMNI_DOMAIN_PATTERN = { test: (q) => ALUMNI_DOMAIN_WORDS.test(q) || ALUMNI_DOMAIN_CODE_PATTERN.test(q) };
 
@@ -166,6 +176,53 @@ async function buildCapabilitiesMessage(scopeCollege) {
 const PROFANITY_PATTERN = /\b(tang\s*ina|putang\s*ina|puta|gago|tanga|bobo|ulol|pakshet|leche|letse|fuck(ing|er)?|shit|bitch|asshole|bastard)\b/gi;
 function maskProfanity(text) {
   return text.replace(PROFANITY_PATTERN, (m) => '*'.repeat(m.length));
+}
+
+// Common Tagalog/Taglish function words — used ONLY to decide whether the
+// off-topic decline below needs to show an English gist of the request
+// instead of the raw text. Deliberately just function words (not content
+// words), so it fires on genuine Tagalog/Taglish sentences without being
+// thrown off by an English sentence that happens to contain a Filipino
+// proper noun.
+const TAGALOG_INDICATOR_PATTERN = /\b(ang|ng|mga|sa|ba|ano|sino|paano|bakit|kailan|saan|yung|ito|iyon|hindi|oo|naman|lang|po|opo|kumusta|anong|sinong|paanong|bakitng)\b/i;
+
+// Translates `text` to English for the off-topic decline's own display —
+// see that call site's own comment for why this is a narrower, safer task
+// than the subject-naming LLM call this project already tried and removed
+// (that one asked the model to INFER an abstract topic from the question,
+// which hallucinated on adversarial/nonsensical input; this only asks it to
+// translate the user's own real words, a far more grounded task with much
+// less room to invent something that was never said). Returns null (caller
+// falls back to the original untranslated text) on any failure or
+// suspicious output — same "never half-trust a bad result" discipline as
+// every other narrow LLM call in this file.
+async function translateToEnglish(text) {
+  try {
+    const completion = await chatCompletion({
+      model: CHAT_MODEL,
+      provider: process.env.HF_PROVIDER || undefined,
+      messages: [
+        {
+          role: 'system',
+          content: 'Translate the following message into natural English. Reply with ONLY the English translation, nothing else — no explanation, no quotation marks, no preamble, no answer to the message itself. Preserve the original meaning and sentence type (a question stays a question) exactly; do not add or remove information.',
+        },
+        { role: 'user', content: text },
+      ],
+      max_tokens: 60,
+      temperature: 0,
+    });
+    const translated = completion.choices[0]?.message?.content?.trim().replace(/^["']|["']$/g, '');
+    // Sanity checks, same spirit as this file's other narrow-call
+    // validations: non-empty, reasonably short (a real translation of a
+    // short question, not an essay), and doesn't read like a refusal or
+    // meta-commentary instead of an actual translation.
+    if (translated && translated.length > 0 && translated.length < 200 && !/\b(i cannot|i can't|i am unable|as an ai|i'm sorry)\b/i.test(translated)) {
+      return translated;
+    }
+  } catch (err) {
+    logger.error('offtopic_translation_failed', { text, error: err });
+  }
+  return null;
 }
 
 async function streamHF(messages, onToken, retries = 3, maxTokens = 512, onReset = null, temperature = 0) {
@@ -563,12 +620,25 @@ function buildContextBlock(chunks) {
  * @param {Function} onToken    - (token: string) => void, called as the answer streams
  * @param {Function} onReset    - () => void, called if a partial answer must be discarded and retried
  */
-async function generateAnswer(question, chatHistory = [], filters = {}, onToken = null, onReset = null) {
+async function generateAnswer(question, chatHistory = [], filters = {}, onTokenParam = null, onResetParam = null) {
+  // Shadows the real params so every existing `if (onToken) onToken(...)`
+  // call site below keeps working unchanged, while this also accumulates
+  // the full answer text into `fullText` — needed so the final return value
+  // can include the complete narrated answer, not just stream it token-by-
+  // token with nothing to show for it afterward. Added specifically so
+  // aiController.js can cache a full answer (services/answerCache.js, built
+  // but never actually wired to get()/set() before this) and REPLAY it
+  // verbatim on a cache hit, instead of only ever being able to cache
+  // metadata with no text to go with it.
+  let fullText = '';
+  const onToken = (tok) => { fullText += tok; if (onTokenParam) onTokenParam(tok); };
+  const onReset = () => { fullText = ''; if (onResetParam) onResetParam(); };
+
   const trimmed = (question || '').trim();
 
   if (!trimmed) {
     if (onToken) onToken(FALLBACK_RESPONSE);
-    return { sources: [], type: 'unanswered' };
+    return { sources: [], type: 'unanswered', answerText: fullText };
   }
 
   // A college coordinator may only ever see their own college's tracer
@@ -729,7 +799,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   if (isNamesQuestion(trimmed) && !namesResult && !statResult && isAlumniDomain && sharedPlan?.intent === 'names') {
     const clarify = 'I do not have a clear, verified scope to list names for. Could you specify or repeat the program, employment status, or job title you are asking about?';
     if (onToken) onToken(clarify);
-    return { sources: [], type: 'unanswered', lowConfidence: true };
+    return { sources: [], type: 'unanswered', lowConfidence: true, answerText: fullText };
   }
 
   // Same hard-refusal principle for a numeric question that names a
@@ -744,7 +814,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   if (unsupported.length > 0 && !verifiedStat) {
     const msg = `The alumni tracer data does not track ${unsupported.join(' or ')}, so I cannot determine this accurately.`;
     if (onToken) onToken(msg);
-    return { sources: [], type: 'unanswered', lowConfidence: true };
+    return { sources: [], type: 'unanswered', lowConfidence: true, answerText: fullText };
   }
 
   const strongChunks = chunks.filter((c) => (c.score || 0) >= SIMILARITY_THRESHOLD);
@@ -790,7 +860,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   if (!verifiedStat && CAPABILITY_PATTERN.test(trimmed) && !ALUMNI_DOMAIN_PATTERN.test(trimmed)) {
     const capabilitiesMessage = await buildCapabilitiesMessage(scopeCollege);
     if (onToken) onToken(capabilitiesMessage);
-    return { sources: [], type: 'capabilities' };
+    return { sources: [], type: 'capabilities', answerText: fullText };
   }
 
   if (!verifiedStat && !ALUMNI_DOMAIN_PATTERN.test(trimmed) && !GREETING_PATTERN.test(trimmed) && !SELF_IDENTITY_PATTERN.test(trimmed)) {
@@ -815,9 +885,41 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     // drift. No contractions ("I'm") — chatbotGuardrails.js rule 15
     // requires a formal register with no contractions. No em dash, by
     // request — plain sentences joined with a period instead.
-    const msg = `This assistant is unable to help with the request "${trimmed}". This assistant is only able to help with questions about alumni employment, academic programs, gender, competencies, and tracer survey results.`;
+    // No quotation marks around the request anymore, and a Tagalog/Taglish
+    // request is shown in English instead of verbatim — by request. Still
+    // avoids the exact hallucination failure the earlier subject-naming
+    // call had: that call asked the model to INFER an abstract topic
+    // ("the taste of an egg") from the question, which fabricated a
+    // completely unrelated topic on adversarial/nonsensical input
+    // ("Space exploration history" for a prompt-injection attempt with no
+    // real topic at all). translateToEnglish above asks for something far
+    // narrower and more grounded — a literal translation of the user's own
+    // real words, not an invented abstraction — and only runs AT ALL when
+    // TAGALOG_INDICATOR_PATTERN actually matches; the exact adversarial
+    // case that broke before was in English, so that case never reaches
+    // this call in the first place. Falls back to the original, untranslated
+    // text on any failure (never blocks the response, never risks a wrong
+    // fabricated gist standing in for what was actually asked).
+    const needsTranslation = TAGALOG_INDICATOR_PATTERN.test(trimmed);
+    const displayText = needsTranslation ? ((await translateToEnglish(trimmed)) || trimmed) : trimmed;
+
+    // Rotated across a few hand-written phrasings instead of one fixed
+    // sentence every single time — caught live: the exact same wording on
+    // every off-topic question read as an obviously templated, robotic
+    // reply. Same rotation pattern this file already uses for the
+    // profanity reminder below. No contractions (chatbotGuardrails.js rule
+    // 15), no em dash, by request.
+    const SCOPE_CLAUSE = 'alumni employment, academic programs, gender, competencies, and tracer survey results';
+    const offTopicVariants = [
+      (q) => `You asked: ${q} This chatbot is designed to answer questions about ${SCOPE_CLAUSE} instead.`,
+      (q) => `You asked about: ${q} This chatbot focuses only on ${SCOPE_CLAUSE}.`,
+      (q) => `Your question was: ${q} This chatbot can only help with ${SCOPE_CLAUSE}.`,
+      (q) => `That falls outside what this chatbot can answer: ${q} It is built to handle ${SCOPE_CLAUSE}.`,
+      (q) => `This chatbot is not able to answer that: ${q} It is designed to answer ${SCOPE_CLAUSE} instead.`,
+    ];
+    const msg = offTopicVariants[Math.floor(Math.random() * offTopicVariants.length)](displayText);
     if (onToken) onToken(msg);
-    return { sources: [], type: 'unanswered', lowConfidence: true };
+    return { sources: [], type: 'unanswered', lowConfidence: true, answerText: fullText };
   }
 
   // EXCEPTION to "every answer is narrated by the LLM" below: a 'summary'
@@ -833,6 +935,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
       type: 'verified_summary',
       verifiedStat,
       charts: verifiedStat.charts?.length ? verifiedStat.charts : undefined,
+      answerText: fullText,
     };
   }
 
@@ -844,7 +947,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // file has caught it doing elsewhere with much simpler inputs.
   if (verifiedStat?.type === 'clarify') {
     if (onToken) onToken(verifiedStat.description);
-    return { sources: [], type: 'clarify', verifiedStat };
+    return { sources: [], type: 'clarify', verifiedStat, answerText: fullText };
   }
 
   // A coordinator named a real course/college that belongs to a DIFFERENT
@@ -855,7 +958,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // that could soften or blur an access boundary.
   if (verifiedStat?.type === 'forbidden') {
     if (onToken) onToken(verifiedStat.description);
-    return { sources: [], type: 'forbidden', verifiedStat };
+    return { sources: [], type: 'forbidden', verifiedStat, answerText: fullText };
   }
 
   // A named program/condition that genuinely has nothing to report (e.g.
@@ -877,7 +980,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   // 'clarify'/'forbidden' above.
   if (verifiedStat?.type === 'unsupported') {
     if (onToken) onToken(verifiedStat.description);
-    return { sources: [], type: 'unsupported', verifiedStat, charts: verifiedStat.charts?.length ? verifiedStat.charts : undefined };
+    return { sources: [], type: 'unsupported', verifiedStat, charts: verifiedStat.charts?.length ? verifiedStat.charts : undefined, answerText: fullText };
   }
 
   // Every answer — including pure numeric ones — is narrated by the LLM,
@@ -1021,12 +1124,12 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
   } catch (err) {
     logger.error('chat_llm_failed', { question: trimmed, error: err });
     if (onToken) onToken(FALLBACK_RESPONSE);
-    return { sources: [], type: 'unanswered' };
+    return { sources: [], type: 'unanswered', answerText: fullText };
   }
 
   if (!answer) {
     if (onToken) onToken(FALLBACK_RESPONSE);
-    return { sources: [], type: 'unanswered' };
+    return { sources: [], type: 'unanswered', answerText: fullText };
   }
 
   if (bufferNarration) {
@@ -1142,6 +1245,7 @@ async function generateAnswer(question, chatHistory = [], filters = {}, onToken 
     // existing `chart`/`charts` passthrough shape so the frontend's AcChart
     // renderer picks it up the same way it already does for everything else.
     charts: verifiedStat?.charts?.length ? verifiedStat.charts : undefined,
+    answerText: answer,
   };
 }
 

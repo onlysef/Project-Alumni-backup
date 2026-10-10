@@ -274,13 +274,78 @@ function drawStackedBars(rows, ratingOrder, ratingColors) {
   return toResult(canvas, W, H);
 }
 
-export function renderChartImage(chartType, { rows, order, ratingOrder, ratingColors } = {}) {
+// ── Grouped/clustered vertical bars (mirrors GroupedBarChart) ──────────────
+// Used for chatbot chart.type === "grouped-bars" — a standing bar graph for
+// rankings/comparisons (single series, one color per category) or a genuine
+// multi-series comparison (e.g. skill-rating comparisons, one color per
+// series consistent across every category). `rows` here is the ALREADY-
+// GROUPED shape GroupedBarChart itself takes: [{ category, values: [n, ...] }],
+// not the flat {label, count} shape the other draw* functions above use.
+function drawGroupedBars(rows, series, unit = "") {
+  if (!rows || !rows.length || !series || !series.length) return null;
+  const isSingleSeries = series.length === 1;
+  const max = Math.max(...rows.flatMap((r) => r.values), 1);
+
+  const W = 480;
+  const legendH = isSingleSeries ? 0 : 26;
+  const topPad = 28 + legendH, bottomPad = 40;
+  const H = 300 + legendH;
+  const { canvas, ctx } = makeCanvas(W, H);
+
+  const plotH = H - topPad - bottomPad;
+  const colW = W / rows.length;
+  const barGap = 4;
+  const groupBarW = Math.min((colW - 12) / series.length, 50);
+
+  if (!isSingleSeries) {
+    let legendX = 8;
+    ctx.font = "11px Arial";
+    ctx.textAlign = "left";
+    series.forEach((s, i) => {
+      const color = s.color || CHART_PALETTE[i % CHART_PALETTE.length];
+      ctx.fillStyle = color;
+      ctx.fillRect(legendX, 8, 10, 10);
+      ctx.fillStyle = "#2d2024";
+      ctx.fillText(s.name, legendX + 14, 17);
+      legendX += 14 + ctx.measureText(s.name).width + 16;
+    });
+  }
+
+  rows.forEach((r, colIndex) => {
+    const groupX = colIndex * colW + (colW - (groupBarW * series.length + barGap * (series.length - 1))) / 2;
+    r.values.forEach((v, i) => {
+      const color = isSingleSeries
+        ? CHART_PALETTE[colIndex % CHART_PALETTE.length]
+        : (series[i]?.color || CHART_PALETTE[i % CHART_PALETTE.length]);
+      const h = v > 0 ? Math.max((v / max) * plotH, 4) : 0;
+      const x = groupX + i * (groupBarW + barGap);
+      const y = topPad + (plotH - h);
+
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, groupBarW, h);
+
+      ctx.fillStyle = "#570013";
+      ctx.font = "bold 11px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(`${v}${unit}`, x + groupBarW / 2, y - 5);
+    });
+
+    ctx.fillStyle = "#2d2024";
+    ctx.font = "11px Arial";
+    ctx.fillText(fitText(ctx, r.category, colW - 6), colIndex * colW + colW / 2, H - bottomPad + 16);
+  });
+
+  return toResult(canvas, W, H);
+}
+
+export function renderChartImage(chartType, { rows, order, ratingOrder, ratingColors, series, unit } = {}) {
   switch (chartType) {
     case "donut": return drawDonut(rows);
     case "bars":  return drawHBars(rows);
     case "vbars": return drawVBars(rows);
     case "line":  return drawLine(rows, order);
     case "rating": return drawStackedBars(rows, ratingOrder, ratingColors);
+    case "grouped-bars": return drawGroupedBars(rows, series, unit);
     default: return null;
   }
 }

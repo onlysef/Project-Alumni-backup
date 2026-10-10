@@ -85,7 +85,28 @@ const chat = async (req, res) => {
     // data — admins see everything. See utils/collegeScope.js for why.
     const college = req.user?.role === 'coordinator' ? req.user.college : null;
 
-    const { sources, type, suggestions, chart, charts, sampleSize, lowConfidence } = await generateAnswer(
+    // answerCache (services/answerCache.js) was built with get()/set() ready
+    // to use but never actually called anywhere — every question re-hit HF
+    // even when identical to one asked minutes earlier. Wired in here, but
+    // DELIBERATELY ONLY for a question with NO prior history: this
+    // session's own follow-up resolver (ragService.js's resolveGenericFollowUp/
+    // resolveClarifyFollowUp) means the exact same question TEXT can mean
+    // something completely different depending on what was asked before it
+    // ("don't include self-employed" is meaningless on its own) — caching by
+    // bare question text alone would risk replaying a cached answer from a
+    // DIFFERENT conversation's context onto an unrelated one. A fresh,
+    // standalone question (history.length === 0) has no such ambiguity; a
+    // reply mid-conversation always skips the cache and goes through
+    // generateAnswer normally.
+    const cacheable = !Array.isArray(history) || history.length === 0;
+    const cached = cacheable ? answerCache.get(question, college) : null;
+    if (cached) {
+      if (cached.answerText) res.write(`data: ${JSON.stringify({ token: cached.answerText })}\n\n`);
+      res.write(`data: ${JSON.stringify({ done: true, sources: cached.sources, type: cached.type, suggestions: cached.suggestions, chart: cached.chart, charts: cached.charts, sampleSize: cached.sampleSize, lowConfidence: cached.lowConfidence, cached: true })}\n\n`);
+      return res.end();
+    }
+
+    const { sources, type, suggestions, chart, charts, sampleSize, lowConfidence, answerText } = await generateAnswer(
       question,
       history,
       {
@@ -108,6 +129,14 @@ const chat = async (req, res) => {
         res.write(`data: ${JSON.stringify({ reset: true })}\n\n`);
       }
     );
+
+    // Only a genuinely verified/complete answer is cached — never an
+    // off-topic decline, a clarify question, or a low-confidence refusal
+    // (those are cheap to recompute and some depend on exact prior-turn
+    // phrasing even when history.length happened to be 0 this one time).
+    if (cacheable && answerText && !lowConfidence && type !== 'clarify') {
+      answerCache.set(question, college, { answerText, sources, type, suggestions, chart, charts, sampleSize, lowConfidence });
+    }
 
     // Final event with sources, classification type, (when available)
     // backend-computed follow-up suggestions guaranteed answerable by
